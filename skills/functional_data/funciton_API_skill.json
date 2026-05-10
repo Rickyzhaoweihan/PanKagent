@@ -1,0 +1,163 @@
+{
+  "skill_name": "functional-frontend-api-caller",
+  "purpose": "Teach an agent to call functional frontend APIs with correct params and outputs.",
+  "rules": [
+    "Use GET for all endpoints below.",
+    "Prefer filter params for cohort queries.",
+    "If donor_ids is provided, send it as a comma-separated string and treat it as an override selector.",
+    "If donor_ids is absent, do not send it."
+  ],
+  "common_query_params": {
+    "donor_ids": "optional string; comma-separated donor IDs. When provided, other filters are ignored.",
+    "disease": "optional string",
+    "sex": "optional string",
+    "center": "optional string",
+    "race": "optional string",
+    "age_min": "optional float",
+    "age_max": "optional float",
+    "bmi_min": "optional float",
+    "bmi_max": "optional float"
+  },
+  "trait_support": {
+    "total_ieq_traits": 20,
+    "ins_ieq_traits": 11,
+    "gcg_ieq_traits": 9,
+    "source": "/api/data/summary -> traits"
+  },
+  "apis": [
+    {
+      "method": "GET",
+      "path": "/api/data/summary",
+      "input": {
+        "query": [
+          "donor_ids"
+        ]
+      },
+      "output": {
+        "summary": {
+          "available_donors": "number",
+          "trace_types": "string[]"
+        },
+        "options": {
+          "disease": "string[]",
+          "sex": "string[]",
+          "center": "string[]",
+          "race": "string[]"
+        },
+        "ranges": {
+          "age": {
+            "min": "number",
+            "max": "number"
+          },
+          "bmi": {
+            "min": "number",
+            "max": "number"
+          }
+        },
+        "traits": "string[]"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/data/donors",
+      "input": {
+        "query": [
+          "donor_ids",
+          "disease",
+          "sex",
+          "center",
+          "race",
+          "age_min",
+          "age_max",
+          "bmi_min",
+          "bmi_max"
+        ]
+      },
+      "output": {
+        "count": "number",
+        "donors": "Donor[]"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/charts/cohort-traces",
+      "input": {
+        "query": [
+          "trace_type (default: ins_ieq)",
+          "donor_ids",
+          "disease",
+          "sex",
+          "center",
+          "race",
+          "age_min",
+          "age_max",
+          "bmi_min",
+          "bmi_max"
+        ]
+      },
+      "output": {
+        "trace_type": "string",
+        "y_label": "string",
+        "times": "number[]",
+        "series": [
+          {
+            "donor_id": "string",
+            "values": "number[]"
+          }
+        ],
+        "mean": "number[]",
+        "stimuli": "Array<[start:number,end:number,label:string]>"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/charts/trait-summary",
+      "input": {
+        "query": [
+          "trait (default: INS-IEQ G 16.7 SI)",
+          "limit (1..8)",
+          "donor_ids",
+          "disease",
+          "sex",
+          "center",
+          "race",
+          "age_min",
+          "age_max",
+          "bmi_min",
+          "bmi_max"
+        ]
+      },
+      "output": {
+        "trait": "string",
+        "items": [
+          {
+            "label": "string",
+            "value": "number"
+          }
+        ]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "name": "Summary",
+      "request": "GET /api/data/summary"
+    },
+    {
+      "name": "Filter donors",
+      "request": "GET /api/data/donors?disease=T1D&age_min=10&age_max=60"
+    },
+    {
+      "name": "Donor-id override",
+      "request": "GET /api/data/donors?donor_ids=RRID:AB_123,RRID:AB_456"
+    },
+    {
+      "name": "Trace chart payload by donor ids",
+      "request": "GET /api/charts/cohort-traces?trace_type=ins_ieq&donor_ids=RRID:AB_123,RRID:AB_456"
+    },
+    {
+      "name": "Trait summary by donor ids",
+      "request": "GET /api/charts/trait-summary?trait=INS-IEQ%20G%2016.7%20SI&limit=8&donor_ids=RRID:AB_123,RRID:AB_456"
+    }
+  ]
+}

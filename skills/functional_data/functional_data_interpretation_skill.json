@@ -1,0 +1,229 @@
+{
+  "skill_name": "pankgraph-functional-data-interpretation",
+  "version": "1.0.0",
+  "purpose": "Teach an agent how to interpret PanKgraph islet functional assay features for insulin and glucagon secretion data.",
+  "core_rules": [
+    "Preserve feature names exactly when matching fields in data.",
+    "Interpret IEQ-normalized values as secretion normalized to islet mass.",
+    "AUC features represent secretion integrated over a stimulation period or response phase.",
+    "Basal features represent baseline secretion rates before the main stimulus.",
+    "SI means stimulation index: fold change or stimulation relative to baseline or an appropriate reference condition.",
+    "II means inhibition index: fold change or suppression under an inhibitory condition relative to baseline or an appropriate reference condition.",
+    "Do not compare insulin units and glucagon units directly; insulin features use ng/100 IEQs or ng/100 IEQs/min, while glucagon features use pg/100 IEQs or pg/100 IEQs/min.",
+    "High glucose is 16.7 mM glucose. Low glucose is 1.7 mM glucose. Basal glucose is 5.6 mM glucose.",
+    "IBMX 100 is annotated as an increased intracellular cAMP condition. It is usually associated with increased insulin secretion and increased glucagon secretion.",
+    "Ad 1 refers to adrenaline/epinephrine at 1 µM. In the source figure, this condition is associated with reduced insulin secretion and increased glucagon secretion.",
+    "KCI 20 indicates potassium chloride at 20 mM. Biologically, it depolarizes endocrine cells and can trigger Ca2+-dependent secretion of islet hormones, including insulin and glucagon, depending on the measured cell/output." ,
+    "When reporting interpretation, state hormone, condition, measurement type, normalization, and expected biological meaning."
+  ],
+  "global_terms": {
+    "IEQ": "Islet equivalent; used here as normalization to islet mass.",
+    "AUC": "Area under the curve; integrated secretion over a defined time window or stimulation period.",
+    "SI": "Stimulation index; fold stimulation induced by treatment relative to baseline or reference.",
+    "II": "Inhibition index; fold inhibition or suppression induced by treatment relative to baseline or reference.",
+    "IBMX": "3-isobutyl-1-methylxanthine; raises cAMP and amplifies secretion.",
+    "Ad": "Adrenaline/epinephrine.",
+    "KCI": "Source label for potassium chloride depolarization condition; match as written in data, interpret biologically as KCI."
+  },
+  "feature_dictionary": [
+    {
+      "feature": "INS-basal (ng/100 IEQs/min)",
+      "hormone": "insulin",
+      "condition": "basal glucose",
+      "measurement_type": "basal secretion rate",
+      "unit": "ng/100 IEQs/min",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Baseline insulin secretion at normal glucose before stimulated conditions."
+    },
+    {
+      "feature": "INS-1st AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "early high-glucose stimulation",
+      "measurement_type": "first-phase AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Immediate first-peak insulin release during early high-glucose stimulation."
+    },
+    {
+      "feature": "INS-2nd AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "sustained high-glucose stimulation",
+      "measurement_type": "second-phase AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Second-phase insulin release during sustained high-glucose stimulation."
+    },
+    {
+      "feature": "INS-G 16.7 AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "16.7 mM glucose",
+      "measurement_type": "stimulated AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Total insulin secretion above baseline during high-glucose stimulation."
+    },
+    {
+      "feature": "INS-G 16.7 SI",
+      "hormone": "insulin",
+      "condition": "16.7 mM glucose",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of insulin secretion at high glucose, usually peak or stimulated response relative to baseline."
+    },
+    {
+      "feature": "INS-G 16.7 + IBMX 100 AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "16.7 mM glucose plus IBMX 100",
+      "measurement_type": "stimulated AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Insulin secretion during high glucose plus IBMX, reflecting cAMP-amplified insulin secretory capacity."
+    },
+    {
+      "feature": "INS-G 16.7 + IBMX 100 SI",
+      "hormone": "insulin",
+      "condition": "16.7 mM glucose plus IBMX 100",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of insulin secretion during high glucose plus IBMX relative to baseline."
+    },
+    {
+      "feature": "INS-G 1.7 + Ad 1 AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "1.7 mM glucose plus adrenaline 1",
+      "measurement_type": "inhibitory-condition AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Insulin secretion during low glucose plus adrenaline/epinephrine, an insulin-inhibitory condition."
+    },
+    {
+      "feature": "INS-G 1.7+ Ad 1 II",
+      "hormone": "insulin",
+      "condition": "1.7 mM glucose plus adrenaline 1",
+      "measurement_type": "inhibition index",
+      "unit": "fold change",
+      "normalization": "relative to baseline or reference condition",
+      "interpretation": "Fold inhibition of insulin secretion under low glucose plus adrenaline/epinephrine."
+    },
+    {
+      "feature": "INS-KCI 20 AUC (ng/100 IEQs)",
+      "hormone": "insulin",
+      "condition": "KCI 20 depolarization",
+      "measurement_type": "depolarization AUC",
+      "unit": "ng/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Insulin secretion after potassium chloride depolarization, bypassing glucose sensing/metabolism and directly testing Ca2+-dependent secretion."
+    },
+    {
+      "feature": "INS-KCI 20 SI",
+      "hormone": "insulin",
+      "condition": "KCI 20 depolarization",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of insulin secretion after potassium chloride depolarization relative to baseline."
+    },
+    {
+      "feature": "GCG-basal (pg/100 IEQs/min)",
+      "hormone": "glucagon",
+      "condition": "basal glucose",
+      "measurement_type": "basal secretion rate",
+      "unit": "pg/100 IEQs/min",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Baseline glucagon secretion at basal glucose before stimulated or inhibitory conditions."
+    },
+    {
+      "feature": "GCG-G 16.7 AUC (pg/100 IEQs)",
+      "hormone": "glucagon",
+      "condition": "16.7 mM glucose",
+      "measurement_type": "high-glucose AUC",
+      "unit": "pg/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Glucagon response during high glucose, commonly interpreted as suppression relative to baseline."
+    },
+    {
+      "feature": "GCG-G 16.7 II",
+      "hormone": "glucagon",
+      "condition": "16.7 mM glucose",
+      "measurement_type": "inhibition index",
+      "unit": "fold change",
+      "normalization": "relative to baseline or reference condition",
+      "interpretation": "Fold inhibition or suppression of glucagon during high-glucose exposure."
+    },
+    {
+      "feature": "GCG-G 16.7 + IBMX 100 AUC (pg/100 IEQs)",
+      "hormone": "glucagon",
+      "condition": "16.7 mM glucose plus IBMX 100",
+      "measurement_type": "stimulated AUC",
+      "unit": "pg/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Glucagon secretion during high glucose plus IBMX, reflecting cAMP-amplified secretory response."
+    },
+    {
+      "feature": "GCG-G 16.7 + IBMX 100 SI",
+      "hormone": "glucagon",
+      "condition": "16.7 mM glucose plus IBMX 100",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of glucagon secretion under high glucose plus IBMX."
+    },
+    {
+      "feature": "GCG-G 1.7 + Ad 1 AUC (pg/100 IEQs)",
+      "hormone": "glucagon",
+      "condition": "1.7 mM glucose plus adrenaline 1",
+      "measurement_type": "counterregulatory AUC",
+      "unit": "pg/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Glucagon secretion during low glucose plus adrenaline/epinephrine, a counterregulatory condition."
+    },
+    {
+      "feature": "GCG-G 1.7 + Ad 1 SI",
+      "hormone": "glucagon",
+      "condition": "1.7 mM glucose plus adrenaline 1",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of glucagon secretion during low glucose plus adrenaline/epinephrine."
+    },
+    {
+      "feature": "GCG-KCI 20 AUC (pg/100 IEQs)",
+      "hormone": "glucagon",
+      "condition": "KCI 20 depolarization",
+      "measurement_type": "depolarization AUC",
+      "unit": "pg/100 IEQs",
+      "normalization": "islet mass via IEQ",
+      "interpretation": "Glucagon secretion after potassium chloride depolarization, bypassing glucose sensing/metabolism and directly testing Ca2+-dependent secretion."
+    },
+    {
+      "feature": "GCG-KCI 20 SI",
+      "hormone": "glucagon",
+      "condition": "KCI 20 depolarization",
+      "measurement_type": "stimulation index",
+      "unit": "fold change",
+      "normalization": "relative to baseline",
+      "interpretation": "Fold stimulation of glucagon secretion after potassium chloride depolarization relative to baseline."
+    }
+  ],
+  "response_template": {
+    "single_feature": "{feature} measures {hormone} {measurement_type} under {condition}. Units/scale: {unit}; normalization: {normalization}. Interpretation: {interpretation}",
+    "cohort_comparison": "prohibit direct comparison of insulin and glucagon features due to different units and scales; interpret each hormone's features within their own context.",
+    "missing_feature": "This trait is not in the PanKgraph functional feature dictionary. Report it as unmatched and avoid biological interpretation unless additional metadata is provided."
+  },
+  "examples": [
+    {
+      "input_feature": "INS-G 16.7 SI",
+      "agent_interpretation": "INS-G 16.7 SI measures insulin stimulation index during 16.7 mM high-glucose exposure. It is a fold-change metric relative to baseline; higher values generally suggest stronger glucose-stimulated insulin secretion."
+    },
+    {
+      "input_feature": "GCG-G 16.7 II",
+      "agent_interpretation": "GCG-G 16.7 II measures inhibition of glucagon secretion during 16.7 mM high-glucose exposure. It should be treated as a fold inhibition/suppression metric, with exact direction confirmed from the dataset's index definition."
+    },
+    {
+      "input_feature": "INS-KCI 20 AUC (ng/100 IEQs)",
+      "agent_interpretation": "INS-KCI 20 AUC measures IEQ-normalized insulin secretion after potassium chloride depolarization. This bypasses glucose sensing/metabolism and reflects downstream Ca2+-dependent secretory capacity."
+    }
+  ]
+}
