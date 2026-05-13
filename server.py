@@ -1422,7 +1422,16 @@ async def chat_message(request: ChatMessageRequest):
                 # NOTE: session.last_* fields are NOT updated — same retrieved
                 # data stays active for subsequent follow-ups in this thread.
                 _check_text = md or cleaned
-                _is_tool = _answer_is_tool_output(_check_text)
+                # Strip the "## Cypher Queries" appendix the format agent always
+                # appends — it contains fenced Cypher blocks that would otherwise
+                # trigger a false-positive tool-output detection.
+                _prose = _check_text
+                for _marker in ("\n## Cypher Queries", "\n## Cypher queries"):
+                    _idx = _prose.find(_marker)
+                    if _idx > 0:
+                        _prose = _prose[:_idx]
+                        break
+                _is_tool = _answer_is_tool_output(_prose)
                 logger.info(
                     f"[/chat/message] follow_up guard: md_len={len(md)} "
                     f"cleaned_len={len(cleaned)} is_tool_output={_is_tool} "
