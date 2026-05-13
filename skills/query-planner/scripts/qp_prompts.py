@@ -551,7 +551,7 @@ have no join_var and no depends_on — they are always independent/parallel.
   "reasoning": "Gene info + donor count from KG (donor nodes), genomic position from coordinate database.",
   "steps": [
     {"id": 1, "natural_language": "Find gene with name CFTR", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Get genes that have effector_gene_of relationships with type 1 diabetes", "join_var": null, "depends_on": null},
+    {"id": 2, "natural_language": "Check whether gene CFTR has an effector_gene_of relationship to type 1 diabetes", "join_var": null, "depends_on": null},
     {"id": 3, "natural_language": "What is the genomic location of gene CFTR?", "source": "genomic", "join_var": null, "depends_on": null},
     {"id": 4, "natural_language": "Get all donors with diabetes_type 'Diabetes (Type I)'", "join_var": null, "depends_on": null}
   ]
