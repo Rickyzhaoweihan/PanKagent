@@ -1376,7 +1376,7 @@ def run_plan_start(question: str, use_literature: bool = True,
     history_context = ""
     if chat_history:
         turns = [
-            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content'][:600]}"
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content'][:1200]}"
             for m in chat_history[-6:]
         ]
         history_context = "\n".join(turns)
