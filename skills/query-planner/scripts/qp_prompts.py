@@ -119,6 +119,9 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   - "Get SNVs that have part_of_GWAS_signal relationships with type 1 diabetes"
   - "Get genes that have physical_interaction relationships with gene CFTR"
   - "Get genes that have effector_gene_of relationships with type 1 diabetes"
+  - "Check whether gene CFTR has an effector_gene_of relationship to type 1 diabetes"
+
+- **`effector_gene_of` scoping rule**: All `effector_gene_of` edges in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is always true and returns all 257 effector genes — it is a no-op. When the user asks about a **specific gene's** effector relationship, scope the Cypher by the gene (`g.name = '<symbol>'`), not by the disease. Use the pattern "Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes" so text2cypher generates a gene-filtered query.
 
 ### Rules for `join_var`
 - For CHAIN plans: the join_var is the Cypher variable that connects this step
@@ -253,16 +256,18 @@ Output ONLY a valid JSON object (no markdown, no extra text):
 
 ### Example 8 (PARALLEL — simple question)
 **Question**: "Is CFTR an effector gene for T1D?"
-**Path**: Gene lookup + effector_gene_of lookup (independent)
+**Path**: Gene lookup + gene-scoped effector_gene_of lookup (independent)
+
+**Important note on `effector_gene_of`**: ALL edges of this type in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is therefore a no-op — it always returns all 257 effector genes. When the user asks about a **specific gene**, scope the query by the **gene name**, not by the disease.
 
 ```json
 {
   "plan_type": "parallel",
   "interpreted_question": "Is CFTR an effector gene for type 1 diabetes?",
-  "reasoning": "Two independent lookups: gene info and effector gene list. No chain needed.",
+  "reasoning": "Two independent lookups: gene info and gene-scoped effector relationship check. The effector_gene_of query is filtered by gene (CFTR), not disease, because all effector edges already point to T1D.",
   "steps": [
     {"id": 1, "natural_language": "Find gene with name CFTR", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Get genes that have effector_gene_of relationships with type 1 diabetes", "join_var": null, "depends_on": null}
+    {"id": 2, "natural_language": "Check whether gene CFTR has an effector_gene_of relationship to type 1 diabetes", "join_var": null, "depends_on": null}
   ]
 }
 ```

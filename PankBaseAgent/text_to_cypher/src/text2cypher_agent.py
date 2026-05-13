@@ -90,6 +90,12 @@ MATCH (d:donor) WHERE d.hla_status = 'DR3/DR4'
 WITH collect(DISTINCT d) AS nodes, [] AS edges
 RETURN nodes, edges;
 
+Query: 'Is CFTR an effector gene for T1D?'
+MATCH (g:gene)-[r:effector_gene_of]->(d:disease)
+WHERE g.name = 'CFTR'
+WITH collect(DISTINCT g)+collect(DISTINCT d) AS nodes, collect(DISTINCT r) AS edges
+RETURN nodes, edges;
+
 BAD EXAMPLES (DO NOT DO):
 WRONG: MATCH (sn:snp)-[r:part_of_QTL_signal]->(g:gene) (use snv not snp!)
 WRONG: MATCH (g:gene)-[:function_annotation]->(fo:gene_ontology) (missing variable, wrong rel name — use [`function_annotation;GO`])
