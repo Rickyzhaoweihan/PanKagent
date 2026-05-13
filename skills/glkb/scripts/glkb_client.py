@@ -24,11 +24,12 @@ DEFAULT_TIMEOUT_S = 60
 logger = logging.getLogger(__name__)
 
 _DIRECTIVE_PREFIX = (
-    "Provide a 2-3 paragraph synthesis answering the following biomedical "
-    "question, with inline PubMed citations as supporting evidence. Focus "
-    "on pancreatic islet biology, type 1 diabetes, and immune mechanisms "
-    "where relevant. Structure the answer as a coherent narrative that "
-    "directly addresses the question. Avoid listing papers one by one.\n\n"
+    "In under 100 words, provide a concise synthesis answering the following "
+    "biomedical question, with inline PubMed citations as supporting evidence. "
+    "Focus on pancreatic islet biology, type 1 diabetes, and immune mechanisms "
+    "where relevant. Write as a coherent narrative that directly addresses the "
+    "question. Avoid listing papers one by one. Keep the response strictly "
+    "under 100 words.\n\n"
     "Question: "
 )
 

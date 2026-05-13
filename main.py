@@ -337,13 +337,6 @@ def extract_markdown(response: str) -> str:
         parts.append(summary.strip())
         parts.append("")
 
-    cypher = text.get("cypher", [])
-    if cypher:
-        parts.append("## Cypher Queries\n")
-        for i, q in enumerate(cypher, 1):
-            parts.append(f"**Query {i}:**")
-            parts.append(f"```cypher\n{q}\n```\n")
-
     return "\n".join(parts).strip() if parts else response
 
 
