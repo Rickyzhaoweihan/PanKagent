@@ -121,7 +121,7 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   - "Get genes that have effector_gene_of relationships with type 1 diabetes"
   - "Check whether gene CFTR has an effector_gene_of relationship to type 1 diabetes"
 
-- **`effector_gene_of` scoping rule**: All `effector_gene_of` edges in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is always true and returns all 257 effector genes — it is a no-op. When the user asks about a **specific gene's** effector relationship, scope the Cypher by the gene (`g.name = '<symbol>'`), not by the disease. Use the pattern "Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes" so text2cypher generates a gene-filtered query.
+- **`effector_gene_of` scoping rule**: All `effector_gene_of` edges in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is always true and returns all 257 effector genes — it is a no-op. When the user asks about a **specific gene's** effector relationship — or you are doing a comprehensive single-gene lookup — ALWAYS use the boolean pattern: **"Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes"**. This scopes to the gene and returns a yes/no result. **NEVER use** "Get genes that have effector_gene_of relationships with type 1 diabetes" for a single-gene question — that is a full scan of all 257 effector genes, not a check.
 
 ### Rules for `join_var`
 - For CHAIN plans: the join_var is the Cypher variable that connects this step
@@ -513,18 +513,21 @@ have no join_var and no depends_on — they are always independent/parallel.
 **Example 16 (PARALLEL — general gene query with genomic)**
 **Question**: "Tell me about gene INS"
 
+**Effector gene rule**: For ANY comprehensive single-gene lookup, ALWAYS include a boolean effector-gene check as one step. Use the pattern **"Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes"** — this scopes the query to the specific gene and returns a yes/no result. Do NOT use "Get genes that have effector_gene_of relationships with type 1 diabetes" (that returns all 257 effector genes unfiltered — it is a scan, not a check).
+
 ```json
 {
   "plan_type": "parallel",
-  "reasoning": "Comprehensive gene lookup: basic info, expression/DEG and functional-annotation TRIAD (GO + KEGG + Reactome — pathways are as important as GO terms), chromosomal position from genomic DB.",
+  "reasoning": "Comprehensive gene lookup: basic info, expression/DEG, functional-annotation TRIAD (GO + KEGG + Reactome), T1D effector status (boolean check scoped to gene), chromosomal position from genomic DB.",
   "steps": [
     {"id": 1, "natural_language": "Find gene with name INS", "join_var": null, "depends_on": null},
     {"id": 2, "natural_language": "Get genes that have gene_detected_in relationships with cell types for gene INS", "join_var": null, "depends_on": null},
     {"id": 3, "natural_language": "Get genes that have T1D_DEG_in relationships with cell types for gene INS", "join_var": null, "depends_on": null},
-    {"id": 4, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms for gene INS", "join_var": null, "depends_on": null},
-    {"id": 5, "natural_language": "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways for gene INS", "join_var": null, "depends_on": null},
-    {"id": 6, "natural_language": "Get genes that have pathway_annotation;reactome relationships with Reactome pathways for gene INS", "join_var": null, "depends_on": null},
-    {"id": 7, "natural_language": "What is the genomic location of gene INS and what OCR peaks overlap it?", "source": "genomic", "join_var": null, "depends_on": null}
+    {"id": 4, "natural_language": "Check whether gene INS has an effector_gene_of relationship to type 1 diabetes", "join_var": null, "depends_on": null},
+    {"id": 5, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms for gene INS", "join_var": null, "depends_on": null},
+    {"id": 6, "natural_language": "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways for gene INS", "join_var": null, "depends_on": null},
+    {"id": 7, "natural_language": "Get genes that have pathway_annotation;reactome relationships with Reactome pathways for gene INS", "join_var": null, "depends_on": null},
+    {"id": 8, "natural_language": "What is the genomic location of gene INS and what OCR peaks overlap it?", "source": "genomic", "join_var": null, "depends_on": null}
   ]
 }
 ```

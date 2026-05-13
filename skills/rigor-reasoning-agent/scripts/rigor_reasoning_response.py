@@ -212,16 +212,10 @@ def rigor_reasoning_response(
     """Call Claude with the RigorReasoningAgent prompt."""
     client = _get_client()
 
-    system_prompt = (RIGOR_REASONING_PROMPT_WITH_LITERATURE
-                     if use_literature else RIGOR_REASONING_PROMPT_NO_LITERATURE)
-    mode = 'WITH-LITERATURE' if use_literature else 'NO-LITERATURE'
-    emit("rigor_reasoning_claude_start", {"mode": mode, "model": CLAUDE_MODEL})
+    system_prompt = RIGOR_REASONING_PROMPT_WITH_LITERATURE
+    emit("rigor_reasoning_claude_start", {"mode": "KG-ONLY", "model": CLAUDE_MODEL})
 
-    hirn_section = ""
-    if use_literature and literature_text:
-        hirn_section = f"\n=== LITERATURE DATA FROM HIRN PUBLICATIONS ===\n{literature_text}\n"
-
-    other_text = f"Human Query: {human_query}\n{hirn_section}\n{json.dumps(cypher_queries, indent=2)}"
+    other_text = f"Human Query: {human_query}\n\n{json.dumps(cypher_queries, indent=2)}"
     neo4j_results = truncate_neo4j_results_for_claude(
         neo4j_results, system_prompt, other_text,
     )
@@ -242,7 +236,7 @@ def rigor_reasoning_response(
     raw_neo4j_block = '\n\n'.join(neo4j_sections) if neo4j_sections else '(no results)'
 
     user_input = f"""Human Query: {human_query}
-{hirn_section}
+
 === QUERIES ===
 {json.dumps(cypher_queries, indent=2)}
 

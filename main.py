@@ -617,13 +617,12 @@ def format_plan_as_markdown(
 
         parts.append(f"{sid}. {source_tag}{nl}{dep_str} — **{status}**")
 
-    # Literature search as a regular numbered step
+    # Literature step — always shown so user can see the toggle state
     lit_step_num = len(steps) + 1
     if use_literature:
-        lit_status = "found results" if literature_result and "Status: success" in literature_result else "no results"
-        parts.append(f"{lit_step_num}. Search HIRN publications for relevant literature — **{lit_status}**")
+        parts.append(f"{lit_step_num}. **Literature retrieval** — GLKB + HIRN running in background (parallel)")
     else:
-        parts.append(f"{lit_step_num}. ~~Search HIRN publications for relevant literature~~ — **disabled**")
+        parts.append(f"{lit_step_num}. ~~Literature retrieval~~ — **disabled**")
 
     scope = _build_scope_line(steps, use_literature, literature_result)
     if scope:
@@ -1394,12 +1393,8 @@ def run_plan_start(question: str, use_literature: bool = True,
     for i in range(n):
         start_new_thread(_run_plan_candidate, (question, i, q, None, history_context))
 
-    # Launch HIRN literature search in parallel with the clean question
-    hirn_q: Queue = Queue()
+    # Literature is now handled by a background thread in server.py — not spawned here.
     literature_result = ""
-    if use_literature:
-        emit("plan_hirn_search_start", {"question": question[:200]})
-        start_new_thread(_run_hirn_search, (question, hirn_q))
 
     collected: dict[int, tuple] = {}
     deadline = time.time() + 180
@@ -1408,23 +1403,6 @@ def run_plan_start(question: str, use_literature: bool = True,
         while not q.empty():
             item = q.get_nowait()
             collected[item[0]] = item[1:]  # (score, plan, neo4j_results, error)
-
-    # Collect HIRN result — since we now call the pipeline directly (no
-    # double-thread), the result should already be on the queue by the time
-    # the plan candidates finish (~16s).  Give up to HIRN_SEARCH_TIMEOUT as
-    # a safety net.
-    if use_literature:
-        try:
-            hirn_deadline = time.time() + HIRN_SEARCH_TIMEOUT
-            while time.time() < hirn_deadline:
-                if not hirn_q.empty():
-                    literature_result = hirn_q.get_nowait()
-                    break
-                time.sleep(0.5)
-        except Exception:
-            literature_result = ""
-        lit_ok = bool(literature_result and "Status: success" in literature_result)
-        emit("plan_hirn_search_done", {"success": lit_ok, "length": len(literature_result)})
 
     if not collected:
         emit("plan_test_time_result", {
@@ -1563,19 +1541,14 @@ def run_plan_revise(
 
     # Start HIRN search only if literature is enabled and we have never fetched
     # results for this session.  When literature is toggled off then back on, we
-    # reuse the previously fetched literature_result instead of re-running the
-    # full HIRN pipeline (which can exceed the timeout budget).
-    hirn_q: Queue = Queue()
-    need_hirn = new_use_literature and not literature_result
-    if need_hirn:
-        hirn_query = new_plan.get("interpreted_question") or original_question
-        emit("plan_hirn_search_start", {"question": hirn_query[:200], "trigger": "revision"})
-        start_new_thread(_run_hirn_search, (hirn_query, hirn_q))
+    # Literature is now handled by server.py background thread — not re-run here.
+    need_hirn = False
+    hirn_q: Queue = Queue()  # kept for _collect_hirn_result call sites below
 
     # If the LLM says the revision is unsupported, keep the original plan
     # but still honour the literature toggle.
     if new_plan.get("plan_type") == "error":
-        new_literature = _collect_hirn_result(hirn_q, literature_result) if need_hirn else literature_result
+        new_literature = literature_result
         error_reason = new_plan.get("reasoning", "Revision not supported")
         complexity = "complex" if current_plan.get("plan_type") == "chain" else "simple"
         _emit_plan_event("plan_revised", original_question, current_plan, neo4j_results, complexity,
@@ -1600,7 +1573,7 @@ def run_plan_revise(
         if new_plan.get("reasoning"):
             merged_plan["reasoning"] = new_plan["reasoning"]
 
-        new_literature = _collect_hirn_result(hirn_q, literature_result) if need_hirn else literature_result
+        new_literature = literature_result
         complexity = "complex" if merged_plan.get("plan_type") == "chain" else "simple"
         _emit_plan_event("plan_revised", original_question, merged_plan, neo4j_results, complexity,
                          use_literature=new_use_literature, literature_preview=new_literature if new_use_literature else "")
@@ -1619,8 +1592,7 @@ def run_plan_revise(
     new_results = execute_plan(new_plan, hpap_handler=None, genomic_handler=_run_genomic_step, ssgsea_handler=_run_ssgsea_step, functional_data_handler=_run_functional_data_step)
     new_plan, new_results = _filter_empty_steps(new_plan, new_results)
 
-    # Collect HIRN result if we started it
-    new_literature = _collect_hirn_result(hirn_q, literature_result) if need_hirn else literature_result
+    new_literature = literature_result
 
     cypher_queries = [
         r["query"] for r in new_results
@@ -1675,11 +1647,9 @@ def run_plan_confirm(
     prev_rigor = RIGOR_MODE
     RIGOR_MODE = rigor
     try:
+        # Literature is now appended post-hoc by server.py via combine_literature_block;
+        # the format/reasoning agents receive only KG/SQL/ssGSEA data.
         final_functions_result = functions_result
-        if use_literature and literature_result:
-            final_functions_result = literature_result
-            if functions_result:
-                final_functions_result = functions_result + "\n" + literature_result
 
         if chat_history and not pre_final_answer:
             turns = [
@@ -1717,12 +1687,56 @@ def chat_forever():
         print("\n" + "=" * 60)
 
 
+def _spawn_cli_literature_thread(question: str):
+    """Start GLKB+HIRN in background for CLI plan mode. Returns (event, holder)."""
+    import threading as _threading
+    from literature_runner import run_literature_parallel as _run_lit_parallel
+    _event = _threading.Event()
+    _holder: dict = {"result": {}, "status": "pending"}
+
+    def _target(q=question):
+        try:
+            r = _run_lit_parallel(q)
+            _holder["result"] = r
+            glkb_ok = (r.get("glkb") or {}).get("status") == "success"
+            hirn_ok = (r.get("hirn") or {}).get("status") == "success"
+            _holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
+        except Exception as exc:
+            logger.warning(f"CLI literature thread: {exc}")
+            _holder["status"] = "failed"
+        finally:
+            _event.set()
+
+    _threading.Thread(target=_target, daemon=True, name="lit-cli").start()
+    return _event, _holder
+
+
+def _splice_cli_literature(md: str, lit_event, lit_holder, use_literature: bool) -> str:
+    """Wait up to 30s for CLI literature thread and splice block into md."""
+    if not use_literature:
+        return md
+    from literature_runner import combine_literature_block as _combine
+    completed = lit_event.wait(timeout=30.0)
+    if not completed:
+        logger.warning("CLI literature thread did not complete within 30s; skipping.")
+        return md
+    lit_result = lit_holder.get("result") or {}
+    block = _combine(
+        glkb=lit_result.get("glkb"),
+        hirn=lit_result.get("hirn"),
+        use_literature=True,
+    )
+    if block:
+        md = md.rstrip() + "\n\n" + block
+    return md
+
+
 def chat_plan_interactive():
     """Interactive plan-confirmation loop.
 
     Flow:
       1. User enters a question → plan is generated, translated, and executed.
-         HIRN literature search runs in parallel.
+         Literature search (GLKB + HIRN) runs in background in parallel.
       2. The plan (including literature status) is displayed as Markdown for review.
       3. User can type revision prompts to modify the plan (loop).
          User can toggle literature with phrases like "also search literature"
@@ -1761,8 +1775,11 @@ def chat_plan_interactive():
         neo4j_results = result["neo4j_results"]
         cypher_queries = result["cypher_queries"]
         complexity = result["complexity"]
-        use_literature = result.get("use_literature", False)
+        use_literature = result.get("use_literature", True)
         literature_result = result.get("literature_result", "")
+
+        # Spawn GLKB+HIRN in background — latency hides behind plan review.
+        _lit_event, _lit_holder = _spawn_cli_literature_thread(question)
 
         plan_md = format_plan_as_markdown(
             question, plan, neo4j_results,
@@ -1790,12 +1807,13 @@ def chat_plan_interactive():
                         neo4j_results=neo4j_results,
                         cypher_queries=cypher_queries,
                         complexity=complexity,
-                        use_literature=use_literature,
-                        literature_result=literature_result,
+                        use_literature=False,
+                        literature_result="",
                         rigor=RIGOR_MODE,
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
+                    md = _splice_cli_literature(md, _lit_event, _lit_holder, use_literature)
                     print("\n" + "=" * 60)
                     print("FINAL ANSWER")
                     print("=" * 60 + "\n")
@@ -1908,9 +1926,11 @@ if __name__ == "__main__":
             print(f"Interpreted: {question}")
             print("Generating plan...")
             result = run_plan_start(question)
+            _use_lit = result.get("use_literature", True)
+            _lit_event, _lit_holder = _spawn_cli_literature_thread(question)
             plan_md = format_plan_as_markdown(
                 question, result["plan"], result["neo4j_results"],
-                use_literature=result.get("use_literature", False),
+                use_literature=_use_lit,
                 literature_result=result.get("literature_result", ""),
             )
             print("\n" + plan_md)
@@ -1928,12 +1948,13 @@ if __name__ == "__main__":
                         neo4j_results=result["neo4j_results"],
                         cypher_queries=result["cypher_queries"],
                         complexity=result["complexity"],
-                        use_literature=result.get("use_literature", False),
-                        literature_result=result.get("literature_result", ""),
+                        use_literature=False,
+                        literature_result="",
                         rigor=RIGOR_MODE,
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
+                    md = _splice_cli_literature(md, _lit_event, _lit_holder, _use_lit)
                     print("\n" + "=" * 60)
                     print("FINAL ANSWER")
                     print("=" * 60 + "\n")
@@ -1956,11 +1977,12 @@ if __name__ == "__main__":
                 result["neo4j_results"] = rev["neo4j_results"]
                 result["cypher_queries"] = rev["cypher_queries"]
                 result["complexity"] = rev["complexity"]
-                result["use_literature"] = rev.get("use_literature", result.get("use_literature", False))
+                result["use_literature"] = rev.get("use_literature", result.get("use_literature", True))
+                _use_lit = result["use_literature"]
                 result["literature_result"] = rev.get("literature_result", result.get("literature_result", ""))
                 plan_md = format_plan_as_markdown(
                     question, rev["plan"], rev["neo4j_results"],
-                    use_literature=result["use_literature"],
+                    use_literature=_use_lit,
                     literature_result=result["literature_result"],
                 )
                 print("\n" + plan_md)

@@ -50,7 +50,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 
 **CORS:** currently `allow_origins=["*"]` — tighten in production.
 
-**Timeouts:** a single `new_query` round can take **30–90 s** (plan + multi-source execution + format agent). Set frontend fetch timeouts to ≥ **180 s**.
+**Timeouts:** a single `new_query` round can take **30–90 s** (plan + multi-source execution + format agent). Literature retrieval (GLKB ~25–35 s) runs in the background and is capped at a 30 s wait at confirm time. Set frontend fetch timeouts to ≥ **180 s**.
 
 **Durability:** all session state is mirrored to SQLite (`logs/sessions.sqlite`) on every mutation. Sessions survive server restarts — a user whose chat was mid-flight during a restart will find their `session_id` still valid and their history intact. See [§8](#8-session-lifecycle-ttls) for TTL and retention details.
 
@@ -86,8 +86,26 @@ Quick routing logic:
 ### 2.1 Rigor mode
 The server defaults to **rigor mode** (`rigor=True`). In rigor mode the system uses evidence-only format/reasoning agents that refuse to speculate or hallucinate. Unless you have a specific reason, keep `rigor: true`.
 
-### 2.2 Literature search (HIRN)
-Each plan round can optionally run a parallel HIRN literature search (scientific abstracts). Controlled by `use_literature` (default `true`). Set to `false` for faster KG-only answers.
+### 2.2 Literature search (GLKB + HIRN)
+Each plan round can optionally include a parallel literature search. **Two sources run in parallel:**
+- **GLKB** (`glkb.dcmb.med.umich.edu`) — a biomedical knowledge-graph–powered LLM agent that produces a 2–3-paragraph narrative synthesis with structured PubMed references. This is the primary source. Takes ~25–35 s.
+- **HIRN** — local abstract/full-text index. Supplements GLKB if GLKB returns fewer than 3 references. Takes ~1 s.
+
+**When does the thread start?** The retrieval thread is spawned at `/chat/start` (or at `/chat/message` for `new_query` rounds), **before** the planning step runs. Its latency (~25–35 s) hides behind plan generation (~15 s) + user plan-review time. By the time the user clicks Confirm, GLKB has almost always finished.
+
+**Where does it appear in the answer?** The literature block is **spliced post-hoc** into `answer_markdown` after the KG/SQL/ssGSEA answer is generated. It appears as two appended Markdown sections:
+```
+## Literature Evidence
+<2-3 paragraph synthesis from GLKB, with optional HIRN supplement>
+
+## References
+- Paper title (Journal · Year)
+  PMID: 12345678
+  https://pubmed.ncbi.nlm.nih.gov/12345678/
+...
+```
+
+Controlled by `use_literature` (default `true`). Set to `false` for faster KG-only answers (thread still runs in background but its result is discarded at merge time).
 
 ### 2.3 Chat session vs plan session
 - A **ChatSession** persists the full dialogue history and the most recently confirmed query state. Long-lived, 1h idle TTL.
@@ -161,7 +179,7 @@ Pass `auto_confirm: true` to skip review and run everything in one shot (returns
 |---|---|---|---|
 | `question` | string | required | The first user question. Non-empty. |
 | `rigor` | bool | `true` | Evidence-only mode. Keep `true` for production. |
-| `use_literature` | bool | `true` | Include HIRN abstract search in parallel. |
+| `use_literature` | bool | `true` | Run GLKB + HIRN literature retrieval in background. If `true`, the final answer includes a `## Literature Evidence` + `## References` block. The retrieval thread always starts; this flag controls whether the result is spliced into the answer at confirm time. |
 | `auto_confirm` | bool | `false` | `false`: returns the plan as `new_query_pending` (client must call `/chat/plan/confirm`). `true`: run plan + format in one shot, returns the final answer. |
 
 **Response 200 (`ChatResponse`) — default (`auto_confirm: false`):**
@@ -965,10 +983,10 @@ Render differently based on `route`:
 ### 12.2 Loading states
 
 - `follow_up` — show typing indicator, expect ~5–25 s
-- `new_query_pending` — show "planning..." indicator, expect ~15–30 s (plan only, format hasn't run yet)
-- `/chat/plan/confirm` — show "running query..." indicator, expect ~5–30 s
+- `new_query_pending` — show "planning..." indicator, expect ~15–30 s (plan only; literature thread already running in background)
+- `/chat/plan/confirm` — show "running query..." indicator, expect ~10–45 s (format agent + up to 30 s wait for GLKB if not yet done)
 - `/chat/start` (default, `auto_confirm: false`) — show "planning your query..." indicator, expect ~15–30 s (plan only)
-- `/chat/start` (`auto_confirm: true`) — show "analyzing your question..." indicator, expect ~30–60 s (plan + format)
+- `/chat/start` (`auto_confirm: true`) — show "analyzing your question..." indicator, expect ~40–90 s (plan + format + literature wait)
 
 ### 12.3 `history_compressed` notice
 
@@ -985,6 +1003,12 @@ For `new_query_pending`, render something like:
 │  🔍 Review the plan before running                │
 │                                                    │
 │  [plan_markdown rendered here]                    │
+│                                                    │
+│  Note: the plan includes a "Literature retrieval  │
+│  — GLKB + HIRN running in background" line. This  │
+│  indicates the literature thread is already        │
+│  running. Confirm or cancel as usual; if cancelled │
+│  the result is discarded.                         │
 │                                                    │
 │  ┌─────────────────────────────────────────┐     │
 │  │ (Optional) Suggest a revision...        │     │

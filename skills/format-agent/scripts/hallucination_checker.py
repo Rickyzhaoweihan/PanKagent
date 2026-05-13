@@ -61,18 +61,9 @@ def extract_ids_from_retrieved_data(neo4j_results: List[dict],
         for g in go_matches:
             valid_go_terms.add(g.upper().replace(':', '_'))
 
-    # From raw agent output (HIRN literature passages)
+    # Literature PMIDs are no longer in agent input (spliced post-hoc) — valid_pubmed_ids
+    # stays empty so any PMID the agent emits is correctly flagged and stripped.
     if raw_agent_output:
-        valid_pubmed_ids.update(
-            re.findall(r'PubMed\s*(?:ID)?[:\s]*(\d{6,9})', raw_agent_output, re.IGNORECASE))
-        valid_pubmed_ids.update(
-            re.findall(r'PMID[:\s]*(\d{6,9})', raw_agent_output, re.IGNORECASE))
-        valid_pubmed_ids.update(
-            re.findall(r'\[(\d{7,8})\]', raw_agent_output))
-        valid_pubmed_ids.update(
-            re.findall(r'(?:pubmed|pmid|literature|citation|reference)[^\d]*(\d{7,8})',
-                       raw_agent_output, re.IGNORECASE))
-
         go_matches = re.findall(r'GO[_:]?\d{7}', raw_agent_output, re.IGNORECASE)
         for g in go_matches:
             valid_go_terms.add(g.upper().replace(':', '_'))

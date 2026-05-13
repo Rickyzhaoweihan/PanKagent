@@ -412,18 +412,11 @@ def format_response(
     """
     client = _get_client()
 
-    # Select prompt
-    system_prompt = FORMAT_PROMPT_WITH_LITERATURE if use_literature else FORMAT_PROMPT_NO_LITERATURE
-    mode = 'WITH-LITERATURE' if use_literature else 'NO-LITERATURE'
-    emit("format_claude_start", {"mode": mode, "model": CLAUDE_MODEL})
-
-    # Build HIRN literature section if applicable
-    hirn_section = ""
-    if use_literature and literature_text:
-        hirn_section = f"\n=== LITERATURE DATA FROM HIRN PUBLICATIONS ===\n{literature_text}\n"
+    system_prompt = FORMAT_PROMPT_WITH_LITERATURE
+    emit("format_claude_start", {"mode": "KG-ONLY", "model": CLAUDE_MODEL})
 
     # Truncate Neo4j results if they would exceed the token budget
-    other_text = f"Human Query: {human_query}\n{hirn_section}\n{json.dumps(cypher_queries, indent=2)}"
+    other_text = f"Human Query: {human_query}\n\n{json.dumps(cypher_queries, indent=2)}"
     neo4j_results = truncate_neo4j_results_for_claude(
         neo4j_results, system_prompt, other_text
     )
@@ -444,7 +437,7 @@ def format_response(
     raw_neo4j_block = '\n\n'.join(neo4j_sections) if neo4j_sections else '(no results)'
 
     user_input = f"""Human Query: {human_query}
-{hirn_section}
+
 === QUERIES ===
 {json.dumps(cypher_queries, indent=2)}
 
@@ -585,27 +578,13 @@ def run_format_pipeline(
         "num_results": len(neo4j_results),
     })
 
-    # Step 2: Extract HIRN literature section from functions_result
-    hirn_text = ""
-    if use_glkb and functions_result:
-        hirn_lines = []
-        in_hirn_block = False
-        for line in functions_result.split('\n'):
-            if re.match(r'^\d+\.\s+HIRN_literature', line):
-                in_hirn_block = True
-            elif re.match(r'^\d+\.\s+PankBaseAgent', line):
-                in_hirn_block = False
-            if in_hirn_block:
-                hirn_lines.append(line)
-        hirn_text = '\n'.join(hirn_lines) if hirn_lines else functions_result
-
-    # Step 3: Call Claude FormatAgent with raw Neo4j results
+    # Step 2: Call Claude FormatAgent with raw Neo4j results (no literature — spliced post-hoc)
     format_result = format_response(
         human_query=human_query,
         neo4j_results=neo4j_results,
         cypher_queries=cypher_queries,
-        literature_text=hirn_text,
-        use_literature=use_glkb,
+        literature_text="",
+        use_literature=False,
         pre_final_answer=pre_final_answer,
     )
 

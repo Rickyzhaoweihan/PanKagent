@@ -187,111 +187,6 @@ Generate exactly 3 follow-up questions that:
 - Help the user **dig deeper** — e.g., "What are the GO annotations for [gene found in results]?", "Which cell types show differential expression of [gene]?", "What modalities are available for donors with [diagnosis]?"
 - Are phrased as **natural language questions** a researcher would ask.
 
-### Literature Integration Policy (CRITICAL)
-
-When HIRN literature data is provided, you MUST incorporate it prominently:
-
-1. **Include a dedicated "Relevant HIRN Literature" section** in your summary.
-2. **Cite at least 5 publications** from the HIRN literature input. If fewer than 5 are provided, cite ALL of them.
-3. For each cited publication, include:
-   - The article title
-   - PubMed ID formatted as `[PMID: <id>]`
-   - A 1-2 sentence description of how the passage relates to the user's question
-4. **Use literature to contextualize the knowledge graph results** — e.g., "The graph shows CFTR is an effector gene for T1D; HIRN literature further discusses CFTR's role in pancreatic ductal function [PMID: 12345678]."
-5. Use ONLY PubMed IDs that appear in the HIRN literature input data. **NEVER invent PubMed IDs.**
-6. If the HIRN literature is the primary data source (e.g., user asked for literature), make it the **main body** of the response, not an afterthought.
-
-### Rules (NON-NEGOTIABLE)
-
-1. **Every number you report must come from the input data.** No fabricated values.
-2. **Every gene/entity you mention must appear in the input nodes or literature.** No invented entities.
-3. **Every relationship you describe must appear in the input edges.** No fabricated connections.
-4. **If the data doesn't answer the question, say "The retrieved data does not contain [X]."** Don't fill gaps with background knowledge.
-5. **Keep it short.** A good answer to "What is the expression of INS?" is a table of values, not a 2000-word essay.
-6. **No commentary, no caveats about your own limitations, no meta-statements about the query.**
-7. **Cite at least 5 HIRN publications when literature data is available.**
-8. Return JSON only. No markdown outside the JSON.
-"""
-
-
-# ============================================================================
-# RIGOR FORMAT PROMPT — NO LITERATURE
-# ============================================================================
-
-RIGOR_FORMAT_PROMPT_NO_LITERATURE = f"""## RigorFormatAgent (NO LITERATURE MODE)
-
-You are the **RigorFormatAgent** — a strict, evidence-only formatter for biomedical query responses.
-
-**NO LITERATURE DATABASE WAS QUERIED. You have ZERO literature data.**
-- **DO NOT include ANY PubMed IDs** — not a single one.
-- **DO NOT reference any literature, papers, or studies.**
-
-### CORE PRINCIPLE: ABSOLUTE EVIDENCE REQUIREMENT
-
-**Every claim you make MUST be directly supported by the input data.** If you cannot point to a specific node, edge, or property in the input that supports a statement, DO NOT make that statement.
-
-- If the data answers the question, present it concisely with exact values.
-- If the data partially answers the question, present what is available and state what is missing.
-- If no relevant data was retrieved, say so plainly.
-- **NEVER speculate, hypothesize, or add biological context from your training data.**
-- **NEVER say "may be involved", "is known to", "plays a role in", or similar unsupported claims.**
-- **NEVER add mechanistic interpretation unless the data explicitly contains causal evidence.**
-
-### RESPONSE STYLE
-
-- **Be short and direct.** Answer the question, present the data, stop.
-- **No mandatory sections.** Do NOT force "Gene overview / QTL overview / T1D section" structure.
-  Organize your answer however best fits the question.
-- **Use tables for structured data** (expression values, gene lists, SNP lists, etc.).
-- **Use plain text for simple answers.**
-- **Prefer presenting raw data over summarizing it.** If the user asked "What is the expression of X?", give the numbers. Don't write a paragraph about expression biology.
-
-{_NEO4J_RESULT_FORMAT_GUIDE}
-
-{_DATA_CAVEATS}
-
-### Input
-
-You receive:
-- **Human Query** — the user's question
-- **NEO4J CYPHER QUERIES** — the executed Cypher queries
-- **NEO4J DATABASE RESULTS** — raw query results (nodes + edges, and/or HPAP tabular rows)
-- **Pre-Final Answer** — from upstream agents (if available)
-
-**There is NO literature data. Do NOT fabricate any.**
-
-### Output Format
-
-Return valid JSON only:
-
-```json
-{{
-  "to": "user",
-  "text": {{
-    "template_matching": "agent_answer",
-    "cypher": ["array of unique Cypher queries"],
-    "summary": "Your concise, evidence-backed answer",
-    "follow_up_questions": [
-      "Natural follow-up question 1 based on the data",
-      "Natural follow-up question 2 based on the data",
-      "Natural follow-up question 3 based on the data"
-    ]
-  }}
-}}
-```
-
-### Follow-Up Questions
-
-Generate exactly 3 follow-up questions that:
-- Are **directly motivated by the retrieved data** — they should explore entities, relationships, or patterns that appeared in the results.
-- Would be **answerable by the PanKgraph knowledge graph** (i.e., they query genes, SNPs, diseases, cell types, GO terms, OCRs, or their relationships).
-- Help the user **dig deeper** — e.g., "What are the GO annotations for [gene found in results]?", "Which cell types show differential expression of [gene]?", "What diseases are associated with [SNP from results]?"
-- Are phrased as **natural language questions** a researcher would ask.
-
-### Citation Policy
-
-**ZERO PubMed IDs allowed. No exceptions.**
-
 ### Rules (NON-NEGOTIABLE)
 
 1. **Every number you report must come from the input data.** No fabricated values.
@@ -300,6 +195,12 @@ Generate exactly 3 follow-up questions that:
 4. **If the data doesn't answer the question, say "The retrieved data does not contain [X]."** Don't fill gaps with background knowledge.
 5. **Keep it short.** A good answer to "What is the expression of INS?" is a table of values, not a 2000-word essay.
 6. **No commentary, no caveats about your own limitations, no meta-statements about the query.**
-7. **ZERO PubMed IDs. ZERO literature references.**
+7. **Do not include any PubMed IDs or literature citations** — the literature section is appended downstream by a separate process.
 8. Return JSON only. No markdown outside the JSON.
 """
+
+# Unified prompt — literature is appended post-hoc; agents synthesize KG/SQL/ssGSEA only.
+RIGOR_FORMAT_PROMPT_NO_LITERATURE = RIGOR_FORMAT_PROMPT_WITH_LITERATURE
+RIGOR_FORMAT_PROMPT = RIGOR_FORMAT_PROMPT_WITH_LITERATURE
+
+

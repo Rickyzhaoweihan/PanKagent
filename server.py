@@ -36,6 +36,7 @@ import logging
 import threading
 import uuid
 from contextlib import asynccontextmanager
+from literature_runner import combine_literature_block, run_literature_parallel
 from datetime import datetime, timezone
 
 # Load .env BEFORE importing modules that read ANTHROPIC_API_KEY at import time
@@ -482,6 +483,12 @@ class ChatSession:
     pending_plan_session_id: str = ""
     created_at: float = field(default_factory=time.time)
     last_active: float = field(default_factory=time.time)
+    # Background literature thread lifecycle (in-memory only — not persisted to SQLite)
+    literature_event: threading.Event = field(default_factory=threading.Event)
+    literature_result_async: dict = field(default_factory=dict)
+    literature_status: str = "pending"  # 'pending' | 'success' | 'failed'
+    literature_started_at: float = 0.0
+    literature_question: str = ""
 
 _chat_sessions: dict[str, ChatSession] = {}
 _chat_sessions_lock = threading.Lock()
@@ -1205,6 +1212,27 @@ async def chat_start(request: ChatStartRequest):
 
     _cleanup_expired_chat_sessions()
 
+    # Spawn literature thread BEFORE planning so its latency hides behind plan
+    # generation + plan review. The thread always runs regardless of use_lit —
+    # we check the toggle at merge time (/chat/plan/confirm).
+    _lit_event = threading.Event()
+    _lit_holder: dict = {"result": {}, "status": "pending", "started_at": time.time()}
+
+    def _lit_target(q: str = question) -> None:
+        try:
+            result = run_literature_parallel(q)
+            _lit_holder["result"] = result
+            glkb_ok = (result.get("glkb") or {}).get("status") == "success"
+            hirn_ok = (result.get("hirn") or {}).get("status") == "success"
+            _lit_holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
+        except Exception as exc:
+            logger.warning(f"[/chat/start] Literature thread failed: {exc}")
+            _lit_holder["status"] = "failed"
+        finally:
+            _lit_event.set()
+
+    threading.Thread(target=_lit_target, daemon=True, name="lit-start").start()
+
     # 1. Plan
     loop = asyncio.get_running_loop()
     try:
@@ -1260,6 +1288,12 @@ async def chat_start(request: ChatStartRequest):
         # /chat/plan/confirm upgrades it to the final answer in place.
         session.history.append({"role": "user", "content": question})
         session.history.append({"role": "assistant", "content": plan_md})
+        # Wire the background literature thread lifecycle onto the session so
+        # /chat/plan/confirm can join on it.
+        session.literature_event = _lit_event
+        session.literature_started_at = _lit_holder["started_at"]
+        session.literature_question = question
+        session._lit_holder = _lit_holder  # type: ignore[attr-defined]
         with _chat_sessions_lock:
             _chat_sessions[session_id] = session
             _persist_chat_session(session)
@@ -1307,6 +1341,21 @@ async def chat_start(request: ChatStartRequest):
 
     cleaned = clean_response_json(response)
     md = extract_markdown(response)
+
+    # Merge literature block from background thread
+    if use_lit:
+        lit_done = _lit_event.wait(timeout=30.0)
+        if lit_done:
+            lit_result = _lit_holder.get("result") or {}
+            lit_block = combine_literature_block(
+                glkb=lit_result.get("glkb"),
+                hirn=lit_result.get("hirn"),
+                use_literature=True,
+            )
+            if lit_block:
+                md = md.rstrip() + "\n\n" + lit_block
+        else:
+            logger.warning(f"[/chat/start auto-confirm] Literature thread timed out for session {session_id}")
 
     session = ChatSession(
         session_id=session_id,
@@ -1448,6 +1497,29 @@ async def chat_message(request: ChatMessageRequest):
                 raise HTTPException(status_code=500, detail=f"Follow-up failed: {e}")
 
     if route == "new_query":
+        # Spawn fresh literature thread for this new question (replaces any prior thread)
+        _msg_lit_event = threading.Event()
+        _msg_lit_holder: dict = {"result": {}, "status": "pending", "started_at": time.time()}
+
+        def _msg_lit_target(q: str = question) -> None:
+            try:
+                result = run_literature_parallel(q)
+                _msg_lit_holder["result"] = result
+                glkb_ok = (result.get("glkb") or {}).get("status") == "success"
+                hirn_ok = (result.get("hirn") or {}).get("status") == "success"
+                _msg_lit_holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
+            except Exception as exc:
+                logger.warning(f"[/chat/message] Literature thread failed: {exc}")
+                _msg_lit_holder["status"] = "failed"
+            finally:
+                _msg_lit_event.set()
+
+        threading.Thread(target=_msg_lit_target, daemon=True, name="lit-message").start()
+        session.literature_event = _msg_lit_event
+        session.literature_started_at = _msg_lit_holder["started_at"]
+        session.literature_question = question
+        session._lit_holder = _msg_lit_holder  # type: ignore[attr-defined]
+
         # Run plan + create PlanSession. Plan is NOT auto-confirmed — the user
         # reviews it and calls /chat/plan/confirm (optionally with revisions).
         try:
@@ -1722,6 +1794,28 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
 
     cleaned = clean_response_json(response)
     md = extract_markdown(response)
+
+    # Wait up to 30s for the background literature thread then splice in.
+    # The plan-review delay typically covers most of GLKB's 25-35s latency.
+    use_lit = chat_session.use_literature
+    if use_lit:
+        lit_event = chat_session.literature_event
+        lit_done = lit_event.wait(timeout=30.0)
+        if lit_done:
+            holder = getattr(chat_session, "_lit_holder", None) or {}
+            lit_result = holder.get("result") or chat_session.literature_result_async or {}
+            lit_block = combine_literature_block(
+                glkb=lit_result.get("glkb"),
+                hirn=lit_result.get("hirn"),
+                use_literature=True,
+            )
+            if lit_block:
+                md = md.rstrip() + "\n\n" + lit_block
+        else:
+            logger.warning(
+                f"[/chat/plan/confirm] Literature thread timed out (>30s) for "
+                f"session {chat_session.session_id}; proceeding without literature."
+            )
 
     plan_md = format_plan_as_markdown(
         plan_session.original_question,
