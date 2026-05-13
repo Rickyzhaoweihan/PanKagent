@@ -1494,7 +1494,8 @@ async def chat_message(request: ChatMessageRequest):
             raise HTTPException(status_code=500, detail=f"Planning failed: {e}")
 
     # Only append to history for completed rounds. For new_query_pending the
-    # question + answer are recorded when /chat/plan/confirm is called.
+    # placeholder turns were already persisted above; /chat/plan/confirm
+    # upgrades them in place with the final answer.
     if route != "new_query_pending":
         session.history.append({"role": "user", "content": question})
         session.history.append({"role": "assistant", "content": md})
