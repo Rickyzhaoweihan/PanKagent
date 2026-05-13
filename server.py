@@ -1696,12 +1696,23 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
         literature_result=plan_session.literature_result,
     )
 
-    # Append Q+A to chat history using the original pending question (not the
-    # revision prompt — the revision refines the plan, not the user's question)
+    # Upgrade the placeholder round-1 turns appended at /chat/start (or
+    # append a fresh pair on the legacy auto_confirm path where no
+    # placeholder exists).
     pending_q = chat_session.pending_question or plan_session.original_question
-    chat_session.history.append({"role": "user", "content": pending_q})
-    chat_session.history.append({"role": "assistant", "content": md})
-    chat_session.history = _trim_history(chat_session.history)
+    h = chat_session.history
+    if (
+        len(h) >= 2
+        and h[-2].get("role") == "user"
+        and h[-2].get("content") == pending_q
+        and h[-1].get("role") == "assistant"
+    ):
+        # Placeholder exists from /chat/start — replace the assistant turn
+        h[-1] = {"role": "assistant", "content": md}
+    else:
+        h.append({"role": "user", "content": pending_q})
+        h.append({"role": "assistant", "content": md})
+    chat_session.history = _trim_history(h)
 
     # Update chat session's stored plan state for future follow_up rounds
     chat_session.last_question = plan_session.original_question

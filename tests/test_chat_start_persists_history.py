@@ -64,3 +64,34 @@ def test_chat_start_persists_round1_history_when_pending():
         assert turns[1]["role"] == "assistant"
         # placeholder should mention the plan summary and the retrieved gene
         assert "CFTR" in turns[1]["content"] or "effector" in turns[1]["content"].lower()
+
+
+def test_chat_plan_confirm_upgrades_placeholder_in_place():
+    with (
+        patch("server._run_plan_pipeline", side_effect=_stub_plan_pipeline),
+        patch("server._run_confirm", return_value='{"to":"user","text":{"summary":"FINAL: CFTR is an effector gene."}}'),
+        patch("server._persist_plan_session"),
+        patch("server._persist_chat_session"),
+        patch("server._cleanup_expired_chat_sessions"),
+        patch("server._delete_plan_session_row"),
+    ):
+        client = _make_client()
+        r = client.post("/chat/start", json={
+            "question": "Is CFTR an effector gene for T1D?",
+            "auto_confirm": False,
+        })
+        body = r.json()
+        session_id = body["session_id"]
+        pending = body["pending_plan_session_id"]
+
+        c = client.post("/chat/plan/confirm", json={
+            "chat_session_id": session_id,
+            "plan_session_id": pending,
+        })
+    assert c.status_code == 200, c.text
+
+    h = client.get(f"/chat/history?session_id={session_id}").json()
+    turns = h["history"]
+    assert len(turns) == 2, f"history should be upgraded in place, got {len(turns)} turns: {turns}"
+    assert turns[0]["content"] == "Is CFTR an effector gene for T1D?"
+    assert "FINAL" in turns[1]["content"]
