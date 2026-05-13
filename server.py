@@ -1209,7 +1209,8 @@ async def chat_start(request: ChatStartRequest):
     if not auto_confirm:
         # Plan-review mode: stash a PlanSession, return new_query_pending.
         # The user must call /chat/plan/confirm (with the pending id) to run
-        # the format/reasoning pipeline. History is NOT appended yet.
+        # the format/reasoning pipeline. Round-1 turns are persisted immediately below
+        # (see session.history.append calls).
         pending_plan_session_id = uuid.uuid4().hex[:12]
         plan_session = PlanSession(
             session_id=pending_plan_session_id,
@@ -1233,6 +1234,12 @@ async def chat_start(request: ChatStartRequest):
             pending_question=question,
             pending_plan_session_id=pending_plan_session_id,
         )
+        # Persist round-1 turns immediately so round 2 sees prior context
+        # even if the client never calls /chat/plan/confirm. The placeholder
+        # assistant content is the plan markdown (entities + plan summary);
+        # /chat/plan/confirm upgrades it to the final answer in place.
+        session.history.append({"role": "user", "content": question})
+        session.history.append({"role": "assistant", "content": plan_md})
         with _chat_sessions_lock:
             _chat_sessions[session_id] = session
             _persist_chat_session(session)
