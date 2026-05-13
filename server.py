@@ -483,12 +483,6 @@ class ChatSession:
     pending_plan_session_id: str = ""
     created_at: float = field(default_factory=time.time)
     last_active: float = field(default_factory=time.time)
-    # Background literature thread lifecycle (in-memory only — not persisted to SQLite)
-    literature_event: threading.Event = field(default_factory=threading.Event)
-    literature_result_async: dict = field(default_factory=dict)
-    literature_status: str = "pending"  # 'pending' | 'success' | 'failed'
-    literature_started_at: float = 0.0
-    literature_question: str = ""
 
 _chat_sessions: dict[str, ChatSession] = {}
 _chat_sessions_lock = threading.Lock()
@@ -803,6 +797,19 @@ class ChatHistoryResponse(BaseModel):
     session_id: str
     rounds: int
     history: list[dict]
+
+
+class ChatLiteratureRequest(BaseModel):
+    session_id: str = Field(..., description="Chat session ID; must have a completed round")
+
+
+class ChatLiteratureResponse(BaseModel):
+    session_id: str
+    round: int = Field(..., description="Round number the literature was generated for")
+    markdown: str = Field(..., description="Literature markdown block to append to the answer")
+    glkb: dict = Field(default_factory=dict, description="Raw GLKB result")
+    hirn: dict = Field(default_factory=dict, description="Raw HIRN result")
+    processing_time_ms: float
 
 
 # ---------------------------------------------------------------------------
@@ -1212,27 +1219,6 @@ async def chat_start(request: ChatStartRequest):
 
     _cleanup_expired_chat_sessions()
 
-    # Spawn literature thread BEFORE planning so its latency hides behind plan
-    # generation + plan review. The thread always runs regardless of use_lit —
-    # we check the toggle at merge time (/chat/plan/confirm).
-    _lit_event = threading.Event()
-    _lit_holder: dict = {"result": {}, "status": "pending", "started_at": time.time()}
-
-    def _lit_target(q: str = question) -> None:
-        try:
-            result = run_literature_parallel(q)
-            _lit_holder["result"] = result
-            glkb_ok = (result.get("glkb") or {}).get("status") == "success"
-            hirn_ok = (result.get("hirn") or {}).get("status") == "success"
-            _lit_holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
-        except Exception as exc:
-            logger.warning(f"[/chat/start] Literature thread failed: {exc}")
-            _lit_holder["status"] = "failed"
-        finally:
-            _lit_event.set()
-
-    threading.Thread(target=_lit_target, daemon=True, name="lit-start").start()
-
     # 1. Plan
     loop = asyncio.get_running_loop()
     try:
@@ -1288,12 +1274,6 @@ async def chat_start(request: ChatStartRequest):
         # /chat/plan/confirm upgrades it to the final answer in place.
         session.history.append({"role": "user", "content": question})
         session.history.append({"role": "assistant", "content": plan_md})
-        # Wire the background literature thread lifecycle onto the session so
-        # /chat/plan/confirm can join on it.
-        session.literature_event = _lit_event
-        session.literature_started_at = _lit_holder["started_at"]
-        session.literature_question = question
-        session._lit_holder = _lit_holder  # type: ignore[attr-defined]
         with _chat_sessions_lock:
             _chat_sessions[session_id] = session
             _persist_chat_session(session)
@@ -1341,21 +1321,6 @@ async def chat_start(request: ChatStartRequest):
 
     cleaned = clean_response_json(response)
     md = extract_markdown(response)
-
-    # Merge literature block from background thread
-    if use_lit:
-        lit_done = _lit_event.wait(timeout=30.0)
-        if lit_done:
-            lit_result = _lit_holder.get("result") or {}
-            lit_block = combine_literature_block(
-                glkb=lit_result.get("glkb"),
-                hirn=lit_result.get("hirn"),
-                use_literature=True,
-            )
-            if lit_block:
-                md = md.rstrip() + "\n\n" + lit_block
-        else:
-            logger.warning(f"[/chat/start auto-confirm] Literature thread timed out for session {session_id}")
 
     session = ChatSession(
         session_id=session_id,
@@ -1497,29 +1462,6 @@ async def chat_message(request: ChatMessageRequest):
                 raise HTTPException(status_code=500, detail=f"Follow-up failed: {e}")
 
     if route == "new_query":
-        # Spawn fresh literature thread for this new question (replaces any prior thread)
-        _msg_lit_event = threading.Event()
-        _msg_lit_holder: dict = {"result": {}, "status": "pending", "started_at": time.time()}
-
-        def _msg_lit_target(q: str = question) -> None:
-            try:
-                result = run_literature_parallel(q)
-                _msg_lit_holder["result"] = result
-                glkb_ok = (result.get("glkb") or {}).get("status") == "success"
-                hirn_ok = (result.get("hirn") or {}).get("status") == "success"
-                _msg_lit_holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
-            except Exception as exc:
-                logger.warning(f"[/chat/message] Literature thread failed: {exc}")
-                _msg_lit_holder["status"] = "failed"
-            finally:
-                _msg_lit_event.set()
-
-        threading.Thread(target=_msg_lit_target, daemon=True, name="lit-message").start()
-        session.literature_event = _msg_lit_event
-        session.literature_started_at = _msg_lit_holder["started_at"]
-        session.literature_question = question
-        session._lit_holder = _msg_lit_holder  # type: ignore[attr-defined]
-
         # Run plan + create PlanSession. Plan is NOT auto-confirmed — the user
         # reviews it and calls /chat/plan/confirm (optionally with revisions).
         try:
@@ -1795,28 +1737,6 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
     cleaned = clean_response_json(response)
     md = extract_markdown(response)
 
-    # Wait up to 30s for the background literature thread then splice in.
-    # The plan-review delay typically covers most of GLKB's 25-35s latency.
-    use_lit = chat_session.use_literature
-    if use_lit:
-        lit_event = chat_session.literature_event
-        lit_done = lit_event.wait(timeout=30.0)
-        if lit_done:
-            holder = getattr(chat_session, "_lit_holder", None) or {}
-            lit_result = holder.get("result") or chat_session.literature_result_async or {}
-            lit_block = combine_literature_block(
-                glkb=lit_result.get("glkb"),
-                hirn=lit_result.get("hirn"),
-                use_literature=True,
-            )
-            if lit_block:
-                md = md.rstrip() + "\n\n" + lit_block
-        else:
-            logger.warning(
-                f"[/chat/plan/confirm] Literature thread timed out (>30s) for "
-                f"session {chat_session.session_id}; proceeding without literature."
-            )
-
     plan_md = format_plan_as_markdown(
         plan_session.original_question,
         plan_session.current_plan,
@@ -1885,6 +1805,58 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
         round=current_round,
         plan_markdown=plan_md,
         plan_json=plan_session.current_plan,
+        processing_time_ms=processing_time,
+    )
+
+
+@app.post("/chat/literature", response_model=ChatLiteratureResponse)
+async def chat_literature(request: ChatLiteratureRequest):
+    """Run GLKB + HIRN in parallel against the session's last completed round.
+
+    Synchronous (~25-35s). Always available regardless of the plan's
+    use_literature flag — call this whenever the user wants citations.
+    Returns a standalone markdown block; the frontend appends it to answer_markdown.
+    """
+    import importlib as _importlib
+    start = time.time()
+    session = _get_chat_session(request.session_id)
+    if not session.last_question or not session.last_neo4j_results:
+        raise HTTPException(
+            status_code=400,
+            detail="Session has no completed round yet; call /chat/start first.",
+        )
+
+    # Build the same retrieval blob the format agent sees.
+    # claude.py already added skills/format-agent/scripts to sys.path at startup.
+    from format_response import build_retrieval_context_blob
+    kg_blob = build_retrieval_context_blob(
+        human_query=session.last_question,
+        neo4j_results=session.last_neo4j_results,
+        cypher_queries=session.last_cypher_queries,
+    )
+
+    loop = asyncio.get_event_loop()
+    lit_result = await loop.run_in_executor(
+        None,
+        lambda: run_literature_parallel(session.last_question, kg_context=kg_blob),
+    )
+    glkb = lit_result.get("glkb") or {}
+    hirn = lit_result.get("hirn") or {}
+    markdown = combine_literature_block(glkb=glkb, hirn=hirn, use_literature=True)
+
+    processing_time = (time.time() - start) * 1000
+    current_round = len(session.history) // 2
+    logger.info(
+        f"[/chat/literature] session={request.session_id} round={current_round} "
+        f"glkb={glkb.get('status')} hirn={hirn.get('status')} "
+        f"chars={len(markdown)} in {processing_time:.0f}ms"
+    )
+    return ChatLiteratureResponse(
+        session_id=request.session_id,
+        round=current_round,
+        markdown=markdown,
+        glkb=glkb,
+        hirn=hirn,
         processing_time_ms=processing_time,
     )
 
@@ -1998,6 +1970,7 @@ if __name__ == "__main__":
     print(f"  POST   /chat/message       — follow-up (follow_up reuses data; new_query returns pending plan)")
     print(f"  POST   /chat/plan/confirm  — confirm/revise pending plan from /chat/message")
     print(f"  POST   /chat/revise        — revise last confirmed plan, auto-confirm")
+    print(f"  POST   /chat/literature    — on-demand GLKB+HIRN literature for last completed round (~25-35s)")
     print(f"  GET    /chat/history       — get conversation history")
     print(f"  DELETE /chat/end           — end chat session")
     print(f"  POST   /plan/start    — interactive plan session (manual confirm)")

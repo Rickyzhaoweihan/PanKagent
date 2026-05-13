@@ -1680,50 +1680,6 @@ def chat_forever():
         print("\n" + "=" * 60)
 
 
-def _spawn_cli_literature_thread(question: str):
-    """Start GLKB+HIRN in background for CLI plan mode. Returns (event, holder)."""
-    import threading as _threading
-    from literature_runner import run_literature_parallel as _run_lit_parallel
-    _event = _threading.Event()
-    _holder: dict = {"result": {}, "status": "pending"}
-
-    def _target(q=question):
-        try:
-            r = _run_lit_parallel(q)
-            _holder["result"] = r
-            glkb_ok = (r.get("glkb") or {}).get("status") == "success"
-            hirn_ok = (r.get("hirn") or {}).get("status") == "success"
-            _holder["status"] = "success" if (glkb_ok or hirn_ok) else "failed"
-        except Exception as exc:
-            logger.warning(f"CLI literature thread: {exc}")
-            _holder["status"] = "failed"
-        finally:
-            _event.set()
-
-    _threading.Thread(target=_target, daemon=True, name="lit-cli").start()
-    return _event, _holder
-
-
-def _splice_cli_literature(md: str, lit_event, lit_holder, use_literature: bool) -> str:
-    """Wait up to 30s for CLI literature thread and splice block into md."""
-    if not use_literature:
-        return md
-    from literature_runner import combine_literature_block as _combine
-    completed = lit_event.wait(timeout=30.0)
-    if not completed:
-        logger.warning("CLI literature thread did not complete within 30s; skipping.")
-        return md
-    lit_result = lit_holder.get("result") or {}
-    block = _combine(
-        glkb=lit_result.get("glkb"),
-        hirn=lit_result.get("hirn"),
-        use_literature=True,
-    )
-    if block:
-        md = md.rstrip() + "\n\n" + block
-    return md
-
-
 def chat_plan_interactive():
     """Interactive plan-confirmation loop.
 
@@ -1771,9 +1727,6 @@ def chat_plan_interactive():
         use_literature = result.get("use_literature", True)
         literature_result = result.get("literature_result", "")
 
-        # Spawn GLKB+HIRN in background — latency hides behind plan review.
-        _lit_event, _lit_holder = _spawn_cli_literature_thread(question)
-
         plan_md = format_plan_as_markdown(
             question, plan, neo4j_results,
             use_literature=use_literature,
@@ -1806,7 +1759,6 @@ def chat_plan_interactive():
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
-                    md = _splice_cli_literature(md, _lit_event, _lit_holder, use_literature)
                     print("\n" + "=" * 60)
                     print("FINAL ANSWER")
                     print("=" * 60 + "\n")
@@ -1920,7 +1872,6 @@ if __name__ == "__main__":
             print("Generating plan...")
             result = run_plan_start(question)
             _use_lit = result.get("use_literature", True)
-            _lit_event, _lit_holder = _spawn_cli_literature_thread(question)
             plan_md = format_plan_as_markdown(
                 question, result["plan"], result["neo4j_results"],
                 use_literature=_use_lit,
@@ -1947,7 +1898,6 @@ if __name__ == "__main__":
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
-                    md = _splice_cli_literature(md, _lit_event, _lit_holder, _use_lit)
                     print("\n" + "=" * 60)
                     print("FINAL ANSWER")
                     print("=" * 60 + "\n")

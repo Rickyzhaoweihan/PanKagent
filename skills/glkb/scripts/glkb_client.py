@@ -34,8 +34,22 @@ _DIRECTIVE_PREFIX = (
 )
 
 
-def build_glkb_question(question: str) -> str:
-    """Prepend the synthesis directive to the user's question."""
+def build_glkb_question(question: str, kg_context: str = "") -> str:
+    """Prepend the synthesis directive to the user's question.
+
+    If kg_context is provided (the same retrieval blob the format agent sees),
+    it is inserted between the directive and the question so GLKB can synthesise
+    literature that is grounded in what the KG/SQL/ssGSEA pipeline actually found.
+    """
+    if kg_context:
+        return (
+            _DIRECTIVE_PREFIX.rstrip()
+            + "\n\n=== RETRIEVED DATA (use as supporting evidence; "
+            "do not invent facts beyond it) ===\n"
+            + kg_context.strip()
+            + "\n\nQuestion: "
+            + question.strip()
+        )
     return _DIRECTIVE_PREFIX + question.strip()
 
 
@@ -43,6 +57,7 @@ def call_glkb(
     question: str,
     session_id: str | None = None,
     timeout: int = DEFAULT_TIMEOUT_S,
+    kg_context: str = "",
 ) -> dict[str, Any]:
     """Call GLKB and return the flat Complete-event payload.
 
@@ -50,7 +65,7 @@ def call_glkb(
     references (list[dict]), session_id (str), execution_time (float).
     Never raises.
     """
-    payload: dict[str, Any] = {"question": build_glkb_question(question)}
+    payload: dict[str, Any] = {"question": build_glkb_question(question, kg_context=kg_context)}
     if session_id:
         payload["session_id"] = session_id
 

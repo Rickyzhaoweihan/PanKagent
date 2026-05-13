@@ -388,6 +388,42 @@ def _repair_truncated_json(text: str) -> str | None:
         return None
 
 
+def build_retrieval_context_blob(
+    human_query: str,
+    neo4j_results: list[dict],
+    cypher_queries: list[str],
+    max_chars: int = 6000,
+) -> str:
+    """Compressed KG + SQL + ssGSEA + functional-data blob.
+
+    Shared between the format agent's user input and the /chat/literature
+    endpoint so both reason from the same retrieval state.
+    """
+    neo4j_sections = []
+    for i, entry in enumerate(neo4j_results, 1):
+        query = entry.get('query', '')
+        result = entry.get('result', {})
+        results_text = _extract_results_text(result)
+        source = result.get("source") if isinstance(result, dict) else None
+        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)", "ssgsea": "ssGSEA",
+                       "functional_data": "Functional API"}.get(source, "Cypher")
+        neo4j_sections.append(
+            f"--- Query {i} ---\n"
+            f"{query_label}: {query}\n"
+            f"Result:\n{results_text}"
+        )
+    raw_neo4j_block = '\n\n'.join(neo4j_sections) if neo4j_sections else '(no results)'
+
+    blob = (
+        f"Human Query: {human_query}\n\n"
+        f"=== QUERIES ===\n{json.dumps(cypher_queries, indent=2)}\n\n"
+        f"=== DATABASE RESULTS (RAW — {len(neo4j_results)} queries) ===\n{raw_neo4j_block}"
+    )
+    if len(blob) > max_chars:
+        blob = blob[:max_chars] + "\n... [truncated]"
+    return blob
+
+
 def format_response(
     human_query: str,
     neo4j_results: list[dict],

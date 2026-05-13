@@ -16,6 +16,7 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
    - `POST /chat/start` — start a chat session
    - `POST /chat/message` — send a follow-up (smart-routed)
    - `POST /chat/plan/confirm` — confirm a pending plan
+   - `POST /chat/literature` — on-demand literature retrieval (~25-35s)
    - `POST /chat/revise` — revise the last confirmed plan
    - `GET /chat/history` — fetch conversation history
    - `DELETE /chat/end` — end a chat session
@@ -50,7 +51,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 
 **CORS:** currently `allow_origins=["*"]` — tighten in production.
 
-**Timeouts:** a single `new_query` round can take **30–90 s** (plan + multi-source execution + format agent). Literature retrieval (GLKB ~25–35 s) runs in the background and is capped at a 30 s wait at confirm time. Set frontend fetch timeouts to ≥ **180 s**.
+**Timeouts:** a single `new_query` round can take **5–45 s** (plan + multi-source execution + format agent). Literature retrieval (GLKB ~25–35 s) is on-demand via `POST /chat/literature` — set a **60 s** timeout for that call. Set standard chat-endpoint fetch timeouts to ≥ **120 s**.
 
 **Durability:** all session state is mirrored to SQLite (`logs/sessions.sqlite`) on every mutation. Sessions survive server restarts — a user whose chat was mid-flight during a restart will find their `session_id` still valid and their history intact. See [§8](#8-session-lifecycle-ttls) for TTL and retention details.
 
@@ -62,7 +63,8 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `GET` | `/health` | Liveness probe | — | `status`, `uptime_seconds` |
 | `POST` | `/chat/start` | Open a chat session; run the first plan | `question`, `rigor?`, `use_literature?`, `auto_confirm?` | `session_id`, `route` (`new_query_pending` by default, `new_query` if `auto_confirm=true`), `plan_markdown`/`plan_json`, `pending_plan_session_id` |
 | `POST` | `/chat/message` | Send a follow-up; smart-router picks path | `session_id`, `question` | `route` (`follow_up` \| `new_query_pending` \| `new_query`), `answer_markdown`, optional `pending_plan_session_id`, `history_compressed` flag |
-| `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final `answer_markdown`, updated `round`, deletes the pending `PlanSession` |
+| `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round`, deletes the pending `PlanSession` |
+| `POST` | `/chat/literature` | On-demand GLKB+HIRN literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn`, `processing_time_ms` (~25–35 s) |
 | `POST` | `/chat/revise` | Revise the last *confirmed* plan + replace the last assistant turn | `session_id`, `prompt` | Updated `answer_markdown` for the current round |
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
 | `DELETE` | `/chat/end` | End and free a chat session | query `?session_id=…` | `status: "ended"`, deletes row from SQLite |
@@ -86,26 +88,55 @@ Quick routing logic:
 ### 2.1 Rigor mode
 The server defaults to **rigor mode** (`rigor=True`). In rigor mode the system uses evidence-only format/reasoning agents that refuse to speculate or hallucinate. Unless you have a specific reason, keep `rigor: true`.
 
-### 2.2 Literature search (GLKB + HIRN)
-Each plan round can optionally include a parallel literature search. **Two sources run in parallel:**
-- **GLKB** (`glkb.dcmb.med.umich.edu`) — a biomedical knowledge-graph–powered LLM agent that produces a 2–3-paragraph narrative synthesis with structured PubMed references. This is the primary source. Takes ~25–35 s.
-- **HIRN** — local abstract/full-text index. Supplements GLKB if GLKB returns fewer than 3 references. Takes ~1 s.
+### 2.2 Literature search (GLKB + HIRN) — on-demand via `/chat/literature`
 
-**When does the thread start?** The retrieval thread is spawned at `/chat/start` (or at `/chat/message` for `new_query` rounds), **before** the planning step runs. Its latency (~25–35 s) hides behind plan generation (~15 s) + user plan-review time. By the time the user clicks Confirm, GLKB has almost always finished.
+Literature retrieval is **separate and on-demand**. Call `POST /chat/literature` after a round completes (i.e., after `/chat/plan/confirm` or after `/chat/start` with `auto_confirm: true`). The endpoint:
 
-**Where does it appear in the answer?** The literature block is **spliced post-hoc** into `answer_markdown` after the KG/SQL/ssGSEA answer is generated. It appears as two appended Markdown sections:
-```
-## Literature Evidence
-<2-3 paragraph synthesis from GLKB, with optional HIRN supplement>
+1. Reads the KG/SQL/ssGSEA results already stored in the session from the last confirmed round.
+2. Runs **two sources in parallel** (~25–35 s total):
+   - **GLKB** (`glkb.dcmb.med.umich.edu`) — biomedical KG-powered LLM agent that produces a ≤100-word narrative synthesis with structured PubMed references. Receives the retrieval context (queries + results) so its synthesis is grounded in what the pipeline found.
+   - **HIRN** — local abstract/full-text index. Supplements GLKB when GLKB returns fewer than 3 references.
+3. Returns a standalone `markdown` block the frontend appends to the KG answer.
 
-## References
-- Paper title (Journal · Year)
-  PMID: 12345678
-  https://pubmed.ncbi.nlm.nih.gov/12345678/
-...
+**Request body (`ChatLiteratureRequest`):**
+```json
+{ "session_id": "4701b4ba16d4" }
 ```
 
-Controlled by `use_literature` (default `true`). Set to `false` for faster KG-only answers (thread still runs in background but its result is discarded at merge time).
+**Response (`ChatLiteratureResponse`):**
+```json
+{
+  "session_id": "4701b4ba16d4",
+  "round": 2,
+  "markdown": "## Literature Evidence\n\nCFTR encodes a chloride channel...\n\n## References\n- ...",
+  "glkb": { "status": "success", "response": "...", "references": [...] },
+  "hirn": { "status": "success", "raw_passages": [...] },
+  "processing_time_ms": 28340.5
+}
+```
+
+**Frontend pattern:**
+```js
+// After /chat/plan/confirm resolves:
+const kgAnswer = confirm.answer_markdown;        // render immediately
+showLiteratureSpinner("Fetching literature evidence…");
+
+const lit = await fetch("/chat/literature", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ session_id: sessionId })
+}).then(r => r.json());
+
+hideLiteratureSpinner();
+if (lit.markdown) {
+  renderAssistant(kgAnswer + "\n\n" + lit.markdown); // replace bubble with combined version
+}
+```
+
+**Notes:**
+- Always works regardless of the plan's `use_literature` flag — that flag now only controls whether the plan-markdown mentions literature.
+- Safe to call multiple times (re-runs the search each time).
+- Returns `markdown: ""` (empty string) if both GLKB and HIRN fail — handle gracefully.
+- `400` if the session has no completed round yet.
 
 ### 2.3 Chat session vs plan session
 - A **ChatSession** persists the full dialogue history and the most recently confirmed query state. Long-lived, 1h idle TTL.
@@ -179,7 +210,7 @@ Pass `auto_confirm: true` to skip review and run everything in one shot (returns
 |---|---|---|---|
 | `question` | string | required | The first user question. Non-empty. |
 | `rigor` | bool | `true` | Evidence-only mode. Keep `true` for production. |
-| `use_literature` | bool | `true` | Run GLKB + HIRN literature retrieval in background. If `true`, the final answer includes a `## Literature Evidence` + `## References` block. The retrieval thread always starts; this flag controls whether the result is spliced into the answer at confirm time. |
+| `use_literature` | bool | `true` | Controls whether the plan markdown advertises literature retrieval. Literature itself is fetched on-demand via `POST /chat/literature` after the round completes — not spliced automatically. |
 | `auto_confirm` | bool | `false` | `false`: returns the plan as `new_query_pending` (client must call `/chat/plan/confirm`). `true`: run plan + format in one shot, returns the final answer. |
 
 **Response 200 (`ChatResponse`) — default (`auto_confirm: false`):**
@@ -983,10 +1014,11 @@ Render differently based on `route`:
 ### 12.2 Loading states
 
 - `follow_up` — show typing indicator, expect ~5–25 s
-- `new_query_pending` — show "planning..." indicator, expect ~15–30 s (plan only; literature thread already running in background)
-- `/chat/plan/confirm` — show "running query..." indicator, expect ~10–45 s (format agent + up to 30 s wait for GLKB if not yet done)
+- `new_query_pending` — show "planning..." indicator, expect ~15–30 s (plan only)
+- `/chat/plan/confirm` — show "running query..." indicator, expect ~5–15 s (format agent only; no literature wait)
 - `/chat/start` (default, `auto_confirm: false`) — show "planning your query..." indicator, expect ~15–30 s (plan only)
-- `/chat/start` (`auto_confirm: true`) — show "analyzing your question..." indicator, expect ~40–90 s (plan + format + literature wait)
+- `/chat/start` (`auto_confirm: true`) — show "analyzing your question..." indicator, expect ~20–45 s (plan + format only)
+- `/chat/literature` — show "Fetching literature evidence…" spinner, expect **25–35 s**; can run concurrently with anything else the user does after confirming
 
 ### 12.3 `history_compressed` notice
 
@@ -1004,12 +1036,6 @@ For `new_query_pending`, render something like:
 │                                                    │
 │  [plan_markdown rendered here]                    │
 │                                                    │
-│  Note: the plan includes a "Literature retrieval  │
-│  — GLKB + HIRN running in background" line. This  │
-│  indicates the literature thread is already        │
-│  running. Confirm or cancel as usual; if cancelled │
-│  the result is discarded.                         │
-│                                                    │
 │  ┌─────────────────────────────────────────┐     │
 │  │ (Optional) Suggest a revision...        │     │
 │  └─────────────────────────────────────────┘     │
@@ -1017,6 +1043,8 @@ For `new_query_pending`, render something like:
 │  [ Cancel ]   [ Revise & Run ]   [ ✓ Run as-is ] │
 └────────────────────────────────────────────────────┘
 ```
+
+After the user confirms and `/chat/plan/confirm` returns the KG answer, optionally show a "Fetch literature" button (or auto-call `POST /chat/literature`) to load the literature block asynchronously.
 
 ### 12.5 Follow-up suggestions
 
@@ -1051,7 +1079,8 @@ The server serialises all pipeline calls under a single internal request lock. D
 | `GET` | `/health` | — | Health check |
 | `POST` | `/chat/start` | `ChatStartRequest` | Start chat; returns plan for review by default (`auto_confirm: true` to skip) |
 | `POST` | `/chat/message` | `ChatMessageRequest` | Follow-up; smart-routed |
-| `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending` |
+| `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer |
+| `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB+HIRN literature (~25-35s); append to answer |
 | `POST` | `/chat/revise` | `ChatReviseRequest` | Revise last confirmed plan |
 | `GET` | `/chat/history?session_id=...` | — | Fetch conversation |
 | `DELETE` | `/chat/end?session_id=...` | — | End session |

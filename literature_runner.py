@@ -1,25 +1,18 @@
-"""Parallel literature retrieval (GLKB + HIRN) + hardcoded merge.
-
-Architecture: a single background thread per chat session drives both
-sources via an internal mini-pool. The thread sets a threading.Event when
-done so /chat/plan/confirm can join on it. The merged block is computed
-deterministically at confirm time — no second Claude call.
-"""
+"""Parallel literature retrieval (GLKB + HIRN) + hardcoded merge."""
 from __future__ import annotations
 
 import logging
 import threading
-import time
 from queue import Queue
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _glkb_worker(question: str, q: "Queue[dict]") -> None:
+def _glkb_worker(question: str, q: "Queue[dict]", kg_context: str = "") -> None:
     from skills.glkb.scripts.glkb_client import call_glkb
     try:
-        q.put({"source": "glkb", "result": call_glkb(question)})
+        q.put({"source": "glkb", "result": call_glkb(question, kg_context=kg_context)})
     except Exception as exc:
         logger.warning(f"GLKB worker failed: {exc}")
         q.put({"source": "glkb", "result": {
@@ -55,10 +48,15 @@ def _hirn_worker(question: str, q: "Queue[dict]") -> None:
         q.put({"source": "hirn", "result": _FAILED})
 
 
-def run_literature_parallel(question: str) -> dict[str, Any]:
-    """Run GLKB + HIRN in parallel threads; return {'glkb': ..., 'hirn': ...}."""
+def run_literature_parallel(question: str, kg_context: str = "") -> dict[str, Any]:
+    """Run GLKB + HIRN in parallel threads; return {'glkb': ..., 'hirn': ...}.
+
+    kg_context: optional retrieval blob (same content the format agent sees);
+    forwarded to GLKB so it can synthesise literature grounded in what the
+    KG/SQL/ssGSEA pipeline actually found.
+    """
     q: Queue[dict] = Queue()
-    t1 = threading.Thread(target=_glkb_worker, args=(question, q), daemon=True)
+    t1 = threading.Thread(target=_glkb_worker, args=(question, q, kg_context), daemon=True)
     t2 = threading.Thread(target=_hirn_worker, args=(question, q), daemon=True)
     t1.start()
     t2.start()
@@ -70,22 +68,6 @@ def run_literature_parallel(question: str) -> dict[str, Any]:
         msg = q.get()
         out[msg["source"]] = msg["result"]
     return out
-
-
-def run_literature_async(question: str, session: Any) -> None:
-    """Thread target: run parallel retrieval, stash result on session, set event."""
-    session.literature_started_at = time.time()
-    try:
-        result = run_literature_parallel(question)
-        session.literature_result_async = result
-        glkb_ok = (result.get("glkb") or {}).get("status") == "success"
-        hirn_ok = (result.get("hirn") or {}).get("status") == "success"
-        session.literature_status = "success" if (glkb_ok or hirn_ok) else "failed"
-    except Exception as exc:
-        logger.warning(f"Async literature failed: {exc}")
-        session.literature_status = "failed"
-    finally:
-        session.literature_event.set()
 
 
 def _render_hirn_highlights(passages: list, max_n: int = 3) -> str:
