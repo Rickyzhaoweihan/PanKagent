@@ -613,7 +613,7 @@ def format_plan_as_markdown(
     # Literature step — always shown so user can see the toggle state
     lit_step_num = len(steps) + 1
     if use_literature:
-        parts.append(f"{lit_step_num}. **Literature retrieval** — GLKB + HIRN running in background (parallel)")
+        parts.append(f"{lit_step_num}. **Literature retrieval** — **enabled**")
     else:
         parts.append(f"{lit_step_num}. ~~Literature retrieval~~ — **disabled**")
 
