@@ -552,44 +552,64 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
     """
     import anthropic
 
-    # Build a compact summary of what's been discussed
+    # Build a compact summary of what's been discussed. 800 chars/turn is
+    # wide enough to preserve entity tails (gene lists, donor IDs, GO terms)
+    # on long round-1 answers, while keeping the classifier prompt cheap.
     turns = []
-    for m in history[-6:]:  # last 3 rounds max for classification
+    for m in history[-6:]:
         role = "User" if m["role"] == "user" else "Assistant"
-        turns.append(f"{role}: {m['content'][:500]}")
+        turns.append(f"{role}: {m['content'][:800]}")
     conversation_summary = "\n".join(turns)
+
+    system_prompt = (
+        "You classify follow-up questions in a biomedical Q&A system that "
+        "orchestrates Neo4j, PostgreSQL, ssGSEA, and literature retrieval.\n\n"
+        "Respond with EXACTLY one word: 'follow_up' or 'new_query'.\n\n"
+        "HARD RULE — follow_up NEVER invokes any tool (no Neo4j, no SQL, no "
+        "ssGSEA, no literature). It can ONLY rephrase, explain, summarise, "
+        "rank, filter, or reason over text already present in prior assistant "
+        "answers.\n\n"
+        "DECISION PROCEDURE — apply in order:\n"
+        "1. Reference detection. Does the new question reference the prior "
+        "turn? Signals include pronouns ('those', 'that one', 'of them', "
+        "'the first one'), demonstratives ('this gene', 'these donors'), or "
+        "elided subjects ('and the PIP?', 'what about CFTR?'). When present, "
+        "the user is continuing the prior thread — STRONG bias toward "
+        "follow_up, but not decisive on its own.\n"
+        "2. Coverage check. Can the question be answered using ONLY facts "
+        "literally present in prior assistant messages — entities, IDs, "
+        "numeric values, terms, descriptions? If yes → follow_up.\n"
+        "3. New-dimension test. Would answering require fetching a data "
+        "dimension not literally present in prior turns (expression levels, "
+        "OCR peaks, genomic coordinates, ssGSEA scores, literature/PubMed, "
+        "pathway annotations, donor metadata, drug targets)? If yes → "
+        "new_query, even if the referenced entity was already named.\n"
+        "4. New-entity test. Does the question introduce a gene, SNP, "
+        "disease, cell type, donor, or other entity NOT present in prior "
+        "turns? If yes → new_query.\n"
+        "5. Ambiguity → new_query.\n\n"
+        "FOLLOW_UP examples:\n"
+        "- 'What do those GO terms mean?' — explains shown data.\n"
+        "- 'Of those genes, which has the highest PIP?' — ranks listed values.\n"
+        "- 'Summarise this for a clinician.' — rephrasing.\n"
+        "- 'Which donor you found is youngest?' — filters shown rows.\n"
+        "- 'Why is that significant?' — reasoning over shown facts.\n\n"
+        "NEW_QUERY examples (note: several contain anaphora):\n"
+        "- 'What is the expression of CFTR in beta cells?' — new dimension.\n"
+        "- 'Tell me about RFX6.' — new entity.\n"
+        "- 'Which of those genes are highly expressed in alpha cells?' "
+        "— anaphora present, but needs expression data not yet shown.\n"
+        "- 'Any PubMed articles on these?' — needs literature retrieval.\n"
+        "- 'Are any of those druggable?' — needs drug data not shown.\n\n"
+        "Reply with exactly one word."
+    )
 
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=15,
-            system=(
-                "You classify follow-up questions in a biomedical Q&A system.\n"
-                "Respond with EXACTLY one word: 'follow_up' or 'new_query'.\n\n"
-                "HARD RULE: 'follow_up' NEVER invokes any tool (no Neo4j/Cypher, "
-                "no PostgreSQL/SQL, no ssGSEA, no HIRN/literature, no gene resolver). "
-                "It can ONLY rephrase, explain, summarise, or reason over text that is "
-                "ALREADY present in the prior assistant answers.\n"
-                "If answering the question would require fetching, retrieving, "
-                "computing, or looking up ANY data not already shown verbatim in the "
-                "prior turns — classify as 'new_query'. When in doubt, choose "
-                "'new_query'.\n\n"
-                "Reply 'follow_up' ONLY if the question is a purely conversational "
-                "continuation that can be answered using facts literally present in "
-                "the prior assistant messages — e.g. 'what do those GO terms mean', "
-                "'summarise this', 'why is that significant', 'rephrase for a "
-                "clinician', 'which of those listed has the highest PIP'.\n\n"
-                "Reply 'new_query' if ANY of these apply:\n"
-                "- Introduces a NEW gene, SNP, disease, cell type, donor, or entity "
-                "not in prior answers.\n"
-                "- Asks for a data dimension or field not literally present in prior "
-                "answers (expression levels, OCR peaks, genomic coords, ssGSEA "
-                "scores, literature, pathway annotations) even if the entity was "
-                "mentioned before.\n"
-                "- Needs multi-step or cross-source analysis.\n"
-                "- Is ambiguous enough that a plan review is warranted."
-            ),
+            system=system_prompt,
             messages=[{
                 "role": "user",
                 "content": f"Conversation so far:\n{conversation_summary}\n\nNew question: {new_question}",
@@ -598,10 +618,10 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
         answer = response.content[0].text.strip().lower()
         if "follow" in answer:
             return "follow_up"
-        return "new_query"  # safe fallback: plan mode
+        return "new_query"
     except Exception as exc:
         logger.warning(f"Follow-up classification failed: {exc}")
-        return "new_query"  # safe fallback: always run pipeline
+        return "new_query"
 
 
 def _answer_is_tool_output(text: str) -> bool:
