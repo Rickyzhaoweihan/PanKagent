@@ -1454,15 +1454,20 @@ async def chat_message(request: ChatMessageRequest):
             # Stash pending state on the chat session (cleared on confirm)
             session.pending_question = question
             session.pending_plan_session_id = pending_plan_session_id
-            with _chat_sessions_lock:
-                _persist_chat_session(session)
 
             plan_md = format_plan_as_markdown(
                 interpreted, plan, neo4j_results,
                 use_literature=use_lit_round, literature_result=literature_result,
             )
             plan_json = plan
-            # route is updated for the response — history NOT appended yet
+            # Persist round-N placeholder turns immediately so round N+1 sees
+            # this question in history even if /chat/plan/confirm is never called.
+            # /chat/plan/confirm upgrades the assistant turn to the final answer.
+            session.history.append({"role": "user", "content": question})
+            session.history.append({"role": "assistant", "content": plan_md})
+            session.history = _trim_history(session.history)
+            with _chat_sessions_lock:
+                _persist_chat_session(session)
             route = "new_query_pending"
         except Exception as e:
             logger.error(f"[/chat/message] plan error: {e}", exc_info=True)

@@ -88,9 +88,9 @@ def test_chat_plan_confirm_upgrades_placeholder_in_place():
             "chat_session_id": session_id,
             "plan_session_id": pending,
         })
-    assert c.status_code == 200, c.text
+        assert c.status_code == 200, c.text
 
-    h = client.get(f"/chat/history?session_id={session_id}").json()
+        h = client.get(f"/chat/history?session_id={session_id}").json()
     turns = h["history"]
     assert len(turns) == 2, f"history should be upgraded in place, got {len(turns)} turns: {turns}"
     assert turns[0]["content"] == "Is CFTR an effector gene for T1D?"
