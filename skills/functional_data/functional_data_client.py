@@ -68,11 +68,12 @@ _ALLOWED_ENDPOINTS: dict[str, dict] = {
 # Loaded lazily from sibling JSON files
 _API_SPEC: dict = {}
 _TRAIT_LIST: list[str] = []
+_INTERP_FULL: dict = {}  # full parsed interpretation JSON, used by build_functional_data_glossary
 
 
 def _load_specs() -> None:
     """Load API spec and trait list from sibling JSON files."""
-    global _API_SPEC, _TRAIT_LIST
+    global _API_SPEC, _TRAIT_LIST, _INTERP_FULL
     if _API_SPEC:
         return
     # Note: filename has a typo upstream ("funciton" not "function") — preserved
@@ -88,9 +89,11 @@ def _load_specs() -> None:
         with open(interp_path) as f:
             interp = json.load(f)
         _TRAIT_LIST = [entry["feature"] for entry in interp.get("feature_dictionary", [])]
+        _INTERP_FULL = interp
     except Exception as exc:
         logger.warning("Could not load functional data interpretation spec: %s", exc)
         _TRAIT_LIST = []
+        _INTERP_FULL = {}
 
 
 def _get_session() -> requests.Session:
@@ -356,3 +359,88 @@ def _summarize_trait_summary(payload: dict) -> dict:
         "row_count": len(rows),
         "trait": trait,
     }
+
+
+# ---------------------------------------------------------------------------
+# Glossary builder — for format/reasoning agents
+# ---------------------------------------------------------------------------
+
+def build_functional_data_glossary(neo4j_results: list[dict]) -> str:
+    """Return a Markdown glossary block for any functional_data results present.
+
+    Smart-filtered: scans result rows and top-level trait fields for feature
+    strings, matches them against feature_dictionary entries, and emits only
+    the matched subset. Always includes core_rules and global_terms (small,
+    always biologically relevant). Falls back to all 20 features when no
+    matches are found.
+
+    Returns "" if no functional_data source is present in neo4j_results.
+    """
+    _load_specs()
+    if not _INTERP_FULL:
+        return ""
+
+    # Check whether any functional_data result is present
+    has_fd = any(
+        isinstance(entry.get("result"), dict)
+        and entry["result"].get("source") == "functional_data"
+        for entry in neo4j_results
+    )
+    if not has_fd:
+        return ""
+
+    feature_dict = _INTERP_FULL.get("feature_dictionary", [])
+    # Build a casefold lookup: casefold(feature) -> entry
+    _feature_lookup: dict[str, dict] = {e["feature"].casefold(): e for e in feature_dict}
+
+    # Collect candidate feature strings from results
+    candidates: set[str] = set()
+    for entry in neo4j_results:
+        result = entry.get("result", {})
+        if not isinstance(result, dict) or result.get("source") != "functional_data":
+            continue
+        # Top-level trait key (trait-summary endpoint)
+        if result.get("trait"):
+            candidates.add(str(result["trait"]).casefold())
+        # Row keys and string values
+        for row in result.get("rows", []):
+            if not isinstance(row, dict):
+                continue
+            for k, v in row.items():
+                candidates.add(str(k).casefold())
+                if isinstance(v, str):
+                    candidates.add(v.casefold())
+
+    matched = [_feature_lookup[c] for c in candidates if c in _feature_lookup]
+    if not matched:
+        matched = feature_dict  # full-glossary fallback
+
+    lines: list[str] = ["\n=== FUNCTIONAL DATA GLOSSARY ==="]
+
+    # Global terms
+    global_terms: dict = _INTERP_FULL.get("global_terms", {})
+    if global_terms:
+        lines.append("\n## Global terms")
+        for term, defn in global_terms.items():
+            lines.append(f"- **{term}**: {defn}")
+
+    # Core rules
+    core_rules: list = _INTERP_FULL.get("core_rules", [])
+    if core_rules:
+        lines.append("\n## Core interpretation rules")
+        for i, rule in enumerate(core_rules, 1):
+            lines.append(f"{i}. {rule}")
+
+    # Matched feature entries
+    lines.append(f"\n## Trait dictionary ({'matched to your results' if matched is not feature_dict else 'full — no exact match found'})")
+    for e in matched:
+        lines.append(
+            f"- **{e['feature']}** — hormone={e.get('hormone','?')}, "
+            f"condition={e.get('condition','?')}, "
+            f"measurement_type={e.get('measurement_type','?')}, "
+            f"unit={e.get('unit','?')}, "
+            f"normalization={e.get('normalization','?')}. "
+            f"Interpretation: {e.get('interpretation','')}"
+        )
+
+    return "\n".join(lines)

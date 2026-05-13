@@ -39,6 +39,12 @@ sys.path.insert(0, os.path.abspath(_format_agent_scripts))
 from hallucination_checker import check_hallucination, remove_hallucinated_ids
 from format_response import _has_useful_data, _NO_DATA_RESPONSE, truncate_neo4j_results_for_claude, _extract_results_text
 
+# Functional data domain glossary helper
+_fd_skill_dir = os.path.join(_repo_root, "skills", "functional_data")
+if _fd_skill_dir not in sys.path:
+    sys.path.insert(0, _fd_skill_dir)
+from functional_data_client import build_functional_data_glossary
+
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
 _PERF_LOG = os.path.join(_repo_root, 'logs', 'performance.log')
@@ -235,6 +241,10 @@ def rigor_reasoning_response(
         )
     raw_neo4j_block = '\n\n'.join(neo4j_sections) if neo4j_sections else '(no results)'
 
+    _fd_glossary = build_functional_data_glossary(neo4j_results)
+    if _fd_glossary:
+        emit("rigor_reasoning_glossary_injected", {"chars": len(_fd_glossary)})
+
     user_input = f"""Human Query: {human_query}
 
 === QUERIES ===
@@ -242,6 +252,7 @@ def rigor_reasoning_response(
 
 === DATABASE RESULTS (RAW — {len(neo4j_results)} queries) ===
 {raw_neo4j_block}
+{_fd_glossary}
 
 REMINDER: Only reason over data that is present above. If a reasoning step has no supporting data, state that and stop that chain."""
 
