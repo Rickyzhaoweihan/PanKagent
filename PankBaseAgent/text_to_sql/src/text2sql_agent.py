@@ -25,60 +25,66 @@ load_dotenv()
 SQL_SYSTEM_RULES = """You are a PostgreSQL query generator for the PanKgraph genomic coordinate database.
 
 TASK: Generate ONE PostgreSQL SELECT query per question.
-- Read the schema carefully
+- Read the schema carefully — there are FOUR entity-specific tables, NOT one unified table.
 - Generate focused, specific queries
 - ALWAYS use double-quotes around "chr", "start", "end" (reserved words)
 
 IMPORTANT — Gene Name Resolution:
-- Gene names (e.g. INS, CFTR, MAFA) have been PRE-RESOLVED to Ensembl IDs in the question.
-- If you see an Ensembl ID like ENSG00000254647 in the question, use it directly: WHERE id = 'ENSG00000254647'
-- NEVER use a gene symbol (like 'INS') in a WHERE clause — always use the Ensembl ID provided.
+- If you see an Ensembl ID like ENSG00000254647 in the question, use it directly:
+    WHERE id = 'ENSG00000254647'
+- If you only have a gene symbol (INS, CFTR, MAFA), query ensembl_genes_node by gene_name:
+    WHERE gene_name = 'INS'
+- Both paths are valid; prefer gene_name when only a symbol is given.
 
 RULES:
 - Generate ONLY read-only SELECT queries
 - ALWAYS add LIMIT (default 100) unless the query uses COUNT/SUM/AVG
-- Use exact entity_type values: 'Ensembl_genes.node', 'GWAS_snp_id.node', 'ocr_peak.node', 'QTL_snp.node'
 - Use single quotes for string literals
 - Use double-quotes for column names that are reserved words
+- Choose the correct table for the entity type — never use a non-existent table
 
-OVERLAP PATTERN (find entities overlapping a region):
-SELECT id, entity_type, "chr", "start", "end"
-FROM genomic_interval
+OVERLAP PATTERN (find OCR peaks overlapping a region):
+SELECT id, "chr", "start", "end"
+FROM ocr_peak_node
 WHERE "chr" = '11' AND "start" <= 2162000 AND "end" >= 2160000
 LIMIT 100;
 
-ENTITY LOOKUP (find by ID):
-SELECT id, entity_type, "chr", "start", "end"
-FROM genomic_interval
+ENTITY LOOKUP (find gene by Ensembl ID):
+SELECT id, gene_name, "chr", "start", "end"
+FROM ensembl_genes_node
 WHERE id = 'ENSG00000254647'
+LIMIT 10;
+
+ENTITY LOOKUP (find gene by symbol):
+SELECT id, gene_name, "chr", "start", "end"
+FROM ensembl_genes_node
+WHERE gene_name = 'INS'
 LIMIT 10;
 
 CROSS-ENTITY OVERLAP (OCR peaks overlapping GWAS SNPs):
 SELECT g.id AS gwas_id, o.id AS ocr_id, g."chr", g."start" AS gwas_pos
-FROM genomic_interval g
-JOIN genomic_interval o ON o."chr" = g."chr" AND o."start" <= g."start" AND o."end" >= g."start"
-WHERE g.entity_type = 'GWAS_snp_id.node' AND o.entity_type = 'ocr_peak.node'
+FROM gwas_snp_id_node g
+JOIN ocr_peak_node o ON o."chr" = g."chr" AND o."start" <= g."start" AND o."end" >= g."start"
 LIMIT 100;
 
-PROXIMITY (entities within 1Mb of a gene):
-SELECT q.id, q.entity_type, q."chr", q."start", q."end"
-FROM genomic_interval q
-JOIN genomic_interval g ON g.id = 'ENSG00000254647'
-WHERE q.entity_type = 'QTL_snp.node' AND q."chr" = g."chr"
+PROXIMITY (QTL SNPs within 1Mb of a gene):
+SELECT q.id, q."chr", q."start", q."end"
+FROM qtl_snp_node q
+JOIN ensembl_genes_node g ON g.id = 'ENSG00000254647'
+WHERE q."chr" = g."chr"
   AND q."start" BETWEEN g."start" - 1000000 AND g."end" + 1000000
 LIMIT 100;
 
 COUNT BY CHROMOSOME:
 SELECT "chr", count(*) AS n
-FROM genomic_interval
-WHERE entity_type = 'Ensembl_genes.node'
+FROM ensembl_genes_node
 GROUP BY "chr"
 ORDER BY n DESC;
 
 WRONG (DO NOT DO):
-WRONG: SELECT * FROM genomic_interval;  (no WHERE, no LIMIT — scans 5.4M rows!)
+WRONG: SELECT * FROM ocr_peak_node;  (no WHERE, no LIMIT — scans 5.4M rows!)
 WRONG: WHERE chr = '11'  (unquoted reserved word — must be "chr")
-WRONG: WHERE entity_type = 'gene'  (wrong value — use 'Ensembl_genes.node')
+WRONG: FROM genomic_interval  (table no longer exists — use entity-specific tables)
 
 Schema:
 """
@@ -106,7 +112,7 @@ def make_llm(provider: str = "local"):
 
 
 class Text2SQLAgent:
-    """Single-LLM agent that translates NL to PostgreSQL for genomic_interval."""
+    """Single-LLM agent that translates NL to PostgreSQL for the genomic coordinate tables."""
 
     def __init__(
         self,

@@ -49,7 +49,7 @@ nohup python -m vllm.entrypoints.openai.api_server \
 
 ### External services used at runtime
 - **Local Neo4j PanKgraph ADA** at `bolt://localhost:8687` / browser `:8475` — 5.4M nodes, schema in `PankBaseAgent/text_to_cypher/data/input/neo4j_schema_ada.json`
-- **Local PostgreSQL** at `localhost:5432` db `pankgraph` (user `serviceuser` / pw `password`), table `genomic_interval` (5.4M rows across 4 entity types)
+- **Local PostgreSQL** at `localhost:5432` db `pankgraph` (user `serviceuser` / pw `password`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
 - **ssGSEA server** at `http://Robject-PanKgraph-ALB-1292067250.us-east-1.elb.amazonaws.com/` — endpoints `/genes`, `/donors`, `/ssgsea` (always returns scores for all 112 immune-cell pseudo-bulk donors)
 - **HIRN Abstracts API** — `glkb.dcmb.med.umich.edu/api/external/search_hirn_abstracts`
 - **RDS Lambda** — gene-name → Ensembl-ID resolution for text2sql
@@ -157,7 +157,7 @@ All agents are pre-initialized at startup via FastAPI lifespan. `server.py` load
 ### Text-to-SQL (`PankBaseAgent/text_to_sql/`)
 
 Mirrors the text2cypher pipeline for PostgreSQL genomic coordinate queries:
-- `src/text2sql_agent.py` — same vLLM model, system prompt tuned for PostgreSQL `genomic_interval` table
+- `src/text2sql_agent.py` — same vLLM model, system prompt tuned for the four entity-specific PostgreSQL tables
 - `src/sql_validator.py` — scores SQL, auto-quotes `"chr"`, `"start"`, `"end"` (reserved words), injects LIMIT, blocks destructive statements
 - `src/pg_schema_loader.py` — compact schema string
 - `src/gene_resolver.py` — pre-resolves gene symbols → Ensembl IDs via RDS Lambda before SQL generation

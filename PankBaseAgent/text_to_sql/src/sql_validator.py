@@ -9,6 +9,13 @@ from __future__ import annotations
 import re
 from typing import Dict, List
 
+VALID_TABLES = {
+    "ensembl_genes_node",
+    "gwas_snp_id_node",
+    "ocr_peak_node",
+    "qtl_snp_node",
+}
+
 VALID_ENTITY_TYPES = {
     "Ensembl_genes.node",
     "GWAS_snp_id.node",
@@ -70,9 +77,19 @@ def validate_sql(sql: str) -> Dict:
         score -= 30
 
     # --- Table name check -------------------------------------------------
-    if "genomic_interval" not in fixed:
-        errors.append("Query does not reference genomic_interval table")
+    referenced_tables = {t for t in VALID_TABLES if re.search(rf"\b{t}\b", fixed)}
+    if not referenced_tables:
+        errors.append(
+            "Query does not reference any known entity table "
+            f"({', '.join(sorted(VALID_TABLES))})"
+        )
         score -= 20
+    if re.search(r"\bgenomic_interval\b", fixed):
+        errors.append(
+            "Query references legacy 'genomic_interval' table — use entity-specific tables "
+            "(ensembl_genes_node, gwas_snp_id_node, ocr_peak_node, qtl_snp_node)"
+        )
+        score -= 40
 
     # --- Reserved-word quoting --------------------------------------------
     unquoted = _UNQUOTED_RESERVED_RE.findall(fixed)

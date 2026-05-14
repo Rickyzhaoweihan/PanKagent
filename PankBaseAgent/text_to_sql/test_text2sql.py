@@ -31,11 +31,12 @@ DB_CONFIG = dict(
 
 TEST_QUESTIONS = [
     "What is the genomic location of gene ENSG00000254647?",
+    "What is the genomic location of INS?",
     "How many OCR peaks are on chromosome 11?",
     "Which OCR peaks overlap the region chr11:2160000-2162000?",
     "Find GWAS SNPs on chromosome 6",
     "Find QTL SNPs within 1Mb of gene ENSG00000254647",
-    "How many entities are there per entity type?",
+    "How many genes are there per chromosome?",
 ]
 
 
@@ -124,8 +125,17 @@ def main():
 
     # Verify PostgreSQL connection
     try:
-        rows = execute_sql("SELECT count(*) AS n FROM genomic_interval")
-        print(f"PostgreSQL connected: {rows[0]['n']:,} rows in genomic_interval")
+        rows = execute_sql(
+            "SELECT (SELECT count(*) FROM ensembl_genes_node) AS genes,"
+            "       (SELECT count(*) FROM gwas_snp_id_node) AS gwas,"
+            "       (SELECT count(*) FROM ocr_peak_node) AS ocrs,"
+            "       (SELECT count(*) FROM qtl_snp_node) AS qtls"
+        )
+        r = rows[0]
+        print(
+            f"PostgreSQL connected: genes={r['genes']:,}  gwas={r['gwas']:,}  "
+            f"ocrs={r['ocrs']:,}  qtls={r['qtls']:,}"
+        )
     except Exception as e:
         print(f"PostgreSQL connection failed: {e}")
         sys.exit(1)

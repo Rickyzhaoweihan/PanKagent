@@ -457,15 +457,15 @@ database**. This database answers the question **"WHERE on the genome is this en
 by storing the chromosomal position (chromosome, start bp, end bp) for every gene, SNP,
 and OCR peak in the knowledge graph.
 
-**What it contains (one unified table: `genomic_interval`):**
-- **78,687 genes** (entity_type = `Ensembl_genes.node`) — Ensembl gene IDs with chr, start, end
+**What it contains (four entity tables):**
+- **78,687 genes** in `ensembl_genes_node` — Ensembl IDs + HGNC gene_name column (e.g. 'INS', 'CFTR') with chr, start, end
   - Example: ENSG00000254647 (INS) → chr11: 2,159,779–2,161,221
-- **1,615 GWAS SNPs** (entity_type = `GWAS_snp_id.node`) — rsIDs with chr, start, end
+- **1,615 GWAS SNPs** in `gwas_snp_id_node` — rsIDs with chr, start, end
   - Example: rs1050976 → chr6: 408,079–408,080
-- **5,294,421 OCR peaks** (entity_type = `ocr_peak.node`) — open chromatin regions with chr, start, end
+- **5,294,421 OCR peaks** in `ocr_peak_node` — open chromatin regions with chr, start, end
   - Example: CL_0000169_1_100008394_100008769 → chr1: 100,008,394–100,008,769
   - NOTE: The knowledge graph does NOT store genomic coordinates for OCR peaks — only this database has them
-- **19,422 QTL SNPs** (entity_type = `QTL_snp.node`) — QTL variant rsIDs with chr, start, end
+- **19,422 QTL SNPs** in `qtl_snp_node` — QTL variant rsIDs with chr, start, end
 
 **What it can answer that the knowledge graph CANNOT:**
 - Chromosomal position of any gene, SNP, or OCR peak
