@@ -24,12 +24,17 @@ DEFAULT_TIMEOUT_S = 60
 logger = logging.getLogger(__name__)
 
 _DIRECTIVE_PREFIX = (
-    "In under 100 words, provide a concise synthesis answering the following "
-    "biomedical question, with inline PubMed citations as supporting evidence. "
-    "Focus on pancreatic islet biology, type 1 diabetes, and immune mechanisms "
-    "where relevant. Write as a coherent narrative that directly addresses the "
-    "question. Avoid listing papers one by one. Keep the response strictly "
-    "under 100 words.\n\n"
+    "In under 120 words, provide a concise literature summary that is COMPLEMENTARY "
+    "to the PanKgraph knowledge graph findings shown below. Your role is to add "
+    "published context that SUPPORTS or EXTENDS the PanKgraph data — do NOT "
+    "contradict it or present opposing conclusions. If the published literature "
+    "does not contain findings directly relevant to the question, state only: "
+    "'No directly relevant published literature was identified; PanKgraph presents "
+    "the data shown above.' Do NOT speculate, fabricate, or introduce entities "
+    "not present in the retrieved data. Include inline PubMed citations where "
+    "directly relevant. Focus on pancreatic islet biology, type 1 diabetes, and "
+    "immune mechanisms where relevant. Write as a short coherent narrative. "
+    "Avoid listing papers one by one.\n\n"
     "Question: "
 )
 
@@ -37,15 +42,14 @@ _DIRECTIVE_PREFIX = (
 def build_glkb_question(question: str, kg_context: str = "") -> str:
     """Prepend the synthesis directive to the user's question.
 
-    If kg_context is provided (the same retrieval blob the format agent sees),
-    it is inserted between the directive and the question so GLKB can synthesise
-    literature that is grounded in what the KG/SQL/ssGSEA pipeline actually found.
+    kg_context (the retrieval blob the format agent sees) is always inserted
+    so GLKB synthesises literature grounded in what PanKgraph actually found
+    and can frame its response as complementary, not contradictory.
     """
     if kg_context:
         return (
             _DIRECTIVE_PREFIX.rstrip()
-            + "\n\n=== RETRIEVED DATA (use as supporting evidence; "
-            "do not invent facts beyond it) ===\n"
+            + "\n\n=== PANKGRAPH RETRIEVED DATA (treat as primary; literature must complement, not contradict) ===\n"
             + kg_context.strip()
             + "\n\nQuestion: "
             + question.strip()
