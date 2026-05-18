@@ -23,7 +23,8 @@
     "II": "Inhibition index; fold inhibition or suppression induced by treatment relative to baseline or reference.",
     "IBMX": "3-isobutyl-1-methylxanthine; raises cAMP and amplifies secretion.",
     "Ad": "Adrenaline/epinephrine.",
-    "KCI": "Source label for potassium chloride depolarization condition; match as written in data, interpret biologically as KCI."
+    "KCI": "Source label for potassium chloride depolarization condition; match as written in data, interpret biologically as KCI.",
+    "phase" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
     {
