@@ -19,12 +19,12 @@
   "global_terms": {
     "IEQ": "Islet equivalent; used here as normalization to islet mass.",
     "AUC": "Area under the curve; integrated secretion over a defined time window or stimulation period.",
-    "SI": "Stimulation index; fold stimulation induced by treatment relative to baseline or reference.",
-    "II": "Inhibition index; fold inhibition or suppression induced by treatment relative to baseline or reference.",
+    "SI": "Stimulation index; treatment-induced increase relative to baseline or reference.",
+    "II": "Inhibition index; treatment-induced decrease relative to baseline or reference."
     "IBMX": "3-isobutyl-1-methylxanthine; raises cAMP and amplifies secretion.",
     "Ad": "Adrenaline/epinephrine.",
     "KCI": "Source label for potassium chloride depolarization condition; match as written in data, interpret biologically as KCI.",
-    "phase" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
+    "phase 1" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
     {
