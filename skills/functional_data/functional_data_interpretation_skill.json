@@ -13,7 +13,7 @@
     "High glucose is 16.7 mM glucose. Low glucose is 1.7 mM glucose. Basal glucose is 5.6 mM glucose.",
     "IBMX 100 is annotated as an increased intracellular cAMP condition. It is usually associated with increased insulin secretion and increased glucagon secretion.",
     "Ad 1 refers to adrenaline/epinephrine at 1 µM. In the source figure, this condition is associated with reduced insulin secretion and increased glucagon secretion.",
-    "KCI 20 indicates potassium chloride at 20 mM. Biologically, it depolarizes endocrine cells and can trigger Ca2+-dependent secretion of islet hormones, including insulin and glucagon, depending on the measured cell/output." ,
+    "KCl 20 indicates potassium chloride at 20 mM. Biologically, it depolarizes endocrine cells and can trigger Ca2+-dependent secretion of islet hormones, including insulin and glucagon, depending on the measured cell/output." ,
     "When reporting interpretation, state hormone, condition, measurement type, normalization, and expected biological meaning."
   ],
   "global_terms": {
@@ -23,7 +23,7 @@
     "II": "Inhibition index; treatment-induced decrease relative to baseline or reference."
     "IBMX": "Raises cAMP; potentiates INS secretion and can enhance GCG secretion.",
     "Ad": "Adrenergic stimulation; inhibits INS secretion and generally stimulates/supports GCG secretion.",
-    "KCI": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
+    "KCl": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
     "phase 1" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
@@ -109,18 +109,18 @@
       "interpretation": "Fold inhibition of insulin secretion under low glucose plus adrenaline/epinephrine."
     },
     {
-      "feature": "INS-KCI 20 AUC (ng/100 IEQs)",
+      "feature": "INS-KCl 20 AUC (ng/100 IEQs)",
       "hormone": "insulin",
-      "condition": "KCI 20 depolarization",
+      "condition": "KCl 20 depolarization",
       "measurement_type": "depolarization AUC",
       "unit": "ng/100 IEQs",
       "normalization": "islet mass via IEQ",
       "interpretation": "Insulin secretion after potassium chloride depolarization, bypassing glucose sensing/metabolism and directly testing Ca2+-dependent secretion."
     },
     {
-      "feature": "INS-KCI 20 SI",
+      "feature": "INS-KCl 20 SI",
       "hormone": "insulin",
-      "condition": "KCI 20 depolarization",
+      "condition": "KCl 20 depolarization",
       "measurement_type": "stimulation index",
       "unit": "fold change",
       "normalization": "relative to baseline",
@@ -190,18 +190,18 @@
       "interpretation": "Fold stimulation of glucagon secretion during low glucose plus adrenaline/epinephrine."
     },
     {
-      "feature": "GCG-KCI 20 AUC (pg/100 IEQs)",
+      "feature": "GCG-KCl 20 AUC (pg/100 IEQs)",
       "hormone": "glucagon",
-      "condition": "KCI 20 depolarization",
+      "condition": "KCl 20 depolarization",
       "measurement_type": "depolarization AUC",
       "unit": "pg/100 IEQs",
       "normalization": "islet mass via IEQ",
       "interpretation": "Glucagon secretion after potassium chloride depolarization, bypassing glucose sensing/metabolism and directly testing Ca2+-dependent secretion."
     },
     {
-      "feature": "GCG-KCI 20 SI",
+      "feature": "GCG-KCl 20 SI",
       "hormone": "glucagon",
-      "condition": "KCI 20 depolarization",
+      "condition": "KCl 20 depolarization",
       "measurement_type": "stimulation index",
       "unit": "fold change",
       "normalization": "relative to baseline",
@@ -223,8 +223,8 @@
       "agent_interpretation": "GCG-G 16.7 II measures inhibition of glucagon secretion during 16.7 mM high-glucose exposure. It should be treated as a fold inhibition/suppression metric, with exact direction confirmed from the dataset's index definition."
     },
     {
-      "input_feature": "INS-KCI 20 AUC (ng/100 IEQs)",
-      "agent_interpretation": "INS-KCI 20 AUC measures IEQ-normalized insulin secretion after potassium chloride depolarization. This bypasses glucose sensing/metabolism and reflects downstream Ca2+-dependent secretory capacity."
+      "input_feature": "INS-KCl 20 AUC (ng/100 IEQs)",
+      "agent_interpretation": "INS-KCl 20 AUC measures IEQ-normalized insulin secretion after potassium chloride depolarization. This bypasses glucose sensing/metabolism and reflects downstream Ca2+-dependent secretory capacity."
     }
   ]
 }
