@@ -23,7 +23,7 @@
     "II": "Inhibition index; treatment-induced decrease relative to baseline or reference."
     "IBMX": "Raises cAMP; potentiates INS secretion and can enhance GCG secretion.",
     "Ad": "Adrenergic stimulation; inhibits INS secretion and generally stimulates/supports GCG secretion.",
-    "KCl": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
+    "KCI": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
     "phase 1" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
