@@ -17,13 +17,13 @@
     "When reporting interpretation, state hormone, condition, measurement type, normalization, and expected biological meaning."
   ],
   "global_terms": {
-    "IEQ": "Islet equivalent; used here as normalization to islet mass.",
+    "IEQ": "IEQ-normalized value means that the measured functional readout is divided by the number of islet equivalents in the sample.",
     "AUC": "Area under the curve; integrated secretion over a defined time window or stimulation period.",
     "SI": "Stimulation index; treatment-induced increase relative to baseline or reference.",
     "II": "Inhibition index; treatment-induced decrease relative to baseline or reference."
-    "IBMX": "3-isobutyl-1-methylxanthine; raises cAMP and amplifies secretion.",
-    "Ad": "Adrenaline/epinephrine.",
-    "KCI": "Source label for potassium chloride depolarization condition; match as written in data, interpret biologically as KCI.",
+    "IBMX": "Raises cAMP; potentiates INS secretion and can enhance GCG secretion.",
+    "Ad": "Adrenergic stimulation; inhibits INS secretion and generally stimulates/supports GCG secretion.",
+    "KCl": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
     "phase 1" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
