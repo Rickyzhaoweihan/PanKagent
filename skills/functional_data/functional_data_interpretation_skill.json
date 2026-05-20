@@ -17,14 +17,16 @@
     "When reporting interpretation, state hormone, condition, measurement type, normalization, and expected biological meaning."
   ],
   "global_terms": {
-    "IEQ": "IEQ-normalized value means that the measured functional readout is divided by the number of islet equivalents in the sample.",
+    "IEQ": "Normalized by IEQ: The measured functional readout is divided by the number of islet equivalents, where 1 IEQ represents a standardized 150-μm-diameter islet.",
+    "content": "Normalized by insulin content: The measured functional readout is divided by the total insulin content measured from the same sample, representing function relative to the sample’s insulin reserve or insulin-producing capacity.",
     "AUC": "Area under the curve; integrated secretion over a defined time window or stimulation period.",
     "SI": "Stimulation index; treatment-induced increase relative to baseline or reference.",
     "II": "Inhibition index; treatment-induced decrease relative to baseline or reference.",
-    "IBMX": "IBMX is ihosphodiesterase inhibitor that elevates cAMP; potentiates insulin secretion and can stimulate glucagon secretion (context-dependent).",
+    "IBMX": "PDE inhibitor that elevates cAMP; potentiates insulin secretion and can stimulate glucagon secretion (context-dependent).",
     "Ad": "Adrenergic stimulation; inhibits INS secretion and generally stimulates/supports GCG secretion.",
-    "KCl": "Depolarizes islet cells; increases Ca2+ influx and directly stimulates INS and GCG exocytosis.",
-    "phase 1" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
+    "KCl": "Depolarizes islet cells; increases Ca²⁺ influx (via voltage-gated Ca²⁺ channels) and triggers Ca²⁺-dependent exocytosis—robustly stimulating insulin secretion and often stimulating glucagon secretion depending on conditions.",
+    "phase 1" : "phase 1 and phase 2 are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term.",
+    "first phase" : "first-phase and second-phase are specfic for first-phase AUC and second-phase AUC features for AUC during high glucose stimulation. So do not call anthing else as phase 1/2/3.. to avoid confusion with specfic term."
   },
   "feature_dictionary": [
     {
