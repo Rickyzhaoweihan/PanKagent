@@ -119,9 +119,13 @@ def get_simplified_schema() -> Dict[str, Any]:
                 "part_of_QTL_signal connects variants to genes (eQTL). "
                 "Use pattern: (s:snv)-[:part_of_QTL_signal]->(g:gene). Properties: pip, tissue_name, gene_name."
             ),
-            "semicolon_rels": (
-                "Relationship names with semicolons must be backtick-escaped in Cypher: "
-                "[r:`function_annotation;GO`], [r:`pathway_annotation;KEGG`], [r:`pathway_annotation;reactome`]"
+            "function_annotation_unified": (
+                "GO terms, KEGG pathways, and Reactome pathways all share the SAME edge "
+                "type: `function_annotation` (no semicolon, no backtick escape). "
+                "Distinguish them by the target node label: "
+                "(g:gene)-[r:function_annotation]->(go:gene_ontology) for GO, "
+                "->(k:kegg) for KEGG, ->(rp:reactome) for Reactome. The edge's "
+                "`data_source` property is 'Ensembl' (GO), 'KEGG', or 'Reactome'."
             ),
         }
 
@@ -207,7 +211,7 @@ def get_minimal_schema_for_llm() -> str:
         notes = """
 Notes:
 - Lookup nodes: gene.name='CFTR', disease.name='type 1 diabetes', anatomical_structure.name='pancreas'
-- Relationship names with semicolons MUST be backtick-escaped: [`function_annotation;GO`], [`pathway_annotation;KEGG`], [`pathway_annotation;reactome`]
+- Ontology/pathway lookups all use the unified `function_annotation` edge (no semicolon, no backtick escape). Distinguish by target node label: `(g:gene)-[r:function_annotation]->(go:gene_ontology)` for GO; `->(k:kegg)` for KEGG; `->(rp:reactome)` for Reactome.
 - Filter T1D DEG: r.UpOrDownRegulation='Upregulated in T1D' or 'Downregulated in T1D'
 - SNP-gene QTL: (s:snv)-[r:part_of_QTL_signal]->(g:gene), filter r.pip>0.5, r.tissue_name='Islet'
 - Disease name: ALWAYS use 'type 1 diabetes' (lowercase, full spelling, not T1D)
@@ -343,8 +347,115 @@ def get_detailed_properties(node_labels: list, relationship_types: list) -> str:
                     result_lines.append(f"\n  {rel_type} ({source}→{target}): (no properties)")
     
     result = '\n'.join(result_lines)
-    
+
     # Cache the result
     _property_cache[cache_key] = result
-    
+
     return result
+
+
+# ---------------------------------------------------------------------------
+# Lazy entity-aware schema retrieval (added for the 2-stage cypher flow)
+# ---------------------------------------------------------------------------
+
+_enum_map_cache: dict[tuple, Dict[str, Any]] = {}
+
+
+def _resolve_compound_key(schema_section: Dict[str, Any], simple_label: str) -> Optional[str]:
+    """Find the compound-label key in a schema section whose last token matches."""
+    for key in schema_section.keys():
+        if key.split(";")[-1] == simple_label:
+            return key
+    return None
+
+
+def get_property_enum_map(
+    node_labels: list, relationship_types: list
+) -> Dict[str, Dict[str, Dict[str, list]]]:
+    """Return a machine-readable enum map for the specified entities.
+
+    Only properties whose schema entry carries a ``values`` array (i.e. true
+    enums after the resync's ≤ ENUM_THRESHOLD filter) are included. Properties
+    with only ``examples`` (high-cardinality free text) are skipped — they
+    cannot be coerced safely.
+
+    Output shape::
+
+        {
+          "node_properties": {
+            "<simple_label>": {"<prop>": [value, value, ...], ...},
+            ...
+          },
+          "edge_properties": {
+            "<simple_rel_type>": {"<prop>": [value, value, ...], ...},
+            ...
+          }
+        }
+
+    The keys use the *simple* label/rel name (last `;`-token), matching what
+    `extract_entities_from_cypher` returns.
+    """
+    cache_key = (tuple(sorted(node_labels)), tuple(sorted(relationship_types)))
+    if cache_key in _enum_map_cache:
+        return _enum_map_cache[cache_key]
+
+    schema = get_schema()
+    node_section = schema.get("node_types", {})
+    edge_section = schema.get("edge_types", {})
+
+    def _extract_enums(properties: Dict[str, Any]) -> Dict[str, list]:
+        out: Dict[str, list] = {}
+        for prop_name, prop_spec in properties.items():
+            if isinstance(prop_spec, dict) and prop_spec.get("values"):
+                values = prop_spec["values"]
+                if isinstance(values, list) and values:
+                    out[prop_name] = list(values)
+        return out
+
+    node_out: Dict[str, Dict[str, list]] = {}
+    for simple in node_labels:
+        compound = _resolve_compound_key(node_section, simple)
+        if not compound:
+            continue
+        props = node_section[compound].get("properties", {})
+        enums = _extract_enums(props)
+        if enums:
+            node_out[simple] = enums
+
+    edge_out: Dict[str, Dict[str, list]] = {}
+    for simple in relationship_types:
+        compound = _resolve_compound_key(edge_section, simple)
+        if not compound:
+            continue
+        props = edge_section[compound].get("properties", {})
+        enums = _extract_enums(props)
+        if enums:
+            edge_out[simple] = enums
+
+    result = {"node_properties": node_out, "edge_properties": edge_out}
+    _enum_map_cache[cache_key] = result
+    return result
+
+
+def get_detailed_schema_for_cypher(draft_cypher: str) -> tuple[str, Dict[str, Any]]:
+    """Lazy slice: parse `draft_cypher`, then pull detailed schema for just
+    the entities it touched.
+
+    Returns ``(detailed_text, enum_map)``:
+      - ``detailed_text`` is the human-readable text form produced by
+        ``get_detailed_properties`` — suitable for inclusion in a refinement
+        LLM prompt.
+      - ``enum_map`` is the machine-readable form produced by
+        ``get_property_enum_map`` — consumed by ``auto_fix_cypher`` for
+        deterministic enum-value coercion.
+
+    Both views describe the SAME entity set, derived from the draft Cypher's
+    node-label and relationship-type usages via
+    ``extract_entities_from_cypher``.
+    """
+    entities = extract_entities_from_cypher(draft_cypher)
+    labels = entities.get("node_labels", [])
+    rels = entities.get("relationship_types", [])
+    detailed_text = get_detailed_properties(labels, rels)
+    enum_map = get_property_enum_map(labels, rels)
+    return detailed_text, enum_map

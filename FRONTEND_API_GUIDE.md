@@ -92,7 +92,7 @@ The server defaults to **rigor mode** (`rigor=True`). In rigor mode the system u
 
 Literature retrieval is **separate and on-demand**. Call `POST /chat/literature` after a round completes (i.e., after `/chat/plan/confirm` or after `/chat/start` with `auto_confirm: true`). The endpoint:
 
-1. Reads the KG/SQL/ssGSEA results already stored in the session from the last confirmed round.
+1. Reads the KG/SQL/Functional API results already stored in the session from the last confirmed round.
 2. Runs **two sources in parallel** (~25–35 s total):
    - **GLKB** (`glkb.dcmb.med.umich.edu`) — biomedical KG-powered LLM agent that produces a ≤100-word narrative synthesis with structured PubMed references. Receives the retrieval context (queries + results) so its synthesis is grounded in what the pipeline found.
    - **HIRN** — local abstract/full-text index. Supplements GLKB when GLKB returns fewer than 3 references.
@@ -350,7 +350,7 @@ Called after `POST /chat/message` returned `route: new_query_pending`. Optionall
 |---|---|---|---|
 | `chat_session_id` | string | required | The chat session ID. |
 | `plan_session_id` | string | required | The `pending_plan_session_id` from the last `/chat/message`. |
-| `revision_prompt` | string\|null | `null` | If provided, the plan is revised before confirmation. Re-executes Cypher/SQL/ssGSEA on the revised plan. |
+| `revision_prompt` | string\|null | `null` | If provided, the plan is revised before confirmation. Re-executes Cypher/SQL/Functional API on the revised plan. |
 
 **Response 200 (`ChatResponse`):**
 ```json
@@ -669,7 +669,7 @@ created_at ─┬── last_active updated on every /chat/* call
 }
 ```
 
-`source` is `null` for knowledge-graph (Neo4j) steps, `"genomic"` for PostgreSQL genomic-coordinate steps, `"ssgsea"` for immune enrichment steps, and `"functional_data"` for islet assay REST API steps.
+`source` is `null` for knowledge-graph (Neo4j) steps, `"genomic"` for PostgreSQL genomic-coordinate steps, and `"functional_data"` for islet assay REST API steps.
 
 ---
 
@@ -686,7 +686,7 @@ On every `/chat/message` call a Claude Haiku classifier (0.5 s, cheap) reads the
 
 **Reply `new_query` if the question:**
 - Introduces a new entity not mentioned before
-- Needs a new data source (ssGSEA, genomic, literature)
+- Needs a new data source (genomic, functional_data, literature)
 - Is ambiguous enough that plan review is warranted
 
 On any classifier API failure, falls back to `new_query` (safe: user just sees a plan review).

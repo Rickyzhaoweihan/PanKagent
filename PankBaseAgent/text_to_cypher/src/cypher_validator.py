@@ -386,31 +386,47 @@ def fix_single_quotes_to_double(cypher: str) -> str:
 def fix_relationship_variables(cypher: str) -> str:
     """
     Add missing variable names to relationships.
-    
+
     Fixes: -[:TYPE]- → -[r:TYPE]-
+
+    Skips relationships inside ``EXISTS { ... }`` / ``COUNT { ... }`` subqueries
+    — those variables are scoped to the subquery and don't need (and shouldn't
+    have) outer-visible names. Naming them only causes outer-scope WITH/RETURN
+    references to fail with "Variable not defined".
     """
+    # Identify EXISTS/COUNT subquery spans so we can leave their interior alone.
+    spans: list[tuple[int, int]] = []
+    for m in re.finditer(r'\b(EXISTS|COUNT)\s*\{[^{}]*\}', cypher, flags=re.IGNORECASE):
+        spans.append((m.start(), m.end()))
+
+    def in_subquery(pos: int) -> bool:
+        return any(a <= pos < b for a, b in spans)
+
     # Counter for unique variable names
     var_counter = [0]
-    
+
     def replacement(match):
         rel_content = match.group(1).strip()
-        
+        # Skip if this relationship lives inside an EXISTS/COUNT subquery.
+        if in_subquery(match.start()):
+            return match.group(0)
+
         # If it starts with : (no variable name), add one
         if rel_content.startswith(':'):
             var_counter[0] += 1
             var_name = f"r{var_counter[0]}"
             return f"-[{var_name}{rel_content}]-"
-        
+
         # If empty, add variable and placeholder type
         if not rel_content:
             var_counter[0] += 1
             return f"-[r{var_counter[0]}]-"
-        
+
         return match.group(0)  # No change needed
-    
+
     # Find and fix relationship patterns
     fixed = re.sub(r'-\[(.*?)\]-', replacement, cypher)
-    
+
     return fixed
 
 
@@ -1020,6 +1036,325 @@ def fix_property_names(cypher: str) -> str:
     return fixed
 
 
+def _match_enum_value(literal: str, valid_values: list) -> Optional[str]:
+    """Return the canonical enum value that matches `literal`, or None.
+
+    Matching rules, in priority order:
+      1. Exact match (case-sensitive).
+      2. Case-insensitive exact match.
+      3. Substring match — literal is a substring of exactly one valid value
+         (case-insensitive). Resolves "beta cell" → "type B pancreatic cell
+         (beta cell)" without ambiguity.
+      4. Otherwise None — do not guess.
+    """
+    if not isinstance(literal, str) or not valid_values:
+        return None
+    # 1. exact
+    if literal in valid_values:
+        return literal
+    # 2. case-insensitive exact
+    low = literal.lower()
+    for v in valid_values:
+        if isinstance(v, str) and v.lower() == low:
+            return v
+    # 3. unique substring match
+    contains = [v for v in valid_values if isinstance(v, str) and low in v.lower()]
+    if len(contains) == 1:
+        return contains[0]
+    # Reverse: literal contains a unique valid value (handles "T1D" → if
+    # one of the valid values is "T1D Stage 3", we want the unique match).
+    contained = [v for v in valid_values if isinstance(v, str) and v.lower() in low]
+    if len(contained) == 1:
+        return contained[0]
+    return None
+
+
+# Patterns for property=literal expressions inside WHERE/SET/property-match.
+# We capture:  <var>.<prop>  <op>  "<literal>"
+#         or   <var>.<prop>  <op>  '<literal>'   (single quotes get fixed earlier)
+# Operators handled: =, CONTAINS, STARTS WITH, ENDS WITH
+_PROP_LITERAL_RE = re.compile(
+    r"(?P<var>\w+)\.(?P<prop>\w+)\s*"
+    r"(?P<op>=|CONTAINS|STARTS\s+WITH|ENDS\s+WITH)\s*"
+    r"(?P<quote>[\"'])(?P<value>[^\"']*?)(?P=quote)",
+    re.IGNORECASE,
+)
+
+
+def _build_var_label_map(cypher: str) -> Dict[str, str]:
+    """Scan MATCH patterns for `(var:Label)` and `[var:RelType]` and return
+    a `{var: simple_label}` map (using the last `;`-token for compound names)."""
+    out: Dict[str, str] = {}
+    # node vars
+    for m in re.finditer(r"\(\s*(\w+)\s*:\s*([A-Za-z_; ]+?)\s*(?:\{|\)|$)", cypher):
+        var = m.group(1)
+        label = m.group(2).strip().split(";")[-1].strip().rstrip(")")
+        if var and label and var not in out:
+            out[var] = label
+    # rel vars
+    for m in re.finditer(r"\[\s*(\w+)\s*:\s*`?([A-Za-z_;0-9 ]+?)`?\s*(?:\{|\])", cypher):
+        var = m.group(1)
+        rel = m.group(2).strip().split(";")[-1].strip()
+        if var and rel and var not in out:
+            out[var] = rel
+    return out
+
+
+def fix_enum_value_coercion(
+    cypher: str, schema_slice: Optional[Dict] = None
+) -> Tuple[str, List[str]]:
+    """Coerce string literals in `<var>.<prop> = "value"` style expressions to
+    their canonical enum values from the given schema slice.
+
+    `schema_slice` is the output of `schema_loader.get_property_enum_map`:
+        {
+          "node_properties": {<simple_label>: {<prop>: [valid, ...]}, ...},
+          "edge_properties": {<simple_rel>:   {<prop>: [valid, ...]}, ...},
+        }
+
+    Strategy: build a `{var: simple_label}` map from MATCH patterns, then for
+    each `var.prop OP "literal"`, look up the enum list for the matching
+    (label, prop). If the literal is not already a valid enum value but
+    matches one canonically (case-insensitive or unique substring), replace
+    it. Otherwise leave it alone.
+
+    Returns `(fixed_cypher, list_of_per-fix_messages)`. When schema_slice is
+    None or empty, this is a no-op.
+    """
+    if not cypher or not schema_slice:
+        return cypher, []
+    if not (schema_slice.get("node_properties") or schema_slice.get("edge_properties")):
+        return cypher, []
+
+    var_label = _build_var_label_map(cypher)
+    node_props = schema_slice.get("node_properties", {}) or {}
+    edge_props = schema_slice.get("edge_properties", {}) or {}
+
+    fixes: List[str] = []
+
+    def replace(match: re.Match) -> str:
+        var = match.group("var")
+        prop = match.group("prop")
+        op = match.group("op")
+        quote = match.group("quote")
+        value = match.group("value")
+
+        label = var_label.get(var)
+        if not label:
+            return match.group(0)
+
+        # Look up enum list — try node first, then edge
+        enum_values = node_props.get(label, {}).get(prop) or edge_props.get(label, {}).get(prop)
+        if not enum_values:
+            return match.group(0)
+
+        # If the value is already exact, nothing to do
+        if value in enum_values:
+            return match.group(0)
+
+        canonical = _match_enum_value(value, enum_values)
+        if canonical is None or canonical == value:
+            return match.group(0)
+
+        fixes.append(
+            f"Coerced {var}.{prop} {op.upper()} {quote}{value}{quote} -> {quote}{canonical}{quote}"
+        )
+        return f"{var}.{prop} {op} {quote}{canonical}{quote}"
+
+    fixed = _PROP_LITERAL_RE.sub(replace, cypher)
+    return fixed, fixes
+
+
+# Donor properties that LOOK numeric but are actually stored as strings.
+# Each entry maps to the wrapper needed to coerce the property to a number:
+#  - "int_years": value is "<N> years" — extract first token, toInteger
+#  - "float":     value is a numeric string like "21.3" — toFloat
+_DONOR_STRING_NUMERICS: dict[str, str] = {
+    "age": "int_years",
+    "diabetes_duration": "int_years",
+    "bmi": "float",
+    "hba1c_percentage": "float",
+    "c_peptide_ng_ml": "float",
+}
+
+# var.prop  <op>  <numeric literal>   (e.g. `d.age < 40`)
+_NUMERIC_COMPARE_RE = re.compile(
+    r"(?P<var>\w+)\.(?P<prop>\w+)\s*(?P<op>(?:<=|>=|<>|!=|<|>|=))\s*(?P<num>-?\d+(?:\.\d+)?)\b"
+)
+
+
+def fix_donor_string_numeric_compares(cypher: str) -> Tuple[str, List[str]]:
+    """Rewrite raw `<var>.age < 40` style comparisons on donor numeric-string
+    properties to use the proper conversion wrapper.
+
+    `age` is stored in Neo4j as e.g. `"18 years"`, so `d.age < 40` silently
+    returns 0 rows (string-vs-number comparison). This pass rewrites those
+    patterns to `toInteger(split(d.age, ' ')[0]) < 40` (or `toFloat(d.bmi)`
+    for plain-numeric strings).
+
+    Returns ``(fixed_cypher, list_of_per-fix_messages)``. No-op when no
+    donor numeric-string compares are found.
+    """
+    if not cypher:
+        return cypher, []
+    # Quick exit if none of the target properties appear in the cypher.
+    if not any(re.search(rf"\b{p}\b", cypher) for p in _DONOR_STRING_NUMERICS):
+        return cypher, []
+
+    fixes: List[str] = []
+
+    def replace(m: re.Match) -> str:
+        prop = m.group("prop")
+        kind = _DONOR_STRING_NUMERICS.get(prop)
+        if not kind:
+            return m.group(0)
+        var = m.group("var")
+        op = m.group("op")
+        num = m.group("num")
+        # Don't double-wrap if already inside a toInteger/toFloat call (look
+        # back a few chars in the surrounding cypher — handled by re.sub
+        # context, but defensively skip if the preceding chars are "toInt("
+        # or "toFloat(").
+        start = m.start()
+        preceding = cypher[max(0, start - 18):start]
+        if "toInteger(" in preceding or "toFloat(" in preceding:
+            return m.group(0)
+        if kind == "int_years":
+            wrapped = f"toInteger(split({var}.{prop}, ' ')[0])"
+        else:
+            wrapped = f"toFloat({var}.{prop})"
+        fixes.append(
+            f"Coerced {var}.{prop} {op} {num} -> {wrapped} {op} {num} "
+            f"({prop} is stored as a String)"
+        )
+        return f"{wrapped} {op} {num}"
+
+    fixed = _NUMERIC_COMPARE_RE.sub(replace, cypher)
+    return fixed, fixes
+
+
+# Properties whose values are numeric-looking strings — comparison with an
+# unquoted int returns 0 rows. Quote the literal instead. (Range comparisons
+# like < or > on these are ambiguous: chr can be '1'..'22','X','Y','MT'; we
+# only fix equality.)
+_STRING_QUOTED_NUMERIC_PROPS: set[str] = {
+    "chr",          # gene, OCR_peak, variants (values: '1'..'22','X','Y','MT')
+    "strand",       # gene (values: '-1','1')
+    "credibleset",  # part_of_QTL_signal (string like '1','2',...)
+}
+
+# var.prop = <integer>  (equality with unquoted int literal)
+_INT_EQ_RE = re.compile(
+    r"(?P<var>\w+)\.(?P<prop>\w+)\s*=\s*(?P<num>-?\d+)\b(?!\s*\.)"
+)
+
+
+def fix_string_typed_numeric_equality(cypher: str) -> Tuple[str, List[str]]:
+    """Rewrite `<var>.<prop> = <int>` to `<var>.<prop> = '<int>'` when the
+    property is one of the numeric-string-typed ones (chr / strand /
+    credibleset etc.).
+
+    Example: `WHERE g.chr = 1` → `WHERE g.chr = '1'`.
+
+    Returns ``(fixed_cypher, list_of_per-fix_messages)``.
+    """
+    if not cypher:
+        return cypher, []
+    if not any(re.search(rf"\b{p}\b", cypher) for p in _STRING_QUOTED_NUMERIC_PROPS):
+        return cypher, []
+    fixes: List[str] = []
+
+    def replace(m: re.Match) -> str:
+        prop = m.group("prop")
+        if prop not in _STRING_QUOTED_NUMERIC_PROPS:
+            return m.group(0)
+        var = m.group("var")
+        num = m.group("num")
+        fixes.append(
+            f"Quoted {var}.{prop} = {num} -> {var}.{prop} = '{num}' "
+            f"({prop} is stored as a String)"
+        )
+        return f'{var}.{prop} = "{num}"'
+
+    fixed = _INT_EQ_RE.sub(replace, cypher)
+    return fixed, fixes
+
+
+# Boolean-flag properties stored as mixed-case strings ('TRUE','True','FALSE','False',...).
+# Comparing with a Cypher boolean (`= true`) returns 0 rows; comparing with a
+# specific case (`= 'TRUE'`) misses the rows with other casing. Canonical form
+# is `toLower(<var>.<prop>) = 'true'` / `'false'`.
+_STRING_BOOLEAN_PROPS: set[str] = {
+    "in_3prime_UTR",
+    "in_3prime_gene_region",
+    "in_5prime_UTR",
+    "in_5prime_gene_region",
+    "in_intron",
+    "in_acceptor_splice_site",
+    "in_donor_splice_site",
+    "non_synonymous_frameshift",
+    "non_synonymous_missense",
+    "non_synonymous_nonsense",
+}
+
+# Patterns:
+#   var.prop = true   |  var.prop = false  (lowercase booleans)
+_BARE_BOOL_RE = re.compile(
+    r"(?P<var>\w+)\.(?P<prop>\w+)\s*=\s*(?P<val>true|false)\b",
+    re.IGNORECASE,
+)
+# Patterns:
+#   var.prop = "TRUE"  |  = 'False'  etc.  (quoted, any casing)
+_QUOTED_BOOL_RE = re.compile(
+    r"(?P<var>\w+)\.(?P<prop>\w+)\s*=\s*(?P<quote>[\"'])(?P<val>TRUE|True|true|FALSE|False|false)(?P=quote)"
+)
+
+
+def fix_string_typed_boolean_equality(cypher: str) -> Tuple[str, List[str]]:
+    """Rewrite boolean-flag comparisons to a case-insensitive form so the
+    auto-fix matches every casing (`'TRUE'`, `'True'`, `'true'`, …) of the
+    underlying string-typed boolean variant flags.
+
+    Both patterns canonicalise to: ``toLower(<var>.<prop>) = '<true|false>'``.
+    Already-canonicalised expressions (`toLower(...)`) are left alone.
+    """
+    if not cypher:
+        return cypher, []
+    if not any(re.search(rf"\b{p}\b", cypher) for p in _STRING_BOOLEAN_PROPS):
+        return cypher, []
+    if "toLower(" in cypher:
+        # Defensive — don't double-wrap if already canonicalised somewhere.
+        # We still process unrelated occurrences via the regex's per-match check.
+        pass
+
+    fixes: List[str] = []
+
+    def _replace_common(var: str, prop: str, raw_val: str, src_repr: str) -> str | None:
+        if prop not in _STRING_BOOLEAN_PROPS:
+            return None
+        bool_word = "true" if raw_val.lower() == "true" else "false"
+        fixes.append(
+            f"Canonicalised {var}.{prop} = {src_repr} -> "
+            f"toLower({var}.{prop}) = '{bool_word}' "
+            f"({prop} is a mixed-case String boolean)"
+        )
+        return f"toLower({var}.{prop}) = '{bool_word}'"
+
+    def replace_bare(m: re.Match) -> str:
+        out = _replace_common(m.group("var"), m.group("prop"), m.group("val"), m.group("val"))
+        return out if out is not None else m.group(0)
+
+    def replace_quoted(m: re.Match) -> str:
+        q = m.group("quote")
+        v = m.group("val")
+        out = _replace_common(m.group("var"), m.group("prop"), v, f"{q}{v}{q}")
+        return out if out is not None else m.group(0)
+
+    fixed = _BARE_BOOL_RE.sub(replace_bare, cypher)
+    fixed = _QUOTED_BOOL_RE.sub(replace_quoted, fixed)
+    return fixed, fixes
+
+
 def fix_relationship_directions(cypher: str) -> str:
     """
     Fix relationship directions based on schema.
@@ -1039,6 +1374,94 @@ def fix_relationship_directions(cypher: str) -> str:
     # For now, just return the query unchanged
     # A future enhancement could attempt to fix this
     return cypher
+
+
+_GENE_ACTIVITY_MATCH = re.compile(
+    # (gene_var:gene)-[rel_var:gene_activity_score_in]->(cell_var:anatomical_structure...)
+    r'\(\s*(?P<g>\w+)\s*:\s*gene\s*\)\s*-\s*\[\s*\w+\s*:\s*gene_activity_score_in\s*\]\s*->\s*\(\s*(?P<c>\w+)\s*:\s*anatomical_structure',
+    re.IGNORECASE,
+)
+
+
+def fix_gene_activity_requires_detected(cypher: str) -> str:
+    """Inject ``EXISTS { (g)-[:gene_detected_in]->(c) }`` whenever a query
+    matches ``gene_activity_score_in`` but does not co-require a
+    ``gene_detected_in`` edge between the same gene and cell type.
+
+    Rationale: scATAC-derived gene activity scores carry many false positives
+    (ambient signal, pseudobulk artifacts). We never want to report that a
+    gene has chromatin activity in a cell type where it isn't actually
+    detected/expressed. This is a noise filter — the rule is non-negotiable.
+
+    The function is a best-effort textual transformation:
+      - Skips queries that already reference ``gene_detected_in`` anywhere
+        (assumed to be handled by the LLM).
+      - Skips queries whose MATCH pattern doesn't fit the standard
+        ``(g:gene)-[r:gene_activity_score_in]->(c:anatomical_structure)`` shape.
+      - Appends to an existing ``WHERE`` clause if present (after the matching
+        MATCH), otherwise inserts a new ``WHERE`` immediately after the MATCH.
+    """
+    if not cypher:
+        return cypher
+    if not re.search(r'\bgene_activity_score_in\b', cypher, re.IGNORECASE):
+        return cypher
+    # Already paired with gene_detected_in — trust the LLM
+    if re.search(r'\bgene_detected_in\b', cypher, re.IGNORECASE):
+        return cypher
+
+    m = _GENE_ACTIVITY_MATCH.search(cypher)
+    if not m:
+        return cypher
+
+    gene_var, cell_var = m.group('g'), m.group('c')
+    exists_clause = f"EXISTS {{ ({gene_var})-[:gene_detected_in]->({cell_var}) }}"
+
+    # m matches up through `(<cell_var>:anatomical_structure` — the opening
+    # paren of the cell node is already consumed. We need the closing `)` of
+    # that same node (which may have property block braces and even nested
+    # parens inside function calls). Walk forward with depth=1, treating `(`
+    # as depth-up and `)` as depth-down; the closing of the cell node is the
+    # first `)` that returns depth to zero.
+    paren_depth = 1
+    end_idx = None
+    for i in range(m.end(), len(cypher)):
+        ch = cypher[i]
+        if ch == '(':
+            paren_depth += 1
+        elif ch == ')':
+            paren_depth -= 1
+            if paren_depth == 0:
+                end_idx = i + 1
+                break
+    if end_idx is None:
+        return cypher
+
+    # Is there a WHERE clause that belongs to this MATCH (i.e. before the next
+    # MATCH / WITH / RETURN / OPTIONAL MATCH)?
+    next_clause = re.search(
+        r'\b(WHERE|WITH|RETURN|MATCH|OPTIONAL\s+MATCH|CALL)\b',
+        cypher[end_idx:],
+        re.IGNORECASE,
+    )
+    if next_clause and next_clause.group(1).upper() == 'WHERE':
+        # Append to the existing WHERE clause's predicate list.
+        where_pos = end_idx + next_clause.end()
+        # Insert ` (<existing_predicates>) AND EXISTS { ... }` — to be safe,
+        # wrap with parens around the new predicate too.
+        return (
+            cypher[:where_pos]
+            + " "
+            + exists_clause
+            + " AND"
+            + cypher[where_pos:]
+        )
+    else:
+        # No WHERE — insert a fresh one right after the MATCH path.
+        return (
+            cypher[:end_idx]
+            + f"\nWHERE {exists_clause}"
+            + cypher[end_idx:]
+        )
 
 
 _HEAVY_RELATIONSHIP_TYPES = re.compile(
@@ -1063,12 +1486,22 @@ def _inject_limit(cypher: str, default_limit: int = 50) -> str:
     collect_match = re.search(r'\bWITH\s+collect\s*\(', cypher, re.IGNORECASE)
     if collect_match:
         prefix = cypher[:collect_match.start()]
-        # Strip string literals so parens/brackets inside e.g. "type B pancreatic cell (beta cell)"
+        # Strip string literals so parens/brackets inside e.g. "beta cell"
         # don't get mistaken for Cypher node/rel variables.
         prefix_no_strings = re.sub(r'"[^"]*"', '""', prefix)
         prefix_no_strings = re.sub(r"'[^']*'", "''", prefix_no_strings)
-        node_vars = set(re.findall(r'\((\w+)(?::\w+)?[^)]*\)', prefix_no_strings))
-        rel_vars = set(re.findall(r'\[(\w+):\w+[^\]]*\]', prefix_no_strings))
+        # Strip EXISTS { ... } sub-clauses — variables declared inside them
+        # are NOT visible in the outer scope and must not appear in the
+        # outer WITH list. Same for COUNT { ... } and OPTIONAL MATCH-scoped
+        # subqueries.
+        prefix_no_exists = re.sub(
+            r'\bEXISTS\s*\{[^{}]*\}', '', prefix_no_strings, flags=re.IGNORECASE,
+        )
+        prefix_no_exists = re.sub(
+            r'\bCOUNT\s*\{[^{}]*\}', '', prefix_no_exists, flags=re.IGNORECASE,
+        )
+        node_vars = set(re.findall(r'\((\w+)(?::\w+)?[^)]*\)', prefix_no_exists))
+        rel_vars = set(re.findall(r'\[(\w+):\w+[^\]]*\]', prefix_no_exists))
         all_vars = node_vars | rel_vars
         if all_vars:
             vars_str = ', '.join(sorted(all_vars))
@@ -1120,15 +1553,16 @@ def add_result_limit(cypher: str, default_limit: int = 50) -> str:
 def auto_fix_cypher(
     cypher: str,
     validation: Optional[Dict] = None,
-    default_limit: int = 50
+    default_limit: int = 50,
+    schema_slice: Optional[Dict] = None,
 ) -> Tuple[str, List[str]]:
     """
     Automatically fix common Cypher query errors.
-    
+
     Handles two types of queries:
     - SIMPLE queries (single MATCH): All fixes applied
     - MULTI-MATCH queries: Only safe fixes applied (preserves query structure)
-    
+
     Fixes for ALL queries:
     0. Convert single quotes to double quotes (CRITICAL - Neo4j API strips single quotes!)
     1. Add missing relationship variable names: -[:TYPE]- → -[r:TYPE]-
@@ -1136,22 +1570,30 @@ def auto_fix_cypher(
     2. Add DISTINCT to collect() calls
     6. Fix disease naming (T1D → type 1 diabetes)
     7. Fix cell type naming (beta cell → Beta Cell)
+    7b. Coerce enum-valued literals using the entity-specific schema_slice
+        (only fires when ``schema_slice`` is provided — see
+        ``schema_loader.get_property_enum_map``)
     8. Fix property name case
-    
+
     Additional fixes for SIMPLE queries:
     3. Merge extra collections into nodes/edges
     4. Add missing variables to collections
     5. Fix return format to RETURN nodes, edges;
-    
+
     Additional fixes for MULTI-MATCH queries:
     3-5. Fix multi-match collections: Rebuilds final WITH to collect ALL nodes/edges
          from ALL MATCH clauses, outputs RETURN nodes, edges;
-    
+
     Args:
         cypher: The Cypher query to fix
         validation: Optional validation result from validate_cypher()
         default_limit: LIMIT to add to prevent timeouts (default: 100)
-    
+        schema_slice: Optional enum map from
+            ``schema_loader.get_property_enum_map`` covering only the
+            entities the Cypher actually uses. When provided, enables
+            ``fix_enum_value_coercion``. When None, that fix is a no-op
+            (backwards compatible).
+
     Returns:
         (fixed_cypher, list_of_fixes_applied)
     """
@@ -1234,13 +1676,56 @@ def auto_fix_cypher(
         fixed = fix_cell_type_references(fixed)
         if fixed != original:
             fixes_applied.append("Fixed anatomical_structure references (old labels, case)")
-        
+
+        # Fix 7b: Schema-slice-driven enum value coercion.
+        # No-op when schema_slice is None (backwards compatible).
+        if schema_slice:
+            original = fixed
+            fixed, enum_fix_msgs = fix_enum_value_coercion(fixed, schema_slice)
+            if fixed != original and enum_fix_msgs:
+                fixes_applied.extend(enum_fix_msgs)
+
+        # Fix 7c: Coerce numeric comparisons on donor string-numeric properties
+        # (donor.age < 40 -> toInteger(split(...)) < 40). The schema stores age
+        # / bmi / hba1c_percentage / c_peptide_ng_ml as Strings; raw `<` against
+        # an int returns zero rows. Schema-driven, always-on.
+        original = fixed
+        fixed, donor_fix_msgs = fix_donor_string_numeric_compares(fixed)
+        if fixed != original and donor_fix_msgs:
+            fixes_applied.extend(donor_fix_msgs)
+
+        # Fix 7d: Quote integer literals when comparing string-typed
+        # "numeric" properties (chr, strand, credibleset). They look numeric
+        # but are stored as Strings; `g.chr = 1` returns 0 rows whereas
+        # `g.chr = '1'` matches.
+        original = fixed
+        fixed, sq_fix_msgs = fix_string_typed_numeric_equality(fixed)
+        if fixed != original and sq_fix_msgs:
+            fixes_applied.extend(sq_fix_msgs)
+
+        # Fix 7e: Canonicalise boolean-flag comparisons on variant nodes —
+        # the underlying data has mixed casing ('TRUE'/'True'/'true' all
+        # exist), so strict equality misses rows. Rewrite to
+        # `toLower(<var>.<prop>) = 'true'|'false'`.
+        original = fixed
+        fixed, bool_fix_msgs = fix_string_typed_boolean_equality(fixed)
+        if fixed != original and bool_fix_msgs:
+            fixes_applied.extend(bool_fix_msgs)
+
         # Fix 8: Fix property name case (SAFE for all queries)
         original = fixed
         fixed = fix_property_names(fixed)
         if fixed != original:
             fixes_applied.append("Fixed property name capitalization")
-        
+
+        # Fix 8b: gene_activity_score_in must co-require gene_detected_in
+        # (noise filter — no chromatin activity scores for genes not detected
+        # in the same cell type).
+        original = fixed
+        fixed = fix_gene_activity_requires_detected(fixed)
+        if fixed != original:
+            fixes_applied.append("Injected EXISTS gene_detected_in filter for gene_activity_score_in")
+
         # Fix 9: Add LIMIT to UNCONSTRAINED queries (no WHERE clause) to prevent timeout
         original = fixed
         fixed = add_result_limit(fixed, default_limit=default_limit)

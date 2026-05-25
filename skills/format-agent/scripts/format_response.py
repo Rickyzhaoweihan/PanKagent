@@ -65,32 +65,6 @@ def _extract_results_text(result: dict | str) -> str:
         prefix = f"[HPAP metadata — {explanation}]\n" if explanation else "[HPAP metadata]\n"
         return prefix + json.dumps(rows, default=str, indent=2)
 
-    # ssGSEA enrichment scores
-    if result.get("source") == "ssgsea":
-        rows = result.get("rows", [])
-        genes_used = result.get("genes_used", "?")
-        genes_not_found = result.get("genes_not_found", [])
-        total_donors = result.get("total_donors", len(rows))
-        summary = result.get("summary_by_diabetes_status", {})
-
-        parts = [f"[ssGSEA immune-cell enrichment — {genes_used} genes scored across {total_donors} donors]"]
-        if genes_not_found:
-            parts.append(f"Genes not found in dataset: {', '.join(genes_not_found)}")
-
-        if summary:
-            parts.append("\nMean enrichment score by diabetes status:")
-            for status, stats in summary.items():
-                parts.append(f"  {status}: {stats['mean']:.4f} (n={stats['n']})")
-
-        if rows:
-            parts.append(f"\nTop {len(rows)} donors by enrichment score (sorted descending):")
-            parts.append(json.dumps(rows, default=str, indent=2))
-
-        if not rows and not summary:
-            return "No results"
-
-        return "\n".join(parts)
-
     # Functional Data API: islet assay measurements
     if result.get("source") == "functional_data":
         endpoint = result.get("endpoint", "?")
@@ -141,7 +115,7 @@ def _has_useful_data(neo4j_results: list[dict]) -> bool:
         if isinstance(result, dict) and "error" in result:
             continue
         # HPAP/genomic results: check rows directly
-        if isinstance(result, dict) and result.get("source") in ("hpap", "genomic", "ssgsea", "functional_data"):
+        if isinstance(result, dict) and result.get("source") in ("hpap", "genomic", "functional_data"):
             if result.get("rows"):
                 return True
             continue
@@ -394,7 +368,7 @@ def build_retrieval_context_blob(
     cypher_queries: list[str],
     max_chars: int = 6000,
 ) -> str:
-    """Compressed KG + SQL + ssGSEA + functional-data blob.
+    """Compressed KG + SQL + functional-data blob.
 
     Shared between the format agent's user input and the /chat/literature
     endpoint so both reason from the same retrieval state.
@@ -405,7 +379,7 @@ def build_retrieval_context_blob(
         result = entry.get('result', {})
         results_text = _extract_results_text(result)
         source = result.get("source") if isinstance(result, dict) else None
-        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)", "ssgsea": "ssGSEA",
+        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)",
                        "functional_data": "Functional API"}.get(source, "Cypher")
         neo4j_sections.append(
             f"--- Query {i} ---\n"
@@ -463,7 +437,7 @@ def format_response(
         result = entry.get('result', {})
         results_text = _extract_results_text(result)
         source = result.get("source") if isinstance(result, dict) else None
-        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)", "ssgsea": "ssGSEA",
+        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)",
                        "functional_data": "Functional API"}.get(source, "Cypher")
         neo4j_sections.append(
             f"--- Query {i} ---\n"
@@ -487,7 +461,7 @@ CRITICAL INSTRUCTIONS:
 - Extract ALL property values from edges (expression means, p-values, fold changes, etc.).
 - If a gene appears in the nodes list, it IS in the data — do NOT say it is missing.
 - Cross-reference: if the user asks about gene X, check if X appears in ANY node's "name" field above.
-- Cross-source chain handling: if an ssGSEA or genomic (SQL) result appears alongside KG results, the two may be linked — the ssGSEA gene set may have come from the KG step's retrieved genes. Join them narratively: "ssGSEA was run on the <N> effector genes retrieved in step 1: ..." When relevant, filter ssGSEA scores to donors that match any cohort filter from another KG step (e.g., female T1D Stage 3 donors).
+- Cross-source chain handling: if a supplementary result (genomic SQL, Functional API) appears alongside KG results, the two may be linked — the supplementary step likely consumed entities (gene IDs, donor IDs) retrieved by the KG step. Join them narratively: "Functional data was retrieved for the <N> donors identified in step 1: ..." When relevant, filter supplementary scores by any cohort criteria appearing in another KG step.
 - Functional Data API: if a Functional Data API result appears, echo back the endpoint and parameters used verbatim (they are included in the result under "Parameters used" and "URL"). If the result came from a chain where donor_ids were passed from a prior KG step, state this explicitly: "Functional data was retrieved for the <N> donors identified in step 1." Interpret traits using domain knowledge (INS = insulin, GCG = glucagon; IEQ = islet equivalent normalization; AUC = integrated secretion; SI = stimulation index; II = inhibition index)."""
 
     if pre_final_answer:

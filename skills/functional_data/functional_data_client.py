@@ -134,10 +134,30 @@ def extract_endpoint_and_params(
     """
     _load_specs()
 
-    trait_list_str = (
-        "\n".join(f"  - {t}" for t in _TRAIT_LIST)
-        if _TRAIT_LIST
-        else "  (traits unavailable)"
+    feature_dict = _INTERP_FULL.get("feature_dictionary", []) if _INTERP_FULL else []
+    global_terms = _INTERP_FULL.get("global_terms", {}) if _INTERP_FULL else {}
+    core_rules = _INTERP_FULL.get("core_rules", []) if _INTERP_FULL else []
+
+    if feature_dict:
+        feature_table_str = "\n".join(
+            f"  - {e['feature']} | hormone={e.get('hormone','?')} | "
+            f"condition={e.get('condition','?')} | unit={e.get('unit','?')} | "
+            f"{e.get('interpretation','')}"
+            for e in feature_dict
+        )
+    else:
+        feature_table_str = "  (traits unavailable)"
+
+    global_terms_str = (
+        "\n".join(f"  - **{k}**: {v}" for k, v in global_terms.items())
+        if global_terms
+        else "  (no global terms)"
+    )
+
+    core_rules_str = (
+        "\n".join(f"  {i}. {r}" for i, r in enumerate(core_rules, 1))
+        if core_rules
+        else "  (no core rules)"
     )
 
     system_prompt = f"""You are an assistant that maps a natural language question to a \
@@ -146,8 +166,14 @@ PanKgraph Functional Data API call.
 ## API Specification
 {json.dumps(_API_SPEC, indent=2)}
 
-## Available Trait Names (for /api/charts/trait-summary)
-{trait_list_str}
+## Trait dictionary (use the exact `feature` string for /api/charts/trait-summary)
+{feature_table_str}
+
+## Global terms (use these to map free-text conditions to exact trait names)
+{global_terms_str}
+
+## Core interpretation rules
+{core_rules_str}
 
 ## Your task
 Choose EXACTLY ONE endpoint from:
@@ -156,14 +182,74 @@ Choose EXACTLY ONE endpoint from:
   /api/charts/cohort-traces
   /api/charts/trait-summary
 
-Rules:
-- Omit params that are not mentioned or not relevant.
-- For trace_type in /api/charts/cohort-traces, default to "ins_ieq" unless the question \
-asks about glucagon (use "gcg_ieq").
-- For trait in /api/charts/trait-summary, match the question to the closest entry from \
-the Available Trait Names list. Use the exact feature string.
-- For limit in /api/charts/trait-summary, default to 8.
+### Endpoint-selection rules
+- Use **/api/data/summary** for "what data is available", available trait list, or cohort \
+options/ranges.
+- Use **/api/data/donors** when the user wants a filtered donor list (no trait/trace requested).
+- Use **/api/charts/cohort-traces** when the user wants a hormone time series / secretion \
+trace. Default `trace_type` to "ins_ieq" unless the question asks about glucagon (use \
+"gcg_ieq").
+- Use **/api/charts/trait-summary** when the user wants ranking, top-N, or a single-trait \
+value across donors. Match the question to the EXACT `feature` string from the trait \
+dictionary above. Default `limit` to 8 (range 1..8).
 
+### Demographic-filter rule (CRITICAL)
+**If the question contains any of the following, you MUST set the corresponding param:**
+- numeric ages → `age_min` and/or `age_max` (e.g. "age 30-50" → age_min=30, age_max=50; \
+"over 40" → age_min=40; "under 25" → age_max=25)
+- sex words ("male"/"female") → `sex` ("Male" or "Female")
+- BMI ranges → `bmi_min` / `bmi_max`
+- disease words ("T1D"/"T2D"/"Healthy"/"AAB+"/"non-diabetic") → `disease`
+- center names (e.g. "Penn", "Miami", "UPenn") → `center`
+- race words ("Caucasian"/"African American"/"Asian"/"Hispanic") → `race`
+
+These are the API's NATIVE filters — never omit them when the question mentions them, \
+and never invent a KG step to perform a filter the API already supports.
+
+### Trait-mapping rule
+Map free-text conditions to exact feature strings using the trait dictionary + global \
+terms. Examples of correct mapping:
+- "insulin under high glucose" → "INS-G 16.7 AUC (ng/100 IEQs)" or "INS-G 16.7 SI"
+- "first-phase insulin" → "INS-1st AUC (ng/100 IEQs)"
+- "second-phase insulin" → "INS-2nd AUC (ng/100 IEQs)"
+- "insulin with IBMX" → "INS-G 16.7 + IBMX 100 AUC (ng/100 IEQs)" or "INS-G 16.7 + IBMX 100 SI"
+- "insulin under adrenaline / low glucose" → "INS-G 1.7 + Ad 1 AUC (ng/100 IEQs)" or "INS-G 1.7+ Ad 1 II"
+- "insulin after KCl depolarization" → "INS-KCl 20 AUC (ng/100 IEQs)" or "INS-KCl 20 SI"
+- "basal insulin" → "INS-basal (ng/100 IEQs/min)"
+- "glucagon at high glucose" → "GCG-G 16.7 AUC (pg/100 IEQs)" or "GCG-G 16.7 II"
+- "glucagon counterregulation" / "glucagon with adrenaline at low glucose" → \
+"GCG-G 1.7 + Ad 1 AUC (pg/100 IEQs)" or "GCG-G 1.7 + Ad 1 SI"
+- "basal glucagon" → "GCG-basal (pg/100 IEQs/min)"
+Prefer the **SI** trait for "stimulation index" / "fold change" questions, **II** for \
+"inhibition" / "suppression", and **AUC** for "total secretion" / "area under curve".
+
+### Worked examples (question → output)
+
+Example 1
+Q: "Show me insulin stimulation index rankings for donors"
+A: {{"endpoint": "/api/charts/trait-summary", "params": {{"trait": "INS-G 16.7 SI", "limit": 8}}, "rationale": "Top-N donors by insulin stimulation index at high glucose."}}
+
+Example 2
+Q: "glucagon stimulation under IBMX and high glucose for female T2D donors age 30-50"
+A: {{"endpoint": "/api/charts/trait-summary", "params": {{"trait": "GCG-G 16.7 + IBMX 100 SI", "sex": "Female", "disease": "T2D", "age_min": 30, "age_max": 50}}, "rationale": "Trait-summary for glucagon SI under high glucose+IBMX, filtered by demographic params."}}
+
+Example 3
+Q: "first-phase insulin AUC across the cohort"
+A: {{"endpoint": "/api/charts/trait-summary", "params": {{"trait": "INS-1st AUC (ng/100 IEQs)", "limit": 8}}, "rationale": "First-phase AUC is the early high-glucose response trait."}}
+
+Example 4
+Q: "show glucagon traces for low-BMI donors"
+A: {{"endpoint": "/api/charts/cohort-traces", "params": {{"trace_type": "gcg_ieq", "bmi_max": 25}}, "rationale": "Glucagon time series for BMI ≤ 25."}}
+
+Example 5
+Q: "what functional data is available for HPAP"
+A: {{"endpoint": "/api/data/summary", "params": {{}}, "rationale": "Summary of available donors, trace types, and traits."}}
+
+Example 6
+Q: "donors who are male, race Caucasian, age over 40"
+A: {{"endpoint": "/api/data/donors", "params": {{"sex": "Male", "race": "Caucasian", "age_min": 40}}, "rationale": "Filtered donor list — no trait/trace requested."}}
+
+### Output format
 Respond with ONLY a JSON object (no markdown fences, no comments) in this exact format:
 {{"endpoint": "/api/...", "params": {{}}, "rationale": "one sentence"}}"""
 
@@ -178,7 +264,7 @@ Respond with ONLY a JSON object (no markdown fences, no comments) in this exact 
         client = anthropic.Anthropic()
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=512,
+            max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -365,6 +451,69 @@ def _summarize_trait_summary(payload: dict) -> dict:
 # Glossary builder — for format/reasoning agents
 # ---------------------------------------------------------------------------
 
+def enrich_functional_data_result(result: dict) -> dict:
+    """Tag a functional_data result with feature_dictionary metadata + enforce row caps.
+
+    Looks up the requested trait/trace in the interpretation JSON and attaches
+    a ``trait_meta`` (or ``trace_meta``) block so the format/reasoning agent has
+    unit + condition + interpretation context for every value it cites. Also
+    caps ``rows`` at ``_ROW_CAP`` to keep the prompt envelope bounded.
+
+    Returns the same dict (mutated in place + returned for ergonomic chaining).
+    Unknown endpoints / missing dictionary entries are silently skipped — this
+    is a best-effort enrichment, never a hard failure.
+    """
+    _ROW_CAP = 15
+    _load_specs()
+    if not isinstance(result, dict):
+        return result
+
+    feature_dict = _INTERP_FULL.get("feature_dictionary", []) if _INTERP_FULL else []
+    feature_lookup = {e["feature"].casefold(): e for e in feature_dict}
+
+    endpoint = result.get("endpoint", "")
+
+    if endpoint == "/api/charts/trait-summary":
+        trait = result.get("trait") or result.get("params", {}).get("trait")
+        if trait:
+            entry = feature_lookup.get(str(trait).casefold())
+            if entry:
+                result["trait_meta"] = {
+                    "feature": entry["feature"],
+                    "hormone": entry.get("hormone"),
+                    "condition": entry.get("condition"),
+                    "measurement_type": entry.get("measurement_type"),
+                    "unit": entry.get("unit"),
+                    "normalization": entry.get("normalization"),
+                    "interpretation": entry.get("interpretation"),
+                }
+
+    elif endpoint == "/api/charts/cohort-traces":
+        trace_type = result.get("trace_type") or result.get("params", {}).get("trace_type")
+        if trace_type:
+            trace_meta = {
+                "ins_ieq": {"hormone": "insulin", "unit": "ng/100 IEQs/min",
+                             "normalization": "islet mass via IEQ",
+                             "interpretation": "Insulin secretion time series across the stimulation protocol, normalized to islet equivalents."},
+                "gcg_ieq": {"hormone": "glucagon", "unit": "pg/100 IEQs/min",
+                             "normalization": "islet mass via IEQ",
+                             "interpretation": "Glucagon secretion time series across the stimulation protocol, normalized to islet equivalents."},
+            }.get(str(trace_type))
+            if trace_meta:
+                result["trace_meta"] = {"trace_type": trace_type, **trace_meta}
+
+    rows = result.get("rows")
+    if isinstance(rows, list) and len(rows) > _ROW_CAP and endpoint in (
+        "/api/charts/trait-summary",
+        "/api/charts/cohort-traces",
+    ):
+        result["rows"] = rows[:_ROW_CAP]
+        result["row_count"] = len(result["rows"])
+        result["rows_truncated"] = True
+
+    return result
+
+
 def build_functional_data_glossary(neo4j_results: list[dict]) -> str:
     """Return a Markdown glossary block for any functional_data results present.
 
@@ -442,5 +591,29 @@ def build_functional_data_glossary(neo4j_results: list[dict]) -> str:
             f"normalization={e.get('normalization','?')}. "
             f"Interpretation: {e.get('interpretation','')}"
         )
+
+    # Response template — biological reporting style
+    response_template: dict = _INTERP_FULL.get("response_template", {}) or {}
+    if response_template:
+        lines.append("\n## Reporting style")
+        sf = response_template.get("single_feature")
+        if sf:
+            lines.append(f"- Single-feature description template: `{sf}`")
+        cc = response_template.get("cohort_comparison")
+        if cc:
+            lines.append(f"- Cohort / cross-feature comparison rule: {cc}")
+        mf = response_template.get("missing_feature")
+        if mf:
+            lines.append(f"- Unmatched / missing trait rule: {mf}")
+
+    # Worked examples — input_feature → agent_interpretation pairs
+    examples: list = _INTERP_FULL.get("examples", []) or []
+    if examples:
+        lines.append("\n## Worked interpretation examples")
+        for ex in examples:
+            inp = ex.get("input_feature")
+            interp = ex.get("agent_interpretation")
+            if inp and interp:
+                lines.append(f"- **`{inp}`** → {interp}")
 
     return "\n".join(lines)

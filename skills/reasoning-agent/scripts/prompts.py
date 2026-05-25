@@ -149,7 +149,7 @@ Each edge looks like:
 [:relationship_type {prop1: value1, start: "NODE_ID_A", end: "NODE_ID_B", ...}]
 ```
 
-- **Relationship type** appears after the colon, e.g. `:effector_gene_of`, `:T1D_DEG_in`, `:part_of_QTL_signal`. Relationship types containing `;` (e.g., `function_annotation;GO`, `pathway_annotation;KEGG`, `pathway_annotation;reactome`) MUST be backtick-escaped in Cypher.
+- **Relationship type** appears after the colon, e.g. `:effector_gene_of`, `:T1D_DEG_in`, `:part_of_QTL_signal`, `:function_annotation`. None of the current edge names contain semicolons; backtick-escape is not needed. (The legacy `function_annotation;GO` / `pathway_annotation;KEGG` / `pathway_annotation;reactome` edges have been consolidated into the unified `function_annotation` edge.)
 - **`start` and `end` properties** tell you WHICH nodes this edge connects:
   - `start` = the `id` of the source node
   - `end` = the `id` of the target node
@@ -174,18 +174,15 @@ edges: [[:effector_gene_of {start: "ENSG00000001626", end: "MONDO_0005147", evid
 | `effector_gene_of` | Gene is a predicted effector gene of a disease | `evidence`, `data_source`, `data_source_url` |
 | `T1D_DEG_in` | Gene is differentially expressed in T1D vs ND in a cell type | `Log2FoldChange`, `Adjusted_P_value`, `UpOrDownRegulation` (`"Upregulated in T1D"`/`"Downregulated in T1D"`) |
 | `gene_detected_in` | Gene expression summary in a cell type | `mean_donor_logCPM`, `median_pct_cells_expressing`, `total_cells`, `cell_type`, `expression_call` |
-| `gene_enriched_in` | Cell-type marker gene (ND one-vs-rest DESeq2) | `log2FoldChange`, `padj`, `cell_type_label`, `rank_in_cell_type` |
+| `gene_enriched_in` | Gene **enriched in** a cell type (ND one-vs-rest DESeq2) — **NOT a marker** | `log2FoldChange`, `padj`, `cell_type_label`, `rank_in_cell_type` |
 | `part_of_QTL_signal` | SNV is fine-mapped as a QTL to a gene | `pip`, `tissue_name`, `slope`, `nominal_p`, `gene_name` |
 | `part_of_GWAS_signal` | SNV is part of a GWAS signal for a disease | `pip`, `p_value`, `locus_name`, `lead_status` |
 | `signal_COLOC_with` | Gene colocalizes with a disease signal | `PP.H4.abf`, `QTL_locus_name`, `GWAS_locus_name` |
-| `function_annotation;GO` | Gene has a GO term annotation (backtick-escape!) | links gene → gene_ontology |
-| `pathway_annotation;KEGG` | Gene is annotated with a KEGG pathway (backtick-escape!) | links gene → kegg |
-| `pathway_annotation;reactome` | Gene is annotated with a Reactome pathway (backtick-escape!) | links gene → reactome |
+| `function_annotation` | Unified ontology/pathway edge (GO + KEGG + Reactome). Distinguish by target node label and by `data_source` property | links gene → gene_ontology / kegg / reactome |
 | `OCR_peak_in` | Open chromatin peak in a cell type | (OCR_peak → anatomical_structure) |
 | `gene_activity_score_in` | Gene activity score (scATAC-seq) in a cell type | `OCR_GeneActivityScore_mean`, `type_1_diabetes__OCR_GeneActivityScore_mean` |
 | `physical_interaction` | Protein-protein interaction (BioGRID) | `experimental_system`, `score` |
 | `genetic_interaction` | Genetic interaction (BioGRID) | `experimental_system` |
-| `fGSEA_gene_enriched_in` | fGSEA gene-to-pathway enrichment in a cell type | `pathway_collection`, `NES`, `padj` |
 | `fGSEA_enriched_in` | fGSEA pathway enriched in a cell type | `pathway_collection`, `NES`, `padj` |
 | `has_donor` / `has_sample` | Sample↔donor link | |
 
@@ -204,12 +201,12 @@ nodes and ALL connecting edges. To reconstruct the path:
 **Example multi-hop result:**
 ```
 nodes: [(:OCR_peak {id: "OCR_001"}), (:anatomical_structure {id: "CL_0000169", name: "type B pancreatic cell (beta cell)"}), (:gene {id: "ENSG001", name: "GENE_A"}), (:gene_ontology {id: "GO_0005254", name: "chloride channel"})]
-edges: [[:OCR_peak_in {start: "OCR_001", end: "CL_0000169"}], [:gene_detected_in {start: "ENSG001", end: "CL_0000169", cell_type: "Beta"}], [:`function_annotation;GO` {start: "ENSG001", end: "GO_0005254"}]]
+edges: [[:OCR_peak_in {{start: "OCR_001", end: "CL_0000169"}}], [:gene_detected_in {{start: "ENSG001", end: "CL_0000169", cell_type: "Beta"}}], [:function_annotation {{start: "ENSG001", end: "GO_0005254"}}]]
 ```
 → Paths:
   • OCR_001 --[OCR_peak_in]--> beta cell
   • GENE_A --[gene_detected_in {Beta}]--> beta cell
-  • GENE_A --[function_annotation;GO]--> chloride channel (GO:0005254)
+  • GENE_A --[function_annotation]--> chloride channel (GO:0005254)
 
 ---
 
@@ -357,10 +354,16 @@ because hormone transcripts can dominate libraries.
 - Prefer cautious phrasing like: "No robust signal detected under the current
   pseudobulk/thresholding settings."
 
-**3. `gene_enriched_in` edges (Cell-Type Marker Genes, ND-only)**
+**3. `gene_enriched_in` edges (Cell-Type Enrichment Evidence, ND-only)**
 
-These are marker genes from non-diabetic donors via one-vs-rest DESeq2. They answer
-"what is a marker of cell type X?", not "is gene X differentially expressed in T1D?".
+These are **enrichment** edges from non-diabetic donors via one-vs-rest DESeq2 (one
+cell type vs all others). They answer "is gene X preferentially expressed in cell
+type Y?", not "is gene X differentially expressed in T1D?".
+
+**Do NOT paraphrase as "marker genes".** PanKgraph does not currently expose a
+curated marker-gene edge in the live KG. Stick to the original "enriched" / "specific
+to" language when interpreting `gene_enriched_in`. If a user asks for curated markers
+(e.g. HuBMAP), state that this is not available in the current dataset.
 
 - Key properties: `log2FoldChange`, `padj`, `cell_type_label` (no-space variant,
   e.g., "ActiveStellate"), `rank_in_cell_type`, `effect_direction` (always "positive").
@@ -408,9 +411,10 @@ Enforce strict modality separation and provenance:
    absolute presence/absence claims. **Values are NOT normalized across cell types —
    do NOT compare across cell types.**
 
-3. **Cell-type marker genes (gene_enriched_in)** — ND-only one-vs-rest DESeq2 markers.
+3. **Cell-type enrichment (gene_enriched_in)** — ND-only one-vs-rest DESeq2.
    A high log2FoldChange + low padj means the gene is enriched in that cell type
-   relative to others; NOT a T1D vs ND comparison.
+   relative to others; NOT a T1D vs ND comparison. **Not a marker** — PanKgraph
+   has no curated marker-gene edge; report as enrichment.
 
 4. **Gene activity score (gene_activity_score_in)** — gene-level ATAC/OCR activity
    aggregated per cell type; **NOT RNA expression** — never call it "expression

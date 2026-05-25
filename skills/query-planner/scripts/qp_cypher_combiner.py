@@ -18,13 +18,13 @@ Single-pass design:
     WITH s, d LIMIT 50
     MATCH (s)-[r2:part_of_QTL_signal]->(g:gene)
     WITH s, d, g LIMIT 50
-    MATCH (g)-[r3:`function_annotation;GO`]->(fo:gene_ontology)
+    MATCH (g)-[r3:function_annotation]->(fo:gene_ontology)
     WITH s, d, g, fo LIMIT 200
     MATCH (s)-[r4:part_of_GWAS_signal]->(d)
     WITH s, d, g, fo, r4 LIMIT 200
     MATCH (s)-[r5:part_of_QTL_signal]->(g)
     WITH s, d, g, fo, r4, r5 LIMIT 200
-    MATCH (g)-[r6:`function_annotation;GO`]->(fo)
+    MATCH (g)-[r6:function_annotation]->(fo)
     WITH collect(DISTINCT s)+collect(DISTINCT d)+collect(DISTINCT g)+collect(DISTINCT fo) AS nodes,
          collect(DISTINCT r4)+collect(DISTINCT r5)+collect(DISTINCT r6) AS edges
     RETURN nodes, edges

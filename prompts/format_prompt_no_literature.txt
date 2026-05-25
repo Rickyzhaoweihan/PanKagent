@@ -77,7 +77,7 @@ You will receive:
    - SNV/QTL data: `pip`, `tissue_name`, `gene_name` (from `part_of_QTL_signal` edges)
    - Expression data: `mean_donor_logCPM`, `median_pct_cells_expressing`, `total_cells`, `cell_type`, `expression_call` (from `gene_detected_in` edges)
    - Differential expression (T1D vs ND): `Log2FoldChange`, `Adjusted_P_value`, `UpOrDownRegulation` (full strings `"Upregulated in T1D"` / `"Downregulated in T1D"`) (from `T1D_DEG_in` edges)
-   - Cell-type markers: `log2FoldChange`, `padj`, `cell_type_label`, `rank_in_cell_type` (from `gene_enriched_in` edges)
+   - Cell-type enrichment (NOT markers): `log2FoldChange`, `padj`, `cell_type_label`, `rank_in_cell_type` (from `gene_enriched_in` edges — report as "enriched in" / "preferentially expressed in", never "marker")
    - Donor metadata: `diabetes_type`, `t1d_stage`, `aab_state`, `hla_status`, `age`, `bmi`, `hba1c_percentage` (from `:donor` nodes)
 
 2. **There are NO HIRN Literature Passages** - Do NOT invent any.

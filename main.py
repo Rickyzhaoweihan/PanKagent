@@ -125,8 +125,8 @@ def _extract_neo4j_from_funcs_result(funcs_result: str) -> tuple[list[dict], lis
             neo4j_results.append({"query": cypher, "result": neo4j_result})
             has_data = True
             if isinstance(neo4j_result, dict):
-                # Genomic/HPAP/ssGSEA results: check rows list
-                if neo4j_result.get("source") in ("genomic", "hpap", "ssgsea", "functional_data"):
+                # Genomic/HPAP/functional_data results: check rows list
+                if neo4j_result.get("source") in ("genomic", "hpap", "functional_data"):
                     has_data = bool(neo4j_result.get("rows"))
                 else:
                     rv = neo4j_result.get("results", "")
@@ -391,7 +391,7 @@ def _count_result_records(res: dict) -> int | None:
         return None
 
     # HPAP/genomic result format: {"rows": [...], "row_count": N, "source": "hpap"|"genomic"}
-    if isinstance(res, dict) and res.get("source") in ("hpap", "genomic", "ssgsea", "functional_data"):
+    if isinstance(res, dict) and res.get("source") in ("hpap", "genomic", "functional_data"):
         return res.get("row_count", len(res.get("rows", [])))
 
     if isinstance(res, dict) and "records" in res:
@@ -465,13 +465,11 @@ def _get_step_result(
 
 
 _EDGE_DISPLAY_NAMES = {
-    "function_annotation;GO": "GO terms",
-    "pathway_annotation;KEGG": "KEGG pathways",
-    "pathway_annotation;reactome": "Reactome pathways",
+    "function_annotation": "ontology / pathway annotations (GO + KEGG + Reactome)",
     "physical_interaction": "interactions",
     "genetic_interaction": "genetic interactions",
     "gene_detected_in": "expression",
-    "gene_enriched_in": "cell-type markers",
+    "gene_enriched_in": "cell-type enrichment",
     "T1D_DEG_in": "differential expression",
     "part_of_QTL_signal": "QTL signals",
     "part_of_GWAS_signal": "GWAS signals",
@@ -510,7 +508,6 @@ def _build_scope_line(
     seen: set[str] = set()
     has_hpap = False
     has_genomic = False
-    has_ssgsea = False
     has_functional_data = False
     for step in steps:
         if step.get("source") == "hpap":
@@ -518,9 +515,6 @@ def _build_scope_line(
             continue
         if step.get("source") == "genomic":
             has_genomic = True
-            continue
-        if step.get("source") == "ssgsea":
-            has_ssgsea = True
             continue
         if step.get("source") == "functional_data":
             has_functional_data = True
@@ -536,8 +530,6 @@ def _build_scope_line(
         dimensions.append("HPAP metadata")
     if has_genomic:
         dimensions.append("genomic coordinates")
-    if has_ssgsea:
-        dimensions.append("ssGSEA enrichment")
     if has_functional_data:
         dimensions.append("islet functional assays")
 
@@ -567,7 +559,7 @@ def format_plan_as_markdown(
 
     # Detect cross-source chain for display hint
     has_non_kg = any(
-        s.get("source") in ("hpap", "genomic", "ssgsea", "functional_data") for s in steps
+        s.get("source") in ("hpap", "genomic", "functional_data") for s in steps
     )
     flow_hint = ""
     if plan_type == "chain" and has_non_kg:
@@ -591,7 +583,7 @@ def format_plan_as_markdown(
         dep = step.get("depends_on")
         dep_str = f" *(depends on step {dep})*" if dep else ""
         source = step.get("source")
-        source_tag = {"hpap": "[HPAP] ", "genomic": "[Genomic] ", "ssgsea": "[ssGSEA] ",
+        source_tag = {"hpap": "[HPAP] ", "genomic": "[Genomic] ",
                       "functional_data": "[Functional] "}.get(source, "")
 
         status = "pending"
@@ -603,9 +595,9 @@ def format_plan_as_markdown(
                 err = res.get("error", "unknown error") if isinstance(res, dict) else "?"
                 status = f"error — {str(err)[:60]}"
             elif rc == 0:
-                status = "0 rows" if step.get("source") in ("hpap", "genomic", "ssgsea", "functional_data") else "0 records"
+                status = "0 rows" if step.get("source") in ("hpap", "genomic", "functional_data") else "0 records"
             else:
-                status = f"{rc} rows" if step.get("source") in ("hpap", "genomic", "ssgsea", "functional_data") else f"{rc} records"
+                status = f"{rc} rows" if step.get("source") in ("hpap", "genomic", "functional_data") else f"{rc} records"
                 steps_with_data += 1
 
         parts.append(f"{sid}. {source_tag}{nl}{dep_str} — **{status}**")
@@ -942,134 +934,6 @@ def _run_genomic_step(question_text: str, prior_entities: dict | None = None) ->
         }
 
 
-def _run_ssgsea_step(question_text: str, prior_entities: dict | None = None) -> dict:
-    """Execute a single ssGSEA step: extract gene names and run enrichment analysis.
-
-    If ``prior_entities`` contains ``gene_names`` from a parent step, those are
-    used as the gene set (capped at 200). NL-extracted genes are merged in as
-    fallback. This enables chains like "find T1D effector genes -> run ssGSEA on them".
-
-    Returns a result dict::
-
-        {"query": "<genes>", "result": {"rows": [scores], "row_count": N, "source": "ssgsea"}}
-    """
-    import os as _os
-
-    ssgsea_skill_dir = _os.path.join(
-        _os.path.dirname(_os.path.abspath(__file__)),
-        'skills', 'ssgsea',
-    )
-    if ssgsea_skill_dir not in sys.path:
-        sys.path.insert(0, ssgsea_skill_dir)
-
-    from ssgsea_client import extract_gene_names, run_ssgsea, get_donors
-
-    emit("ssgsea_start", {"query": question_text[:300]})
-
-    _GENE_CAP = 200
-
-    try:
-        # Start with any genes from a parent step (chain / dependency)
-        genes: list[str] = []
-        seen: set[str] = set()
-
-        if prior_entities and isinstance(prior_entities, dict):
-            prior_genes = prior_entities.get("gene_names", []) or []
-            # cap to avoid huge payloads — ssGSEA server can handle reasonable sets
-            truncated = len(prior_genes) > _GENE_CAP
-            for g in prior_genes[:_GENE_CAP]:
-                if g not in seen:
-                    seen.add(g)
-                    genes.append(g)
-            if prior_genes:
-                emit("ssgsea_prior_entities", {
-                    "gene_count": len(prior_genes),
-                    "kept": len(genes),
-                    "truncated": truncated,
-                    "source_step_id": prior_entities.get("source_step_id"),
-                })
-
-        # Also merge any genes named directly in the NL (user may have added extras)
-        nl_genes = extract_gene_names(question_text) or []
-        for g in nl_genes:
-            if g not in seen:
-                seen.add(g)
-                genes.append(g)
-
-        if not genes:
-            emit("ssgsea_done", {"success": False, "error": "No gene names found in question or prior steps"})
-            return {
-                "query": question_text,
-                "result": {"error": "No gene names could be extracted from the question or prior steps", "source": "ssgsea"},
-            }
-
-        emit("ssgsea_genes_extracted", {"genes": genes[:20], "count": len(genes)})
-
-        result = run_ssgsea(genes)
-        scores = result.get("scores", [])
-
-        # Enrich scores with donor metadata for the FormatAgent
-        try:
-            donors = get_donors()
-            donor_map = {d["center_donor_id"]: d for d in donors}
-            enriched_scores = []
-            for s in scores:
-                d = donor_map.get(s["donor_id"], {})
-                enriched_scores.append({
-                    "donor_id": s["donor_id"],
-                    "score": s["score"],
-                    "diabetes_status": d.get("description_of_diabetes_status", "unknown"),
-                    "age": d.get("age_(years)"),
-                    "sex": d.get("sex"),
-                    "hba1c": d.get("hba1c_(percentage)"),
-                })
-        except Exception:
-            enriched_scores = scores
-
-        # Compute summary stats by diabetes status
-        from collections import defaultdict
-        by_status = defaultdict(list)
-        for s in enriched_scores:
-            status = s.get("diabetes_status", "unknown")
-            by_status[status].append(s["score"])
-        summary_stats = {
-            status: {"mean": round(sum(v) / len(v), 4), "n": len(v)}
-            for status, v in sorted(by_status.items())
-        }
-
-        # Sort by score descending, keep top 10 + summary
-        enriched_scores.sort(key=lambda x: x["score"], reverse=True)
-
-        emit("ssgsea_done", {
-            "success": True,
-            "genes_used": result.get("genes_used", 0),
-            "genes_not_found": result.get("genes_not_found", []),
-            "num_donors": len(scores),
-        })
-
-        return {
-            "query": f"ssGSEA({', '.join(genes)})",
-            "result": {
-                "rows": enriched_scores[:15],
-                "row_count": len(scores),
-                "source": "ssgsea",
-                "genes_submitted": result.get("genes_submitted", len(genes)),
-                "genes_used": result.get("genes_used", 0),
-                "genes_not_found": result.get("genes_not_found", []),
-                "summary_by_diabetes_status": summary_stats,
-                "total_donors": len(scores),
-            },
-        }
-
-    except Exception:
-        err = traceback.format_exc()
-        emit("ssgsea_done", {"success": False, "error": err[:500]})
-        return {
-            "query": question_text,
-            "result": {"error": err[:2000], "source": "ssgsea"},
-        }
-
-
 def _run_functional_data_step(question_text: str, prior_entities: dict | None = None) -> dict:
     """Execute a single functional-data API step.
 
@@ -1098,6 +962,7 @@ def _run_functional_data_step(question_text: str, prior_entities: dict | None = 
         _summarize_donors,
         _summarize_cohort_traces,
         _summarize_trait_summary,
+        enrich_functional_data_result,
     )
 
     emit("functional_data_start", {"query": question_text[:300]})
@@ -1165,6 +1030,8 @@ def _run_functional_data_step(question_text: str, prior_entities: dict | None = 
             if _k in summarized:
                 result[_k] = summarized[_k]
 
+        result = enrich_functional_data_result(result)
+
         return {
             "query": f"GET {endpoint}?{qs}" if qs else f"GET {endpoint}",
             "result": result,
@@ -1193,7 +1060,7 @@ def _filter_empty_steps(plan: dict, neo4j_results: list[dict]) -> tuple[dict, li
     # (cross-source chains mix KG steps with supplementary steps like functional_data,
     # and supplementary steps are always kept regardless of whether the KG step has data)
     has_supplementary_step = any(
-        s.get("source") in ("hpap", "genomic", "ssgsea", "functional_data") for s in steps
+        s.get("source") in ("hpap", "genomic", "functional_data") for s in steps
     )
     if plan_type == "chain" and not has_supplementary_step:
         if neo4j_results:
@@ -1224,7 +1091,7 @@ def _filter_empty_steps(plan: dict, neo4j_results: list[dict]) -> tuple[dict, li
     for i, step in enumerate(steps):
         if i >= len(neo4j_results):
             break
-        is_supplementary = step.get("source") in ("hpap", "genomic", "ssgsea", "functional_data")
+        is_supplementary = step.get("source") in ("hpap", "genomic", "functional_data")
         rc = _count_result_records(neo4j_results[i].get("result", {}))
         if is_supplementary or (rc is not None and rc > 0):
             new_id = len(kept_steps) + 1
@@ -1328,7 +1195,7 @@ def _run_plan_candidate(question: str, candidate_id: int, q: Queue,
             else plan_query(question, chat_history_context=history_context)
         )
         plan = translate_plan(plan)
-        neo4j_results = execute_plan(plan, hpap_handler=None, genomic_handler=_run_genomic_step, ssgsea_handler=_run_ssgsea_step, functional_data_handler=_run_functional_data_step)
+        neo4j_results = execute_plan(plan, hpap_handler=None, genomic_handler=_run_genomic_step, functional_data_handler=_run_functional_data_step)
         score = _score_plan_results(plan, neo4j_results)
         q.put((candidate_id, score, plan, neo4j_results, None))
     except Exception:
@@ -1582,7 +1449,7 @@ def run_plan_revise(
         }
 
     new_plan = translate_plan(new_plan)
-    new_results = execute_plan(new_plan, hpap_handler=None, genomic_handler=_run_genomic_step, ssgsea_handler=_run_ssgsea_step, functional_data_handler=_run_functional_data_step)
+    new_results = execute_plan(new_plan, hpap_handler=None, genomic_handler=_run_genomic_step, functional_data_handler=_run_functional_data_step)
     new_plan, new_results = _filter_empty_steps(new_plan, new_results)
 
     new_literature = literature_result
@@ -1641,7 +1508,7 @@ def run_plan_confirm(
     RIGOR_MODE = rigor
     try:
         # Literature is now appended post-hoc by server.py via combine_literature_block;
-        # the format/reasoning agents receive only KG/SQL/ssGSEA data.
+        # the format/reasoning agents receive only KG/SQL/Functional API data.
         final_functions_result = functions_result
 
         if chat_history and not pre_final_answer:
@@ -1852,14 +1719,6 @@ if __name__ == "__main__":
         sys.path.insert(0, genomic_skill_dir)
     from src.text2sql_agent import Text2SQLAgent  # noqa: F401
     from src.sql_validator import validate_sql  # noqa: F401
-
-    ssgsea_skill_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'skills', 'ssgsea',
-    )
-    if ssgsea_skill_dir not in sys.path:
-        sys.path.insert(0, ssgsea_skill_dir)
-    import ssgsea_client  # noqa: F401
 
     print("Agents ready.")
 

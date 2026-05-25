@@ -254,7 +254,7 @@ def reasoning_response(
         result = entry.get('result', {})
         results_text = _extract_results_text(result)
         source = result.get("source") if isinstance(result, dict) else None
-        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)", "ssgsea": "ssGSEA",
+        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)",
                        "functional_data": "Functional API"}.get(source, "Cypher")
         neo4j_sections.append(
             f"--- Query {i} ---\n"

@@ -449,7 +449,7 @@ def translate_plan(plan: dict) -> dict:
     """
     plan = deepcopy(plan)
     steps = plan["steps"]
-    kg_steps = [s for s in steps if s.get("source") not in ("hpap", "genomic", "ssgsea", "functional_data")]
+    kg_steps = [s for s in steps if s.get("source") not in ("hpap", "genomic", "functional_data")]
     q: Queue = Queue()
 
     for step in kg_steps:
@@ -477,7 +477,7 @@ def translate_plan(plan: dict) -> dict:
 
     # Attach Cypher to each step (non-KG steps get empty cypher)
     for step in steps:
-        if step.get("source") in ("hpap", "genomic", "ssgsea", "functional_data"):
+        if step.get("source") in ("hpap", "genomic", "functional_data"):
             step["cypher"] = ""
             continue
         cypher = results.get(step["id"], "")
@@ -619,7 +619,7 @@ def _execute_one_cypher(cypher: str, index: int, q: Queue) -> None:
 
 # ---------------------------------------------------------------------------
 # Entity extraction: pulls gene names/IDs, SNP IDs, donor IDs from any step
-# result (KG records OR SQL/ssGSEA rows). Used for cross-source chaining.
+# result (KG records OR SQL rows). Used for cross-source chaining.
 # ---------------------------------------------------------------------------
 
 # Column-name keyword heuristics for row-based results
@@ -642,7 +642,7 @@ def _extract_entities_from_result(result_entry: dict) -> dict:
     - ``result["records"][*]["nodes"]`` (KG Bolt format): groups by node label
       -> gene nodes contribute ``gene_names`` (properties.name) and ``gene_ids`` (properties.id);
          snv nodes contribute ``snv_ids``; donor nodes contribute ``donor_ids``.
-    - ``result["rows"]`` (SQL / ssGSEA row format): inspects column names to infer types.
+    - ``result["rows"]`` (SQL row format): inspects column names to infer types.
 
     Returns a dict with keys gene_names, gene_ids, snv_ids, donor_ids (deduped, order preserved).
     """
@@ -683,7 +683,7 @@ def _extract_entities_from_result(result_entry: dict) -> dict:
             elif "donor" in labels:
                 _add("donor_ids", props.get("id") or props.get("center_donor_id"))
 
-    # Format 2: SQL / ssGSEA rows — infer from column names
+    # Format 2: SQL rows — infer from column names
     rows = result.get("rows", []) or []
     for row in rows:
         if not isinstance(row, dict):
@@ -710,7 +710,7 @@ def _summarize_entities(result_entry: dict) -> dict:
     return {k: len(v) for k, v in ents.items()}
 
 
-_NON_KG_SOURCES = ("hpap", "genomic", "ssgsea", "functional_data")
+_NON_KG_SOURCES = ("hpap", "genomic", "functional_data")
 
 
 def _call_handler(step: dict, handler, prior_entities: dict | None) -> dict:
@@ -786,7 +786,6 @@ def _execute_cross_source_chain(
     plan: dict,
     hpap_handler,
     genomic_handler,
-    ssgsea_handler,
     functional_data_handler=None,
 ) -> list[dict]:
     """Execute steps strictly sequentially in id order.
@@ -816,7 +815,7 @@ def _execute_cross_source_chain(
 
     results_by_id: dict[int, dict] = {}
     final: list[dict] = []
-    handlers = {"hpap": hpap_handler, "genomic": genomic_handler, "ssgsea": ssgsea_handler,
+    handlers = {"hpap": hpap_handler, "genomic": genomic_handler,
                 "functional_data": functional_data_handler}
 
     for step in steps:
@@ -860,7 +859,6 @@ def _execute_parallel_with_deps(
     plan: dict,
     hpap_handler,
     genomic_handler,
-    ssgsea_handler,
     functional_data_handler=None,
 ) -> list[dict]:
     """Parallel plan execution, with ``depends_on`` support for non-KG steps.
@@ -874,7 +872,6 @@ def _execute_parallel_with_deps(
 
     hpap_indices: set[int] = set()
     genomic_indices: set[int] = set()
-    ssgsea_indices: set[int] = set()
     functional_data_indices: set[int] = set()
     for i, step in enumerate(steps):
         src = step.get("source")
@@ -882,8 +879,6 @@ def _execute_parallel_with_deps(
             hpap_indices.add(i)
         elif src == "genomic":
             genomic_indices.add(i)
-        elif src == "ssgsea":
-            ssgsea_indices.add(i)
         elif src == "functional_data":
             functional_data_indices.add(i)
 
@@ -922,12 +917,12 @@ def _execute_parallel_with_deps(
             kg_idx += 1
 
     non_kg_results: dict[int, dict] = {}
-    handlers = {"hpap": hpap_handler, "genomic": genomic_handler, "ssgsea": ssgsea_handler,
+    handlers = {"hpap": hpap_handler, "genomic": genomic_handler,
                 "functional_data": functional_data_handler}
 
     # Execute non-KG steps in dependency order (topological). Simple iterative:
     # repeatedly pick steps whose parent is satisfied (or has no depends_on).
-    remaining = list(hpap_indices | genomic_indices | ssgsea_indices | functional_data_indices)
+    remaining = list(hpap_indices | genomic_indices | functional_data_indices)
     # Sort by step id so independent steps run in natural order
     remaining.sort(key=lambda i: steps[i].get("id", 0))
 
@@ -988,7 +983,6 @@ def execute_plan(
     plan: dict,
     hpap_handler: Optional[Callable[..., dict]] = None,
     genomic_handler: Optional[Callable[..., dict]] = None,
-    ssgsea_handler: Optional[Callable[..., dict]] = None,
     functional_data_handler: Optional[Callable[..., dict]] = None,
 ) -> list[dict]:
     """Execute a translated plan against the appropriate data sources.
@@ -1018,11 +1012,11 @@ def execute_plan(
 
     if plan_type == "chain":
         return _execute_cross_source_chain(
-            plan, hpap_handler, genomic_handler, ssgsea_handler, functional_data_handler
+            plan, hpap_handler, genomic_handler, functional_data_handler
         )
 
     return _execute_parallel_with_deps(
-        plan, hpap_handler, genomic_handler, ssgsea_handler, functional_data_handler
+        plan, hpap_handler, genomic_handler, functional_data_handler
     )
 
 
@@ -1041,7 +1035,7 @@ def _count_nonempty_results(results: list[dict]) -> int:
         if isinstance(neo4j_result, dict) and "error" in neo4j_result:
             continue
         # Handle non-KG tabular results: {"rows": [...], "row_count": N, "source": "hpap"|"genomic"|...}
-        if isinstance(neo4j_result, dict) and neo4j_result.get("source") in ("hpap", "genomic", "ssgsea", "functional_data"):
+        if isinstance(neo4j_result, dict) and neo4j_result.get("source") in ("hpap", "genomic", "functional_data"):
             rows = neo4j_result.get("rows", [])
             if rows:
                 count += 1
@@ -1076,13 +1070,12 @@ def _run_single_pipeline(
     q: Queue,
     hpap_handler: Optional[Callable[[str], dict]] = None,
     genomic_handler: Optional[Callable[[str], dict]] = None,
-    ssgsea_handler: Optional[Callable[[str], dict]] = None,
 ) -> None:
     """Worker: run the full plan-translate-execute pipeline for one candidate."""
     try:
         plan = plan_query(question)
         plan = translate_plan(plan)
-        results = execute_plan(plan, hpap_handler=hpap_handler, genomic_handler=genomic_handler, ssgsea_handler=ssgsea_handler)
+        results = execute_plan(plan, hpap_handler=hpap_handler, genomic_handler=genomic_handler)
         score = _count_nonempty_results(results)
         q.put((candidate_id, score, results, plan, None))
     except Exception:
@@ -1116,7 +1109,7 @@ def run_query_planner_pipeline(
     # Launch all candidates in parallel
     q: Queue = Queue()
     for i in range(NUM_CANDIDATES):
-        start_new_thread(_run_single_pipeline, (question, i, q, hpap_handler, genomic_handler, ssgsea_handler))
+        start_new_thread(_run_single_pipeline, (question, i, q, hpap_handler, genomic_handler))
 
     # Collect results (3 min total timeout — candidates run concurrently)
     collected: dict[int, tuple[int, list, dict, str | None]] = {}

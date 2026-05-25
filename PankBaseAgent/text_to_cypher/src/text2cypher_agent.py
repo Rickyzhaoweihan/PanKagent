@@ -8,8 +8,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from .text2cypher_utils import get_env_variable
-from .schema_loader import get_schema, get_schema_hints, get_simplified_schema, get_minimal_schema_for_llm
-from .cypher_validator import validate_cypher, format_validation_report
+from .schema_loader import (
+    get_schema,
+    get_schema_hints,
+    get_simplified_schema,
+    get_minimal_schema_for_llm,
+    get_detailed_schema_for_cypher,
+)
+from .cypher_validator import validate_cypher, format_validation_report, auto_fix_cypher
 
 
 load_dotenv()
@@ -31,8 +37,16 @@ SYNTAX:
 - Always filter with properties or WHERE - never return all nodes
 - Return: WITH collect(DISTINCT x)+collect(DISTINCT y) AS nodes, collect(DISTINCT r) AS edges RETURN nodes, edges;
 - Disease name: ALWAYS use 'type 1 diabetes' (lowercase, never T1D)
-- Relationship names containing semicolons MUST be backtick-escaped: [`function_annotation;GO`], [`pathway_annotation;KEGG`], [`pathway_annotation;reactome`]
+- Ontology/pathway annotations use the UNIFIED `function_annotation` edge (no semicolon, no backtick escape). Distinguish GO vs KEGG vs Reactome by the target node label: `(go:gene_ontology)`, `(k:kegg)`, or `(rp:reactome)`. The legacy `function_annotation;GO`, `pathway_annotation;KEGG`, `pathway_annotation;reactome` edges NO LONGER EXIST.
 - DO NOT add LIMIT anywhere in your query. Result limits are applied automatically by the system.
+
+GENE ACTIVITY SCORE RULE (CRITICAL — noise filter):
+- `gene_activity_score_in` is scATAC-seq-derived chromatin accessibility per cell type. The raw scores contain many false positives: genes can show "activity" in cell types where they are NOT actually expressed (ambient signal, pseudobulk artifacts).
+- Whenever you generate a query that matches `gene_activity_score_in`, you MUST also require a `gene_detected_in` edge between the SAME gene and the SAME anatomical_structure. Use an `EXISTS {{ ... }}` sub-clause for this — do not add a separate MATCH (it would inflate the result set).
+- Pattern to follow:
+    MATCH (g:gene)-[r:gene_activity_score_in]->(ct:anatomical_structure)
+    WHERE <other filters> AND EXISTS {{ (g)-[:gene_detected_in]->(ct) }}
+- This filter is non-negotiable. Never report a gene_activity_score_in result for a gene that lacks a matching gene_detected_in edge in the same cell type.
 
 NODE LABELS (use these exact labels):
 - gene (NOT Gene), snv (NOT snp), OCR_peak (NOT OCR), anatomical_structure (NOT cell_type)
@@ -56,18 +70,23 @@ WITH collect(DISTINCT sn)+collect(DISTINCT g) AS nodes, collect(DISTINCT r) AS e
 RETURN nodes, edges;
 
 Query: 'Get upregulated genes in Beta Cell in T1D'
-MATCH (g:gene)-[deg:T1D_DEG_in]->(ct:anatomical_structure) WHERE ct.name = 'type B pancreatic cell (beta cell)' AND deg.UpOrDownRegulation = 'Upregulated in T1D'
+MATCH (g:gene)-[deg:T1D_DEG_in]->(ct:anatomical_structure) WHERE ct.name = 'beta cell' AND deg.UpOrDownRegulation = 'Upregulated in T1D'
 WITH collect(DISTINCT g)+collect(DISTINCT ct) AS nodes, collect(DISTINCT deg) AS edges
 RETURN nodes, edges;
 
 Query: 'Get GO annotations for gene CFTR'
-MATCH (g:gene)-[r:`function_annotation;GO`]->(go:gene_ontology) WHERE g.name = 'CFTR'
+MATCH (g:gene)-[r:function_annotation]->(go:gene_ontology) WHERE g.name = 'CFTR'
 WITH collect(DISTINCT g)+collect(DISTINCT go) AS nodes, collect(DISTINCT r) AS edges
 RETURN nodes, edges;
 
 Query: 'Get KEGG pathways for gene INS'
-MATCH (g:gene)-[r:`pathway_annotation;KEGG`]->(k:kegg) WHERE g.name = 'INS'
+MATCH (g:gene)-[r:function_annotation]->(k:kegg) WHERE g.name = 'INS'
 WITH collect(DISTINCT g)+collect(DISTINCT k) AS nodes, collect(DISTINCT r) AS edges
+RETURN nodes, edges;
+
+Query: 'Get Reactome pathways for gene CFTR'
+MATCH (g:gene)-[r:function_annotation]->(rp:reactome) WHERE g.name = 'CFTR'
+WITH collect(DISTINCT g)+collect(DISTINCT rp) AS nodes, collect(DISTINCT r) AS edges
 RETURN nodes, edges;
 
 Query: 'Get genes detected in Beta Cell'
@@ -75,8 +94,67 @@ MATCH (g:gene)-[r:gene_detected_in]->(ct:anatomical_structure) WHERE r.cell_type
 WITH collect(DISTINCT g)+collect(DISTINCT ct) AS nodes, collect(DISTINCT r) AS edges
 RETURN nodes, edges;
 
+Query: 'Get gene activity scores in Beta Cell'  (note the mandatory EXISTS detected_in filter)
+MATCH (g:gene)-[r:gene_activity_score_in]->(ct:anatomical_structure)
+WHERE ct.name = 'beta cell' AND EXISTS {{ (g)-[:gene_detected_in]->(ct) }}
+WITH collect(DISTINCT g)+collect(DISTINCT ct) AS nodes, collect(DISTINCT r) AS edges
+RETURN nodes, edges;
+
+Query: 'Gene activity score for CFTR in Alpha Cell'
+MATCH (g:gene)-[r:gene_activity_score_in]->(ct:anatomical_structure)
+WHERE g.name = 'CFTR' AND ct.name = 'alpha cell' AND EXISTS {{ (g)-[:gene_detected_in]->(ct) }}
+WITH collect(DISTINCT g)+collect(DISTINCT ct) AS nodes, collect(DISTINCT r) AS edges
+RETURN nodes, edges;
+
 Query: 'Find donors with diabetes_type Diabetes (Type I)'
 MATCH (d:donor) WHERE d.diabetes_type = 'Diabetes (Type I)'
+WITH collect(DISTINCT d) AS nodes, [] AS edges
+RETURN nodes, edges;
+
+STRING-TYPED PROPERTIES THAT LOOK NUMERIC OR BOOLEAN (CRITICAL):
+
+`chr` (chromosome) on gene / OCR_peak / variant nodes:
+- Stored as a String: '1'..'22', 'X', 'Y', 'MT'. Comparison with an unquoted int silently returns 0 rows.
+- Correct: `WHERE g.chr = '1'`  (quote the literal)
+- For range/numeric queries: `WHERE toInteger(g.chr) < 23`  (safe only on autosomes; X/Y/MT will fail the cast — usually fine)
+
+`strand` on gene nodes:
+- Stored as String: '-1' or '1'.  Correct: `WHERE g.strand = '1'`.
+
+`credibleset` on part_of_QTL_signal edges:
+- Stored as String like '1', '2'.  Correct: `WHERE r.credibleset = '1'`.
+
+Boolean variant flags on `(:variants)`/`(:sequence_variant)` and subtype nodes
+(`in_3prime_UTR`, `in_3prime_gene_region`, `in_5prime_UTR`, `in_5prime_gene_region`,
+`in_intron`, `in_acceptor_splice_site`, `in_donor_splice_site`,
+`non_synonymous_missense`, `non_synonymous_nonsense`, `non_synonymous_frameshift`):
+- Stored as MIXED-CASE strings: 'TRUE', 'True', 'true', 'FALSE', 'False', 'false' all co-exist in the same property.
+- Do NOT write `WHERE v.in_intron = true` (a Cypher boolean — returns 0 rows).
+- Do NOT write `WHERE v.in_intron = 'TRUE'` (only catches one casing).
+- Correct: `WHERE toLower(v.in_intron) = 'true'`  (catches every casing).
+
+Date strings like '4/7/25' (variant data_version, donor creation_date) are in
+D/M/YY format, ambiguous. Treat as opaque strings — equality only.
+
+DONOR NUMERIC PROPERTIES STORED AS STRINGS (CRITICAL):
+- The following donor properties LOOK numeric but are actually String:
+  - `age` — format `"18 years"`, `"58 years"` (extract integer with `split(d.age, ' ')[0]`)
+  - `diabetes_duration` — format `"5 years"`, `"3 years"` (same pattern)
+  - `bmi` — format `"21.3"`, `"27.24"` (use `toFloat(d.bmi)`)
+  - `hba1c_percentage` — format `"12.4"`, `"5.8"` (use `toFloat(...)`)
+  - `c_peptide_ng_ml` — format `"0.09"`, `"3.75"` (use `toFloat(...)`)
+- NEVER write `WHERE d.age < 40` — string-vs-number comparison returns 0 rows.
+  Correct: `WHERE toInteger(split(d.age, ' ')[0]) < 40`
+- Same goes for `>`, `>=`, `<=`, `=`, `<>` on any of these properties.
+- `hospital_stay_hours` IS an Int and can be compared directly.
+
+Query: 'Find female donors with age less than 40'
+MATCH (d:donor) WHERE d.gender = 'Female' AND toInteger(split(d.age, ' ')[0]) < 40
+WITH collect(DISTINCT d) AS nodes, [] AS edges
+RETURN nodes, edges;
+
+Query: 'Find T1D donors with BMI over 25'
+MATCH (d:donor) WHERE d.diabetes_type = 'Diabetes (Type I)' AND toFloat(d.bmi) > 25
 WITH collect(DISTINCT d) AS nodes, [] AS edges
 RETURN nodes, edges;
 
@@ -98,10 +176,14 @@ RETURN nodes, edges;
 
 BAD EXAMPLES (DO NOT DO):
 WRONG: MATCH (sn:snp)-[r:part_of_QTL_signal]->(g:gene) (use snv not snp!)
-WRONG: MATCH (g:gene)-[:function_annotation]->(fo:gene_ontology) (missing variable, wrong rel name — use [`function_annotation;GO`])
+WRONG: MATCH (g:gene)-[:function_annotation]->(fo:gene_ontology) (missing relationship variable — must be `[r:function_annotation]`)
+WRONG: MATCH (g:gene)-[r:`function_annotation;GO`]->(...) (legacy edge name — use the unified `function_annotation` without backticks)
+WRONG: MATCH (g:gene)-[r:`pathway_annotation;KEGG`]->(...) (legacy edge name — use `function_annotation` with target `(k:kegg)`)
+WRONG: MATCH (g:gene)-[r:`pathway_annotation;reactome`]->(...) (legacy edge name — use `function_annotation` with target `(rp:reactome)`)
 WRONG: MATCH (g:gene)-[r:DEG_in]->(ct:cell_type) (use T1D_DEG_in and anatomical_structure!)
 WRONG: ... RETURN nodes, edges LIMIT 50; (DO NOT add LIMIT)
 WRONG: RETURN g.name AS name, r.Log2FoldChange AS lfc (scalar returns not supported!)
+WRONG: MATCH (g:gene)-[r:gene_activity_score_in]->(ct:anatomical_structure) WHERE ct.name = 'Beta Cell' (MISSING the mandatory EXISTS gene_detected_in filter — would return noise scores for genes not actually expressed in Beta cells)
 
 Schema:
 """
@@ -194,96 +276,88 @@ class Text2CypherAgent:
 
     def respond_with_refinement(self, user_text: str, max_iterations: int = None) -> dict:
         """
-        Generate Cypher with iterative refinement using test-time scaling.
-        
-        Args:
-            user_text: The user's natural language query
-            max_iterations: Maximum refinement iterations (uses self.max_refinement_iterations if None)
-            
-        Returns:
+        Generate Cypher using a 2-stage lazy-schema flow.
+
+        Stage 1 — initial generation against the rich minimal schema (existing
+        ``self.respond``). After the draft comes back, lazily pull the
+        detailed schema slice for ONLY the entities the LLM picked
+        (``get_detailed_schema_for_cypher``), then run deterministic schema-
+        slice-driven fixes via ``auto_fix_cypher`` (enum value coercion,
+        cell-type canonicalisation, property-name case, etc.).
+
+        Stage 2 — if the auto-fixed draft still scores below the threshold,
+        do a SINGLE refinement LLM call. The refinement prompt now carries
+        the entity-specific detailed slice (full property names + valid enum
+        values), not the generic minimal schema. Result is auto-fixed again
+        before validation.
+
+        Replaces the previous up-to-5-iteration loop. Caps LLM calls at 2.
+
+        ``max_iterations`` is accepted for backwards compatibility but no
+        longer controls the loop count — it's logged and ignored.
+
+        Returns the same dict shape as before for caller compatibility:
             {
                 'cypher': str,              # Best Cypher query
                 'score': int,               # Validation score (0-100)
-                'iteration': int,           # Which iteration produced the best result
+                'iteration': int,           # Which attempt produced the best result
                 'all_attempts': list,       # All attempts with scores and validation
                 'validation_report': dict   # Detailed validation of best query
             }
         """
-        if max_iterations is None:
-            max_iterations = self.max_refinement_iterations
-        
         all_attempts = []
-        best_result = None
-        best_score = -1
-        
-        # Iteration 1: Initial generation
-        cypher = self.respond(user_text)
-        validation = validate_cypher(cypher)
-        
-        attempt = {
+
+        # --- Stage 1: initial draft + lazy detailed slice + auto-fix ---
+        draft = self.respond(user_text)
+        detailed_text, enum_map = get_detailed_schema_for_cypher(draft)
+        fixed1, fixes1 = auto_fix_cypher(draft, schema_slice=enum_map)
+        validation1 = validate_cypher(fixed1)
+
+        attempt1 = {
             'iteration': 1,
-            'cypher': cypher,
-            'score': validation['score'],
-            'validation': validation
+            'cypher': fixed1,
+            'score': validation1['score'],
+            'validation': validation1,
+            'raw_draft': draft,
+            'fixes_applied': fixes1,
         }
-        all_attempts.append(attempt)
-        
-        if validation['score'] > best_score:
-            best_score = validation['score']
-            best_result = attempt
-        
-        # Early stopping if score is excellent
-        if validation['score'] >= 90:
+        all_attempts.append(attempt1)
+
+        if validation1['score'] >= 90:
             return {
-                'cypher': cypher,
-                'score': validation['score'],
+                'cypher': fixed1,
+                'score': validation1['score'],
                 'iteration': 1,
                 'all_attempts': all_attempts,
-                'validation_report': validation
+                'validation_report': validation1,
             }
-        
-        # Iterations 2-N: Refinement loop
-        for iteration in range(2, max_iterations + 1):
-            # Build refinement prompt with previous attempt and errors
-            prev_validation = all_attempts[-1]['validation']
-            
-            if prev_validation['score'] >= self.min_acceptable_score and not prev_validation['errors']:
-                # Good enough, stop early
-                break
-            
-            refinement_prompt = self._build_refinement_prompt(
-                user_text,
-                all_attempts[-1]['cypher'],
-                prev_validation
-            )
-            
-            # Generate refined Cypher
-            cypher = self._generate_with_refinement_prompt(refinement_prompt)
-            validation = validate_cypher(cypher)
-            
-            attempt = {
-                'iteration': iteration,
-                'cypher': cypher,
-                'score': validation['score'],
-                'validation': validation
-            }
-            all_attempts.append(attempt)
-            
-            # Track best result
-            if validation['score'] > best_score:
-                best_score = validation['score']
-                best_result = attempt
-            
-            # Early stopping if score is excellent
-            if validation['score'] >= 90:
-                break
-        
+
+        # --- Stage 2: single refinement LLM call with the detailed slice ---
+        refinement_prompt = self._build_refinement_prompt_v2(
+            user_text, fixed1, validation1, detailed_text,
+        )
+        refined = self._generate_with_refinement_prompt_v2(refinement_prompt)
+        fixed2, fixes2 = auto_fix_cypher(refined, schema_slice=enum_map)
+        validation2 = validate_cypher(fixed2)
+
+        attempt2 = {
+            'iteration': 2,
+            'cypher': fixed2,
+            'score': validation2['score'],
+            'validation': validation2,
+            'raw_draft': refined,
+            'fixes_applied': fixes2,
+        }
+        all_attempts.append(attempt2)
+
+        # Return whichever attempt scored better (tie -> later attempt)
+        best = attempt2 if validation2['score'] >= validation1['score'] else attempt1
         return {
-            'cypher': best_result['cypher'],
-            'score': best_result['score'],
-            'iteration': best_result['iteration'],
+            'cypher': best['cypher'],
+            'score': best['score'],
+            'iteration': best['iteration'],
             'all_attempts': all_attempts,
-            'validation_report': best_result['validation']
+            'validation_report': best['validation'],
         }
     
     def _build_refinement_prompt(self, original_question: str, previous_cypher: str, 
@@ -309,23 +383,89 @@ class Text2CypherAgent:
         return prompt
     
     def _generate_with_refinement_prompt(self, refinement_prompt: str) -> str:
-        """Generate Cypher using refinement prompt."""
+        """[Deprecated] Generate Cypher using legacy refinement prompt with minimal schema only.
+
+        Retained for backward compatibility; the active path is
+        ``_generate_with_refinement_prompt_v2`` which carries the entity-specific
+        detailed schema slice instead.
+        """
         # Build a simplified prompt for refinement
         schema_section = f"Schema:\n{self.minimal_schema}\n\n"
         full_prompt = schema_section + refinement_prompt + "\n\n"
-        
+
         result = self.llm.invoke(full_prompt)
         cypher = result.content.strip().strip("` ")
-        
+
         # Remove common prefixes that models add
         if cypher.lower().startswith("cypher"):
             cypher = cypher[6:].strip()
-        
+
         # Remove "Query: '...'" prefix if the model echoed the input
         query_prefix_match = re.match(r'^Query:\s*[\'"].*?[\'"]\s*\n?', cypher, re.IGNORECASE)
         if query_prefix_match:
             cypher = cypher[query_prefix_match.end():].strip()
-        
+
+        return cypher
+
+    # ------------------------------------------------------------------
+    # 2-stage refinement (lazy detailed-schema slice)
+    # ------------------------------------------------------------------
+
+    def _build_refinement_prompt_v2(
+        self,
+        original_question: str,
+        previous_cypher: str,
+        validation: dict,
+        detailed_schema_text: str,
+    ) -> str:
+        """Refinement prompt carrying the entity-specific detailed slice.
+
+        The LLM sees: the previous (auto-fixed) Cypher, the remaining
+        validation errors, the original question, AND a focused schema slice
+        listing every property + valid enum value for ONLY the entities the
+        previous attempt referenced. This is the key payload the legacy
+        ``_build_refinement_prompt`` did not carry.
+        """
+        errors_text = "\n".join(f"  - {error}" for error in validation.get('errors', []))
+        if not errors_text:
+            errors_text = "  - Low score but no specific errors detected"
+
+        prompt = (
+            f"Previous attempt (Score: {validation.get('score', 0)}/100):\n"
+            f"{previous_cypher}\n\n"
+            f"Fix these errors:\n{errors_text}\n\n"
+            f"Detailed schema for the entities in your previous attempt:\n"
+            f"{detailed_schema_text}\n\n"
+            f"Question: {original_question}\n\n"
+            f"Generate corrected Cypher query."
+        )
+
+        with open('log.txt', 'a') as log_file:
+            log_file.write(f"Refinement prompt v2:\n{prompt}\n")
+        return prompt
+
+    def _generate_with_refinement_prompt_v2(self, refinement_prompt: str) -> str:
+        """Generate Cypher using the v2 refinement prompt.
+
+        Unlike the legacy ``_generate_with_refinement_prompt`` which re-emits
+        ``self.minimal_schema``, v2 expects the refinement prompt itself to
+        already carry the entity-specific detailed slice (built by
+        ``_build_refinement_prompt_v2``). We only prepend SYSTEM_RULES so the
+        LLM still knows the syntax/format constraints.
+        """
+        full_prompt = SYSTEM_RULES + "\n" + refinement_prompt + "\n\n"
+
+        result = self.llm.invoke(full_prompt)
+        cypher = result.content.strip().strip("` ")
+
+        if cypher.lower().startswith("cypher"):
+            cypher = cypher[6:].strip()
+        query_prefix_match = re.match(r'^Query:\s*[\'"].*?[\'"]\s*\n?', cypher, re.IGNORECASE)
+        if query_prefix_match:
+            cypher = cypher[query_prefix_match.end():].strip()
+        # Strip any LIMIT the model may have added — injected by the validator
+        cypher = re.sub(r'\s+LIMIT\s+\d+', '', cypher, flags=re.IGNORECASE)
+
         return cypher
 
     def get_history(self) -> list[dict[str, str]]:

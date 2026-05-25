@@ -45,6 +45,12 @@ if _fd_skill_dir not in sys.path:
     sys.path.insert(0, _fd_skill_dir)
 from functional_data_client import build_functional_data_glossary
 
+# Schema-skill glossary helper (KG edge/node interpretation rules)
+_t2c_src = os.path.join(_repo_root, "PankBaseAgent", "text_to_cypher", "src")
+if _t2c_src not in sys.path:
+    sys.path.insert(0, _t2c_src)
+from schema_skill_loader import build_schema_skill_glossary
+
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
 _PERF_LOG = os.path.join(_repo_root, 'logs', 'performance.log')
@@ -232,7 +238,7 @@ def rigor_reasoning_response(
         result = entry.get('result', {})
         results_text = _extract_results_text(result)
         source = result.get("source") if isinstance(result, dict) else None
-        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)", "ssgsea": "ssGSEA",
+        query_label = {"hpap": "SQL (HPAP)", "genomic": "SQL (Genomic)",
                        "functional_data": "Functional API"}.get(source, "Cypher")
         neo4j_sections.append(
             f"--- Query {i} ---\n"
@@ -245,6 +251,10 @@ def rigor_reasoning_response(
     if _fd_glossary:
         emit("rigor_reasoning_glossary_injected", {"chars": len(_fd_glossary)})
 
+    _ss_glossary = build_schema_skill_glossary(neo4j_results)
+    if _ss_glossary:
+        emit("rigor_reasoning_schema_skill_injected", {"chars": len(_ss_glossary)})
+
     user_input = f"""Human Query: {human_query}
 
 === QUERIES ===
@@ -253,6 +263,7 @@ def rigor_reasoning_response(
 === DATABASE RESULTS (RAW — {len(neo4j_results)} queries) ===
 {raw_neo4j_block}
 {_fd_glossary}
+{_ss_glossary}
 
 REMINDER: Only reason over data that is present above. If a reasoning step has no supporting data, state that and stop that chain."""
 

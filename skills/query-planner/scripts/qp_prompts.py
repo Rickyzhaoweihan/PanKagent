@@ -42,20 +42,17 @@ will translate into Cypher.  You do NOT write Cypher yourself.
 | 4 | `effector_gene_of` | Gene → Disease | Curated effector gene for a disease |
 | 5 | `T1D_DEG_in` | Gene → anatomical_structure | Differentially expressed gene in T1D vs non-diabetic |
 | 6 | `gene_detected_in` | Gene → anatomical_structure | Expression detection and statistics per cell type (mean expression, fraction detected, NonDiabetic/T1D means) |
-| 7 | `gene_enriched_in` | Gene → anatomical_structure | Cell-type marker genes (ND-only, one-vs-rest DESeq2) |
+| 7 | `gene_enriched_in` | Gene → anatomical_structure | Cell-type **enrichment** (ND-only, one-vs-rest DESeq2) — gene is preferentially expressed in this cell type. **NOT a marker.** PanKgraph does not currently expose curated marker-gene edges; if the user asks for "markers", route to `gene_enriched_in` but report results strictly as enrichment (not marker designation) |
 | 8 | `gene_activity_score_in` | Gene → anatomical_structure | Gene activity scores from scATAC-seq per cell type |
 | 9 | `OCR_peak_in` | OCR_peak → anatomical_structure | Open chromatin peaks in a cell type |
-| 10 | `function_annotation;GO` | Gene → gene_ontology | GO term annotation (backtick-escape in Cypher) |
-| 11 | `pathway_annotation;KEGG` | Gene → kegg | KEGG pathway annotation (backtick-escape in Cypher) |
-| 12 | `pathway_annotation;reactome` | Gene → reactome | Reactome pathway annotation (backtick-escape in Cypher) |
+| 10 | `function_annotation` | Gene → gene_ontology / kegg / reactome | **Unified** ontology/pathway annotation. Distinguish the three by TARGET NODE LABEL (`gene_ontology`, `kegg`, or `reactome`) and/or by the edge's `data_source` property (`'Ensembl'` for GO, `'KEGG'`, `'Reactome'`). No backtick escape needed — the edge name has no semicolon. |
 | 13 | `physical_interaction` | Gene → Gene | Protein-protein interaction (BioGRID) |
 | 14 | `genetic_interaction` | Gene → Gene | Genetic interaction (BioGRID) |
-| 15 | `fGSEA_gene_enriched_in` | Gene → anatomical_structure | fGSEA: gene-to-enriched-pathway-in-cell-type |
 | 16 | `fGSEA_enriched_in` | kegg/reactome → anatomical_structure | fGSEA: pathway enriched in a cell type |
 | 17 | `has_donor` | Sample → donor | Sample linked to donor |
 | 18 | `has_sample` | donor → Sample | Donor linked to biological sample |
 
-**REMOVED relationships (do NOT use)**: `DEG_in` (use `T1D_DEG_in`), `expression_level_in` (use `gene_detected_in`), `OCR_activity` (use `OCR_peak_in` or `gene_activity_score_in`), `OCR_locate_in` (removed), `snp` (use `snv`), `function_annotation` (use `function_annotation;GO` with backticks).
+**REMOVED relationships (do NOT use)**: `DEG_in` (use `T1D_DEG_in`), `expression_level_in` (use `gene_detected_in`), `OCR_activity` (use `OCR_peak_in` or `gene_activity_score_in`), `OCR_locate_in` (removed), `snp` (use `snv`), `function_annotation;GO` / `pathway_annotation;KEGG` / `pathway_annotation;reactome` (all three consolidated into the unified `function_annotation` edge — use that with the appropriate target node label).
 
 ---
 
@@ -109,12 +106,12 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   - "Get SNVs that have part_of_QTL_signal relationships with gene CFTR"
   - "Get genes that have T1D_DEG_in relationships with Beta Cell"
   - "Get genes that have gene_detected_in relationships with Beta Cell" (expression stats)
-  - "Get genes that have gene_enriched_in relationships with Beta Cell" (marker genes)
+  - "Get genes that have gene_enriched_in relationships with Beta Cell" (cell-type enrichment, NOT markers)
   - "Get genes that have gene_activity_score_in relationships with Beta Cell"
   - "Get OCR peaks that have OCR_peak_in relationships with Beta Cell"
-  - "Get genes that have function_annotation;GO relationships with gene ontology terms"
-  - "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways"
-  - "Get genes that have pathway_annotation;reactome relationships with Reactome pathways"
+  - "Get genes that have function_annotation relationships with gene ontology terms"
+  - "Get genes that have function_annotation relationships with KEGG pathways"
+  - "Get genes that have function_annotation relationships with Reactome pathways"
   - "Get genes that have signal_COLOC_with relationships with type 1 diabetes"
   - "Get SNVs that have part_of_GWAS_signal relationships with type 1 diabetes"
   - "Get genes that have physical_interaction relationships with gene CFTR"
@@ -148,7 +145,7 @@ Output ONLY a valid JSON object (no markdown, no extra text):
 
 ### Example 1 (CHAIN — Category A)
 **Question**: "Which GO terms are associated with genes that have open chromatin peaks in Beta cells?"
-**Path**: OCR_peak -[OCR_peak_in]-> Beta Cell, Gene -[function_annotation;GO]-> GO
+**Path**: OCR_peak -[OCR_peak_in]-> Beta Cell, Gene -[function_annotation]-> GO
 
 ```json
 {
@@ -157,7 +154,7 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   "reasoning": "2-hop chain: get OCR peaks in Beta Cell, then get GO terms for genes enriched in Beta Cell. Join on gene (g).",
   "steps": [
     {"id": 1, "natural_language": "Get OCR peaks that have OCR_peak_in relationships with Beta Cell", "join_var": "g", "depends_on": null},
-    {"id": 2, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms", "join_var": null, "depends_on": 1}
+    {"id": 2, "natural_language": "Get genes that have function_annotation relationships with gene ontology terms", "join_var": null, "depends_on": 1}
   ]
 }
 ```
@@ -274,15 +271,15 @@ Output ONLY a valid JSON object (no markdown, no extra text):
 
 ### Example 9 (CHAIN — Category C)
 **Question**: "Which genes are differentially expressed in Beta Cell and have GO term insulin secretion?"
-**Path**: Gene -[T1D_DEG_in]-> Beta Cell, Gene -[function_annotation;GO]-> gene_ontology
+**Path**: Gene -[T1D_DEG_in]-> Beta Cell, Gene -[function_annotation]-> gene_ontology
 
 ```json
 {
   "plan_type": "chain",
-  "reasoning": "2-hop chain: Gene->anatomical_structure(T1D_DEG_in), Gene->gene_ontology(function_annotation;GO). Join on Gene (g).",
+  "reasoning": "2-hop chain: Gene->anatomical_structure(T1D_DEG_in), Gene->gene_ontology(function_annotation). Join on Gene (g).",
   "steps": [
     {"id": 1, "natural_language": "Get genes that have T1D_DEG_in relationships with Beta Cell", "join_var": "g", "depends_on": null},
-    {"id": 2, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms", "join_var": null, "depends_on": 1}
+    {"id": 2, "natural_language": "Get genes that have function_annotation relationships with gene ontology terms", "join_var": null, "depends_on": 1}
   ]
 }
 ```
@@ -290,7 +287,7 @@ Output ONLY a valid JSON object (no markdown, no extra text):
 ### Example 9b (PARALLEL — Functional Annotation TRIAD: GO + KEGG + Reactome)
 **Question**: "What biological processes / functions / pathways is CTLA4 annotated with?"
 
-**Why three steps, not one**: `function_annotation;GO` covers Gene Ontology but says NOTHING about pathways. KEGG and Reactome are separate pathway resources stored on their own edge types. Whenever the user asks about functions, annotations, or pathways of a gene — or you are doing a comprehensive gene lookup — fire ALL THREE edges in parallel.
+**Why three steps, not one**: The unified `function_annotation` edge connects a gene to one of three ontology resources — `gene_ontology` (GO terms), `kegg` (pathways), or `reactome` (pathways). The edge name is the SAME for all three; what differs is the target node label. Each ontology answers a different question: GO terms describe molecular function / biological process / cellular component; KEGG and Reactome describe pathway membership and are complementary. Whenever the user asks about functions, annotations, or pathways of a gene — or you are doing a comprehensive gene lookup — fire THREE parallel steps, each filtering on a different target node label.
 
 ```json
 {
@@ -298,9 +295,9 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   "reasoning": "Functional-annotation triad for CTLA4: GO covers biological processes / molecular functions, but KEGG and Reactome carry curated pathway membership that GO does NOT. Treat all three as co-equal functional annotations and fetch in parallel.",
   "steps": [
     {"id": 1, "natural_language": "Find gene with name CTLA4", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms for gene CTLA4", "join_var": null, "depends_on": null},
-    {"id": 3, "natural_language": "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways for gene CTLA4", "join_var": null, "depends_on": null},
-    {"id": 4, "natural_language": "Get genes that have pathway_annotation;reactome relationships with Reactome pathways for gene CTLA4", "join_var": null, "depends_on": null}
+    {"id": 2, "natural_language": "Get genes that have function_annotation relationships with gene ontology terms for gene CTLA4", "join_var": null, "depends_on": null},
+    {"id": 3, "natural_language": "Get genes that have function_annotation relationships with KEGG pathways for gene CTLA4", "join_var": null, "depends_on": null},
+    {"id": 4, "natural_language": "Get genes that have function_annotation relationships with Reactome pathways for gene CTLA4", "join_var": null, "depends_on": null}
   ]
 }
 ```
@@ -524,9 +521,9 @@ have no join_var and no depends_on — they are always independent/parallel.
     {"id": 2, "natural_language": "Get genes that have gene_detected_in relationships with cell types for gene INS", "join_var": null, "depends_on": null},
     {"id": 3, "natural_language": "Get genes that have T1D_DEG_in relationships with cell types for gene INS", "join_var": null, "depends_on": null},
     {"id": 4, "natural_language": "Check whether gene INS has an effector_gene_of relationship to type 1 diabetes", "join_var": null, "depends_on": null},
-    {"id": 5, "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms for gene INS", "join_var": null, "depends_on": null},
-    {"id": 6, "natural_language": "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways for gene INS", "join_var": null, "depends_on": null},
-    {"id": 7, "natural_language": "Get genes that have pathway_annotation;reactome relationships with Reactome pathways for gene INS", "join_var": null, "depends_on": null},
+    {"id": 5, "natural_language": "Get genes that have function_annotation relationships with gene ontology terms for gene INS", "join_var": null, "depends_on": null},
+    {"id": 6, "natural_language": "Get genes that have function_annotation relationships with KEGG pathways for gene INS", "join_var": null, "depends_on": null},
+    {"id": 7, "natural_language": "Get genes that have function_annotation relationships with Reactome pathways for gene INS", "join_var": null, "depends_on": null},
     {"id": 8, "natural_language": "What is the genomic location of gene INS and what OCR peaks overlap it?", "source": "genomic", "join_var": null, "depends_on": null}
   ]
 }
@@ -563,136 +560,6 @@ have no join_var and no depends_on — they are always independent/parallel.
 
 ---
 
-## ssGSEA Server (supplementary data source)
-
-The ssGSEA server runs **single-sample Gene Set Enrichment Analysis** on immune-cell
-pseudo-bulk data from 112 HPAP donors. Given a list of genes, it computes an enrichment
-score per donor — measuring how strongly that gene set is expressed in each donor's
-immune cells.
-
-### ssGSEA INPUT/OUTPUT — READ CAREFULLY
-
-**INPUT to ssGSEA is ALWAYS a list of GENE NAMES (e.g. INS, GCG, CFTR).**
-
-**ssGSEA does NOT accept donor filters, cohort filters, or donor IDs as input.**
-
-The server ALWAYS returns exactly **112 scores** (one per donor in its preloaded
-Seurat dataset). You cannot make the server score only a subset of donors.
-
-If the user wants "ssGSEA on female T1D Stage 3 donors" or "ssGSEA for controls":
-- The donor cohort is a **filter applied AFTER the ssGSEA results are returned**.
-- The cohort filter is a SEPARATE KG step that retrieves matching donors.
-- The FormatAgent/ReasoningAgent cross-references the two result sets at the end.
-- **NEVER pass donor IDs into an ssGSEA step as input — they will be ignored.**
-- **NEVER make an ssGSEA step `depends_on` a donor/cohort step** — it needs genes, not donors.
-
-### The gene set is REQUIRED
-
-Every ssGSEA step MUST have a gene source. One of:
-
-1. **Explicit gene list in the NL** — e.g. `"Run ssGSEA for INS, GCG, SST, PPY"`.
-2. **Genes from an upstream KG step** — add `depends_on: <kg_step_id>` pointing to a
-   step that retrieves genes (e.g., effector_gene_of, function_annotation;GO, T1D_DEG_in,
-   gene_enriched_in, gene_detected_in). The cross-source chain automatically passes `gene_names` through.
-
-If the user asks for ssGSEA **without specifying genes**, default to **T1D effector
-genes** by adding a KG step that retrieves `effector_gene_of` relationships and make
-the ssGSEA step `depends_on` it.
-
-### What it can / cannot answer
-
-**Can answer:**
-- Per-donor immune cell enrichment scores for a custom gene set
-- Whether a set of genes (e.g., T1D effector genes) are enriched in immune cells
-- Comparison of enrichment patterns across donors with different diabetes status
-
-**Cannot answer:**
-- Gene expression in non-immune cell types (only immune cells)
-- Individual gene expression levels (only gene SET enrichment)
-- Anything about the knowledge graph (use KG steps for that)
-
-### When to add ssGSEA steps
-
-Add a ssGSEA step when:
-- The user explicitly asks for ssGSEA, gene set enrichment, or immune enrichment analysis
-- The user wants to compare a gene list across donors at the immune cell level
-- The user has a set of genes and wants to know their immune enrichment pattern
-
-Do NOT add ssGSEA steps for general gene queries — only when enrichment scoring is requested.
-
-### ssGSEA step format
-
-The `natural_language` should name the genes to analyze. Use `depends_on` when genes come from a KG step.
-
-```
-{"id": N, "natural_language": "Run ssGSEA for genes INS, GCG, SST, PPY", "source": "ssgsea", "join_var": null, "depends_on": null}
-```
-
-### ssGSEA Examples
-
-**Example 19 (PARALLEL — gene list given explicitly)**
-**Question**: "Run ssGSEA on INS, GCG, SST, PPY"
-
-```json
-{
-  "plan_type": "parallel",
-  "reasoning": "Gene list is given in the question — a single ssGSEA step suffices.",
-  "steps": [
-    {"id": 1, "natural_language": "Run ssGSEA for genes INS, GCG, SST, PPY", "source": "ssgsea", "join_var": null, "depends_on": null}
-  ]
-}
-```
-
-**Example 20 (CHAIN — genes retrieved from KG first)**
-**Question**: "Run ssGSEA on T1D effector genes"
-
-```json
-{
-  "plan_type": "chain",
-  "reasoning": "Retrieve effector genes from KG, then feed into ssGSEA.",
-  "steps": [
-    {"id": 1, "natural_language": "Get genes that have effector_gene_of relationships with type 1 diabetes", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Run ssGSEA on the effector genes from step 1", "source": "ssgsea", "join_var": null, "depends_on": 1}
-  ]
-}
-```
-
-**Example 21 (PARALLEL — ssGSEA + donor cohort filter, THE CORRECT PATTERN)**
-**Question**: "Run ssGSEA on female T1D Stage 3 donors"
-
-The user's donor filter is applied AFTER ssGSEA runs — NOT as input to it.
-ssGSEA needs a gene set; if none given, default to T1D effector genes.
-
-```json
-{
-  "plan_type": "parallel",
-  "reasoning": "ssGSEA needs GENES (not donors) — default to T1D effector genes since none were specified. Donor cohort is a separate KG step; FormatAgent intersects ssGSEA scores with cohort donor IDs post-hoc.",
-  "steps": [
-    {"id": 1, "natural_language": "Get genes that have effector_gene_of relationships with type 1 diabetes", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Run ssGSEA on the effector genes from step 1", "source": "ssgsea", "join_var": null, "depends_on": 1},
-    {"id": 3, "natural_language": "Find donors with gender 'Female' and diabetes_type 'Diabetes (Type I)' and t1d_stage containing 'Stage 3'", "join_var": null, "depends_on": null}
-  ]
-}
-```
-
-**WRONG way to handle Example 21 — DO NOT DO:**
-
-```json
-// WRONG: ssGSEA has no gene source, donors can't be ssGSEA input
-{
-  "plan_type": "chain",
-  "steps": [
-    {"id": 1, "natural_language": "Find female T1D Stage 3 donors", "depends_on": null},
-    {"id": 2, "natural_language": "Run ssGSEA on the donors from step 1", "source": "ssgsea", "depends_on": 1}
-  ]
-}
-```
-This is wrong because (a) donors are not a valid ssGSEA input, (b) no gene set was
-provided anywhere, (c) the ssGSEA server returns 112 scores regardless of donor filter
-— the cohort must be applied post-hoc as a separate KG step.
-
----
-
 ## Cross-Source Chain Plans (data flows between steps)
 
 When a question requires the **output of one step to feed into the next** across
@@ -703,8 +570,8 @@ from its parent step via `depends_on`.
 
 ### When to use a cross-source chain
 
-- "Find T1D effector genes **and run ssGSEA on them**" — ssGSEA needs genes from the KG step.
 - "Find gene CFTR and **what OCR peaks overlap its genomic location**" — genomic SQL needs the Ensembl ID from the KG step.
+- "Find T1D Stage 3 donors and **get their insulin secretion traces**" — functional_data needs donor IDs from the KG step.
 - Any question where a later non-KG step's input depends on a prior KG step's output.
 
 ### Cross-source chain format
@@ -715,22 +582,7 @@ Each step has a unique id; the dependent non-KG step has depends_on: <parent_id>
 Non-KG steps can consume: gene_names, gene_ids, snv_ids, donor_ids.
 ```
 
-### Example 20 (CHAIN — KG → ssGSEA)
-
-**Question**: "Find T1D effector genes and run ssGSEA on them"
-
-```json
-{
-  "plan_type": "chain",
-  "reasoning": "Retrieve T1D effector genes from the KG, then feed them into ssGSEA.",
-  "steps": [
-    {"id": 1, "natural_language": "Get genes that have effector_gene_of relationships with type 1 diabetes", "join_var": null, "depends_on": null},
-    {"id": 2, "natural_language": "Run ssGSEA on the effector genes from step 1", "source": "ssgsea", "join_var": null, "depends_on": 1}
-  ]
-}
-```
-
-### Example 21 (CHAIN — KG → genomic)
+### Example 19 (CHAIN — KG → genomic)
 
 **Question**: "What OCR peaks overlap the genomic region of gene CFTR?"
 
@@ -763,10 +615,8 @@ various stimulation conditions (high glucose, IBMX, adrenaline, KCI depolarizati
 reported as AUC (area under curve), basal rates, stimulation indices (SI), and inhibition
 indices (II) — all normalized to islet equivalents (IEQ).
 
-**This is different from ssGSEA.** ssGSEA computes enrichment of a gene SET in immune
-cells. The Functional Data API returns direct hormone secretion measurements for islet
-donors. Use `source: "functional_data"` — NOT `"ssgsea"` — for questions about insulin
-or glucagon secretion, IEQ-normalized assay values, or islet function traits.
+Use `source: "functional_data"` for questions about insulin or glucagon secretion,
+IEQ-normalized assay values, or islet function traits.
 
 ### Functional Data API INPUT/OUTPUT — READ CAREFULLY
 
@@ -823,8 +673,34 @@ into the `functional_data` step as the override selector.
 
 **Cannot answer:**
 - Gene expression or pathway data (use KG steps for that)
-- Immune cell enrichment (use ssGSEA for that)
 - Genomic coordinates (use `source: "genomic"` for that)
+
+### Natural-language hints for the downstream extractor
+
+A separate extractor reads the `natural_language` string of each `functional_data` step
+and produces the actual `{endpoint, params}` payload. To give it the best chance of
+capturing ALL parameters from the user's question, write the `natural_language` so it
+surfaces every retrievable signal:
+
+1. **Use the exact trait name when known** — write `"trait summary for INS-G 16.7 SI"`,
+   NOT `"insulin index ranking"`. Trait names live in the functional_data interpretation
+   skill (e.g. `INS-G 16.7 SI`, `INS-1st AUC (ng/100 IEQs)`, `GCG-G 16.7 + IBMX 100 SI`,
+   `INS-KCl 20 AUC (ng/100 IEQs)`).
+2. **Name the hormone explicitly** — say "insulin" or "glucagon", not "hormone secretion".
+3. **Use the canonical condition keyword** — `high glucose` (16.7 mM), `low glucose`
+   (1.7 mM), `basal glucose` (5.6 mM), `IBMX 100`, `Ad 1` (adrenaline 1 µM), `KCl 20`.
+   Match the global terms in the interpretation skill.
+4. **Pick the correct metric type** — SI for "stimulation index" / "fold change",
+   II for "inhibition" / "suppression", AUC for "total" / "area under curve",
+   basal for "baseline" / "resting".
+5. **Spell out demographic filters in canonical form** — `disease=T1D`, `sex=Female`,
+   `age_min=20`, `age_max=40`, `bmi_max=25`, `race=Caucasian`, `center=Penn`. The
+   extractor lifts these verbatim into API params.
+6. **Never compare insulin and glucagon values directly** — they use different units
+   (ng/100 IEQs vs pg/100 IEQs). Phrase as separate questions if the user wants both.
+
+Bad:  "Show me some insulin data for older T1D patients"
+Good: "Get trait summary for INS-G 16.7 SI in T1D donors age_min=60"
 
 ### When to add functional_data steps
 
@@ -835,8 +711,7 @@ Add a `functional_data` step when:
 - The user wants to retrieve assay data for a specific donor cohort (combine with a KG
   step via `depends_on`)
 
-Do NOT add `functional_data` steps for gene queries, pathway queries, or immune
-enrichment — those go to KG steps or ssGSEA respectively.
+Do NOT add `functional_data` steps for gene queries or pathway queries — those go to KG steps.
 
 ### functional_data step format
 
@@ -907,12 +782,28 @@ t1d_stage is a KG-only property — the Functional API does not know it. Retriev
 }}
 ```
 
-**DISAMBIGUATION — ssGSEA vs functional_data:**
+**Example 25 (PARALLEL — richly-specified natural_language for the extractor)**
+**Question**: "Show glucagon stimulation index under high glucose plus IBMX for male T1D donors age 30-50"
 
-- "Run ssGSEA on INS, GCG" → `source: "ssgsea"` (gene set enrichment in immune cells)
+The `natural_language` carries the exact trait name, the canonical condition keyword,
+the metric type (SI), and every demographic filter — so the extractor produces a fully
+populated params dict.
+
+```json
+{{
+  "plan_type": "parallel",
+  "reasoning": "Single functional_data step; trait + all demographic filters specified in canonical form so the extractor captures them.",
+  "steps": [
+    {{"id": 1, "natural_language": "Get trait summary for GCG-G 16.7 + IBMX 100 SI in disease=T1D, sex=Male, age_min=30, age_max=50", "source": "functional_data", "join_var": null, "depends_on": null}}
+  ]
+}}
+```
+
+**DISAMBIGUATION — when to pick `functional_data`:**
+
 - "Show insulin secretion for INS-G 16.7 SI" → `source: "functional_data"` (measured islet assay trait)
-- "Immune cell enrichment for T1D effector genes" → `source: "ssgsea"`
 - "Insulin secretion traces for T1D donors" → `source: "functional_data"`
+- "Gene expression of INS in beta cells" → KG step (no `source`)
 
 ---
 
@@ -931,10 +822,7 @@ t1d_stage is a KG-only property — the Functional API does not know it. Retriev
 - DO NOT use `"source": "hpap"` — the HPAP database is disabled; donor data lives in the KG as `donor` nodes.
 - DO NOT use `"source": "genomic"` for relationship queries (DEG, expression, QTL associations) — those go to the knowledge graph.
 - DO NOT add genomic steps for chain plans — they are always independent (parallel).
-- DO NOT make an ssGSEA step `depends_on` a donor/cohort KG step — ssGSEA takes GENES, not donors. The cohort filter is applied POST-HOC; add it as a separate parallel KG step.
-- DO NOT create an ssGSEA step without a gene source — either list genes in natural_language OR set `depends_on` to a KG step that retrieves genes. If no genes are specified and none can be defaulted, DO NOT add an ssGSEA step.
-- DO NOT phrase an ssGSEA step as "Run ssGSEA on donors X" — donors cannot be ssGSEA input. Phrase it as "Run ssGSEA on the genes from step N" or "Run ssGSEA for genes A, B, C".
-- DO NOT query `function_annotation;GO` in isolation when the user asks about a gene's **functions, annotations, biology, or pathways**. GO covers ontology terms but NOT pathway membership. ALWAYS pair a GO step with parallel `pathway_annotation;KEGG` and `pathway_annotation;reactome` steps (the "functional-annotation triad"). Pathway annotations are as informative as GO and often more actionable for T1D mechanisms. See Example 9b.
+- DO NOT query `function_annotation → gene_ontology` in isolation when the user asks about a gene's **functions, annotations, biology, or pathways**. GO covers ontology terms but NOT pathway membership. ALWAYS pair the GO step with parallel `function_annotation → kegg` and `function_annotation → reactome` steps (the "functional-annotation triad" — three steps using the SAME edge name but different target node labels). Pathway annotations are as informative as GO and often more actionable for T1D mechanisms. See Example 9b.
 
 ---
 
@@ -947,10 +835,8 @@ t1d_stage is a KG-only property — the Functional API does not know it. Retriev
 5. If the question involves donor metadata, query `donor` nodes in the KG (NOT `"source": "hpap"` — that database is disabled).
 6. If the question mentions a specific gene, SNP, or OCR peak, add a `"source": "genomic"` step for its chromosomal position.
 7. If the question asks about spatial overlap or proximity, add `"source": "genomic"` steps for those queries.
-8. If the question asks for ssGSEA: the ssGSEA step needs GENES as input (never donors). Either embed the gene list in natural_language OR make the step `depends_on` a KG step that retrieves genes. If the user wants ssGSEA for a specific donor cohort, add a SEPARATE parallel KG step for the cohort — do NOT wire the cohort into ssGSEA.
-9. If no gene list is specified for ssGSEA, default to T1D effector genes by adding a KG step for `effector_gene_of → disease 'type 1 diabetes'` and making the ssGSEA step `depends_on` it.
-10. **Functional-annotation triad**: whenever you emit a `function_annotation;GO` step for a gene's biology/function/annotation/pathway question, ALSO emit parallel `pathway_annotation;KEGG` and `pathway_annotation;reactome` steps for the same gene. GO alone under-reports pathway biology. For comprehensive gene lookups (e.g., "Tell me about gene X"), include all three.
-11. Output valid JSON — nothing else.
+8. **Functional-annotation triad**: whenever you emit a `function_annotation → gene_ontology` step for a gene's biology/function/annotation/pathway question, ALSO emit parallel `function_annotation → kegg` and `function_annotation → reactome` steps for the same gene. GO alone under-reports pathway biology. All three use the SAME edge name (`function_annotation`) — what differs is the target node label. For comprehensive gene lookups (e.g., "Tell me about gene X"), include all three.
+9. Output valid JSON — nothing else.
 """
 
 
@@ -1029,7 +915,7 @@ include these two extra fields:
 ### Functional-annotation triad (GO + KEGG + Reactome)
 - When the user asks to **add GO terms, annotations, or pathways** for a gene (or when a
   revision is broadening the scope), always emit THREE parallel KG steps together:
-  `function_annotation;GO`, `pathway_annotation;KEGG`, and `pathway_annotation;reactome`.
+  three `function_annotation` steps with different target node labels (`gene_ontology`, `kegg`, and `reactome`).
 - When the user asks only about pathways and GO is not relevant, the GO step may be
   dropped — but KEGG and Reactome should still both be present (they are complementary
   pathway resources).
@@ -1038,41 +924,14 @@ include these two extra fields:
 **Revision examples:**
 - User says "also include GO terms" OR "also show pathways" for gene INS →
   add three steps:
-  `{"id": N,   "natural_language": "Get genes that have function_annotation;GO relationships with gene ontology terms for gene INS", ...}`,
-  `{"id": N+1, "natural_language": "Get genes that have pathway_annotation;KEGG relationships with KEGG pathways for gene INS", ...}`,
-  `{"id": N+2, "natural_language": "Get genes that have pathway_annotation;reactome relationships with Reactome pathways for gene INS", ...}`.
-
-### ssGSEA steps
-- Steps with `"source": "ssgsea"` run single-sample Gene Set Enrichment Analysis on
-  immune-cell pseudo-bulk data across 112 HPAP donors.
-- **ssGSEA takes ONLY GENE NAMES as input** — NOT donors, cohorts, or any other filter.
-  The server always returns 112 scores; donor filtering must be a SEPARATE parallel KG step.
-- **Never make an ssGSEA step `depends_on` a donor/cohort KG step.** It must depend on
-  a step that returns genes (or list genes directly in natural_language).
-- If the user asks for ssGSEA with a cohort filter (e.g. "on female T1D Stage 3 donors"):
-  1. Add a KG step for a sensible gene set (default: T1D effector genes).
-  2. Add an ssGSEA step `depends_on` that gene step.
-  3. Add a SEPARATE parallel KG step for the cohort — do NOT pass donors to ssGSEA.
-- If the user asks to remove ssGSEA, drop the `"source": "ssgsea"` steps.
-
-**Revision examples:**
-- User says "also run ssGSEA on those genes" →
-  add: `{"id": N, "natural_language": "Run ssGSEA for genes INS, GCG, SST, PPY", "source": "ssgsea", "join_var": null, "depends_on": null}`
-- User says "add immune enrichment analysis" →
-  first add a KG step for effector genes, then add:
-  `{"id": N+1, "natural_language": "Run ssGSEA on the effector genes from step N", "source": "ssgsea", "join_var": null, "depends_on": N}`
-- User says "do it for female T1D Stage 3 donors" (cohort-filter revision) →
-  DO NOT wire donors into ssGSEA. Instead, add a separate KG step:
-  `{"id": M, "natural_language": "Find donors with gender 'Female' and diabetes_type 'Diabetes (Type I)' and t1d_stage containing 'Stage 3'", "join_var": null, "depends_on": null}`
-  — the FormatAgent will filter ssGSEA scores to that cohort at render time.
+  `{"id": N,   "natural_language": "Get genes that have function_annotation relationships with gene ontology terms for gene INS", ...}`,
+  `{"id": N+1, "natural_language": "Get genes that have function_annotation relationships with KEGG pathways for gene INS", ...}`,
+  `{"id": N+2, "natural_language": "Get genes that have function_annotation relationships with Reactome pathways for gene INS", ...}`.
 
 ### Cross-source chain revisions
-- If the user asks for a step that depends on another step's output (e.g. "run ssGSEA
-  on the genes from step 1", "use the genes we just found"), set `plan_type` to `"chain"`
+- If the user asks for a step that depends on another step's output (e.g. "use the genes
+  we just found", "get functional data on those donors"), set `plan_type` to `"chain"`
   and set `depends_on` to the parent step's id on the dependent step.
 - Keep `plan_type: "parallel"` if no cross-source data flow is needed.
-- Example — user says "run ssGSEA on those effector genes":
-  change plan_type to "chain" and add:
-  `{"id": N, "natural_language": "Run ssGSEA on the genes from the previous step", "source": "ssgsea", "join_var": null, "depends_on": <parent_id>}`
 """
 

@@ -58,18 +58,17 @@ These are ALL the relationships in the graph. Use the correct names.
 | 4 | `effector_gene_of` | Gene → Disease | Curated effector gene for a disease (props: evidence) |
 | 5 | `T1D_DEG_in` | Gene → anatomical_structure | Differentially expressed gene in T1D vs non-diabetic (props: UpOrDownRegulation, Log2FoldChange, P_value) |
 | 6 | `gene_detected_in` | Gene → anatomical_structure | Expression detection and statistics per cell type (props: NonDiabetic__expression_mean, Type1Diabetic__expression_mean, fraction_detected) |
-| 7 | `gene_enriched_in` | Gene → anatomical_structure | Cell-type marker genes, ND-only one-vs-rest DESeq2 (props: gene_symbol, cell_type_label) |
+| 7 | `gene_enriched_in` | Gene → anatomical_structure | Cell-type **enrichment** evidence, ND-only one-vs-rest DESeq2 — gene preferentially expressed in this cell type. **NOT a marker.** PanKgraph has no curated marker-gene edge; report as enrichment only. Props: gene_symbol, cell_type_label, log2FoldChange, padj |
 | 8 | `gene_activity_score_in` | Gene → anatomical_structure | Gene activity scores from scATAC-seq per cell type (props: OCR_GeneActivityScore_mean, type_1_diabetes__OCR_GeneActivityScore_mean) |
 | 9 | `OCR_peak_in` | OCR_peak → anatomical_structure | Open chromatin peaks in a cell type |
-| 10 | `function_annotation;GO` | Gene → gene_ontology | GO term annotation (must be backtick-escaped in Cypher) |
+| 10 | `function_annotation` | Gene → gene_ontology / kegg / reactome | **Unified** GO + KEGG + Reactome annotation. Distinguish by target node label (`gene_ontology` for GO, `kegg` for KEGG, `reactome` for Reactome) and by the edge's `data_source` property (`'Ensembl'` / `'KEGG'` / `'Reactome'`). No backtick escape (no semicolon in name). |
 | 11 | `physical_interaction` | Gene → Gene | Protein-protein interaction (BioGRID) (props: experimental_system, score) |
 | 12 | `genetic_interaction` | Gene → Gene | Genetic interaction (BioGRID) |
-| 13 | `pathway_annotation;KEGG` | Gene → kegg | KEGG pathway annotation (backtick-escape in Cypher) |
-| 14 | `pathway_annotation;reactome` | Gene → reactome | Reactome pathway annotation (backtick-escape in Cypher) |
-| 15 | `fGSEA_gene_enriched_in` | Gene → anatomical_structure | fGSEA gene-pathway enrichment per cell type |
-| 16 | `fGSEA_enriched_in` | kegg/reactome → anatomical_structure | fGSEA pathway enrichment in a cell type |
+| 13 | `marker_gene_of` | Gene → anatomical_structure | HuBMAP curated marker gene for a cell type |
+| 14 | `fGSEA_enriched_in` | kegg/reactome → anatomical_structure | fGSEA pathway enrichment in a cell type |
+| 15 | `has_donor` / `has_sample` | Sample ↔ donor | Donor-sample linking |
 
-**REMOVED (do NOT use)**: `DEG_in` → use `T1D_DEG_in`; `expression_level_in` → use `gene_detected_in`; `OCR_activity` / `OCR_locate_in` → removed; `snp` → use `snv`; `cell_type` → use `anatomical_structure`.
+**REMOVED (do NOT use)**: `DEG_in` → use `T1D_DEG_in`; `expression_level_in` → use `gene_detected_in`; `OCR_activity` / `OCR_locate_in` → removed; `snp` → use `snv`; `cell_type` → use `anatomical_structure`; `function_annotation` / `pathway_annotation;KEGG` / `pathway_annotation;reactome` → all consolidated into the unified `function_annotation` edge (no semicolon); `fGSEA_gene_enriched_in` → removed (only `fGSEA_enriched_in` remains); `Hubmap_marker_gene_of` / `marker_gene_of;Hubmap_marker_gene_of` → use bare `marker_gene_of`.
 
 ---
 
@@ -90,11 +89,11 @@ Most user questions involve **multi-hop paths** through the graph. Since you can
 
 ### Example: "Which GO terms are associated with genes enriched in Beta cells?"
 
-**Path**: Gene —[gene_enriched_in]→ Beta Cell, Gene —[function_annotation;GO]→ gene_ontology
+**Path**: Gene —[gene_enriched_in]→ Beta Cell, Gene —[function_annotation]→ gene_ontology
 
 **Correct plan (2 hops, 2 queries)**:
 1. `"Get genes that have gene_enriched_in relationships with Beta Cell"` — Hop 1: Gene↔Beta Cell (filtered!)
-2. `"Get genes that have function_annotation;GO relationships with gene ontology terms"` — Hop 2: Gene↔GO
+2. `"Get genes that have function_annotation relationships with gene ontology terms"` — Hop 2: Gene↔GO
 
 The downstream agent joins: Gene names from Q1 ∩ Q2 → GO terms.
 
@@ -168,8 +167,8 @@ Join: SNP IDs (Q1 ∩ Q2) → Gene names (Q2) → PPI hub count (Q3).
 |-------------|-------------|--------|
 | "Find anatomical_structure with name Beta Cell" | Just fetches the node; no edges, useless alone | Include it only if you need the node metadata |
 | "Get all genes that have gene_detected_in with cell types" | **UNFILTERED** — returns random 50 records, not Beta-cell-specific | "Get genes that have gene_detected_in relationships **with Beta Cell**" |
-| "Get all genes that have function_annotation;GO" | **UNFILTERED** — returns random 50 gene-GO pairs | Filter by context: "Get function_annotation;GO for gene CFTR" or keep if no filter is possible |
-| Using `expression_level_in` | This relationship does not exist in the database | Use `gene_detected_in` for expression stats, `gene_enriched_in` for markers |
+| "Get all genes that have function_annotation" | **UNFILTERED** — returns random 50 gene-GO pairs | Filter by context: "Get function_annotation for gene CFTR" or keep if no filter is possible |
+| Using `expression_level_in` | This relationship does not exist in the database | Use `gene_detected_in` for expression stats, `gene_enriched_in` for cell-type enrichment (NOT markers — PanKgraph has no curated marker edge) |
 | Using `DEG_in` | This relationship does not exist — old schema name | Use `T1D_DEG_in` |
 | Combining multiple hops into one query | Text2Cypher will fail on complex multi-hop queries | One hop per query |
 
@@ -201,11 +200,11 @@ Output must be valid JSON with keys `"draft"`, `"to"`, and either `"functions"` 
 ### To system (function call):
 ```json
 {
-  "draft": "Question asks about GO terms for genes enriched in Beta cells. Path: Gene→[gene_enriched_in]→Beta Cell + Gene→[function_annotation;GO]→gene_ontology. Need 2 hops.",
+  "draft": "Question asks about GO terms for genes enriched in Beta cells. Path: Gene→[gene_enriched_in]→Beta Cell + Gene→[function_annotation]→gene_ontology. Need 2 hops.",
   "to": "system",
   "functions": [
     {"name": "pankbase_api_query", "input": "Get genes that have gene_enriched_in relationships with Beta Cell"},
-    {"name": "pankbase_api_query", "input": "Get genes that have function_annotation;GO relationships with gene ontology terms"}
+    {"name": "pankbase_api_query", "input": "Get genes that have function_annotation relationships with gene ontology terms"}
   ]
 }
 ```

@@ -132,17 +132,7 @@ async def lifespan(app: FastAPI):
             sys.path.insert(0, _genomic_skill_dir)
         from src.text2sql_agent import Text2SQLAgent as _Text2SQLAgent  # noqa: F401
 
-        # 3d. Pre-load ssGSEA client
-        logger.info("Pre-loading ssGSEA client...")
-        _ssgsea_skill_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "skills", "ssgsea",
-        )
-        if _ssgsea_skill_dir not in sys.path:
-            sys.path.insert(0, _ssgsea_skill_dir)
-        import ssgsea_client as _ssgsea_client  # noqa: F401
-
-        # 3e. Pre-load functional data client
+        # 3d. Pre-load functional data client
         logger.info("Pre-loading functional data client...")
         _functional_skill_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -564,10 +554,10 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
 
     system_prompt = (
         "You classify follow-up questions in a biomedical Q&A system that "
-        "orchestrates Neo4j, PostgreSQL, ssGSEA, and literature retrieval.\n\n"
+        "orchestrates Neo4j, PostgreSQL, and literature retrieval.\n\n"
         "Respond with EXACTLY one word: 'follow_up' or 'new_query'.\n\n"
         "HARD RULE — follow_up NEVER invokes any tool (no Neo4j, no SQL, no "
-        "ssGSEA, no literature). It can ONLY rephrase, explain, summarise, "
+        "literature). It can ONLY rephrase, explain, summarise, "
         "rank, filter, or reason over text already present in prior assistant "
         "answers.\n\n"
         "DECISION PROCEDURE — apply in order:\n"
@@ -582,7 +572,7 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
         "numeric values, terms, descriptions? If yes → follow_up.\n"
         "3. New-dimension test. Would answering require fetching a data "
         "dimension not literally present in prior turns (expression levels, "
-        "OCR peaks, genomic coordinates, ssGSEA scores, literature/PubMed, "
+        "OCR peaks, genomic coordinates, literature/PubMed, "
         "pathway annotations, donor metadata, drug targets)? If yes → "
         "new_query, even if the referenced entity was already named.\n"
         "4. New-entity test. Does the question introduce a gene, SNP, "

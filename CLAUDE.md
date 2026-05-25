@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PanKgraph AI Assistant — a multi-agent, multi-source system for querying a Type 1 Diabetes knowledge graph in natural language. A PlannerAgent orchestrates specialized sub-pipelines: **Cypher (Neo4j KG)**, **SQL (PostgreSQL genomic coordinates)**, **ssGSEA (REST)**, and **HIRN literature**. Claude (Sonnet) handles orchestration/formatting/reasoning; a fine-tuned local vLLM (`cypher-writer`) handles text-to-Cypher AND text-to-SQL generation.
+PanKgraph AI Assistant — a multi-agent, multi-source system for querying a Type 1 Diabetes knowledge graph in natural language. A PlannerAgent orchestrates specialized sub-pipelines: **Cypher (Neo4j KG)**, **SQL (PostgreSQL genomic coordinates)**, **Functional Data API (REST)**, and **GLKB literature**. Claude (Sonnet) handles orchestration/formatting/reasoning; a fine-tuned local vLLM (`cypher-writer`) handles text-to-Cypher AND text-to-SQL generation.
 
 ## Commands
 
@@ -21,6 +21,7 @@ Active env vars the system reads at startup:
 - `NEO4J_BOLT_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (default `bolt://localhost:8687`, `neo4j`/`password`/`pankgraph`)
 - `VLLM_PORT` (default 8002)
 - `PORT` (server)
+- `OPENAI_API_KEY` (only required for `batch_evaluator.py`)
 
 ### Running
 ```bash
@@ -50,18 +51,15 @@ nohup python -m vllm.entrypoints.openai.api_server \
 ### External services used at runtime
 - **Local Neo4j PanKgraph ADA** at `bolt://localhost:8687` / browser `:8475` — 5.4M nodes, schema in `PankBaseAgent/text_to_cypher/data/input/neo4j_schema_ada.json`
 - **Local PostgreSQL** at `localhost:5432` db `pankgraph` (user `serviceuser` / pw `password`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
-- **ssGSEA server** at `http://Robject-PanKgraph-ALB-1292067250.us-east-1.elb.amazonaws.com/` — endpoints `/genes`, `/donors`, `/ssgsea` (always returns scores for all 112 immune-cell pseudo-bulk donors)
-- **HIRN Abstracts API** — `glkb.dcmb.med.umich.edu/api/external/search_hirn_abstracts`
+- **GLKB API** at `https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent` — SSE-streaming literature synthesis; called by `skills/glkb/scripts/glkb_client.py`; HIRN is fully disabled
 - **RDS Lambda** — gene-name → Ensembl-ID resolution for text2sql
 - **Anthropic Claude** — Sonnet for orchestration + format, Haiku for chat follow-up classifier
 
 ### Tests
 ```bash
-# Cypher validator unit tests
-pytest PankBaseAgent/text_to_cypher/test_*.py
-
-# HIRN publication retrieval tests (mocked HTTP)
-pytest hirn_publication_retrieval/tests/
+# Unit tests (mocked — no external deps)
+pytest tests/                                      # chat classifier, GLKB client, literature merge
+pytest PankBaseAgent/text_to_cypher/test_*.py      # Cypher validator
 
 # Standalone text-to-SQL smoke test (requires vLLM + PostgreSQL)
 python3 PankBaseAgent/text_to_sql/test_text2sql.py
@@ -83,7 +81,7 @@ User question
   │   │     ├─ plan_type "parallel":  KG steps combined via WITH + non-KG steps run; non-KG respects depends_on
   │   │     ├─ plan_type "chain" (pure KG):  existing combine_chain() compound Cypher
   │   │     └─ plan_type "chain" (cross-source): strict sequential, entities flow step→step
-  │   └─ hirn_chat_one_round → HIRN literature retrieval
+  │   └─ run_literature_parallel → GLKB literature retrieval (HIRN disabled)
   └─ final pipeline:
       ├─ FormatAgent (simple)  → compresses + formats + hallucination check
       └─ ReasoningAgent (complex) → multi-hop reasoning + hallucination check
@@ -101,25 +99,22 @@ Two independent test-time-scaling loops:
 |---|---|---|---|
 | Knowledge graph | Neo4j Bolt `localhost:8687` | vLLM `cypher-writer` via `Text2CypherAgent` | (none — KG default) |
 | Genomic coordinates | PostgreSQL `pankgraph` db | vLLM `cypher-writer` via `Text2SQLAgent` | `"genomic"` |
-| Immune enrichment | ssGSEA REST API | planner-supplied gene list (or from parent KG step) | `"ssgsea"` |
-| Literature | HIRN → PubMed/PMC | Claude-expanded search + passage retrieval | dispatched separately |
+| Literature | GLKB SSE API | `glkb_client.py` → `literature_runner.py` | dispatched separately |
 
 HPAP MySQL skill is **disabled** — donor metadata now lives in the Neo4j KG as `donor` nodes (193 donors with `diabetes_type`, `t1d_stage`, `aab_state`, `hla_status`, etc.). `_run_hpap_step` remains in `main.py` but is never wired (`hpap_handler=None` at all call sites).
 
 ### Cross-source chain plans (new)
 
-When a later step needs entities from an earlier step (e.g. "find effector genes → run ssGSEA on them"), the planner emits `plan_type: "chain"` with mixed sources. The executor:
+When a later step needs entities from an earlier step (e.g. "find effector genes → get functional data on them"), the planner emits `plan_type: "chain"` with mixed sources. The executor:
 
 1. Runs steps strictly sequentially in `id` order.
-2. After each step, `_extract_entities_from_result()` pulls `gene_names`, `gene_ids`, `snv_ids`, `donor_ids` from either `records[*].nodes[*].properties` (KG) or `rows[*]` (SQL/ssGSEA rows).
+2. After each step, `_extract_entities_from_result()` pulls `gene_names`, `gene_ids`, `snv_ids`, `donor_ids` from either `records[*].nodes[*].properties` (KG) or `rows[*]` (SQL rows).
 3. Passes them as `prior_entities` to the next step's handler.
 
 Handler signatures all accept the optional kwarg:
 ```python
 def _run_<source>_step(question_text: str, prior_entities: dict | None = None) -> dict
 ```
-
-Key rule enforced in the planner prompt: **ssGSEA takes GENES only** — never depend on a donor/cohort step. Donor filtering is applied post-hoc by the FormatAgent.
 
 ### Neo4j ADA schema
 
@@ -162,14 +157,9 @@ Mirrors the text2cypher pipeline for PostgreSQL genomic coordinate queries:
 - `src/pg_schema_loader.py` — compact schema string
 - `src/gene_resolver.py` — pre-resolves gene symbols → Ensembl IDs via RDS Lambda before SQL generation
 
-### ssGSEA (`skills/ssgsea/ssgsea_client.py`)
+### ssGSEA — DISABLED
 
-Thin client for the immune-cell enrichment REST service. `_run_ssgsea_step` in `main.py`:
-1. Prefers gene list from `prior_entities.gene_names` (from parent KG step), capped at 200
-2. Falls back to NL extraction via regex + Claude Haiku
-3. Enriches scores with donor metadata (diabetes_status, age, sex, hba1c)
-4. Computes per-diabetes-status mean stats for the FormatAgent
-5. Returns top 15 donors by score (full 112 scores would blow the token budget)
+The immune-cell ssGSEA REST integration is fully disabled. `skills/ssgsea/ssgsea_client.py` remains on disk but is unreferenced; `_run_ssgsea_step` in `main.py` is a backstop stub that emits `ssgsea_disabled` and returns an empty result. The planner prompt no longer documents `source: "ssgsea"`, so no new plan should ever route there.
 
 ### Query planner skill (`skills/query-planner/scripts/`)
 
@@ -180,11 +170,13 @@ Core executor: `qp_query_planner.py:execute_plan()` has three paths:
 
 ### Streaming events (`stream_events.py`)
 
-NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `ssgsea_*`, `genomic_*`, `chain_step_*`, `hirn_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`.
+NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`.
 
 ### Experience buffer
 
 `PankBaseAgent/experience_buffer.py` — in-context learning from past successful plans. Raw → `query_log.jsonl`; curated → `experience_buffer.jsonl` (repo root). Read by the query-planner skill to guide future plans.
+
+`batch_evaluator.py` curates entries: uses OpenAI GPT-4 (requires `OPENAI_API_KEY`) to score raw `query_log.jsonl` entries and promote high-quality examples into `experience_buffer.jsonl`. Run with `python3 batch_evaluator.py --limit 100` or `--all`.
 
 ### Hallucination checker
 
@@ -196,7 +188,19 @@ NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `p
 - List ALL GO terms individually (grouped by category), ALL SNPs (rsID, chromosome, PIP, tissue, effect), exact numeric values
 - Zero fabricated PubMed IDs — only cite IDs present in retrieved data
 
-When a cross-source chain runs, the format agent gets a hint in its user_input explaining that ssGSEA gene sets were retrieved from a prior KG step — enabling coherent narrative summaries.
+When a cross-source chain runs, the format agent gets a hint in its user_input explaining that downstream supplementary results (e.g. functional_data) were retrieved using entities from a prior KG step — enabling coherent narrative summaries.
+
+### Literature pipeline (`literature_runner.py`)
+
+`run_literature_parallel(question, kg_context)` calls GLKB only — HIRN is fully disabled. `combine_literature_block()` still accepts a `hirn` kwarg for call-site compat but ignores it. GLKB response is capped to ~120 words and framed as complementary (never contradicting) to PanKgraph findings.
+
+### Session persistence (`session_store.py`)
+
+SQLite-backed store (WAL + synchronous=NORMAL) for `PlanSession` / `ChatSession`. Upserts happen synchronously on the request thread before the response is returned. Lock order: `server.py _sessions_lock` / `_chat_sessions_lock` → `session_store._conn_lock` (always in this order to avoid deadlock). Expired sessions are restored at server startup; rows are never deleted (keep-forever policy).
+
+### Watchdog (`watchdog/watchdog.py`)
+
+Cron-driven daemon (runs every minute via flock) that probes the server on `:8001`, applies a two-strike rule, restarts via `server.pid`, and sends an email + writes to a bug log on failure. Crontab entry is documented in the file header.
 
 ### Thread-based parallelism
 

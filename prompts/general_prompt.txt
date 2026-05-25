@@ -284,19 +284,17 @@ The **edge types** (relationships) are:
 | `effector_gene_of` | Gene → Disease | Curated effector gene for a disease |
 | `T1D_DEG_in` | Gene → anatomical_structure | Differentially expressed gene in T1D vs ND in a cell type |
 | `gene_detected_in` | Gene → anatomical_structure | Expression detection/summary per cell type |
-| `gene_enriched_in` | Gene → anatomical_structure | Cell-type marker gene (ND-only, one-vs-rest DESeq2) |
+| `gene_enriched_in` | Gene → anatomical_structure | Cell-type **enrichment** (ND-only, one-vs-rest DESeq2) — gene is preferentially expressed in this cell type. **NOT a marker.** |
 | `gene_activity_score_in` | Gene → anatomical_structure | Gene activity score from scATAC-seq per cell type |
 | `OCR_peak_in` | OCR_peak → anatomical_structure | Open chromatin peak in a cell type |
-| `function_annotation;GO` | Gene → gene_ontology | GO term annotation (backtick-escape!) |
-| `pathway_annotation;KEGG` | Gene → kegg | KEGG pathway annotation (backtick-escape!) |
-| `pathway_annotation;reactome` | Gene → reactome | Reactome pathway annotation (backtick-escape!) |
+| `function_annotation` | Gene → gene_ontology / kegg / reactome | **Unified** GO + KEGG + Reactome annotation. Distinguish by target node label (`gene_ontology`, `kegg`, `reactome`) and by `data_source` property (`'Ensembl'`, `'KEGG'`, `'Reactome'`) |
+| `marker_gene_of` | Gene → anatomical_structure | HuBMAP curated marker gene for a cell type |
 | `physical_interaction` | Gene → Gene | Protein-protein interaction (BioGRID) |
 | `genetic_interaction` | Gene → Gene | Genetic interaction (BioGRID) |
-| `fGSEA_gene_enriched_in` | Gene → anatomical_structure | fGSEA gene-to-pathway enrichment per cell type |
 | `fGSEA_enriched_in` | kegg/reactome → anatomical_structure | fGSEA pathway enrichment in a cell type |
 | `has_donor` / `has_sample` | Sample ↔ donor | Donor-sample linking |
 
-**REMOVED relationships (do NOT generate queries that reference them)**: `DEG_in` → use `T1D_DEG_in`; `expression_level_in` → use `gene_detected_in`; `OCR_activity` / `OCR_activity_in` → use `OCR_peak_in` or `gene_activity_score_in`; `OCR_locate_in` → removed (no replacement); `function_annotation` → use `` `function_annotation;GO` ``; `genetic_regulation` → use `genetic_interaction`.
+**REMOVED relationships (do NOT generate queries that reference them)**: `DEG_in` → use `T1D_DEG_in`; `expression_level_in` → use `gene_detected_in`; `OCR_activity` / `OCR_activity_in` → use `OCR_peak_in` or `gene_activity_score_in`; `OCR_locate_in` → removed; `function_annotation;GO` / `pathway_annotation;KEGG` / `pathway_annotation;reactome` → all three consolidated into the unified `function_annotation` edge (no semicolons); `fGSEA_gene_enriched_in` → removed (only `fGSEA_enriched_in` remains); `Hubmap_marker_gene_of` / `marker_gene_of;Hubmap_marker_gene_of` → use bare `marker_gene_of`; `genetic_regulation` → use `genetic_interaction`.
 
 Use this schema to understand what PankBaseAgent can query. Route complex multi-hop questions (involving 3+ relationships) to PankBaseAgent and mark as **complex**.
 
