@@ -220,9 +220,9 @@ Return valid JSON only:
     "cypher": ["array of unique Cypher queries and/or SQL queries"],
     "summary": "Your concise, evidence-backed answer",
     "follow_up_questions": [
-      "Explain a specific term or metric from the results (e.g., what does <property X> in the <edge type> mean?)",
-      "Rank or clarify a statistical value already present (e.g., among the <N> genes returned, which has the highest <metric>?)",
-      "Interpret a key finding (e.g., what does the <pattern> seen for <entity> suggest biologically?)"
+      "Short term-definition question (e.g., 'What does PIP mean here?')",
+      "Short ranking question on the data (e.g., 'Which gene has the strongest T1D effect?')",
+      "Short interpretation question (e.g., 'What does this colocalization signal indicate?')"
     ]
   }}
 }}
@@ -231,49 +231,35 @@ Return valid JSON only:
 ### Follow-Up Questions
 
 Generate exactly 3 follow-up questions that the system can answer **without
-running any new database query** — i.e. purely by re-reading and reasoning
-over the data already retrieved above. The downstream chat classifier
-should treat each one as `context_only`.
+running any new database query** — purely by re-reading the data above.
+The chat classifier should treat each one as `context_only`.
 
-Each question must satisfy ALL of:
+**Length rule (STRICT)**: each question MUST be **≤ 15 words** and **one
+clause**. Do NOT chain multiple sub-questions with "and"/"which indicates".
+Do NOT inline more than one value/parameter. If you find yourself listing
+"PIP=0.254, n_snp=6, purity=0.972" in the question, **stop and rewrite as
+a single short question**.
 
-- **Answerable from the data above alone** — every entity, value, or
-  relationship the question references must already appear in the
-  NEO4J DATABASE RESULTS / HPAP rows / Functional API rows above. Do NOT
-  propose questions that require fetching a new gene, SNP, cell type,
-  donor, GO term, pathway, or literature reference that is not already
-  in the retrieved data.
-
-- **Falls into one of these three categories**:
-  1. **Explain a technical term that appears in the data** (e.g. "What
-     does `pip` mean in the QTL credible-set context shown above?", "How
-     is `OCR_GeneActivityScore_mean` computed?", "What does an
-     `Adjusted_P_value` of 0.0001 indicate?").
-  2. **Clarify or rank a statistical result already in the results**
-     (e.g. "Of the N genes returned, which has the strongest T1D
-     upregulation signal?", "Which cell type shows the largest log2 fold
-     change for gene X?", "Which SNP in the GWAS signal above has the
-     highest PIP?").
-  3. **Interpret a key finding from the retrieved evidence** (e.g. "What
-     does the discordant RNA-DE and OCR activity pattern for gene Y
-     suggest?", "Why might gene Z appear in the Alpha-cell DEG list
-     despite being a known Beta-cell marker?", "What is the biological
-     meaning of the colocalization signal between SNP rs... and gene
-     G?").
-
-- **Reference a specific entity or value from the data** — name a real
-  gene, SNP, cell type, score, or property that literally appears in the
-  results above. Avoid generic phrasing like "What about the others?" or
-  "Are there more?".
-
-- **Phrased as a natural-language question** a researcher would ask.
+Each question must:
+- Be answerable from the data above alone (no new query needed).
+- Reference exactly ONE specific term, value, or entity literally present
+  in the results.
+- Fall into one of these three shapes:
+  1. **Term definition** — e.g. "What does PIP mean?", "How is
+     `OCR_GeneActivityScore_mean` computed?", "What is an SI value?"
+  2. **Ranking / max-min on the data** — e.g. "Which gene has the
+     strongest T1D upregulation?", "Which cell type shows the highest
+     activity score?"
+  3. **Single-finding interpretation** — e.g. "What does the
+     colocalization signal indicate?", "Why is INS downregulated in
+     beta cells?"
 
 Do NOT propose questions that:
-- Ask for a new data source (literature, PubMed, drug targets, new
-  pathways or cell types not already retrieved).
-- Require a new KG / SQL / Functional API query to answer.
-- Start with "What else…", "Are there other…", or otherwise imply
-  fresh retrieval.
+- Mention literature, PubMed, articles, citations, or external sources at all.
+- Reference a new gene, SNP, cell type, or pathway not in the data.
+- Start with "What else…", "Are there other…", or imply fresh retrieval.
+- Chain multiple properties with "and what about…".
+- Exceed 15 words.
 
 ### Rules (NON-NEGOTIABLE)
 
