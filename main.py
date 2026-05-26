@@ -1218,6 +1218,69 @@ def clean_user_question(question: str) -> str:
         return question
 
 
+def enrich_plan_functional_data_links(plan: dict) -> dict:
+    """Resolve and attach the Functional Data API link to each functional_data
+    step in a plan, in place, so the frontend can surface it at the plan stage.
+
+    For every step with ``source == "functional_data"``, resolves the endpoint,
+    full URL, and params (same logic as the ``/functional-data`` endpoint) and
+    stores them under ``step["functional_data_api"]``. Best-effort per step —
+    any resolution failure is recorded as ``{"error": ...}`` and never raises.
+    """
+    if not isinstance(plan, dict):
+        return plan
+    steps = plan.get("steps")
+    if not isinstance(steps, list):
+        return plan
+
+    import os as _os
+    from urllib.parse import urlencode as _urlencode
+
+    functional_skill_dir = _os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)),
+        'skills', 'functional_data',
+    )
+    if functional_skill_dir not in sys.path:
+        sys.path.insert(0, functional_skill_dir)
+
+    try:
+        from functional_data_client import (
+            FUNCTIONAL_BASE_URL,
+            extract_endpoint_and_params,
+            _validate_selection,
+        )
+    except Exception as exc:  # noqa: BLE001 — never break planning over this
+        emit("functional_data_link_error", {"stage": "import", "error": str(exc)})
+        return plan
+
+    for step in steps:
+        if not isinstance(step, dict) or step.get("source") != "functional_data":
+            continue
+        question_text = step.get("natural_language", "") or ""
+        try:
+            selection = extract_endpoint_and_params(question_text, None)
+            valid, err_msg = _validate_selection(selection)
+            if not valid:
+                step["functional_data_api"] = {"error": err_msg}
+                continue
+            endpoint = selection["endpoint"]
+            params = selection.get("params", {}) or {}
+            qs = _urlencode(params)
+            full_url = f"{FUNCTIONAL_BASE_URL}{endpoint}{'?' + qs if qs else ''}"
+            step["functional_data_api"] = {
+                "endpoint": endpoint,
+                "url": full_url,
+                "params": params,
+            }
+        except Exception as exc:  # noqa: BLE001 — best-effort per step
+            step["functional_data_api"] = {"error": str(exc)}
+            emit("functional_data_link_error", {
+                "stage": "resolve", "step_id": step.get("id"), "error": str(exc),
+            })
+
+    return plan
+
+
 def run_plan_start(question: str, use_literature: bool = True,
                    chat_history: list[dict] | None = None) -> dict:
     """Run best-of-N plan candidates with test-time scaling.
@@ -1318,7 +1381,7 @@ def run_plan_start(question: str, use_literature: bool = True,
                      literature_preview=literature_result)
 
     return {
-        "plan": best_plan,
+        "plan": enrich_plan_functional_data_links(best_plan),
         "neo4j_results": best_results,
         "cypher_queries": cypher_queries,
         "complexity": complexity,
@@ -1469,7 +1532,7 @@ def run_plan_revise(
                      literature_preview=new_literature if new_use_literature else "")
 
     return {
-        "plan": new_plan,
+        "plan": enrich_plan_functional_data_links(new_plan),
         "neo4j_results": new_results,
         "cypher_queries": cypher_queries,
         "complexity": complexity,

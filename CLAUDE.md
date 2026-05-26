@@ -142,6 +142,8 @@ All agents are pre-initialized at startup via FastAPI lifespan. `server.py` load
 
 **NOTE**: legacy `/query` and `/query/stream` endpoints were removed — they went through `chat_one_round()` which has a bug path that returns 0 records silently. All public traffic should use `/chat/*` or `/plan/*` which go through the plan pipeline (`run_plan_start` → `run_plan_confirm`).
 
+**Plan-stage functional_data links**: `main.py:enrich_plan_functional_data_links(plan)` runs inside `run_plan_start` / `run_plan_revise` (so every plan-returning endpoint is covered). For each step with `source == "functional_data"` it resolves the REST call (same logic as `POST /functional-data`: `extract_endpoint_and_params` → `_validate_selection` → URL build) and attaches `step["functional_data_api"] = {endpoint, url, params}` (or `{error}`) to `plan_json`. This lets the frontend surface the API link at plan time without waiting for `/plan/confirm`. Each functional_data step costs one extra Sonnet call (`extract_endpoint_and_params`); plans with no functional_data steps pay nothing.
+
 ### Text-to-Cypher (`PankBaseAgent/text_to_cypher/`)
 
 1. `schema_loader.py` — caches schema, produces compact ~400-token string for vLLM
