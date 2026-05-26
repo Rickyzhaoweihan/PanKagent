@@ -21,6 +21,7 @@ Active env vars the system reads at startup:
 - `NEO4J_BOLT_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (default `bolt://localhost:8687`, `neo4j`/`password`/`pankgraph`)
 - `VLLM_PORT` (default 8002)
 - `PORT` (server)
+- `MAX_CONCURRENT_QUERIES` (default 5 — max pipelines run concurrently; bounds the `_pipeline_semaphore`)
 - `OPENAI_API_KEY` (only required for `batch_evaluator.py`)
 
 ### Running
@@ -91,7 +92,7 @@ Two independent test-time-scaling loops:
 - **Outer** (`PLANNER_CANDIDATES=5` in `main.py`) — 5 top-level PlannerAgent candidates, score by non-empty Neo4j results
 - **Inner** (`NUM_CANDIDATES=1` in `qp_query_planner.py`) — per-sub-pipeline candidates
 
-`RIGOR_MODE` (True by default in server.py) routes to `rigor-format-agent` / `rigor-reasoning-agent` which enforce stricter evidence-only output.
+A per-request `rigor` flag (defaults True at the server endpoints) routes to `rigor-format-agent` / `rigor-reasoning-agent` which enforce stricter evidence-only output. `rigor` is threaded explicitly through `_select_pipeline(is_complex, rigor, **kwargs)` / `run_plan_confirm` / `chat_one_round` — there is no `RIGOR_MODE` module global (removed so concurrent requests with different rigor settings don't interfere).
 
 ### Data sources and their query languages
 
@@ -210,7 +211,11 @@ Cron-driven daemon (runs every minute via flock) that probes the server on `:800
 
 ### Thread-based parallelism
 
-`_thread.start_new_thread` + `Queue` for sub-agent calls. `multi_thread_workers.py` provides `map_once()` and `map_infinite_retry()` helpers. Thread-local storage in `utils.py` prevents Planner test-time-scaling candidates from corrupting each other's cypher/result buffers.
+`_thread.start_new_thread` + `Queue` for sub-agent calls. `multi_thread_workers.py` provides `map_once()` and `map_infinite_retry()` helpers. Thread-local storage in `utils.py` (`_tls`) prevents Planner test-time-scaling candidates from corrupting each other's cypher/result buffers — and is also what makes cross-request concurrency safe.
+
+### Concurrent requests
+
+The server runs multiple query pipelines at once, bounded by `_pipeline_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_QUERIES)` in `server.py` (env `MAX_CONCURRENT_QUERIES`, default 5; sized against the vLLM `max_num_seqs=32` batch since each query fans out to ~5 candidates, not CPU). This replaced the old single `_request_lock` that serialized everything. Safe because per-request state is isolated: `rigor` is an explicit parameter (no module global), the cypher/neo4j/planning buffers are thread-local (`utils.py:_tls`), the Neo4j driver/vLLM agents/format-reasoning singletons are stateless or thread-safe, and PostgreSQL connections are per-call. The bound protects the single GPU (vLLM) and external API rate limits; raise it only with backend headroom.
 
 ## Conventions
 

@@ -54,8 +54,7 @@ except ImportError:
 if not os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("CLAUDE_API_KEY"):
     os.environ["ANTHROPIC_API_KEY"] = os.environ["CLAUDE_API_KEY"]
 
-# Import the main chat function and the rigor-mode toggle
-import main as _main_module
+# Import the main chat/pipeline functions
 from main import (
     chat_one_round, extract_markdown, clean_response_json,
     format_plan_as_markdown, clean_user_question, run_plan_start,
@@ -63,9 +62,6 @@ from main import (
 )
 from utils import reset_cypher_queries
 from stream_events import emit
-
-# Default to rigor mode for the server
-_main_module.RIGOR_MODE = True
 
 # Configure logging
 logging.basicConfig(
@@ -820,8 +816,13 @@ class ChatLiteratureResponse(BaseModel):
 
 SERVER_START_TIME = time.time()
 
-# Lock to serialise requests that use module-level global state
-_request_lock = threading.Lock()
+# Bounded concurrency for pipeline execution. The pipeline no longer mutates
+# shared module-global state (rigor is passed explicitly; cypher/result buffers
+# are thread-local in utils.py), so multiple queries can run at once. The bound
+# protects the single GPU (vLLM) and external API rate limits — each pipeline
+# already fans out to ~PLANNER candidates. Tune via MAX_CONCURRENT_QUERIES.
+MAX_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "5")))
+_pipeline_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_QUERIES)
 
 # ---------------------------------------------------------------------------
 # Idempotent /chat/plan/confirm — result cache + in-flight de-duplication.
@@ -869,11 +870,10 @@ def _run_query(question: str, rigor: bool = True) -> str:
     Deprecated: kept for any remaining callers, but the chat endpoints now use
     ``_run_plan_pipeline`` + ``_run_confirm`` instead (plan-mode foundation).
     """
-    with _request_lock:
-        _main_module.RIGOR_MODE = rigor
+    with _pipeline_semaphore:
         reset_cypher_queries()
         messages = []
-        _, response = chat_one_round(messages, question)
+        _, response = chat_one_round(messages, question, rigor=rigor)
         return response
 
 
@@ -886,7 +886,7 @@ def _run_plan_pipeline(question: str, use_literature: bool = True,
     the planner can resolve entity references against prior conversation.
     """
     clean_q = clean_user_question(question)
-    with _request_lock:
+    with _pipeline_semaphore:
         return {
             "interpreted_question": clean_q,
             **run_plan_start(clean_q, use_literature=use_literature, chat_history=chat_history),
@@ -902,7 +902,7 @@ def _run_plan_revise(
     literature_result: str,
 ) -> dict:
     """Wrap run_plan_revise under the request lock."""
-    with _request_lock:
+    with _pipeline_semaphore:
         return run_plan_revise(
             original_question=original_question,
             current_plan=current_plan,
@@ -931,8 +931,7 @@ def _run_confirm(
     ``chat_history`` is an alternative — if provided and ``pre_final_answer``
     is empty, the last 4 turns are built into a context string downstream.
     """
-    with _request_lock:
-        _main_module.RIGOR_MODE = rigor
+    with _pipeline_semaphore:
         return run_plan_confirm(
             question=question,
             neo4j_results=neo4j_results,
@@ -1014,7 +1013,7 @@ async def plan_start(request: PlanStartRequest):
     question = clean_user_question(raw_question)
 
     def _do_plan():
-        with _request_lock:
+        with _pipeline_semaphore:
             return run_plan_start(question, use_literature=use_lit)
 
     try:
@@ -1093,7 +1092,7 @@ async def plan_revise(request: PlanReviseRequest):
     session.chat_history.append({"role": "user", "content": prompt})
 
     def _do_revise():
-        with _request_lock:
+        with _pipeline_semaphore:
             return run_plan_revise(
                 original_question=session.original_question,
                 current_plan=session.current_plan,
@@ -1171,7 +1170,7 @@ async def plan_confirm(request: PlanConfirmRequest):
     start_time = time.time()
 
     def _do_confirm():
-        with _request_lock:
+        with _pipeline_semaphore:
             return run_plan_confirm(
                 question=session.original_question,
                 neo4j_results=session.neo4j_results,
@@ -1707,7 +1706,7 @@ def _confirm_execute(chat_session: "ChatSession", plan_session: "PlanSession",
     """Synchronously run the confirm pipeline (optional revision + format/reasoning),
     update the chat session, delete the one-shot PlanSession, cache the result, and
     return the ChatResponse. Runs in an executor thread; pipeline calls take the
-    global ``_request_lock`` internally. Raises HTTPException(500) on failure.
+    global ``_pipeline_semaphore`` internally. Raises HTTPException(500) on failure.
     """
     start_time = time.time()
 

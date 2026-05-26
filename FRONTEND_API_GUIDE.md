@@ -1215,7 +1215,12 @@ Keep this hidden by default behind a "Show details" toggle.
 
 ### 12.8 Concurrency
 
-The server serialises all pipeline calls under a single internal request lock. Do **not** send parallel `/chat/message` calls for the same or different sessions — they'll queue server-side and may cause user-visible latency spikes. One request at a time per backend instance.
+The server runs multiple query pipelines **concurrently**, bounded by `MAX_CONCURRENT_QUERIES` (default **5**, set via env var). Up to that many queries (from the same or different sessions) execute in parallel; additional ones queue and start as slots free up. Each request's state is isolated (rigor is per-request, and the cypher/result buffers are thread-local), so concurrent queries don't interfere.
+
+Practical guidance:
+- Parallel requests are fine. Beyond `MAX_CONCURRENT_QUERIES`, extra requests wait their turn — a queued request on `/chat/plan/confirm/stream` still receives heartbeats while waiting, so it won't time out.
+- Avoid sending a **duplicate of the same** `/chat/plan/confirm` concurrently — it's de-duplicated server-side (the second waits and replays the cached answer), but there's no benefit to firing it twice.
+- The bound protects the shared GPU (local vLLM) and external API rate limits; raise `MAX_CONCURRENT_QUERIES` only if the backend has headroom.
 
 ---
 

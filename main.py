@@ -30,14 +30,15 @@ PRINT_FUNC_CALL = True
 PRINT_FUNC_RESULT = True
 set_log_enable(True)
 
-RIGOR_MODE = False
-
 PLANNER_CANDIDATES = 5
 
 
-def _select_pipeline(is_complex: bool, **kwargs) -> str:
+def _select_pipeline(is_complex: bool, rigor: bool = False, **kwargs) -> str:
+    """Route to the format/reasoning pipeline. ``rigor`` is passed explicitly
+    (per request) rather than read from a module global, so concurrent requests
+    with different rigor settings don't interfere."""
     if is_complex:
-        if RIGOR_MODE:
+        if rigor:
             emit("main_routing", {"agent": "rigor_reasoning", "complexity": "complex"})
             if 'use_glkb' in kwargs:
                 kwargs['use_literature'] = kwargs.pop('use_glkb')
@@ -48,7 +49,7 @@ def _select_pipeline(is_complex: bool, **kwargs) -> str:
                 kwargs['use_literature'] = kwargs.pop('use_glkb')
             return run_reasoning_pipeline(**kwargs)
     else:
-        if RIGOR_MODE:
+        if rigor:
             emit("main_routing", {"agent": "rigor_format", "complexity": "simple"})
             return run_rigor_format_pipeline(**kwargs)
         else:
@@ -191,7 +192,7 @@ def _run_planner_candidate(
 # chat_one_round — with planner-level test-time scaling
 # ---------------------------------------------------------------------------
 
-def chat_one_round(messages_history: list[dict], question: str) -> Tuple[list[dict], str]:
+def chat_one_round(messages_history: list[dict], question: str, rigor: bool = False) -> Tuple[list[dict], str]:
     reset_cypher_queries()
 
     question = question.strip()
@@ -274,6 +275,7 @@ def chat_one_round(messages_history: list[dict], question: str) -> Tuple[list[di
         is_complex = (best_complexity == "complex")
         result = _select_pipeline(
             is_complex=is_complex,
+            rigor=rigor,
             human_query=original_question,
             neo4j_results=best_neo4j,
             cypher_queries=best_cypher,
@@ -288,6 +290,7 @@ def chat_one_round(messages_history: list[dict], question: str) -> Tuple[list[di
     is_complex = (best_complexity == "complex")
     result = _select_pipeline(
         is_complex=is_complex,
+        rigor=rigor,
         human_query=original_question,
         neo4j_results=best_neo4j,
         cypher_queries=best_cypher,
@@ -1569,41 +1572,36 @@ def run_plan_confirm(
     compact context string is built from the last 4 turns and used as
     ``pre_final_answer`` so the format/reasoning agent sees prior dialogue.
     """
-    global RIGOR_MODE
-    prev_rigor = RIGOR_MODE
-    RIGOR_MODE = rigor
-    try:
-        # Literature is now appended post-hoc by server.py via combine_literature_block;
-        # the format/reasoning agents receive only KG/SQL/Functional API data.
-        final_functions_result = functions_result
+    # Literature is now appended post-hoc by server.py via combine_literature_block;
+    # the format/reasoning agents receive only KG/SQL/Functional API data.
+    final_functions_result = functions_result
 
-        if chat_history and not pre_final_answer:
-            turns = [
-                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content'][:500]}"
-                for m in chat_history[-4:]
-            ]
-            pre_final_answer = "[Prior conversation]\n" + "\n".join(turns)
+    if chat_history and not pre_final_answer:
+        turns = [
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content'][:500]}"
+            for m in chat_history[-4:]
+        ]
+        pre_final_answer = "[Prior conversation]\n" + "\n".join(turns)
 
-        is_complex = complexity == "complex"
-        return _select_pipeline(
-            is_complex=is_complex,
-            human_query=question,
-            neo4j_results=neo4j_results,
-            cypher_queries=cypher_queries,
-            functions_result=final_functions_result,
-            use_glkb=use_literature,
-            pre_final_answer=pre_final_answer,
-        )
-    finally:
-        RIGOR_MODE = prev_rigor
+    is_complex = complexity == "complex"
+    return _select_pipeline(
+        is_complex=is_complex,
+        rigor=rigor,
+        human_query=question,
+        neo4j_results=neo4j_results,
+        cypher_queries=cypher_queries,
+        functions_result=final_functions_result,
+        use_glkb=use_literature,
+        pre_final_answer=pre_final_answer,
+    )
 
 
-def chat_forever():
+def chat_forever(rigor: bool = False):
     """Interactive mode: continuous conversation loop"""
     messages = []
     while True:
         question = input('Your question: ')
-        messages, response = chat_one_round(messages, question)
+        messages, response = chat_one_round(messages, question, rigor=rigor)
         emit("final_response", {"response": response})
         md = extract_markdown(response)
         print("\n" + "=" * 60)
@@ -1613,7 +1611,7 @@ def chat_forever():
         print("\n" + "=" * 60)
 
 
-def chat_plan_interactive():
+def chat_plan_interactive(rigor: bool = False):
     """Interactive plan-confirmation loop.
 
     Flow:
@@ -1688,7 +1686,7 @@ def chat_plan_interactive():
                         complexity=complexity,
                         use_literature=False,
                         literature_result="",
-                        rigor=RIGOR_MODE,
+                        rigor=rigor,
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
@@ -1735,20 +1733,21 @@ def chat_plan_interactive():
             print("\n" + plan_md)
 
 
-def chat_single_round(question: str) -> str:
+def chat_single_round(question: str, rigor: bool = False) -> str:
     """Single round mode: ask one question and return the answer"""
     with open("log.txt", "w") as f:
         pass
-    
+
     messages = []
-    _, response = chat_one_round(messages, question)
+    _, response = chat_one_round(messages, question, rigor=rigor)
     return response
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    rigor = False
     if '--rigor' in args:
-        RIGOR_MODE = True
+        rigor = True
         args.remove('--rigor')
         emit("rigor_mode", {"enabled": True})
 
@@ -1819,7 +1818,7 @@ if __name__ == "__main__":
                         complexity=result["complexity"],
                         use_literature=False,
                         literature_result="",
-                        rigor=RIGOR_MODE,
+                        rigor=rigor,
                     )
                     emit("final_response", {"response": response})
                     md = extract_markdown(response)
@@ -1855,7 +1854,7 @@ if __name__ == "__main__":
                 )
                 print("\n" + plan_md)
         else:
-            response = chat_single_round(question)
+            response = chat_single_round(question, rigor=rigor)
             emit("final_response", {"response": response})
             md = extract_markdown(response)
             print("\n" + "=" * 60)
@@ -1867,6 +1866,6 @@ if __name__ == "__main__":
         with open("log.txt", "w") as f:
             pass
         if plan_mode:
-            chat_plan_interactive()
+            chat_plan_interactive(rigor=rigor)
         else:
-            chat_forever()
+            chat_forever(rigor=rigor)
