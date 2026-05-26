@@ -24,13 +24,15 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
    - `POST /plan/start`, `POST /plan/revise`, `POST /plan/confirm`
 6. [Functional Data Endpoint](#6-functional-data-endpoint)
    - `POST /functional-data` — resolve NL question to islet assay API params
-7. [Data Models Reference](#7-data-models-reference)
-8. [Smart Router — Deep Dive](#8-smart-router-deep-dive)
-9. [Session Lifecycle & TTLs](#9-session-lifecycle-ttls)
-10. [Parsing the Final Answer](#10-parsing-the-final-answer)
-11. [Error Handling](#11-error-handling)
-12. [Full Flow Examples](#12-full-flow-examples)
-13. [Frontend UX Recommendations](#13-frontend-ux-recommendations)
+7. [Feedback Endpoint](#7-feedback-endpoint)
+   - `POST /feedback` — submit a user rating + free-text feedback
+8. [Data Models Reference](#8-data-models-reference)
+9. [Smart Router — Deep Dive](#9-smart-router-deep-dive)
+10. [Session Lifecycle & TTLs](#10-session-lifecycle-ttls)
+11. [Parsing the Final Answer](#11-parsing-the-final-answer)
+12. [Error Handling](#12-error-handling)
+13. [Full Flow Examples](#13-full-flow-examples)
+14. [Frontend UX Recommendations](#14-frontend-ux-recommendations)
 
 ---
 
@@ -53,7 +55,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 
 **Timeouts:** a single `new_query` round can take **5–45 s** (plan + multi-source execution + format agent). Literature retrieval (GLKB ~25–35 s) is on-demand via `POST /chat/literature` — set a **60 s** timeout for that call. Set standard chat-endpoint fetch timeouts to ≥ **120 s**.
 
-**Durability:** all session state is mirrored to SQLite (`logs/sessions.sqlite`) on every mutation. Sessions survive server restarts — a user whose chat was mid-flight during a restart will find their `session_id` still valid and their history intact. See [§8](#8-session-lifecycle-ttls) for TTL and retention details.
+**Durability:** all session state is mirrored to SQLite (`logs/sessions.sqlite`) on every mutation. Sessions survive server restarts — a user whose chat was mid-flight during a restart will find their `session_id` still valid and their history intact. See [§10](#10-session-lifecycle-ttls) for TTL and retention details.
 
 ### 1.1 All endpoints at a glance
 
@@ -72,6 +74,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `POST` | `/plan/revise` | Iterate the plan | `session_id`, `prompt` | Updated plan markdown / JSON |
 | `POST` | `/plan/confirm` | Execute + format the confirmed plan | `session_id` | Final `answer_markdown`, `cypher_queries`, `reasoning_trace`; deletes the `PlanSession` |
 | `POST` | `/functional-data` | Resolve NL question to islet assay API call | `question`, `donor_ids?` | `endpoint`, `url`, `params` — **no data rows returned** |
+| `POST` | `/feedback` | Submit user rating + free-text feedback for a session | `session_id`, `rating` (1–5), `feedback`, `email?` | `ok`, `message` |
 
 Quick routing logic:
 
@@ -147,7 +150,7 @@ When you call `POST /chat/message`, a Haiku classifier decides one of two routes
 - **`follow_up`** — the question extends the previous turn. Reuses the session's stored retrieved data. Fast (~5–25 s). No plan review.
 - **`new_query`** — the question is genuinely new. Runs the full planner, creates a pending `PlanSession`, returns the plan for the user to review. You must then call `/chat/plan/confirm` to complete the round.
 
-See [§8](#8-smart-router-deep-dive) for details.
+See [§9](#9-smart-router-deep-dive) for details.
 
 ### 2.5 History compression
 The full dialogue is sent to the format agent for `follow_up` rounds. If the history exceeds ~25 KB, older turns are summarised via Haiku before being passed. The API signals this via `history_compressed: true` in the response — show a visual indicator to the user.
@@ -616,7 +619,80 @@ interface FunctionalDataParamsResponse {
 
 ---
 
-## 7. Data Models Reference
+## 7. Feedback Endpoint
+
+Collects end-user feedback on an answer — a 1–5 star rating plus free-text comments — and stores it server-side against the session it relates to. Use it to power a "Rate this answer" / thumbs widget after a round completes.
+
+This endpoint is **fire-and-forget** from the frontend's perspective: it stores the feedback and returns immediately. It does not affect session state, history, or any subsequent answer.
+
+### 7.1 `POST /feedback`
+
+**When to use:** after any answer is rendered (e.g. after `/chat/plan/confirm`, `/chat/start` with `auto_confirm: true`, a `follow_up` round, or `/plan/confirm`), show a rating control and submit the user's response here.
+
+**Request body (`FeedbackRequest`):**
+```json
+{
+  "session_id": "4701b4ba16d4",
+  "rating": 5,
+  "feedback": "Clear answer and the table rendered correctly.",
+  "email": "user@example.com"
+}
+```
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `session_id` | string | required | The chat or plan session the feedback is about. Use the `session_id` from the round being rated. Not validated against live sessions — any string is accepted (so feedback still records even after the session has expired). |
+| `rating` | int | required | Integer **1–5** (1 = worst, 5 = best). Values outside this range are rejected with `422`. |
+| `feedback` | string | required | Free-text comment. May be empty string `""` if your UI allows rating without a comment. |
+| `email` | string \| null | `null` | Optional contact email. Omit or send `null`/`""` if the user did not provide one. |
+
+**Response 200 (`FeedbackResponse`):**
+```json
+{ "ok": true, "message": "Feedback recorded. Thank you!" }
+```
+
+**Errors:**
+- `422` — validation error (e.g. `rating` not in 1–5, or a required field missing). `detail` contains the field-level message. The submission is **not** stored.
+
+**Where it goes:** each submission is appended as a `feedback` event to the server's audit log (`logs/plan_sessions.jsonl`) and mirrored to the SQLite `events` table, keyed by `session_id` with a UTC timestamp — so feedback can be joined back to the exact question/plan/answer for that session.
+
+**JavaScript example:**
+```js
+async function submitFeedback({ sessionId, rating, feedback, email }) {
+  const res = await fetch("https://jieliulab3.dcmb.med.umich.edu/pankgraph-agent/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      rating,                          // integer 1..5
+      feedback,
+      ...(email ? { email } : {}),     // include only if provided
+    }),
+  });
+  if (res.status === 422) {
+    throw new Error("Rating must be an integer between 1 and 5.");
+  }
+  return res.json();                   // { ok: true, message: "..." }
+}
+```
+
+**TypeScript types:**
+```ts
+interface FeedbackRequest {
+  session_id: string;
+  rating: number;          // 1..5
+  feedback: string;
+  email?: string | null;
+}
+
+interface FeedbackResponse {
+  ok: boolean;
+  message: string;
+}
+```
+
+---
+
+## 8. Data Models Reference
 
 Pydantic models defined in `server.py`. All JSON keys are `snake_case`.
 
@@ -673,7 +749,7 @@ created_at ─┬── last_active updated on every /chat/* call
 
 ---
 
-## 8. Smart Router — Deep Dive
+## 9. Smart Router — Deep Dive
 
 ### How the classifier decides
 
@@ -707,7 +783,7 @@ Treat `new_query_pending` as a **two-stage** `new_query`.
 
 ---
 
-## 9. Session Lifecycle & TTLs
+## 10. Session Lifecycle & TTLs
 
 | Session | TTL | Measured from | Cleanup trigger |
 |---|---|---|---|
@@ -735,7 +811,7 @@ Nothing in this section changes the HTTP contract — it's an internal durabilit
 
 ---
 
-## 10. Parsing the Final Answer
+## 11. Parsing the Final Answer
 
 The `answer` field contains the raw pipeline JSON (stringified). 99% of frontends should use `answer_markdown` directly. Parse `answer` only if you need structured sub-fields.
 
@@ -783,7 +859,7 @@ const suggestedQuestions = parsed.text.follow_up_questions;
 
 ---
 
-## 11. Error Handling
+## 12. Error Handling
 
 All errors return JSON of the form:
 ```json
@@ -805,7 +881,7 @@ Unhandled server exceptions are caught by `global_exception_handler` and returne
 
 ---
 
-## 12. Full Flow Examples
+## 13. Full Flow Examples
 
 ### Example A — Default chat (plan review on first turn, then a follow-up)
 
@@ -999,7 +1075,7 @@ replaceLastAssistant(revised.answer_markdown);
 
 ---
 
-## 13. Frontend UX Recommendations
+## 14. Frontend UX Recommendations
 
 ### 12.1 Three distinct UI states for `/chat/message`
 
@@ -1088,6 +1164,7 @@ The server serialises all pipeline calls under a single internal request lock. D
 | `POST` | `/plan/revise` | `PlanReviseRequest` | Revise standalone plan |
 | `POST` | `/plan/confirm` | `PlanConfirmRequest` | Confirm standalone plan |
 | `POST` | `/functional-data` | `FunctionalDataRequest` | Resolve NL question → islet assay API params (returns `endpoint`, `url`, `params` only) |
+| `POST` | `/feedback` | `FeedbackRequest` | Submit user rating (1–5) + free-text feedback for a session (returns `ok`, `message`) |
 
 ---
 
