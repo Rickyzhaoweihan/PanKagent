@@ -76,4 +76,11 @@ def combine_literature_block(
         parts.append("")
         parts.append(refs_section)
 
-    return "\n".join(parts).rstrip() + "\n"
+    block = "\n".join(parts).rstrip() + "\n"
+    # Deterministic GFM normalization only (no LLM — never touch cited content).
+    try:
+        from markdown_normalizer import normalize_markdown
+        block = normalize_markdown(block)[0]
+    except Exception:  # noqa: BLE001 — normalization must never break the block
+        pass
+    return block

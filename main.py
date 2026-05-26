@@ -5,6 +5,7 @@ from claude import (run_format_pipeline, run_reasoning_pipeline,
 from utils import *
 from utils import get_neo4j_results, reset_cypher_queries, hirn_chat_one_round
 from stream_events import emit
+from markdown_normalizer import repair_markdown
 from typing import Tuple
 from copy import deepcopy
 import json
@@ -337,7 +338,9 @@ def extract_markdown(response: str) -> str:
         parts.append(summary.strip())
         parts.append("")
 
-    return "\n".join(parts).strip() if parts else response
+    if not parts:
+        return response
+    return repair_markdown("\n".join(parts).strip())
 
 
 def clean_response_json(response: str) -> str:

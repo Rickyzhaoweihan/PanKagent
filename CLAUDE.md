@@ -170,7 +170,9 @@ Core executor: `qp_query_planner.py:execute_plan()` has three paths:
 
 ### Streaming events (`stream_events.py`)
 
-NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`.
+NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`.
+
+`markdown_normalized` is emitted by `markdown_normalizer.repair_markdown` (wired into `main.py:extract_markdown`, covering every `answer_markdown`) ONLY when the deterministic GFM repair changed something — payload `{changed, fixes: [...], llm_repair: bool}`. The deterministic pass fixes blank-lines-around-tables/HRs, delimiter rows, and cell-count mismatches; a Claude Haiku fallback repairs the rare table block left structurally ambiguous. The literature block (`combine_literature_block`) runs the deterministic pass only.
 
 ### Experience buffer
 
