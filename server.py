@@ -448,6 +448,18 @@ class FunctionalDataParamsResponse(BaseModel):
     params: dict = Field(..., description="Query parameters sent to the functional data API")
 
 
+class FeedbackRequest(BaseModel):
+    session_id: str = Field(..., description="Plan or chat session ID the feedback relates to")
+    rating: int = Field(..., ge=1, le=5, description="Rating on a scale of 1 (worst) to 5 (best)")
+    feedback: str = Field(..., description="Natural language feedback from the user")
+    email: Optional[str] = Field(None, description="Optional contact email address")
+
+
+class FeedbackResponse(BaseModel):
+    ok: bool
+    message: str
+
+
 # ---------------------------------------------------------------------------
 # Multi-turn chat session state
 # ---------------------------------------------------------------------------
@@ -1915,6 +1927,22 @@ async def functional_data_params(request: FunctionalDataRequest):
         url=full_url,
         params=params,
     )
+
+
+@app.post("/feedback", response_model=FeedbackResponse)
+async def submit_feedback(request: FeedbackRequest):
+    """Store user feedback (rating + free-text) against a session in logs/plan_sessions.jsonl."""
+    _log_plan_event(request.session_id, "feedback", {
+        "session_id": request.session_id,
+        "rating": request.rating,
+        "feedback": request.feedback,
+        "email": request.email or "",
+    })
+    logger.info(
+        "[/feedback] session=%s rating=%d email=%s",
+        request.session_id, request.rating, bool(request.email),
+    )
+    return FeedbackResponse(ok=True, message="Feedback recorded. Thank you!")
 
 
 @app.exception_handler(Exception)
