@@ -50,7 +50,7 @@ nohup python -m vllm.entrypoints.openai.api_server \
 
 ### External services used at runtime
 - **Local Neo4j PanKgraph ADA** at `bolt://localhost:8687` / browser `:8475` — 5.4M nodes, schema in `PankBaseAgent/text_to_cypher/data/input/neo4j_schema_ada.json`
-- **Local PostgreSQL** at `localhost:5432` db `pankgraph` (user `serviceuser` / pw `password`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
+- **Local PostgreSQL 17** at `127.0.0.1:5432` db `pankgraph` (user `postgres` / pw `password`, connect with `gssencmode=disable`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
 - **GLKB API** at `https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent` — SSE-streaming literature synthesis; called by `skills/glkb/scripts/glkb_client.py`; HIRN is fully disabled
 - **RDS Lambda** — gene-name → Ensembl-ID resolution for text2sql
 - **Anthropic Claude** — Sonnet for orchestration + format, Haiku for chat follow-up classifier

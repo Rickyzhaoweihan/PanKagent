@@ -5,7 +5,7 @@ Usage: python3 query_pankgraph_pg.py
 
 import psycopg2
 
-DB = dict(host="localhost", port=5432, user="serviceuser", password="password", dbname="pankgraph")
+DB = dict(host="127.0.0.1", port=5432, user="postgres", password="password", dbname="pankgraph", gssencmode="disable")
 
 
 def run(cur, title, sql, params=None):

@@ -113,12 +113,16 @@ Output ONLY a valid JSON object (no markdown, no extra text):
   - "Get genes that have function_annotation relationships with KEGG pathways"
   - "Get genes that have function_annotation relationships with Reactome pathways"
   - "Get genes that have signal_COLOC_with relationships with type 1 diabetes"
+  - "Find signal_COLOC_with relationship from gene ADCY3 to type 1 diabetes"
   - "Get SNVs that have part_of_GWAS_signal relationships with type 1 diabetes"
   - "Get genes that have physical_interaction relationships with gene CFTR"
   - "Get genes that have effector_gene_of relationships with type 1 diabetes"
   - "Check whether gene CFTR has an effector_gene_of relationship to type 1 diabetes"
 
-- **`effector_gene_of` scoping rule**: All `effector_gene_of` edges in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is always true and returns all 257 effector genes — it is a no-op. When the user asks about a **specific gene's** effector relationship — or you are doing a comprehensive single-gene lookup — ALWAYS use the boolean pattern: **"Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes"**. This scopes to the gene and returns a yes/no result. **NEVER use** "Get genes that have effector_gene_of relationships with type 1 diabetes" for a single-gene question — that is a full scan of all 257 effector genes, not a check.
+- **Gene→Disease edge phrasing rule (`signal_COLOC_with`, `effector_gene_of`)**: these edges point from a gene to the disease node. When the user asks about a **specific gene's** relationship to a disease — or you are doing a single-gene lookup — phrase the step **directionally and gene-first**, NOT with the generic "Get genes that have…" template. The generic template reads as "genes (plural) … for a gene" and confuses the Cypher generator on gene→disease edges.
+  - `signal_COLOC_with`: use **"Find signal_COLOC_with relationship from gene <SYMBOL> to type 1 diabetes"**. Do NOT use "Get genes that have signal_COLOC_with relationships with type 1 diabetes for gene <SYMBOL>".
+  - `effector_gene_of`: All `effector_gene_of` edges in the KG terminate at the single T1D disease node (MONDO_0005147). Filtering by disease name is always true and returns all 257 effector genes — it is a no-op. For a specific gene, ALWAYS use the boolean pattern **"Check whether gene <SYMBOL> has an effector_gene_of relationship to type 1 diabetes"**. **NEVER use** "Get genes that have effector_gene_of relationships with type 1 diabetes" for a single-gene question — that is a full scan of all 257 effector genes, not a check.
+  - The generic "Get genes that have `<edge>` relationships with `<target>`" template is fine for gene→cell-type / gene→ontology edges (T1D_DEG_in, gene_detected_in, gene_enriched_in, function_annotation, etc.) and for unscoped "which genes…" questions.
 
 ### Rules for `join_var`
 - For CHAIN plans: the join_var is the Cypher variable that connects this step

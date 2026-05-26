@@ -22,11 +22,12 @@ from src.text2sql_agent import Text2SQLAgent
 from src.sql_validator import validate_sql, format_validation_report
 
 DB_CONFIG = dict(
-    host="localhost",
+    host="127.0.0.1",
     port=5432,
-    user="serviceuser",
+    user="postgres",
     password="password",
     dbname="pankgraph",
+    gssencmode="disable",
 )
 
 TEST_QUESTIONS = [

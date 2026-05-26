@@ -20,6 +20,55 @@ from .cypher_validator import validate_cypher, format_validation_report, auto_fi
 
 load_dotenv()
 
+
+# Cypher clauses a valid generated query may start with.
+_CYPHER_START_RE = re.compile(
+    r'\b(MATCH|OPTIONAL\s+MATCH|WITH|UNWIND|CALL|MERGE|CREATE|RETURN)\b',
+    re.IGNORECASE,
+)
+
+
+def _extract_cypher(raw: str) -> str:
+    """Extract a bare Cypher query from a raw LLM response.
+
+    The fine-tuned cypher-writer normally returns bare Cypher, but it
+    occasionally drops into "explain mode" and wraps the query in prose plus a
+    Markdown ```cypher ... ``` fence. This helper recovers the actual query in
+    that case so verbose responses never get sent raw to Neo4j.
+
+    Strategy (first match wins):
+      1. If a fenced code block exists (```cypher ... ``` or ``` ... ```),
+         take the LAST one's contents (the model often shows the final query
+         last).
+      2. Otherwise, if the text contains Cypher prose, slice from the first
+         Cypher-start keyword (MATCH / OPTIONAL MATCH / WITH / ...) to the end.
+      3. Otherwise return the stripped text unchanged.
+
+    After slicing, trailing prose after the final ``;`` is dropped.
+    """
+    if not raw:
+        return raw
+    text = raw.strip()
+
+    # 1. Fenced code block(s)
+    fences = re.findall(r"```(?:cypher|sql)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if fences:
+        candidate = fences[-1].strip()
+    else:
+        # 2. Slice from the first Cypher keyword if there's leading prose
+        m = _CYPHER_START_RE.search(text)
+        if m and m.start() > 0:
+            candidate = text[m.start():].strip()
+        else:
+            candidate = text
+
+    # 3. Drop trailing prose after the final statement terminator
+    if ";" in candidate:
+        candidate = candidate[: candidate.rfind(";") + 1]
+
+    return candidate.strip()
+
+
 SYSTEM_RULES = """You are a Cypher query generator for PanKgraph ADA (biomedical KG).
 
 TASK: Generate ONE simple Cypher query per step.
@@ -258,20 +307,23 @@ class Text2CypherAgent:
     def respond(self, user_text: str) -> str:
         result = self.chain.invoke({"user_input": user_text})
         cypher = result.content.strip().strip("` ")
-        
+
         # Remove common prefixes that models add
         if cypher.lower().startswith("cypher"):
             cypher = cypher[6:].strip()
-        
+
         # Remove "Query: '...'" prefix if the model echoed the input
         query_prefix_match = re.match(r'^Query:\s*[\'"].*?[\'"]\s*\n?', cypher, re.IGNORECASE)
         if query_prefix_match:
             cypher = cypher[query_prefix_match.end():].strip()
-        
+
+        # Recover bare Cypher if the model wrapped it in prose / a ```cypher fence
+        cypher = _extract_cypher(cypher)
+
         # Strip any LIMIT clause the model may have added — limits are
         # injected by the system (cypher_validator / _ensure_limit_before_collect)
         cypher = re.sub(r'\s+LIMIT\s+\d+', '', cypher, flags=re.IGNORECASE)
-        
+
         return cypher
 
     def respond_with_refinement(self, user_text: str, max_iterations: int = None) -> dict:
@@ -405,6 +457,9 @@ class Text2CypherAgent:
         if query_prefix_match:
             cypher = cypher[query_prefix_match.end():].strip()
 
+        # Recover bare Cypher if the model wrapped it in prose / a ```cypher fence
+        cypher = _extract_cypher(cypher)
+
         return cypher
 
     # ------------------------------------------------------------------
@@ -463,6 +518,8 @@ class Text2CypherAgent:
         query_prefix_match = re.match(r'^Query:\s*[\'"].*?[\'"]\s*\n?', cypher, re.IGNORECASE)
         if query_prefix_match:
             cypher = cypher[query_prefix_match.end():].strip()
+        # Recover bare Cypher if the model wrapped it in prose / a ```cypher fence
+        cypher = _extract_cypher(cypher)
         # Strip any LIMIT the model may have added — injected by the validator
         cypher = re.sub(r'\s+LIMIT\s+\d+', '', cypher, flags=re.IGNORECASE)
 

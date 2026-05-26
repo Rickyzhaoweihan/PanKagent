@@ -893,9 +893,9 @@ def _run_genomic_step(question_text: str, prior_entities: dict | None = None) ->
         })
 
         conn = psycopg2.connect(
-            host="localhost", port=5432,
-            user="serviceuser", password="password",
-            dbname="pankgraph",
+            host="127.0.0.1", port=5432,
+            user="postgres", password="password",
+            dbname="pankgraph", gssencmode="disable",
         )
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
