@@ -15,7 +15,8 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
 4. [Chat Endpoints (Multi-Turn Dialogue)](#4-chat-endpoints-multi-turn-dialogue)
    - `POST /chat/start` — start a chat session
    - `POST /chat/message` — send a follow-up (smart-routed)
-   - `POST /chat/plan/confirm` — confirm a pending plan
+   - `POST /chat/plan/confirm` — confirm a pending plan (idempotent)
+   - `POST /chat/plan/confirm/stream` — confirm with keep-alive streaming (long answers)
    - `POST /chat/literature` — on-demand literature retrieval (~25-35s)
    - `POST /chat/revise` — revise the last confirmed plan
    - `GET /chat/history` — fetch conversation history
@@ -65,7 +66,8 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `GET` | `/health` | Liveness probe | — | `status`, `uptime_seconds` |
 | `POST` | `/chat/start` | Open a chat session; run the first plan | `question`, `rigor?`, `use_literature?`, `auto_confirm?` | `session_id`, `route` (`new_query_pending` by default, `new_query` if `auto_confirm=true`), `plan_markdown`/`plan_json`, `pending_plan_session_id` |
 | `POST` | `/chat/message` | Send a follow-up; smart-router picks path | `session_id`, `question` | `route` (`follow_up` \| `new_query_pending` \| `new_query`), `answer_markdown`, optional `pending_plan_session_id`, `history_compressed` flag |
-| `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round`, deletes the pending `PlanSession` |
+| `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan. **Idempotent** — a retry replays the cached answer (200) for ~10 min instead of 404 | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round` |
+| `POST` | `/chat/plan/confirm/stream` | Same as `/chat/plan/confirm` but **streams NDJSON** (heartbeats + final result) so long answers survive proxy idle timeouts | `chat_session_id`, `plan_session_id`, `revision_prompt?` | `application/x-ndjson` lines: `heartbeat`* then a `result` (or `error`) |
 | `POST` | `/chat/literature` | On-demand GLKB literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn` (always `{}`), `processing_time_ms` (~25–35 s) |
 | `POST` | `/chat/revise` | Revise the last *confirmed* plan + replace the last assistant turn | `session_id`, `prompt` | Updated `answer_markdown` for the current round |
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
@@ -376,10 +378,62 @@ After this call:
 - The chat session's `last_*` data fields are updated so subsequent `follow_up` rounds operate on the new data
 - The Q+A pair is appended to `history`
 
+**Idempotency (important for long answers).** The produced answer is cached for **~10 minutes** keyed by `plan_session_id`. If the call is slow (a big answer can take 90 s+) and your HTTP client or an upstream proxy times out, it is **safe to retry the exact same request** — the retry replays the cached answer with `200` instead of failing with `404`. A retry that arrives while the original is still running waits for it (rather than re-running the pipeline) and then returns the same answer. You therefore no longer get a `404` from retrying a slow confirm. For answers long enough to exceed your proxy's idle timeout on *every* attempt, prefer the streaming variant below.
+
 **Errors:**
-- `404` — chat session or plan session not found/expired
-- `409` — `plan_session_id` doesn't match the chat session's pending plan
+- `404` — chat session or plan session not found/expired (and no cached result for this `plan_session_id`)
+- `409` — `plan_session_id` doesn't match the chat session's pending plan, or a confirm for it is still in progress (retry shortly)
 - `500` — revision or confirm failure
+
+---
+
+### 4.3a `POST /chat/plan/confirm/stream` — confirm with keep-alive streaming
+
+Identical inputs and behaviour to `POST /chat/plan/confirm`, but the response is an **NDJSON stream** (`application/x-ndjson`, one JSON object per line). While the pipeline runs, the server emits a `heartbeat` line roughly every 15 s so the connection keeps sending bytes — this prevents an upstream reverse proxy (typical ~60 s idle-read timeout) from aborting a long answer on the first attempt. Use this endpoint when answers may take longer than your proxy/client idle timeout.
+
+**Request body (`ChatPlanConfirmRequest`):** same as `/chat/plan/confirm`.
+
+**Response:** `200 application/x-ndjson`. Read line by line:
+```
+{"event":"heartbeat","ts":1779770000.12}
+{"event":"heartbeat","ts":1779770015.13}
+{"event":"heartbeat","ts":1779770030.14}
+{"event":"result","data":{ ...full ChatResponse... }}
+```
+Event types:
+- `heartbeat` — keep-alive only; ignore (optionally show a "still working…" indicator).
+- `result` — terminal. `data` is the full `ChatResponse` (same shape as `/chat/plan/confirm`). Render `data.answer_markdown`.
+- `error` — terminal. `{"event":"error","status":<int>,"detail":"<msg>"}`.
+
+Validation failures (`404`/`409`/`410`) are returned as **normal HTTP status codes before the stream opens** (no NDJSON body). Shares the same idempotent result cache as `/chat/plan/confirm`, so a cached result is replayed immediately as a single `result` line.
+
+**Frontend pattern (fetch + ReadableStream):**
+```js
+const res = await fetch(`${API_BASE}/chat/plan/confirm/stream`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ chat_session_id: sessionId, plan_session_id: pendingPlanId }),
+});
+if (!res.ok) throw new Error(`confirm failed: ${res.status}`); // 404/409/410 before stream
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buf = "";
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buf += decoder.decode(value, { stream: true });
+  let nl;
+  while ((nl = buf.indexOf("\n")) >= 0) {
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const evt = JSON.parse(line);
+    if (evt.event === "heartbeat") { /* keep spinner alive */ }
+    else if (evt.event === "result") { renderAssistant(evt.data.answer_markdown); }
+    else if (evt.event === "error")  { showError(evt.detail); }
+  }
+}
+```
 
 ---
 
@@ -885,7 +939,7 @@ For `422` (request validation, e.g. a `/feedback` rating outside 1–5) FastAPI 
 | Status | Meaning | Frontend action |
 |---|---|---|
 | `400` | Bad request (empty field) | Show inline validation error |
-| `404` | Session not found | Clear client-side session_id and prompt user to start a new chat |
+| `404` | Session not found | Clear client-side session_id and start a new chat. **Note:** `/chat/plan/confirm` is idempotent — a retry of a slow confirm replays the cached answer (200) for ~10 min rather than 404, so you generally won't hit 404 by retrying a timed-out confirm |
 | `409` | Conflict (e.g., `plan_session_id` doesn't match pending) | Refresh state; likely a stale pending plan |
 | `410` | Session expired (TTL elapsed) | Same as 404 — start fresh |
 | `422` | Request validation failure (Pydantic) | Inspect `detail[].loc`/`msg`; fix the offending field |
@@ -895,7 +949,7 @@ For `422` (request validation, e.g. a `/feedback` rating outside 1–5) FastAPI 
 
 > There is currently **no `503`** — upstream outages (Neo4j / vLLM / Claude) surface as `500`.
 
-**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`/`422`.
+**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`/`422`. **Exception:** `/chat/plan/confirm` is idempotent — if it times out at the client/proxy (no HTTP status), retrying the same request is safe and replays the cached answer. For answers expected to exceed your idle timeout, use `/chat/plan/confirm/stream` instead of relying on retries.
 
 ---
 
@@ -1173,7 +1227,8 @@ The server serialises all pipeline calls under a single internal request lock. D
 | `GET` | `/health` | — | Health check |
 | `POST` | `/chat/start` | `ChatStartRequest` | Start chat; returns plan for review by default (`auto_confirm: true` to skip) |
 | `POST` | `/chat/message` | `ChatMessageRequest` | Follow-up; smart-routed |
-| `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer |
+| `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer (idempotent: retries replay cached answer ~10 min) |
+| `POST` | `/chat/plan/confirm/stream` | `ChatPlanConfirmRequest` | Same as confirm but NDJSON heartbeats + final `result` (survives proxy idle timeouts) |
 | `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB literature (~25-35s); append to answer |
 | `POST` | `/chat/revise` | `ChatReviseRequest` | Revise last confirmed plan |
 | `GET` | `/chat/history?session_id=...` | — | Fetch conversation |

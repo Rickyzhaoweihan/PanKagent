@@ -132,6 +132,8 @@ All agents are pre-initialized at startup via FastAPI lifespan. `server.py` load
 **Chat (multi-turn, built on plan mode):**
 - `POST /chat/start` — plan_start → auto plan_confirm → return answer, session_id, plan summary
 - `POST /chat/message` — Haiku-classified as `context_only` (answer from history) or `new_query` (plan + auto-confirm)
+- `POST /chat/plan/confirm` — confirm a pending plan. **Idempotent**: the answer is cached for `CONFIRM_RESULT_TTL_SECONDS` (600s) keyed by `plan_session_id` (`_confirm_results`), so a retry of a slow/timed-out confirm replays the cached `ChatResponse` (200) instead of 404. Concurrent confirms for the same plan are de-duplicated via `_confirm_inflight` (an `Event`); the non-owner waits and replays. Core work is the synchronous `_confirm_execute`.
+- `POST /chat/plan/confirm/stream` — same as `/chat/plan/confirm` but returns NDJSON (`{"event":"heartbeat"|"result"|"error"}`); a heartbeat every ~15s keeps the connection alive so long answers survive an upstream proxy's idle-read timeout. Validation (404/409/410) happens before the stream opens; shares the `_confirm_results` cache.
 - `POST /chat/revise` — revise the last plan in the session, auto-confirm, replace last assistant turn
 - `GET /chat/history` / `DELETE /chat/end`
 

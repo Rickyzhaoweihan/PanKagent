@@ -823,6 +823,45 @@ SERVER_START_TIME = time.time()
 # Lock to serialise requests that use module-level global state
 _request_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# Idempotent /chat/plan/confirm — result cache + in-flight de-duplication.
+#
+# A PlanSession is one-shot: a successful confirm deletes it. If the answer is
+# slow (>60s) an upstream proxy or the client times out and the frontend retries
+# the same confirm — which previously hit the already-consumed session and got a
+# 404. We now cache the produced answer keyed by plan_session_id so a retry
+# replays the same answer (200), and we de-duplicate concurrent confirms for the
+# same plan so a retry that overlaps the original waits for it instead of
+# re-running the pipeline (and double-appending to history).
+# ---------------------------------------------------------------------------
+CONFIRM_RESULT_TTL_SECONDS = 600          # 10 minutes
+CONFIRM_WAIT_TIMEOUT_SECONDS = 150        # non-owner JSON wait for an in-flight confirm
+_confirm_results: dict[str, dict] = {}    # plan_session_id -> {"response": dict, "ts": float}
+_confirm_inflight: dict[str, threading.Event] = {}
+_confirm_lock = threading.Lock()
+
+
+def _get_cached_confirm(plan_session_id: str) -> Optional[dict]:
+    """Return a fresh cached ChatResponse dict for this plan, or None."""
+    with _confirm_lock:
+        ent = _confirm_results.get(plan_session_id)
+        if ent is None:
+            return None
+        if time.time() - ent["ts"] > CONFIRM_RESULT_TTL_SECONDS:
+            _confirm_results.pop(plan_session_id, None)
+            return None
+        return ent["response"]
+
+
+def _store_confirm_result(plan_session_id: str, response: dict) -> None:
+    """Cache a completed confirm result and opportunistically evict stale ones."""
+    with _confirm_lock:
+        now = time.time()
+        _confirm_results[plan_session_id] = {"response": response, "ts": now}
+        for k in [k for k, v in _confirm_results.items()
+                  if now - v["ts"] > CONFIRM_RESULT_TTL_SECONDS]:
+            _confirm_results.pop(k, None)
+
 
 def _run_query(question: str, rigor: bool = True) -> str:
     """Run the full pipeline under the request lock and return the answer string.
@@ -921,7 +960,8 @@ async def root():
         "endpoints": {
             "chat_start": "POST /chat/start — start multi-turn dialogue (returns plan for review; auto_confirm=true to run in one shot)",
             "chat_message": "POST /chat/message — follow-up; smart-routed (follow_up reuses stored data, new_query returns pending plan)",
-            "chat_plan_confirm": "POST /chat/plan/confirm — confirm (and optionally revise) pending new_query plan from /chat/message",
+            "chat_plan_confirm": "POST /chat/plan/confirm — confirm (and optionally revise) pending new_query plan from /chat/message (idempotent; retries replay the cached answer)",
+            "chat_plan_confirm_stream": "POST /chat/plan/confirm/stream — same as /chat/plan/confirm but streams NDJSON heartbeats + final result (survives proxy idle timeouts on long answers)",
             "chat_revise": "POST /chat/revise — revise the most recent confirmed plan in the session, auto-confirm",
             "chat_literature": "POST /chat/literature — on-demand GLKB literature for the last completed round (~25-35s)",
             "chat_history": "GET /chat/history?session_id=X — get conversation history",
@@ -1662,43 +1702,20 @@ async def chat_revise(request: ChatReviseRequest):
     )
 
 
-@app.post("/chat/plan/confirm", response_model=ChatResponse)
-async def chat_plan_confirm(request: ChatPlanConfirmRequest):
-    """Confirm (and optionally revise) the pending plan from the last
-    ``/chat/message`` ``new_query_pending`` response. Executes the
-    format/reasoning pipeline using the stored retrieved data, updates the
-    chat session's history and ``last_*`` fields, and returns the final answer.
-
-    If ``revision_prompt`` is provided, the plan is revised via
-    ``run_plan_revise`` before confirmation.
+def _confirm_execute(chat_session: "ChatSession", plan_session: "PlanSession",
+                     revision_prompt: Optional[str]) -> ChatResponse:
+    """Synchronously run the confirm pipeline (optional revision + format/reasoning),
+    update the chat session, delete the one-shot PlanSession, cache the result, and
+    return the ChatResponse. Runs in an executor thread; pipeline calls take the
+    global ``_request_lock`` internally. Raises HTTPException(500) on failure.
     """
     start_time = time.time()
 
-    chat_session = _get_chat_session(request.chat_session_id)
-    plan_session = _get_session(request.plan_session_id)
-
-    if chat_session.pending_plan_session_id != request.plan_session_id:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"plan_session_id '{request.plan_session_id}' is not the pending "
-                f"plan for chat session '{chat_session.session_id}'"
-            ),
-        )
-
-    logger.info(
-        f"[/chat/plan/confirm] chat={chat_session.session_id} "
-        f"plan={plan_session.session_id} (revise={bool(request.revision_prompt)})"
-    )
-
-    loop = asyncio.get_running_loop()
-
     # Optional revision before confirmation
-    if request.revision_prompt and request.revision_prompt.strip():
-        prompt = request.revision_prompt.strip()
+    if revision_prompt and revision_prompt.strip():
+        prompt = revision_prompt.strip()
         try:
-            rev = await loop.run_in_executor(
-                None, _run_plan_revise,
+            rev = _run_plan_revise(
                 plan_session.original_question,
                 plan_session.current_plan,
                 plan_session.neo4j_results,
@@ -1722,8 +1739,7 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
     # Confirm — run the format/reasoning pipeline. Chat history provides
     # prior-conversation context to the format/reasoning agent.
     try:
-        response = await loop.run_in_executor(
-            None, _run_confirm,
+        response = _run_confirm(
             plan_session.original_question,
             plan_session.neo4j_results,
             plan_session.cypher_queries,
@@ -1794,14 +1810,14 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
 
     _log_plan_event(f"chat_{chat_session.session_id}", "chat_plan_confirm", {
         "plan_session_id": plan_session.session_id,
-        "revision_prompt": request.revision_prompt,
+        "revision_prompt": revision_prompt,
         "question": pending_q,
         "plan_markdown": plan_md[:3000],
         "answer_markdown": md[:3000],
         "processing_time_ms": round(processing_time, 1),
     })
 
-    return ChatResponse(
+    resp = ChatResponse(
         session_id=chat_session.session_id,
         answer=cleaned,
         answer_markdown=md,
@@ -1811,6 +1827,159 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
         plan_json=plan_session.current_plan,
         processing_time_ms=processing_time,
     )
+    # Cache for idempotent retries (proxy/client timed out and resubmitted).
+    _store_confirm_result(plan_session.session_id, resp.model_dump())
+    return resp
+
+
+def _confirm_validate(request: ChatPlanConfirmRequest):
+    """Cheap synchronous validation shared by both confirm endpoints. Returns
+    (chat_session, plan_session). Raises 404/409/410 as appropriate."""
+    chat_session = _get_chat_session(request.chat_session_id)
+    plan_session = _get_session(request.plan_session_id)
+    if chat_session.pending_plan_session_id != request.plan_session_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"plan_session_id '{request.plan_session_id}' is not the pending "
+                f"plan for chat session '{chat_session.session_id}'"
+            ),
+        )
+    return chat_session, plan_session
+
+
+def _claim_confirm(plan_session_id: str) -> tuple[bool, threading.Event]:
+    """Register/lookup the in-flight Event for a plan's confirm.
+    Returns (is_owner, event). The owner runs the pipeline; non-owners wait."""
+    with _confirm_lock:
+        ev = _confirm_inflight.get(plan_session_id)
+        if ev is None:
+            ev = threading.Event()
+            _confirm_inflight[plan_session_id] = ev
+            return True, ev
+        return False, ev
+
+
+def _release_confirm(plan_session_id: str, ev: threading.Event) -> None:
+    with _confirm_lock:
+        _confirm_inflight.pop(plan_session_id, None)
+    ev.set()
+
+
+@app.post("/chat/plan/confirm", response_model=ChatResponse)
+async def chat_plan_confirm(request: ChatPlanConfirmRequest):
+    """Confirm (and optionally revise) the pending plan from the last
+    ``/chat/message`` ``new_query_pending`` response. Executes the
+    format/reasoning pipeline using the stored retrieved data, updates the
+    chat session's history and ``last_*`` fields, and returns the final answer.
+
+    Idempotent: a retry of an already-completed confirm replays the cached answer
+    (200) instead of failing with 404. A retry that overlaps an in-flight confirm
+    waits for it rather than re-running the pipeline.
+    """
+    pid = request.plan_session_id
+
+    # 1. Idempotent replay — a retry after the original completed.
+    cached = _get_cached_confirm(pid)
+    if cached is not None:
+        logger.info(f"[/chat/plan/confirm] replaying cached result for plan={pid}")
+        return ChatResponse(**cached)
+
+    chat_session, plan_session = _confirm_validate(request)
+    logger.info(
+        f"[/chat/plan/confirm] chat={chat_session.session_id} "
+        f"plan={plan_session.session_id} (revise={bool(request.revision_prompt)})"
+    )
+
+    loop = asyncio.get_running_loop()
+    is_owner, ev = _claim_confirm(pid)
+
+    # 2. A confirm for this plan is already running — wait for it, then replay.
+    if not is_owner:
+        await loop.run_in_executor(None, ev.wait, CONFIRM_WAIT_TIMEOUT_SECONDS)
+        cached = _get_cached_confirm(pid)
+        if cached is not None:
+            return ChatResponse(**cached)
+        raise HTTPException(status_code=409, detail="Confirm already in progress; retry shortly.")
+
+    # 3. Owner — run the pipeline.
+    try:
+        return await loop.run_in_executor(
+            None, _confirm_execute, chat_session, plan_session, request.revision_prompt)
+    finally:
+        _release_confirm(pid, ev)
+
+
+@app.post("/chat/plan/confirm/stream")
+async def chat_plan_confirm_stream(request: ChatPlanConfirmRequest):
+    """Streaming variant of ``/chat/plan/confirm`` that keeps the HTTP connection
+    alive while the (potentially slow) pipeline runs, so an upstream proxy with a
+    short idle-read timeout does not abort a long answer.
+
+    Returns ``application/x-ndjson``: one JSON object per line.
+      {"event": "heartbeat", "ts": <float>}      — emitted ~every 15 s while working
+      {"event": "result", "data": <ChatResponse>} — the final answer (terminal)
+      {"event": "error", "status": <int>, "detail": <str>} — failure (terminal)
+
+    The frontend should read lines until it sees a ``result`` (use ``data``) or an
+    ``error`` event. Validation errors (404/409/410) are returned as normal HTTP
+    status codes before the stream begins. Shares the same idempotent result cache
+    as ``/chat/plan/confirm``.
+    """
+    pid = request.plan_session_id
+    loop = asyncio.get_running_loop()
+    heartbeat = 15.0
+
+    def _line(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False, default=str) + "\n"
+
+    # 1. Idempotent replay.
+    cached = _get_cached_confirm(pid)
+    if cached is not None:
+        async def _replay():
+            yield _line({"event": "result", "data": cached})
+        return StreamingResponse(_replay(), media_type="application/x-ndjson")
+
+    # 2. Validate before opening the stream so 404/409/410 are real HTTP codes.
+    chat_session, plan_session = _confirm_validate(request)
+    is_owner, ev = _claim_confirm(pid)
+
+    async def _gen():
+        try:
+            if not is_owner:
+                # Another confirm for this plan is running — wait, heartbeating.
+                while not ev.is_set():
+                    done = await loop.run_in_executor(None, ev.wait, heartbeat)
+                    if not done:
+                        yield _line({"event": "heartbeat", "ts": time.time()})
+                c = _get_cached_confirm(pid)
+                if c is not None:
+                    yield _line({"event": "result", "data": c})
+                else:
+                    yield _line({"event": "error", "status": 409,
+                                 "detail": "Confirm failed; retry shortly."})
+                return
+
+            # Owner — run the pipeline in a thread, heartbeat until it finishes.
+            fut = loop.run_in_executor(
+                None, _confirm_execute, chat_session, plan_session, request.revision_prompt)
+            # Cleanup is tied to the future completing (not the client connection),
+            # so a client disconnect can't strand the in-flight lock.
+            fut.add_done_callback(lambda _f: _release_confirm(pid, ev))
+            while True:
+                try:
+                    resp = await asyncio.wait_for(asyncio.shield(fut), timeout=heartbeat)
+                    break
+                except asyncio.TimeoutError:
+                    yield _line({"event": "heartbeat", "ts": time.time()})
+            yield _line({"event": "result", "data": resp.model_dump()})
+        except HTTPException as he:
+            yield _line({"event": "error", "status": he.status_code, "detail": str(he.detail)})
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[/chat/plan/confirm/stream] error: {e}", exc_info=True)
+            yield _line({"event": "error", "status": 500, "detail": str(e)})
+
+    return StreamingResponse(_gen(), media_type="application/x-ndjson")
 
 
 @app.post("/chat/literature", response_model=ChatLiteratureResponse)
