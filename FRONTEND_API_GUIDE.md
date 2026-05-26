@@ -66,7 +66,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `POST` | `/chat/start` | Open a chat session; run the first plan | `question`, `rigor?`, `use_literature?`, `auto_confirm?` | `session_id`, `route` (`new_query_pending` by default, `new_query` if `auto_confirm=true`), `plan_markdown`/`plan_json`, `pending_plan_session_id` |
 | `POST` | `/chat/message` | Send a follow-up; smart-router picks path | `session_id`, `question` | `route` (`follow_up` \| `new_query_pending` \| `new_query`), `answer_markdown`, optional `pending_plan_session_id`, `history_compressed` flag |
 | `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round`, deletes the pending `PlanSession` |
-| `POST` | `/chat/literature` | On-demand GLKB+HIRN literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn`, `processing_time_ms` (~25–35 s) |
+| `POST` | `/chat/literature` | On-demand GLKB literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn` (always `{}`), `processing_time_ms` (~25–35 s) |
 | `POST` | `/chat/revise` | Revise the last *confirmed* plan + replace the last assistant turn | `session_id`, `prompt` | Updated `answer_markdown` for the current round |
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
 | `DELETE` | `/chat/end` | End and free a chat session | query `?session_id=…` | `status: "ended"`, deletes row from SQLite |
@@ -91,15 +91,15 @@ Quick routing logic:
 ### 2.1 Rigor mode
 The server defaults to **rigor mode** (`rigor=True`). In rigor mode the system uses evidence-only format/reasoning agents that refuse to speculate or hallucinate. Unless you have a specific reason, keep `rigor: true`.
 
-### 2.2 Literature search (GLKB + HIRN) — on-demand via `/chat/literature`
+### 2.2 Literature search (GLKB) — on-demand via `/chat/literature`
 
 Literature retrieval is **separate and on-demand**. Call `POST /chat/literature` after a round completes (i.e., after `/chat/plan/confirm` or after `/chat/start` with `auto_confirm: true`). The endpoint:
 
 1. Reads the KG/SQL/Functional API results already stored in the session from the last confirmed round.
-2. Runs **two sources in parallel** (~25–35 s total):
-   - **GLKB** (`glkb.dcmb.med.umich.edu`) — biomedical KG-powered LLM agent that produces a ≤100-word narrative synthesis with structured PubMed references. Receives the retrieval context (queries + results) so its synthesis is grounded in what the pipeline found.
-   - **HIRN** — local abstract/full-text index. Supplements GLKB when GLKB returns fewer than 3 references.
+2. Runs **GLKB** (`glkb.dcmb.med.umich.edu`, ~25–35 s) — a biomedical KG-powered LLM agent that produces a concise (under ~120-word) narrative synthesis with structured PubMed references. It receives the retrieval context (queries + results) so its synthesis is grounded in, and framed as complementary to, what the pipeline found.
 3. Returns a standalone `markdown` block the frontend appends to the KG answer.
+
+> **HIRN is disabled.** GLKB is currently the sole literature source. The response still includes a `hirn` field for backward compatibility, but it is always an empty object `{}`. Do not rely on it.
 
 **Request body (`ChatLiteratureRequest`):**
 ```json
@@ -111,9 +111,9 @@ Literature retrieval is **separate and on-demand**. Call `POST /chat/literature`
 {
   "session_id": "4701b4ba16d4",
   "round": 2,
-  "markdown": "## Literature Evidence\n\nCFTR encodes a chloride channel...\n\n## References\n- ...",
+  "markdown": "## Supporting Literature\n\nCFTR encodes a chloride channel...\n\n## References\n- ...",
   "glkb": { "status": "success", "response": "...", "references": [...] },
-  "hirn": { "status": "success", "raw_passages": [...] },
+  "hirn": {},
   "processing_time_ms": 28340.5
 }
 ```
@@ -138,7 +138,7 @@ if (lit.markdown) {
 **Notes:**
 - Always works regardless of the plan's `use_literature` flag — that flag now only controls whether the plan-markdown mentions literature.
 - Safe to call multiple times (re-runs the search each time).
-- Returns `markdown: ""` (empty string) if both GLKB and HIRN fail — handle gracefully.
+- Returns `markdown: ""` (empty string) if GLKB fails or returns nothing — handle gracefully.
 - `400` if the session has no completed round yet.
 
 ### 2.3 Chat session vs plan session
@@ -732,20 +732,35 @@ created_at ─┬── last_active updated on every /chat/* call
 ```json
 {
   "plan_type": "parallel" | "chain",
+  "interpreted_question": "...the planner's restatement of the question...",
   "reasoning": "...why this plan...",
   "steps": [
     {
       "id": 1,
       "natural_language": "Find gene with name PTPN22",
-      "source": null,
       "depends_on": null,
-      "join_var": "g"
+      "join_var": "g",
+      "cypher": "MATCH (g:gene) WHERE g.name = \"PTPN22\" ..."
+    },
+    {
+      "id": 2,
+      "natural_language": "Get insulin cohort traces for donor_ids=HPAP-001",
+      "source": "functional_data",
+      "depends_on": null,
+      "join_var": null,
+      "functional_data_api": {
+        "endpoint": "/api/charts/cohort-traces",
+        "url": "https://functional.pankgraph.org/api/charts/cohort-traces?trace_type=ins_ieq&donor_ids=HPAP-001",
+        "params": { "trace_type": "ins_ieq", "donor_ids": "HPAP-001" }
+      }
     }
   ]
 }
 ```
 
-`source` is `null` for knowledge-graph (Neo4j) steps, `"genomic"` for PostgreSQL genomic-coordinate steps, and `"functional_data"` for islet assay REST API steps.
+- `source` identifies the data source: **absent** (or `null`) for knowledge-graph (Neo4j) steps, `"genomic"` for PostgreSQL genomic-coordinate steps, and `"functional_data"` for islet assay REST API steps.
+- KG/genomic steps carry a `cypher` (or SQL) string once the plan is translated.
+- **`functional_data_api`** is attached to every `source: "functional_data"` step at plan time — the resolved REST call (`endpoint`, full `url`, `params`) so the frontend can surface or preview the API link **without** waiting for `/plan/confirm`. If resolution fails for a step, it is `{ "error": "<reason>" }` instead. (Same resolution logic as the [`POST /functional-data`](#6-functional-data-endpoint) endpoint.)
 
 ---
 
@@ -861,23 +876,26 @@ const suggestedQuestions = parsed.text.follow_up_questions;
 
 ## 12. Error Handling
 
-All errors return JSON of the form:
+Most errors are raised as `HTTPException` and return JSON of the form:
 ```json
 { "detail": "human-readable error message" }
 ```
+For `422` (request validation, e.g. a `/feedback` rating outside 1–5) FastAPI returns `detail` as an **array** of field-level error objects rather than a string.
 
 | Status | Meaning | Frontend action |
 |---|---|---|
-| `400` | Bad request (empty field, malformed JSON) | Show inline validation error |
+| `400` | Bad request (empty field) | Show inline validation error |
 | `404` | Session not found | Clear client-side session_id and prompt user to start a new chat |
 | `409` | Conflict (e.g., `plan_session_id` doesn't match pending) | Refresh state; likely a stale pending plan |
 | `410` | Session expired (TTL elapsed) | Same as 404 — start fresh |
-| `500` | Internal pipeline failure | Retry once; if persistent show "system error" banner |
-| `503` | Upstream service (Neo4j / vLLM / Claude) unavailable | Show "assistant is temporarily unavailable" |
+| `422` | Request validation failure (Pydantic) | Inspect `detail[].loc`/`msg`; fix the offending field |
+| `500` | Internal pipeline failure (planner, format agent, upstream Neo4j/vLLM/Claude error) | Retry once; if persistent show "system error" banner |
 
-Unhandled server exceptions are caught by `global_exception_handler` and returned as 500 with the exception stringified.
+> **One shape exception:** an *unhandled* server exception is caught by `global_exception_handler` and returned as **HTTP 500 with a different body** — `{ "error": "Internal server error", "message": "<exception string>" }` — not `{ "detail": ... }`. Defensive clients should read `detail ?? message ?? error` when surfacing an error. Endpoints that fail in an expected way (planning/pipeline errors) raise `HTTPException(500, detail=...)` and DO use the `detail` shape.
 
-**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`.
+> There is currently **no `503`** — upstream outages (Neo4j / vLLM / Claude) surface as `500`.
+
+**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`/`422`.
 
 ---
 
@@ -1156,7 +1174,7 @@ The server serialises all pipeline calls under a single internal request lock. D
 | `POST` | `/chat/start` | `ChatStartRequest` | Start chat; returns plan for review by default (`auto_confirm: true` to skip) |
 | `POST` | `/chat/message` | `ChatMessageRequest` | Follow-up; smart-routed |
 | `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer |
-| `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB+HIRN literature (~25-35s); append to answer |
+| `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB literature (~25-35s); append to answer |
 | `POST` | `/chat/revise` | `ChatReviseRequest` | Revise last confirmed plan |
 | `GET` | `/chat/history?session_id=...` | — | Fetch conversation |
 | `DELETE` | `/chat/end?session_id=...` | — | End session |
