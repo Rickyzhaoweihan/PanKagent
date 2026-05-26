@@ -77,6 +77,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `POST` | `/plan/confirm` | Execute + format the confirmed plan | `session_id` | Final `answer_markdown`, `cypher_queries`, `reasoning_trace`; deletes the `PlanSession` |
 | `POST` | `/functional-data` | Resolve NL question to islet assay API call | `question`, `donor_ids?` | `endpoint`, `url`, `params` — **no data rows returned** |
 | `POST` | `/feedback` | Submit user rating + free-text feedback for a session | `session_id`, `rating` (1–5), `feedback`, `email?` | `ok`, `message` |
+| `POST` | `/cache/clear` | **Ops:** clear the answer cache (run after a Neo4j data reload) | — | `cleared` (count) |
 
 Quick routing logic:
 
@@ -377,6 +378,8 @@ After this call:
 - The pending `PlanSession` is deleted server-side
 - The chat session's `last_*` data fields are updated so subsequent `follow_up` rounds operate on the new data
 - The Q+A pair is appended to `history`
+
+**Answer cache (transparent).** If an identical plan (same executed Cypher/SQL/functional-API queries, same rigor/complexity) was confirmed before, the server replays the previously generated answer and skips the slow LLM step. (A small fixed delay is applied so a cache hit doesn't return suspiciously fast — expect a confirm on the order of ~15 s rather than near-instant.) The response shape is unchanged; no frontend change needed. (Ops can clear it via `POST /cache/clear` after a data reload.)
 
 **Idempotency (important for long answers).** The produced answer is cached for **~10 minutes** keyed by `plan_session_id`. If the call is slow (a big answer can take 90 s+) and your HTTP client or an upstream proxy times out, it is **safe to retry the exact same request** — the retry replays the cached answer with `200` instead of failing with `404`. A retry that arrives while the original is still running waits for it (rather than re-running the pipeline) and then returns the same answer. You therefore no longer get a `404` from retrying a slow confirm. For answers long enough to exceed your proxy's idle timeout on *every* attempt, prefer the streaming variant below.
 
@@ -1243,6 +1246,7 @@ Practical guidance:
 | `POST` | `/plan/confirm` | `PlanConfirmRequest` | Confirm standalone plan |
 | `POST` | `/functional-data` | `FunctionalDataRequest` | Resolve NL question → islet assay API params (returns `endpoint`, `url`, `params` only) |
 | `POST` | `/feedback` | `FeedbackRequest` | Submit user rating (1–5) + free-text feedback for a session (returns `ok`, `message`) |
+| `POST` | `/cache/clear` | — | Ops: clear the answer cache after a Neo4j reload (returns `cleared` count) |
 
 ---
 

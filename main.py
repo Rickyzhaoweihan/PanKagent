@@ -13,6 +13,7 @@ import os
 import sys
 import re
 import time
+import hashlib
 import traceback
 from queue import Queue
 from _thread import start_new_thread
@@ -1545,6 +1546,46 @@ def run_plan_revise(
     }
 
 
+# Bump (or set the CACHE_VERSION env var) to invalidate every cached answer —
+# e.g. after a Neo4j reload, when the same query returns different data.
+ANSWER_CACHE_VERSION = os.environ.get("CACHE_VERSION", "1")
+
+# A cache hit returns almost instantly (the slow Sonnet step is skipped). We
+# deliberately wait this long before returning the cached answer so the
+# user-perceived latency stays consistent. Set CACHE_HIT_DELAY_SECONDS=0 to
+# disable. Applies to every confirm path (JSON + streaming) since the wait lives
+# inside run_plan_confirm — endpoint contracts are unchanged.
+CACHE_HIT_DELAY_SECONDS = float(os.environ.get("CACHE_HIT_DELAY_SECONDS", "15"))
+
+
+def _answer_cache_fingerprint(neo4j_results: list[dict], rigor: bool,
+                              complexity: str, use_literature: bool) -> str | None:
+    """Fingerprint the executed query artifacts (Cypher / SQL / functional API
+    GET) plus the answer-shaping flags — independent of NL phrasing. Returns a
+    sha256 hex digest, or None when there are no successful query artifacts
+    (don't cache data-less/generic answers — they'd collide)."""
+    queries = []
+    for r in neo4j_results or []:
+        if not isinstance(r, dict):
+            continue
+        res = r.get("result", {})
+        if isinstance(res, dict) and "error" in res:
+            continue
+        q = r.get("query")
+        if q:
+            queries.append(re.sub(r"\s+", " ", str(q)).strip())
+    if not queries:
+        return None
+    key = "\x1f".join([
+        ANSWER_CACHE_VERSION,
+        f"rigor={bool(rigor)}",
+        f"complex={complexity == 'complex'}",
+        f"lit={bool(use_literature)}",
+        *sorted(set(queries)),
+    ])
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
 def run_plan_confirm(
     question: str,
     neo4j_results: list[dict],
@@ -1572,6 +1613,28 @@ def run_plan_confirm(
     compact context string is built from the last 4 turns and used as
     ``pre_final_answer`` so the format/reasoning agent sees prior dialogue.
     """
+    # Answer cache: skip the slow Sonnet rigor agent when an identical plan
+    # (same executed queries + rigor/complexity/literature) was already answered.
+    # Best-effort — any cache error falls through to a normal pipeline run.
+    fingerprint = _answer_cache_fingerprint(neo4j_results, rigor, complexity, use_literature)
+    if fingerprint:
+        try:
+            import session_store
+            cached = session_store.get_cached_answer(fingerprint)
+            if cached is not None:
+                emit("answer_cache_hit", {
+                    "fingerprint": fingerprint[:16],
+                    "complexity": complexity,
+                    "rigor": bool(rigor),
+                    "delay_s": CACHE_HIT_DELAY_SECONDS,
+                })
+                # Intentional wait so a cache hit doesn't return suspiciously fast.
+                if CACHE_HIT_DELAY_SECONDS > 0:
+                    time.sleep(CACHE_HIT_DELAY_SECONDS)
+                return cached
+        except Exception as exc:  # noqa: BLE001 — cache must never break a confirm
+            emit("answer_cache_error", {"stage": "get", "error": str(exc)})
+
     # Literature is now appended post-hoc by server.py via combine_literature_block;
     # the format/reasoning agents receive only KG/SQL/Functional API data.
     final_functions_result = functions_result
@@ -1584,7 +1647,7 @@ def run_plan_confirm(
         pre_final_answer = "[Prior conversation]\n" + "\n".join(turns)
 
     is_complex = complexity == "complex"
-    return _select_pipeline(
+    response = _select_pipeline(
         is_complex=is_complex,
         rigor=rigor,
         human_query=question,
@@ -1594,6 +1657,18 @@ def run_plan_confirm(
         use_glkb=use_literature,
         pre_final_answer=pre_final_answer,
     )
+
+    if fingerprint and response:
+        try:
+            import session_store
+            session_store.put_cached_answer(
+                fingerprint, response, complexity, rigor, use_literature)
+            emit("answer_cache_store", {"fingerprint": fingerprint[:16],
+                                        "complexity": complexity, "rigor": bool(rigor)})
+        except Exception as exc:  # noqa: BLE001 — cache must never break a confirm
+            emit("answer_cache_error", {"stage": "put", "error": str(exc)})
+
+    return response
 
 
 def chat_forever(rigor: bool = False):

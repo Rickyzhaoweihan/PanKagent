@@ -106,10 +106,26 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_events_event      ON events(event)",
 
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
+
+    # Content-addressed cache of generated rigor-agent answers. Keyed by a
+    # fingerprint of the executed query artifacts (cypher/SQL/functional URL) +
+    # rigor/complexity/use_literature + CACHE_VERSION — NOT the NL phrasing. Lets
+    # a repeat confirm skip the slow Sonnet call and replay the stored response.
+    """CREATE TABLE IF NOT EXISTS answer_cache (
+        fingerprint     TEXT PRIMARY KEY,
+        response        TEXT NOT NULL,
+        complexity      TEXT,
+        rigor           INTEGER,
+        use_literature  INTEGER,
+        created_at      REAL NOT NULL,
+        last_hit_at     REAL,
+        hit_count       INTEGER NOT NULL DEFAULT 0
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_answer_cache_created_at ON answer_cache(created_at)",
 ]
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +390,56 @@ def record_event(session_id: str, event: str, data: dict) -> None:
             "INSERT INTO events (session_id, event, ts, data) VALUES (?, ?, ?, ?)",
             (session_id, event, time.time(), _dumps(data)),
         )
+
+
+# ---------------------------------------------------------------------------
+# Answer cache (content-addressed; skips the slow rigor agent on repeat plans)
+# ---------------------------------------------------------------------------
+
+def get_cached_answer(fingerprint: str) -> str | None:
+    """Return the cached rigor-agent response string for this fingerprint, or
+    None. Bumps hit_count / last_hit_at on a hit."""
+    with _conn_lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "SELECT response FROM answer_cache WHERE fingerprint = ?", (fingerprint,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE answer_cache SET hit_count = hit_count + 1, last_hit_at = ? "
+            "WHERE fingerprint = ?",
+            (time.time(), fingerprint),
+        )
+        return row["response"]
+
+
+def put_cached_answer(fingerprint: str, response: str, complexity: str | None,
+                      rigor: bool, use_literature: bool) -> None:
+    """Store (or refresh) a generated answer keyed by its query fingerprint."""
+    with _conn_lock:
+        _get_conn().execute(
+            "INSERT INTO answer_cache "
+            "(fingerprint, response, complexity, rigor, use_literature, created_at, hit_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, 0) "
+            "ON CONFLICT(fingerprint) DO UPDATE SET "
+            "response=excluded.response, complexity=excluded.complexity, "
+            "rigor=excluded.rigor, use_literature=excluded.use_literature, "
+            "created_at=excluded.created_at",
+            (fingerprint, response, complexity, 1 if rigor else 0,
+             1 if use_literature else 0, time.time()),
+        )
+
+
+def clear_answer_cache() -> int:
+    """Delete every cached answer. Returns the number of rows removed.
+    Call after a Neo4j reload (same queries, changed data)."""
+    with _conn_lock:
+        conn = _get_conn()
+        n = conn.execute("SELECT COUNT(*) AS c FROM answer_cache").fetchone()["c"]
+        conn.execute("DELETE FROM answer_cache")
+        return int(n)
 
 
 # ---------------------------------------------------------------------------

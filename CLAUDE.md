@@ -22,6 +22,8 @@ Active env vars the system reads at startup:
 - `VLLM_PORT` (default 8002)
 - `PORT` (server)
 - `MAX_CONCURRENT_QUERIES` (default 5 — max pipelines run concurrently; bounds the `_pipeline_semaphore`)
+- `CACHE_VERSION` (default `1` — folded into the answer-cache key; bump to invalidate every cached answer, e.g. after a Neo4j reload)
+- `CACHE_HIT_DELAY_SECONDS` (default `15` — deliberate wait before returning a cached answer so a hit isn't suspiciously fast; `0` disables)
 - `OPENAI_API_KEY` (only required for `batch_evaluator.py`)
 
 ### Running
@@ -175,7 +177,7 @@ Core executor: `qp_query_planner.py:execute_plan()` has three paths:
 
 ### Streaming events (`stream_events.py`)
 
-NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`.
+NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`, `answer_cache_*`.
 
 `markdown_normalized` is emitted by `markdown_normalizer.repair_markdown` (wired into `main.py:extract_markdown`, covering every `answer_markdown`) ONLY when the deterministic GFM repair changed something — payload `{changed, fixes: [...], llm_repair: bool}`. The deterministic pass fixes blank-lines-around-tables/HRs, delimiter rows, and cell-count mismatches; a Claude Haiku fallback repairs the rare table block left structurally ambiguous. The literature block (`combine_literature_block`) runs the deterministic pass only.
 
@@ -204,6 +206,10 @@ When a cross-source chain runs, the format agent gets a hint in its user_input e
 ### Session persistence (`session_store.py`)
 
 SQLite-backed store (WAL + synchronous=NORMAL) for `PlanSession` / `ChatSession`. Upserts happen synchronously on the request thread before the response is returned. Lock order: `server.py _sessions_lock` / `_chat_sessions_lock` → `session_store._conn_lock` (always in this order to avoid deadlock). Expired sessions are restored at server startup; rows are never deleted (keep-forever policy).
+
+### Answer cache (`session_store.py` `answer_cache` table)
+
+The slowest part of a confirm is the Sonnet rigor format/reasoning agent. `main.py:run_plan_confirm` short-circuits it: it computes `_answer_cache_fingerprint(neo4j_results, rigor, complexity, use_literature)` = `sha256` over the **sorted executed query artifacts** (`neo4j_results[*].query` — uniformly the Cypher, SQL, or functional `GET` URL; error results skipped) plus `rigor`/`complexity`/`use_literature` and `CACHE_VERSION`. NL phrasing / chat context are deliberately excluded. On a hit (`session_store.get_cached_answer`) it waits `CACHE_HIT_DELAY_SECONDS` (env, default 15 — a deliberate delay so a hit doesn't return suspiciously fast; set 0 to disable) then returns the stored pipeline JSON string directly and skips `_select_pipeline` (the rest of the flow — clean → markdown-normalize → history → follow-ups — is unchanged; the hallucination check already ran when the answer was first generated). On a miss it runs the agent then `put_cached_answer`. All cache I/O is best-effort (try/except → `answer_cache_error`); a cache failure never breaks a confirm. Persisted in `logs/sessions.sqlite`, survives restarts, benefits every confirm path (chat/plan/stream/auto_confirm). Distinct from `server.py:_confirm_results` (in-memory, `plan_session_id`-keyed, 10-min, for idempotent retries). **Invalidate after a Neo4j reload** via `POST /cache/clear` or by bumping `CACHE_VERSION` + restart. Events: `answer_cache_hit` / `answer_cache_store` / `answer_cache_cleared` / `answer_cache_error`.
 
 ### Watchdog (`watchdog/watchdog.py`)
 

@@ -16,6 +16,15 @@ from markdown_normalizer import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_repair_cache():
+    # repair_markdown is @lru_cache'd in production (dedupes the redundant
+    # second Haiku call per confirm). Reset it between tests so memoization
+    # doesn't leak results across cases that share input strings.
+    repair_markdown.cache_clear()
+    yield
+
+
 def _has_table(md: str) -> bool:
     """A header row immediately followed by a delimiter row == a renderable table."""
     lines = md.split("\n")

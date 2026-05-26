@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -389,11 +390,18 @@ def _haiku_repair_block(md: str) -> str | None:
         return None
 
 
+@lru_cache(maxsize=256)
 def repair_markdown(md: str, *, allow_llm: bool = True) -> str:
     """Full repair pipeline: deterministic pass, then (if still broken and
     allowed) a Haiku fallback. Emits a ``markdown_normalized`` event + logs
     when anything changes. Never raises — returns at least the deterministic
     output.
+
+    Memoized on the input string: the same markdown is normalized at most once
+    per process. This eliminates the redundant second Haiku call within a single
+    confirm (``clean_response_json`` and ``extract_markdown`` both repair the same
+    string) and makes a cached-answer replay return byte-identical markdown
+    instantly (the slow, non-deterministic Haiku step is not re-run).
     """
     if not md:
         return md

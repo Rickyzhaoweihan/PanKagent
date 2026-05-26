@@ -970,6 +970,7 @@ async def root():
             "plan_confirm": "POST /plan/confirm — confirm plan and get final answer",
             "functional_data": "POST /functional-data — resolve NL question to functional data API params (returns endpoint + URL + params only)",
             "feedback": "POST /feedback — submit a user rating (1-5) + free-text feedback for a session",
+            "cache_clear": "POST /cache/clear — clear the answer cache (run after a Neo4j reload)",
             "health": "GET /health — health check",
             "docs": "GET /docs — interactive API documentation",
         },
@@ -2113,6 +2114,23 @@ async def submit_feedback(request: FeedbackRequest):
         request.session_id, request.rating, bool(request.email),
     )
     return FeedbackResponse(ok=True, message="Feedback recorded. Thank you!")
+
+
+@app.post("/cache/clear")
+async def clear_cache():
+    """Clear the persistent answer cache (the content-addressed store that lets a
+    repeat confirm skip the Sonnet rigor agent). Run this after a Neo4j reload —
+    the same queries then return different data, so old cached answers are stale.
+    Alternatively bump the CACHE_VERSION env var and restart."""
+    import session_store
+    try:
+        n = session_store.clear_answer_cache()
+    except Exception as exc:
+        logger.error(f"[/cache/clear] failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Cache clear failed: {exc}")
+    emit("answer_cache_cleared", {"cleared": n})
+    logger.info("[/cache/clear] removed %d cached answers", n)
+    return {"cleared": n}
 
 
 @app.exception_handler(Exception)
