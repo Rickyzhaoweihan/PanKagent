@@ -135,3 +135,70 @@ def test_repair_markdown_silent_when_unchanged():
     with patch("stream_events.emit") as mock_emit:
         repair_markdown(md, allow_llm=True)
         mock_emit.assert_not_called()
+
+
+# --- crammed-block / table-anomaly detection (the HLA-DRA failure mode) ---
+
+def test_needs_llm_repair_detects_inline_heading():
+    # heading run together with preceding content + a following heading inline
+    md = "## Title **Gene:** X | a | b --- ### Next Section body text here"
+    assert needs_llm_repair(md) is True
+
+
+def test_needs_llm_repair_detects_inline_hr():
+    md = "some paragraph text --- more text after the rule"
+    assert needs_llm_repair(md) is True
+
+
+def test_clean_hr_line_does_not_trigger_llm():
+    md = "Para one\n\n---\n\n## Heading\n\nPara two"
+    assert needs_llm_repair(md) is False
+
+
+def test_needs_llm_repair_detects_double_delimiter():
+    md = "| A | B |\n| --- | --- |\n| --- | --- |\n| 1 | 2 |"
+    assert needs_llm_repair(md) is True
+
+
+def test_needs_llm_repair_detects_header_blank_then_delim():
+    md = "| A | B |\n\n| --- | --- |\n| 1 | 2 |"
+    assert needs_llm_repair(md) is True
+
+
+def test_table_blank_gap_repaired_deterministically():
+    # header, blank line, delimiter -> deterministic pass pulls delim up; no LLM needed
+    md = "| A | B |\n\n| --- | --- |\n| 1 | 2 |"
+    fixed, fixes = normalize_markdown(md)
+    assert "table-blank-gap" in fixes
+    assert needs_llm_repair(fixed) is False
+    assert _has_table(fixed)
+
+
+def test_double_delimiter_collapsed_deterministically():
+    md = "| A | B |\n| --- | --- |\n| --- | --- |\n| 1 | 2 |"
+    fixed, fixes = normalize_markdown(md)
+    assert "delimiter-dedup" in fixes
+    # exactly one delimiter row remains
+    delim_count = sum(1 for l in fixed.split("\n")
+                      if set(l.replace("|", "").replace(" ", "")) == {"-"})
+    assert delim_count == 1
+
+
+def test_haiku_fires_on_crammed_blocks_and_result_used():
+    md = "## Title body --- ### Section more body text"
+    repaired = "## Title body\n\n---\n\n### Section\n\nmore body text"
+    with patch("markdown_normalizer._haiku_repair_block", return_value=repaired) as mock_llm:
+        out = repair_markdown(md, allow_llm=True)
+        mock_llm.assert_called_once()
+    assert out == repaired
+
+
+def test_content_loss_guard_rejects_short_haiku():
+    md = "## Title body --- ### Section " + ("word " * 200)  # long, crammed
+    det, _ = normalize_markdown(md)
+    truncated = "## Title body"  # Haiku "dropped" almost everything
+    with patch("markdown_normalizer._haiku_repair_block", return_value=truncated):
+        out = repair_markdown(md, allow_llm=True)
+    # guard rejects the short output -> falls back to deterministic, not the stub
+    assert out == det
+    assert out != truncated
