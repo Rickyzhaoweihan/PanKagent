@@ -1558,12 +1558,10 @@ ANSWER_CACHE_VERSION = os.environ.get("CACHE_VERSION", "1")
 CACHE_HIT_DELAY_SECONDS = float(os.environ.get("CACHE_HIT_DELAY_SECONDS", "15"))
 
 
-def _answer_cache_fingerprint(neo4j_results: list[dict], rigor: bool,
-                              complexity: str, use_literature: bool) -> str | None:
-    """Fingerprint the executed query artifacts (Cypher / SQL / functional API
-    GET) plus the answer-shaping flags — independent of NL phrasing. Returns a
-    sha256 hex digest, or None when there are no successful query artifacts
-    (don't cache data-less/generic answers — they'd collide)."""
+def _executed_query_artifacts(neo4j_results: list[dict]) -> list[str]:
+    """Sorted, whitespace-normalized set of the executed query strings
+    (Cypher / SQL / functional-API GET) from non-error results — the stable,
+    NL-independent identity of a plan's data retrieval."""
     queries = []
     for r in neo4j_results or []:
         if not isinstance(r, dict):
@@ -1574,6 +1572,27 @@ def _answer_cache_fingerprint(neo4j_results: list[dict], rigor: bool,
         q = r.get("query")
         if q:
             queries.append(re.sub(r"\s+", " ", str(q)).strip())
+    return sorted(set(queries))
+
+
+def _literature_cache_fingerprint(neo4j_results: list[dict]) -> str | None:
+    """Fingerprint for cached GLKB literature: the executed query artifacts
+    (+ CACHE_VERSION), independent of NL phrasing and of rigor/complexity (GLKB
+    output is data-driven, not format-mode-driven). None when no artifacts."""
+    queries = _executed_query_artifacts(neo4j_results)
+    if not queries:
+        return None
+    key = "\x1f".join([ANSWER_CACHE_VERSION, "literature", *queries])
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def _answer_cache_fingerprint(neo4j_results: list[dict], rigor: bool,
+                              complexity: str, use_literature: bool) -> str | None:
+    """Fingerprint the executed query artifacts (Cypher / SQL / functional API
+    GET) plus the answer-shaping flags — independent of NL phrasing. Returns a
+    sha256 hex digest, or None when there are no successful query artifacts
+    (don't cache data-less/generic answers — they'd collide)."""
+    queries = _executed_query_artifacts(neo4j_results)
     if not queries:
         return None
     key = "\x1f".join([
@@ -1581,7 +1600,7 @@ def _answer_cache_fingerprint(neo4j_results: list[dict], rigor: bool,
         f"rigor={bool(rigor)}",
         f"complex={complexity == 'complex'}",
         f"lit={bool(use_literature)}",
-        *sorted(set(queries)),
+        *queries,
     ])
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 

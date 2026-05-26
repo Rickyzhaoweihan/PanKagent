@@ -58,7 +58,7 @@ if not os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("CLAUDE_API_KEY"):
 from main import (
     chat_one_round, extract_markdown, clean_response_json,
     format_plan_as_markdown, clean_user_question, run_plan_start,
-    run_plan_revise, run_plan_confirm,
+    run_plan_revise, run_plan_confirm, _literature_cache_fingerprint,
 )
 from utils import reset_cypher_queries
 from stream_events import emit
@@ -1999,6 +1999,31 @@ async def chat_literature(request: ChatLiteratureRequest):
             detail="Session has no completed round yet; call /chat/start first.",
         )
 
+    # Answer cache (literature): replay a previously fetched GLKB result for the
+    # same executed-query fingerprint, skipping the slow (~25-35s) GLKB call.
+    import session_store
+    lit_fp = _literature_cache_fingerprint(session.last_neo4j_results)
+    if lit_fp:
+        try:
+            cached_lit = session_store.get_cached_literature(lit_fp)
+        except Exception as exc:  # noqa: BLE001
+            cached_lit = None
+            emit("literature_cache_error", {"stage": "get", "error": str(exc)})
+        if cached_lit is not None:
+            emit("literature_cache_hit", {"fingerprint": lit_fp[:16]})
+            processing_time = (time.time() - start) * 1000
+            current_round = len(session.history) // 2
+            logger.info(f"[/chat/literature] cache HIT session={request.session_id} "
+                        f"round={current_round} in {processing_time:.0f}ms")
+            return ChatLiteratureResponse(
+                session_id=request.session_id,
+                round=current_round,
+                markdown=cached_lit["markdown"],
+                glkb=cached_lit["glkb"],
+                hirn={},
+                processing_time_ms=processing_time,
+            )
+
     # Build the same retrieval blob the format agent sees.
     # claude.py already added skills/format-agent/scripts to sys.path at startup.
     from format_response import build_retrieval_context_blob
@@ -2016,6 +2041,14 @@ async def chat_literature(request: ChatLiteratureRequest):
     glkb = lit_result.get("glkb") or {}
     hirn = lit_result.get("hirn") or {}
     markdown = combine_literature_block(glkb=glkb, hirn=hirn, use_literature=True)
+
+    # Store the GLKB result so a repeat of this exact plan replays it.
+    if lit_fp and markdown and glkb.get("status") == "success":
+        try:
+            session_store.put_cached_literature(lit_fp, glkb, markdown)
+            emit("literature_cache_store", {"fingerprint": lit_fp[:16]})
+        except Exception as exc:  # noqa: BLE001
+            emit("literature_cache_error", {"stage": "put", "error": str(exc)})
 
     processing_time = (time.time() - start) * 1000
     current_round = len(session.history) // 2

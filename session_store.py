@@ -122,10 +122,23 @@ _DDL = [
         hit_count       INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE INDEX IF NOT EXISTS idx_answer_cache_created_at ON answer_cache(created_at)",
+
+    # Cache of GLKB literature results, keyed by the executed-query fingerprint
+    # (see main._literature_cache_fingerprint). Lets a repeat /chat/literature
+    # skip the slow (~25-35s) GLKB call and replay the stored block.
+    """CREATE TABLE IF NOT EXISTS literature_cache (
+        fingerprint  TEXT PRIMARY KEY,
+        glkb         TEXT NOT NULL,
+        markdown     TEXT NOT NULL,
+        created_at   REAL NOT NULL,
+        last_hit_at  REAL,
+        hit_count    INTEGER NOT NULL DEFAULT 0
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_literature_cache_created_at ON literature_cache(created_at)",
 ]
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 # ---------------------------------------------------------------------------
@@ -433,13 +446,46 @@ def put_cached_answer(fingerprint: str, response: str, complexity: str | None,
 
 
 def clear_answer_cache() -> int:
-    """Delete every cached answer. Returns the number of rows removed.
-    Call after a Neo4j reload (same queries, changed data)."""
+    """Delete every cached answer AND cached literature result. Returns the total
+    rows removed. Call after a Neo4j reload (same queries, changed data)."""
     with _conn_lock:
         conn = _get_conn()
         n = conn.execute("SELECT COUNT(*) AS c FROM answer_cache").fetchone()["c"]
+        n += conn.execute("SELECT COUNT(*) AS c FROM literature_cache").fetchone()["c"]
         conn.execute("DELETE FROM answer_cache")
+        conn.execute("DELETE FROM literature_cache")
         return int(n)
+
+
+def get_cached_literature(fingerprint: str) -> dict | None:
+    """Return cached GLKB literature for this fingerprint as
+    ``{"glkb": <dict>, "markdown": <str>}``, or None. Bumps hit stats."""
+    with _conn_lock:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT glkb, markdown FROM literature_cache WHERE fingerprint = ?",
+            (fingerprint,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE literature_cache SET hit_count = hit_count + 1, last_hit_at = ? "
+            "WHERE fingerprint = ?",
+            (time.time(), fingerprint),
+        )
+        return {"glkb": _loads(row["glkb"], {}), "markdown": row["markdown"]}
+
+
+def put_cached_literature(fingerprint: str, glkb: dict, markdown: str) -> None:
+    """Store (or refresh) a GLKB literature result keyed by its query fingerprint."""
+    with _conn_lock:
+        _get_conn().execute(
+            "INSERT INTO literature_cache "
+            "(fingerprint, glkb, markdown, created_at, hit_count) VALUES (?, ?, ?, ?, 0) "
+            "ON CONFLICT(fingerprint) DO UPDATE SET "
+            "glkb=excluded.glkb, markdown=excluded.markdown, created_at=excluded.created_at",
+            (fingerprint, _dumps(glkb or {}), markdown, time.time()),
+        )
 
 
 # ---------------------------------------------------------------------------
