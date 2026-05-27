@@ -1,9 +1,10 @@
 """GLKB (Graph Language Knowledge Base) API client.
 
-The GLKB endpoint at https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent
-accepts POST {question, session_id?} and streams an SSE response. The
-terminal event has step=='Complete' and carries the synthesised answer +
-structured PubMed references.
+Targets the local GLKB_agent service's SSE endpoint (default
+http://localhost:8004/stream; override with the GLKB_URL env var). It accepts
+POST {question, session_id?} and streams an SSE response whose terminal event
+has step=='Complete' and carries the synthesised answer + structured PubMed
+references.
 
 This client is a synchronous wrapper that drains the stream and returns
 a flat result dict. All exceptions are converted to status='failed' so
@@ -13,12 +14,17 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 import requests
 
 
-GLKB_URL = "https://glkb.dcmb.med.umich.edu/api/frontend/llm_agent"
+# Local GLKB_agent service (FastAPI) /stream endpoint. Override via env, e.g.
+# GLKB_URL=http://localhost:8004/stream. The old remote
+# (glkb.dcmb.med.umich.edu/api/frontend/llm_agent) now 301-redirects to a static
+# site and no longer serves the API.
+GLKB_URL = os.environ.get("GLKB_URL", "http://localhost:8004/stream")
 DEFAULT_TIMEOUT_S = 60
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,11 @@ def build_glkb_question(question: str, kg_context: str = "") -> str:
     return _DIRECTIVE_PREFIX + question.strip()
 
 
+def _failed() -> dict[str, Any]:
+    return {"status": "failed", "response": "", "references": [],
+            "session_id": "", "execution_time": 0.0}
+
+
 def call_glkb(
     question: str,
     session_id: str | None = None,
@@ -80,8 +91,21 @@ def call_glkb(
             stream=True,
             timeout=timeout,
             headers={"Accept": "text/event-stream"},
+            allow_redirects=False,
         )
+        # Fail loudly if the endpoint moved (a redirect, or a non-SSE body such
+        # as a website's HTML) instead of silently draining it as a "failed" run.
+        if resp.is_redirect or resp.status_code in (301, 302, 307, 308):
+            loc = resp.headers.get("Location", "?")
+            logger.warning("GLKB endpoint %s redirected (%s) -> %s; endpoint moved?",
+                           GLKB_URL, resp.status_code, loc)
+            return _failed()
         resp.raise_for_status()
+        ctype = resp.headers.get("Content-Type", "")
+        if "event-stream" not in ctype:
+            logger.warning("GLKB endpoint %s returned non-SSE Content-Type '%s' — "
+                           "not a stream (moved/misconfigured?)", GLKB_URL, ctype)
+            return _failed()
 
         for raw_line in resp.iter_lines():
             if not raw_line:
@@ -105,19 +129,7 @@ def call_glkb(
                     "execution_time": float(event.get("execution_time", 0.0)),
                 }
         logger.warning("GLKB stream ended without Complete event")
-        return {
-            "status": "failed",
-            "response": "",
-            "references": [],
-            "session_id": "",
-            "execution_time": 0.0,
-        }
+        return _failed()
     except Exception as exc:
         logger.warning(f"GLKB call failed: {exc}")
-        return {
-            "status": "failed",
-            "response": "",
-            "references": [],
-            "session_id": "",
-            "execution_time": 0.0,
-        }
+        return _failed()

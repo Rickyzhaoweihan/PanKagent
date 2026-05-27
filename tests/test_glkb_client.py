@@ -18,9 +18,12 @@ SAMPLE_STREAM = (
 )
 
 
-def _fake_response(stream_bytes: bytes, status: int = 200):
+def _fake_response(stream_bytes: bytes, status: int = 200,
+                   content_type: str = "text/event-stream"):
     fake = MagicMock()
     fake.status_code = status
+    fake.is_redirect = status in (301, 302, 307, 308)
+    fake.headers = {"Content-Type": content_type}
     fake.iter_lines.return_value = stream_bytes.split(b"\n")
     fake.raise_for_status = MagicMock()
     return fake
@@ -87,3 +90,26 @@ def test_call_glkb_skips_non_data_lines():
 
     assert result["status"] == "success"
     assert result["response"] == "ok"
+
+
+def test_call_glkb_rejects_redirect():
+    """A moved endpoint (3xx) must fail loudly, not silently drain a body."""
+    from skills.glkb.scripts.glkb_client import call_glkb
+
+    redirect = _fake_response(b"", status=301)
+    redirect.headers = {"Location": "https://glkb.org/api/frontend/llm_agent"}
+    with patch("requests.post", return_value=redirect):
+        result = call_glkb("q")
+
+    assert result["status"] == "failed"
+
+
+def test_call_glkb_rejects_non_sse_content_type():
+    """An HTML (or any non-event-stream) response must be rejected."""
+    from skills.glkb.scripts.glkb_client import call_glkb
+
+    html = _fake_response(b"<!doctype html><html>...", content_type="text/html")
+    with patch("requests.post", return_value=html):
+        result = call_glkb("q")
+
+    assert result["status"] == "failed"
