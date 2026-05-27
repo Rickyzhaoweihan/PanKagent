@@ -1555,7 +1555,7 @@ ANSWER_CACHE_VERSION = os.environ.get("CACHE_VERSION", "1")
 # user-perceived latency stays consistent. Set CACHE_HIT_DELAY_SECONDS=0 to
 # disable. Applies to every confirm path (JSON + streaming) since the wait lives
 # inside run_plan_confirm — endpoint contracts are unchanged.
-CACHE_HIT_DELAY_SECONDS = float(os.environ.get("CACHE_HIT_DELAY_SECONDS", "15"))
+CACHE_HIT_DELAY_SECONDS = float(os.environ.get("CACHE_HIT_DELAY_SECONDS", "10"))
 
 
 def _executed_query_artifacts(neo4j_results: list[dict]) -> list[str]:
