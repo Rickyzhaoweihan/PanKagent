@@ -58,6 +58,14 @@ def _is_delim(line: str) -> bool:
     return bool(_DELIM_RE.match(line)) and "-" in line
 
 
+def _is_pipe_delim(line: str) -> bool:
+    """A *table* delimiter row, e.g. `| --- | --- |` — must contain a pipe. A bare
+    `---`/`***` line is a horizontal rule, NOT a table delimiter, and must not be
+    confused with one (otherwise a table followed by an HR looks like a malformed
+    table)."""
+    return _is_delim(line) and "|" in line
+
+
 def _looks_like_table_row(line: str) -> bool:
     """A line that plausibly belongs to a table (has a pipe, not a fence/hr)."""
     if not line or "|" not in line:
@@ -103,7 +111,7 @@ def _pull_delimiters_to_headers(lines: list[str]) -> tuple[list[str], bool]:
             j = i + 1
             while j < n and lines[j].strip() == "":
                 j += 1
-            if j < n and _is_delim(lines[j]):
+            if j < n and _is_pipe_delim(lines[j]):
                 out.append(line)      # header
                 out.append(lines[j])  # delimiter, gap removed
                 changed = True
@@ -253,6 +261,24 @@ def normalize_markdown(md: str) -> tuple[str, list[str]]:
 _INLINE_HEADING_RE = re.compile(r'\S[^\n]*?\s#{1,6}\s+\S')
 # A run of 3+ rule characters.
 _RULE_RUN_RE = re.compile(r'(?:^|\s)(?:-{3,}|\*{3,}|_{3,})(?:\s|$)')
+# A line that starts as an ATX heading.
+_HEADING_LINE_RE = re.compile(r'^\s*#{1,6}\s+\S')
+
+
+def _heading_absorbed_content(line: str) -> bool:
+    """A heading line that looks like it swallowed following content: it contains
+    a SECOND block marker (another heading / horizontal-rule run) on the same
+    line, or it is implausibly long for a heading. We deliberately avoid
+    sentence-boundary heuristics — scientific headings are full of abbreviations
+    ("vs.", "e.g.") and enumerators ("1.") that look like sentence breaks but are
+    valid heading content. The deterministic pass cannot split a crammed heading
+    (it can't know where the heading ends), so it needs LLM repair."""
+    if not _HEADING_LINE_RE.match(line):
+        return False
+    after = re.sub(r'^\s*#{1,6}\s+', '', line)  # text after the leading marker
+    if re.search(r'#{1,6}\s', after) or _RULE_RUN_RE.search(after):
+        return True
+    return len(after) > 120
 
 
 def _has_crammed_blocks(md: str) -> bool:
@@ -272,6 +298,9 @@ def _has_crammed_blocks(md: str) -> bool:
             continue
         # Heading marker with content before it on the same line.
         if _INLINE_HEADING_RE.search(line):
+            return True
+        # Heading line that absorbed its following paragraph / a second block.
+        if _heading_absorbed_content(line):
             return True
         # Inline horizontal rule: a non-table line containing a --- / *** / ___ run
         # AND other non-rule content (a standalone HR line is fine — handled
@@ -298,13 +327,13 @@ def _has_table_anomaly(md: str) -> bool:
             continue
         if in_fence:
             continue
-        if _is_delim(lines[i]) and _is_delim(lines[i + 1]):
+        if _is_pipe_delim(lines[i]) and _is_pipe_delim(lines[i + 1]):
             return True
         if _PIPE_ROW_RE.match(lines[i]) and lines[i + 1].strip() == "":
             j = i + 1
             while j < n and lines[j].strip() == "":
                 j += 1
-            if j < n and _is_delim(lines[j]):
+            if j < n and _is_pipe_delim(lines[j]):
                 return True
     return False
 
@@ -340,9 +369,15 @@ def needs_llm_repair(md: str) -> bool:
     return False
 
 
-def _haiku_repair_block(md: str) -> str | None:
-    """Send markdown to Claude Haiku to repair table/structure syntax only.
+HAIKU_REPAIR_MODEL = "claude-haiku-4-5-20251001"
+SONNET_REPAIR_MODEL = "claude-sonnet-4-6"
 
+
+def _llm_repair_block(md: str, model: str = HAIKU_REPAIR_MODEL) -> str | None:
+    """Send markdown to an LLM to repair table/structure syntax only.
+
+    ``model`` selects the repair model — Haiku (default, fast) on the live path,
+    Sonnet (higher quality) for the off-critical-path background cache clean.
     Returns the repaired markdown, or None on any failure (caller falls back).
     """
     try:
@@ -355,7 +390,7 @@ def _haiku_repair_block(md: str) -> str | None:
     try:
         client = anthropic.Anthropic(api_key=api_key.strip())
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=8000,
             temperature=0,
             system=(
@@ -386,43 +421,70 @@ def _haiku_repair_block(md: str) -> str | None:
             text = re.sub(r'\n```$', '', text)
         return text.strip() or None
     except Exception as exc:  # noqa: BLE001 — never let repair crash the response
-        logger.warning("Haiku markdown repair failed: %s", exc)
+        logger.warning("LLM markdown repair (%s) failed: %s", model, exc)
         return None
 
 
-@lru_cache(maxsize=256)
-def repair_markdown(md: str, *, allow_llm: bool = True) -> str:
-    """Full repair pipeline: deterministic pass, then (if still broken and
-    allowed) a Haiku fallback. Emits a ``markdown_normalized`` event + logs
-    when anything changes. Never raises — returns at least the deterministic
-    output.
+def _accept_repair(candidate: str | None, base: str) -> bool:
+    """Decide whether to accept an LLM repair over the deterministic output.
 
-    Memoized on the input string: the same markdown is normalized at most once
-    per process. This eliminates the redundant second Haiku call within a single
-    confirm (``clean_response_json`` and ``extract_markdown`` both repair the same
-    string) and makes a cached-answer replay return byte-identical markdown
-    instantly (the slow, non-deterministic Haiku step is not re-run).
+    A structural repair only inserts whitespace/pipes, so it should be close to
+    the input length. Accept when the candidate is non-empty, not drastically
+    shorter (>= 0.5x — guards against truncation), AND either it is now
+    structurally valid (`not needs_llm_repair`) or it is within 0.9x of the
+    input. This lets a legitimately-shorter repair (e.g. one that deduped garbage
+    lines) through as long as it is actually valid, while still rejecting a
+    truncated-but-still-broken result.
+    """
+    if not candidate or candidate == base:
+        return False
+    if len(candidate) < 0.5 * len(base):
+        return False
+    return (not needs_llm_repair(candidate)) or len(candidate) >= 0.9 * len(base)
+
+
+@lru_cache(maxsize=256)
+def repair_markdown(md: str, *, allow_llm: bool = True, model: str | None = None) -> str:
+    """Full repair pipeline: deterministic pass, then (if still broken and
+    allowed) an LLM fallback. ``model`` selects the repair model (None -> Haiku,
+    fast, for the live path; pass SONNET_REPAIR_MODEL for the background clean).
+    Emits a ``markdown_normalized`` event + logs when anything changes. Never
+    raises — returns at least the deterministic output.
+
+    Memoized on (md, allow_llm, model): the same markdown is normalized at most
+    once per (model) per process. This eliminates the redundant second LLM call
+    within a single confirm (``clean_response_json`` and ``extract_markdown``
+    repair the same string) and makes a cached-answer replay return byte-identical
+    markdown instantly (the slow, non-deterministic LLM step is not re-run).
     """
     if not md:
         return md
 
+    repair_model = model or HAIKU_REPAIR_MODEL
     fixed, fixes = normalize_markdown(md)
     llm_used = False
+    still_broken = False
 
     if allow_llm and needs_llm_repair(fixed):
-        repaired = _haiku_repair_block(fixed)
-        # Guard against content loss/truncation: a structural repair only inserts
-        # whitespace/pipes, so it should never come back materially shorter. If it
-        # does, the model dropped content — discard it and keep the deterministic
-        # output (never worse than today).
-        if repaired and repaired != fixed and len(repaired) >= 0.9 * len(fixed):
+        repaired = _llm_repair_block(fixed, model=repair_model)
+        if _accept_repair(repaired, fixed):
             fixed = repaired
             llm_used = True
-        elif repaired and len(repaired) < 0.9 * len(fixed):
+            # Double-check: if the accepted repair is STILL structurally broken,
+            # try once more, then keep the best result we have.
+            if needs_llm_repair(fixed):
+                retry = _llm_repair_block(fixed, model=repair_model)
+                if _accept_repair(retry, fixed):
+                    fixed = retry
+                still_broken = needs_llm_repair(fixed)
+        elif repaired:
             logger.warning(
-                "Haiku markdown repair rejected: output %d chars vs input %d "
-                "(possible content loss)", len(repaired), len(fixed),
+                "LLM markdown repair (%s) rejected: output %d chars vs input %d "
+                "(truncated/still-broken)", repair_model, len(repaired), len(fixed),
             )
+            still_broken = True
+        else:
+            still_broken = True
 
     if fixes or llm_used:
         try:
@@ -431,9 +493,12 @@ def repair_markdown(md: str, *, allow_llm: bool = True) -> str:
                 "changed": True,
                 "fixes": fixes,
                 "llm_repair": llm_used,
+                "model": repair_model if llm_used else None,
+                "still_broken": still_broken,
             })
         except Exception:  # noqa: BLE001 — monitoring must never break output
             pass
-        logger.info("markdown_normalized: fixes=%s llm_repair=%s", fixes, llm_used)
+        logger.info("markdown_normalized: fixes=%s llm_repair=%s model=%s still_broken=%s",
+                    fixes, llm_used, repair_model if llm_used else None, still_broken)
 
     return fixed

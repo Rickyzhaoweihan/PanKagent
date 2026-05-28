@@ -5,7 +5,8 @@ from claude import (run_format_pipeline, run_reasoning_pipeline,
 from utils import *
 from utils import get_neo4j_results, reset_cypher_queries, hirn_chat_one_round
 from stream_events import emit
-from markdown_normalizer import repair_markdown
+from markdown_normalizer import repair_markdown, needs_llm_repair, SONNET_REPAIR_MODEL
+import threading as _threading
 from typing import Tuple
 from copy import deepcopy
 import json
@@ -1684,10 +1685,94 @@ def run_plan_confirm(
                 fingerprint, response, complexity, rigor, use_literature)
             emit("answer_cache_store", {"fingerprint": fingerprint[:16],
                                         "complexity": complexity, "rigor": bool(rigor)})
+            # Background: re-clean the cached copy's markdown with Sonnet (higher
+            # quality than the live Haiku pass) so future hits serve clean,
+            # deterministic markdown. Off the critical path — the live response
+            # above is unaffected.
+            _spawn_cache_clean(fingerprint, response, complexity, rigor, use_literature)
         except Exception as exc:  # noqa: BLE001 — cache must never break a confirm
             emit("answer_cache_error", {"stage": "put", "error": str(exc)})
 
     return response
+
+
+# In-flight set so concurrent identical misses don't launch duplicate cleans.
+_cache_clean_inflight: set[str] = set()
+_cache_clean_lock = _threading.Lock()
+
+
+def _clean_cached_response(response: str, model: str = SONNET_REPAIR_MODEL) -> str | None:
+    """Return ``response`` (the pipeline JSON string) with its ``summary`` and
+    ``reasoning_trace`` markdown repaired in place (structure preserved: cypher,
+    follow_up_questions, etc. untouched). Returns None if nothing changed or the
+    payload can't be parsed."""
+    try:
+        data = json.loads(response) if isinstance(response, str) else response
+    except (json.JSONDecodeError, TypeError):
+        return None
+    text = data.get("text")
+    if isinstance(text, str):
+        try:
+            text = json.loads(text)
+            data["text"] = text
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if not isinstance(text, dict):
+        return None
+    changed = False
+    for field in ("summary", "reasoning_trace"):
+        val = text.get(field)
+        if isinstance(val, str) and val.strip():
+            cleaned = repair_markdown(val, model=model)
+            if cleaned != val:
+                text[field] = cleaned
+                changed = True
+    if not changed:
+        return None
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _spawn_cache_clean(fingerprint: str, response: str, complexity: str,
+                       rigor: bool, use_literature: bool) -> None:
+    """Launch a daemon thread that Sonnet-cleans the cached answer's markdown and
+    overwrites the cache row. Skips already-clean answers and de-duplicates
+    concurrent cleans for the same fingerprint. Best-effort — never raises."""
+    # Cheap pre-check: only spend Sonnet on answers whose markdown is actually broken.
+    try:
+        d = json.loads(response)
+        t = d.get("text")
+        if isinstance(t, str):
+            t = json.loads(t)
+        blob = ""
+        if isinstance(t, dict):
+            blob = "\n".join(str(t.get(f, "")) for f in ("reasoning_trace", "summary"))
+        if not blob.strip() or not needs_llm_repair(blob):
+            return
+    except Exception:  # noqa: BLE001 — if we can't inspect, skip cleaning
+        return
+
+    with _cache_clean_lock:
+        if fingerprint in _cache_clean_inflight:
+            return
+        _cache_clean_inflight.add(fingerprint)
+
+    def _worker():
+        try:
+            import session_store
+            emit("answer_cache_clean_start", {"fingerprint": fingerprint[:16],
+                                              "model": SONNET_REPAIR_MODEL})
+            cleaned = _clean_cached_response(response, model=SONNET_REPAIR_MODEL)
+            if cleaned:
+                session_store.put_cached_answer(
+                    fingerprint, cleaned, complexity, rigor, use_literature)
+                emit("answer_cache_cleaned", {"fingerprint": fingerprint[:16]})
+        except Exception as exc:  # noqa: BLE001 — background work must never crash
+            emit("answer_cache_error", {"stage": "clean", "error": str(exc)})
+        finally:
+            with _cache_clean_lock:
+                _cache_clean_inflight.discard(fingerprint)
+
+    _threading.Thread(target=_worker, daemon=True).start()
 
 
 def chat_forever(rigor: bool = False):

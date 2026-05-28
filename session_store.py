@@ -445,6 +445,18 @@ def put_cached_answer(fingerprint: str, response: str, complexity: str | None,
         )
 
 
+def iter_answer_cache() -> list[tuple]:
+    """Return all answer_cache rows as (fingerprint, response, complexity, rigor,
+    use_literature) tuples — used by the startup background-clean sweep."""
+    with _conn_lock:
+        rows = _get_conn().execute(
+            "SELECT fingerprint, response, complexity, rigor, use_literature "
+            "FROM answer_cache"
+        ).fetchall()
+    return [(r["fingerprint"], r["response"], r["complexity"],
+             bool(r["rigor"]), bool(r["use_literature"])) for r in rows]
+
+
 def clear_answer_cache() -> int:
     """Delete every cached answer AND cached literature result. Returns the total
     rows removed. Call after a Neo4j reload (same queries, changed data)."""

@@ -193,6 +193,42 @@ async def lifespan(app: FastAPI):
         _cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True, name="session-cleanup")
         _cleanup_thread.start()
 
+        # 7. Background backfill: re-clean cached answers whose markdown is still
+        #    malformed, using the higher-quality Sonnet repair. Sequential + lightly
+        #    rate-limited so it doesn't burst the Sonnet API. Idempotent — already
+        #    clean rows pass needs_llm_repair and are skipped.
+        def _answer_cache_sweep():
+            try:
+                import session_store
+                from markdown_normalizer import needs_llm_repair
+                from main import _clean_cached_response
+                rows = session_store.iter_answer_cache()
+                cleaned = 0
+                for fp, response, complexity, rigor, use_lit in rows:
+                    try:
+                        d = json.loads(response)
+                        t = d.get("text")
+                        if isinstance(t, str):
+                            t = json.loads(t)
+                        blob = "\n".join(str(t.get(f, "")) for f in ("reasoning_trace", "summary")) \
+                            if isinstance(t, dict) else ""
+                        if not blob.strip() or not needs_llm_repair(blob):
+                            continue
+                        new_resp = _clean_cached_response(response)
+                        if new_resp:
+                            session_store.put_cached_answer(fp, new_resp, complexity, rigor, use_lit)
+                            cleaned += 1
+                            emit("answer_cache_cleaned", {"fingerprint": fp[:16], "via": "sweep"})
+                            time.sleep(1.0)  # gentle pacing between Sonnet calls
+                    except Exception:
+                        continue
+                if cleaned:
+                    logger.info("✓ Answer-cache sweep: re-cleaned %d row(s)", cleaned)
+            except Exception as e:
+                logger.warning("answer-cache sweep failed: %s", e)
+
+        threading.Thread(target=_answer_cache_sweep, daemon=True, name="answer-cache-sweep").start()
+
         elapsed = time.time() - start_time
         logger.info(f"✓ All agents initialized in {elapsed:.2f}s")
         logger.info("=" * 60)

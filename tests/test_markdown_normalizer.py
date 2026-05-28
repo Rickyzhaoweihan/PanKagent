@@ -122,7 +122,7 @@ def test_needs_llm_repair_false_for_fixable():
 
 def test_repair_markdown_does_not_call_llm_on_clean_input():
     md = "Text:\n| A | B |\n| --- | --- |\n| 1 | 2 |"
-    with patch("markdown_normalizer._haiku_repair_block") as mock_llm:
+    with patch("markdown_normalizer._llm_repair_block") as mock_llm:
         out = repair_markdown(md, allow_llm=True)
         mock_llm.assert_not_called()
     assert _has_table(out)
@@ -131,7 +131,7 @@ def test_repair_markdown_does_not_call_llm_on_clean_input():
 def test_repair_markdown_emits_event_when_changed():
     md = "Text:\n| A | B |\n| --- | --- |\n| 1 | 2 |"  # missing blank line before table
     with patch("stream_events.emit") as mock_emit, \
-         patch("markdown_normalizer._haiku_repair_block", return_value=None):
+         patch("markdown_normalizer._llm_repair_block", return_value=None):
         repair_markdown(md, allow_llm=True)
         assert mock_emit.called
         evt, payload = mock_emit.call_args[0]
@@ -196,7 +196,7 @@ def test_double_delimiter_collapsed_deterministically():
 def test_haiku_fires_on_crammed_blocks_and_result_used():
     md = "## Title body --- ### Section more body text"
     repaired = "## Title body\n\n---\n\n### Section\n\nmore body text"
-    with patch("markdown_normalizer._haiku_repair_block", return_value=repaired) as mock_llm:
+    with patch("markdown_normalizer._llm_repair_block", return_value=repaired) as mock_llm:
         out = repair_markdown(md, allow_llm=True)
         mock_llm.assert_called_once()
     assert out == repaired
@@ -206,8 +206,56 @@ def test_content_loss_guard_rejects_short_haiku():
     md = "## Title body --- ### Section " + ("word " * 200)  # long, crammed
     det, _ = normalize_markdown(md)
     truncated = "## Title body"  # Haiku "dropped" almost everything
-    with patch("markdown_normalizer._haiku_repair_block", return_value=truncated):
+    with patch("markdown_normalizer._llm_repair_block", return_value=truncated):
         out = repair_markdown(md, allow_llm=True)
     # guard rejects the short output -> falls back to deterministic, not the stub
     assert out == det
     assert out != truncated
+
+
+# --- hardening: absorbed-heading detector, guard, model selection ---
+
+def test_needs_llm_repair_detects_heading_absorbed_paragraph():
+    # A heading that swallowed a long paragraph (overlong) or a second block
+    # marker — caught without fragile sentence-boundary heuristics.
+    overlong = ("### Summary " + "CTLA4 is a negative regulator of T cells and "
+                "restrains autoimmunity across many tissues " * 2)  # > 120 chars
+    assert needs_llm_repair(overlong) is True
+    assert needs_llm_repair("## Title body --- ### Section more") is True  # 2nd marker
+
+
+def test_short_clean_heading_not_flagged():
+    assert needs_llm_repair("## Results\n\nSome text here.\n") is False
+    assert needs_llm_repair("### GO Annotations\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n") is False
+
+
+def test_numbered_and_colon_headings_not_flagged():
+    # Real, valid headings that previously false-positived the sentence-break heuristic.
+    for h in (
+        "### 1. T1D Effector Gene",
+        "### 1. GWAS membership of rs13393590 (T1D)",
+        "### SCN Genes Detected in Beta Cells (condition: ALL, total_cells: 120,502)",
+        "## Gene: HLA-DRA",
+    ):
+        assert needs_llm_repair(h + "\n\nbody text\n") is False, h
+
+
+def test_guard_accepts_valid_shorter_repair():
+    # crammed input; repair is shorter than the deterministic output but VALID
+    md = "## A body --- ### B more"
+    det, _ = normalize_markdown(md)
+    valid_shorter = "## A body\n\n---\n\n### B more"  # clean, may be shorter
+    with patch("markdown_normalizer._llm_repair_block", return_value=valid_shorter):
+        out = repair_markdown(md, allow_llm=True)
+    assert out == valid_shorter  # accepted because it is now structurally valid
+
+
+def test_repair_markdown_passes_model_through():
+    md = "## A body --- ### B more"
+    seen = {}
+    def _fake(block, model="x"):
+        seen["model"] = model
+        return "## A body\n\n---\n\n### B more"
+    with patch("markdown_normalizer._llm_repair_block", side_effect=_fake):
+        repair_markdown(md, allow_llm=True, model="claude-sonnet-4-6")
+    assert seen["model"] == "claude-sonnet-4-6"
