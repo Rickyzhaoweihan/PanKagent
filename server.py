@@ -959,6 +959,7 @@ def _run_confirm(
     rigor: bool,
     pre_final_answer: str = "",
     chat_history: list[dict] | None = None,
+    use_cache: bool = True,
 ) -> str:
     """Wrap run_plan_confirm under the request lock. Returns the formatted answer JSON string.
 
@@ -966,6 +967,10 @@ def _run_confirm(
     is appended to the user input (prior conversation context for follow-ups).
     ``chat_history`` is an alternative — if provided and ``pre_final_answer``
     is empty, the last 4 turns are built into a context string downstream.
+
+    ``use_cache`` MUST be False for follow-up rounds: they reuse the prior
+    round's neo4j_results (same query fingerprint) but ask a different question,
+    so the data-only answer cache would otherwise replay the previous answer.
     """
     with _pipeline_semaphore:
         return run_plan_confirm(
@@ -978,6 +983,7 @@ def _run_confirm(
             rigor=rigor,
             pre_final_answer=pre_final_answer,
             chat_history=chat_history,
+            use_cache=use_cache,
         )
 
 
@@ -1510,6 +1516,9 @@ async def chat_message(request: ChatMessageRequest):
                     session.rigor,
                     history_context,   # pre_final_answer
                     None,              # no chat_history planner context
+                    False,             # use_cache=False — follow-up reuses prior data
+                                       # with a NEW question; the data-only answer
+                                       # cache would otherwise replay the prior answer
                 )
                 cleaned = clean_response_json(response)
                 md = extract_markdown(response)

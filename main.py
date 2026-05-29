@@ -1617,6 +1617,7 @@ def run_plan_confirm(
     rigor: bool = True,
     pre_final_answer: str = "",
     chat_history: list[dict] | None = None,
+    use_cache: bool = True,
 ) -> str:
     """Execute the final format/reasoning pipeline on already-retrieved data.
 
@@ -1636,7 +1637,13 @@ def run_plan_confirm(
     # Answer cache: skip the slow Sonnet rigor agent when an identical plan
     # (same executed queries + rigor/complexity/literature) was already answered.
     # Best-effort — any cache error falls through to a normal pipeline run.
-    fingerprint = _answer_cache_fingerprint(neo4j_results, rigor, complexity, use_literature)
+    # NOTE: follow-up rounds reuse the prior round's neo4j_results (same queries)
+    # but ask a DIFFERENT question, so they MUST NOT use this data-only cache
+    # (else they'd return the previous question's answer). Callers pass
+    # use_cache=False for follow-ups; both the read and the store below are gated
+    # on `fingerprint`, which is None when use_cache is False.
+    fingerprint = (_answer_cache_fingerprint(neo4j_results, rigor, complexity, use_literature)
+                   if use_cache else None)
     if fingerprint:
         try:
             import session_store
