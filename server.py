@@ -576,6 +576,11 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
     """Binary classifier for multi-turn chat: is the new question a follow-up
     to the previously retrieved context, or a genuinely new query?
 
+    Uses Sonnet (``claude-sonnet-4-6``) and is **biased toward new_query**: it
+    picks ``follow_up`` ONLY when highly confident the question is a pure
+    clarification answerable entirely from already-shown text. Any doubt → it
+    re-plans and fetches fresh data (safer than answering from stale context).
+
     Returns ``'follow_up'`` or ``'new_query'``.
 
     - ``follow_up``: same entities, same retrieved data applies. The rigor-format
@@ -597,52 +602,60 @@ def _classify_followup(history: list[dict], new_question: str) -> str:
     conversation_summary = "\n".join(turns)
 
     system_prompt = (
-        "You classify follow-up questions in a biomedical Q&A system that "
-        "orchestrates Neo4j, PostgreSQL, and literature retrieval.\n\n"
+        "You classify the user's new question in a biomedical Q&A system that "
+        "orchestrates Neo4j, PostgreSQL, and literature retrieval over a Type 1 "
+        "Diabetes knowledge graph.\n\n"
         "Respond with EXACTLY one word: 'follow_up' or 'new_query'.\n\n"
-        "HARD RULE — follow_up NEVER invokes any tool (no Neo4j, no SQL, no "
-        "literature). It can ONLY rephrase, explain, summarise, "
-        "rank, filter, or reason over text already present in prior assistant "
-        "answers.\n\n"
-        "DECISION PROCEDURE — apply in order:\n"
-        "1. Reference detection. Does the new question reference the prior "
-        "turn? Signals include pronouns ('those', 'that one', 'of them', "
-        "'the first one'), demonstratives ('this gene', 'these donors'), or "
-        "elided subjects ('and the PIP?', 'what about CFTR?'). When present, "
-        "the user is continuing the prior thread — STRONG bias toward "
-        "follow_up, but not decisive on its own.\n"
-        "2. Coverage check. Can the question be answered using ONLY facts "
-        "literally present in prior assistant messages — entities, IDs, "
-        "numeric values, terms, descriptions? If yes → follow_up.\n"
-        "3. New-dimension test. Would answering require fetching a data "
-        "dimension not literally present in prior turns (expression levels, "
-        "OCR peaks, genomic coordinates, literature/PubMed, "
-        "pathway annotations, donor metadata, drug targets)? If yes → "
-        "new_query, even if the referenced entity was already named.\n"
-        "4. New-entity test. Does the question introduce a gene, SNP, "
-        "disease, cell type, donor, or other entity NOT present in prior "
-        "turns? If yes → new_query.\n"
-        "5. Ambiguity → new_query.\n\n"
-        "FOLLOW_UP examples:\n"
-        "- 'What do those GO terms mean?' — explains shown data.\n"
+        "WHAT EACH ROUTE DOES:\n"
+        "- follow_up: NO tools are invoked. The system can ONLY rephrase, "
+        "explain, summarise, rank, filter, or reason over text ALREADY PRESENT "
+        "in the prior assistant answers. No new data can be fetched.\n"
+        "- new_query: runs the full planner and retrieves fresh data from the "
+        "knowledge graph / SQL / literature.\n\n"
+        "DEFAULT TO new_query. Choose follow_up ONLY when you are HIGHLY "
+        "CONFIDENT the question is a pure clarification / rephrasing / "
+        "ranking / filtering / explanation that can be answered COMPLETELY "
+        "from facts literally already shown in the prior assistant messages "
+        "(entities, IDs, numeric values, terms, descriptions). If there is ANY "
+        "doubt — if answering it well might benefit from data not already "
+        "retrieved, or you are not sure the prior answer contains everything "
+        "needed — choose new_query. It is far better to re-plan and fetch fresh "
+        "data than to answer a data question from stale/insufficient context.\n\n"
+        "Choose new_query whenever ANY of these hold (non-exhaustive):\n"
+        "- The question needs a data dimension not literally in the prior turns "
+        "(expression levels, OCR peaks, genomic coordinates, literature/PubMed, "
+        "pathway/GO annotations, colocalization, donor metadata, drug targets, "
+        "interaction partners, effector-gene status, etc.).\n"
+        "- It introduces any new entity (gene, SNP, disease, cell type, donor, "
+        "pathway) not already discussed.\n"
+        "- It asks to compute/compare/verify something whose underlying values "
+        "aren't all present in the prior answers.\n"
+        "- It is ambiguous, or you are simply not confident — DEFAULT new_query.\n\n"
+        "Anaphora (\"those\", \"that gene\", \"of them\") does NOT by itself make "
+        "it a follow_up: a question about a previously-named entity is still "
+        "new_query if it needs data not already shown.\n\n"
+        "FOLLOW_UP examples (answerable entirely from shown text):\n"
+        "- 'What do those GO terms mean?' — explains already-listed terms.\n"
         "- 'Of those genes, which has the highest PIP?' — ranks listed values.\n"
-        "- 'Summarise this for a clinician.' — rephrasing.\n"
-        "- 'Which donor you found is youngest?' — filters shown rows.\n"
+        "- 'Summarise this for a clinician.' — rephrasing shown content.\n"
+        "- 'Which donor you found is youngest?' — filters already-shown rows.\n"
         "- 'Why is that significant?' — reasoning over shown facts.\n\n"
-        "NEW_QUERY examples (note: several contain anaphora):\n"
+        "NEW_QUERY examples (several contain anaphora but need fresh data):\n"
         "- 'What is the expression of CFTR in beta cells?' — new dimension.\n"
         "- 'Tell me about RFX6.' — new entity.\n"
         "- 'Which of those genes are highly expressed in alpha cells?' "
-        "— anaphora present, but needs expression data not yet shown.\n"
+        "— anaphora, but needs expression data not yet shown.\n"
         "- 'Any PubMed articles on these?' — needs literature retrieval.\n"
-        "- 'Are any of those druggable?' — needs drug data not shown.\n\n"
+        "- 'Are any of those druggable?' — needs drug data not shown.\n"
+        "- 'What pathways connect that gene to antigen presentation?' "
+        "— needs pathway/interaction data not already shown.\n\n"
         "Reply with exactly one word."
     )
 
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=15,
             system=system_prompt,
             messages=[{
