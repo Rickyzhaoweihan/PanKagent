@@ -16,6 +16,7 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
    - `POST /chat/start` — start a chat session
    - `POST /chat/message` — send a follow-up (smart-routed)
    - `POST /chat/plan/confirm` — confirm a pending plan (idempotent)
+   - `POST /chat/start/stream` & `POST /chat/message/stream` — keep-alive streaming for planning
    - `POST /chat/plan/confirm/stream` — confirm with keep-alive streaming (long answers)
    - `POST /chat/literature` — on-demand literature retrieval (~25-35s)
    - `POST /chat/revise` — revise the last confirmed plan
@@ -68,6 +69,8 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `POST` | `/chat/message` | Send a follow-up; smart-router picks path | `session_id`, `question` | `route` (`follow_up` \| `new_query_pending` \| `new_query`), `answer_markdown`, optional `pending_plan_session_id`, `history_compressed` flag |
 | `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan. **Idempotent** — a retry replays the cached answer (200) for ~10 min instead of 404 | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round` |
 | `POST` | `/chat/plan/confirm/stream` | Same as `/chat/plan/confirm` but **streams NDJSON** (heartbeats + final result) so long answers survive proxy idle timeouts | `chat_session_id`, `plan_session_id`, `revision_prompt?` | `application/x-ndjson` lines: `heartbeat`* then a `result` (or `error`) |
+| `POST` | `/chat/start/stream` | Same as `/chat/start` but **streams NDJSON** during planning so the plan survives proxy idle timeouts | `ChatStartRequest` | `application/x-ndjson`: `heartbeat`* then `result` (the `ChatResponse`) or `error` |
+| `POST` | `/chat/message/stream` | Same as `/chat/message` but **streams NDJSON** during classify+planning so a new_query plan survives proxy idle timeouts | `ChatMessageRequest` | `application/x-ndjson`: `heartbeat`* then `result` (the `ChatResponse`) or `error` |
 | `POST` | `/chat/literature` | On-demand GLKB literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn` (always `{}`), `processing_time_ms` (~25–35 s) |
 | `POST` | `/chat/revise` | Revise the last *confirmed* plan + replace the last assistant turn | `session_id`, `prompt` | Updated `answer_markdown` for the current round |
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
@@ -265,6 +268,22 @@ Pass `auto_confirm: true` to skip review and run everything in one shot (returns
 **Errors:**
 - `400` — empty question
 - `500` — planning or confirm failure (see `detail` for the exception string)
+
+---
+
+### 4.1a `POST /chat/start/stream` & `POST /chat/message/stream` — keep-alive streaming for planning
+
+Identical inputs/behaviour to `/chat/start` and `/chat/message`, but the response is an **NDJSON stream** (`application/x-ndjson`). While the **planner** runs (and, on `/chat/start`, an optional auto-confirm), the server emits a `heartbeat` line roughly every 15 s, then a terminal `result` line carrying the **full `ChatResponse`** (same shape as the non-stream endpoint — including `route`, `plan_markdown`, `pending_plan_session_id`, etc.), or an `error` line.
+
+**Use these instead of the non-stream versions** when planning may take longer than your proxy/client idle timeout (~60 s) — otherwise a heavy `new_query` can fail with a "network error" *before the plan is returned*. Pair with `/chat/plan/confirm/stream` for the confirm step to make the whole flow proxy-safe.
+
+```
+{"event":"heartbeat","ts":1780000000.1}
+{"event":"heartbeat","ts":1780000015.2}
+{"event":"result","data":{ ...full ChatResponse: route, plan_markdown, pending_plan_session_id, ... }}
+```
+
+Read line-by-line; on `result`, use `data` exactly as you'd use the non-stream JSON response (e.g. branch on `data.route`, render `data.plan_markdown`, then call `/chat/plan/confirm/stream` with `data.pending_plan_session_id`). The fetch+ReadableStream parsing loop is identical to [§4.3a](#43a-post-chatplanconfirmstream--confirm-with-keep-alive-streaming).
 
 ---
 
@@ -952,7 +971,7 @@ For `422` (request validation, e.g. a `/feedback` rating outside 1–5) FastAPI 
 
 > There is currently **no `503`** — upstream outages (Neo4j / vLLM / Claude) surface as `500`.
 
-**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`/`422`. **Exception:** `/chat/plan/confirm` is idempotent — if it times out at the client/proxy (no HTTP status), retrying the same request is safe and replays the cached answer. For answers expected to exceed your idle timeout, use `/chat/plan/confirm/stream` instead of relying on retries.
+**Recommended retry policy:** retry `500` once after 2 s; do **not** retry `400`/`404`/`409`/`410`/`422`. **Exception:** `/chat/plan/confirm` is idempotent — if it times out at the client/proxy (no HTTP status), retrying the same request is safe and replays the cached answer. For answers expected to exceed your idle timeout, use `/chat/plan/confirm/stream` instead of relying on retries. Likewise, if a `new_query` plan can take long enough to time out *before the plan appears*, use `/chat/start/stream` / `/chat/message/stream` for the planning step.
 
 ---
 
@@ -1237,6 +1256,8 @@ Practical guidance:
 | `POST` | `/chat/message` | `ChatMessageRequest` | Follow-up; smart-routed |
 | `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer (idempotent: retries replay cached answer ~10 min) |
 | `POST` | `/chat/plan/confirm/stream` | `ChatPlanConfirmRequest` | Same as confirm but NDJSON heartbeats + final `result` (survives proxy idle timeouts) |
+| `POST` | `/chat/start/stream` | `ChatStartRequest` | Same as `/chat/start` but NDJSON heartbeats during planning + final `result` (survives proxy idle timeouts) |
+| `POST` | `/chat/message/stream` | `ChatMessageRequest` | Same as `/chat/message` but NDJSON heartbeats during planning + final `result` (survives proxy idle timeouts) |
 | `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB literature (~25-35s); append to answer |
 | `POST` | `/chat/revise` | `ChatReviseRequest` | Revise last confirmed plan |
 | `GET` | `/chat/history?session_id=...` | — | Fetch conversation |

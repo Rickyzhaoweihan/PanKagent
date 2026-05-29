@@ -1002,6 +1002,8 @@ async def root():
             "chat_start": "POST /chat/start — start multi-turn dialogue (returns plan for review; auto_confirm=true to run in one shot)",
             "chat_message": "POST /chat/message — follow-up; smart-routed (follow_up reuses stored data, new_query returns pending plan)",
             "chat_plan_confirm": "POST /chat/plan/confirm — confirm (and optionally revise) pending new_query plan from /chat/message (idempotent; retries replay the cached answer)",
+            "chat_start_stream": "POST /chat/start/stream — same as /chat/start but streams NDJSON heartbeats during planning + final result (survives proxy idle timeouts)",
+            "chat_message_stream": "POST /chat/message/stream — same as /chat/message but streams NDJSON heartbeats during planning + final result (survives proxy idle timeouts)",
             "chat_plan_confirm_stream": "POST /chat/plan/confirm/stream — same as /chat/plan/confirm but streams NDJSON heartbeats + final result (survives proxy idle timeouts on long answers)",
             "chat_revise": "POST /chat/revise — revise the most recent confirmed plan in the session, auto-confirm",
             "chat_literature": "POST /chat/literature — on-demand GLKB literature for the last completed round (~25-35s)",
@@ -1953,6 +1955,57 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
             None, _confirm_execute, chat_session, plan_session, request.revision_prompt)
     finally:
         _release_confirm(pid, ev)
+
+
+async def _stream_chat_handler(make_coro, label: str):
+    """Run an async chat handler (which returns a ChatResponse) while emitting an
+    NDJSON heartbeat every ~15s, so a slow planning step survives an upstream
+    proxy's idle-read timeout. The handler runs as a shielded task — a heartbeat
+    timeout never cancels it. Terminal line is `result` (the full ChatResponse)
+    or `error`. Same wire format as /chat/plan/confirm/stream.
+    """
+    heartbeat = 15.0
+
+    def _line(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False, default=str) + "\n"
+
+    async def _gen():
+        task = asyncio.ensure_future(make_coro())
+        try:
+            while True:
+                try:
+                    resp = await asyncio.wait_for(asyncio.shield(task), timeout=heartbeat)
+                    break
+                except asyncio.TimeoutError:
+                    yield _line({"event": "heartbeat", "ts": time.time()})
+            data = resp.model_dump() if hasattr(resp, "model_dump") else resp
+            yield _line({"event": "result", "data": data})
+        except HTTPException as he:
+            yield _line({"event": "error", "status": he.status_code, "detail": str(he.detail)})
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[{label}] error: {e}", exc_info=True)
+            yield _line({"event": "error", "status": 500, "detail": str(e)})
+
+    return StreamingResponse(_gen(), media_type="application/x-ndjson")
+
+
+@app.post("/chat/start/stream")
+async def chat_start_stream(request: ChatStartRequest):
+    """Streaming variant of ``/chat/start``: emits NDJSON heartbeats while the
+    planner runs, then a terminal ``result`` line carrying the full ChatResponse
+    (the pending plan, or the answer if ``auto_confirm``). Keeps the connection
+    alive so the plan reliably arrives even when planning is slow. Reuses the
+    exact ``/chat/start`` logic; validation/errors arrive as an ``error`` line."""
+    return await _stream_chat_handler(lambda: chat_start(request), "/chat/start/stream")
+
+
+@app.post("/chat/message/stream")
+async def chat_message_stream(request: ChatMessageRequest):
+    """Streaming variant of ``/chat/message``: emits NDJSON heartbeats while the
+    smart-router classifies and (for a new_query) the planner runs, then a
+    terminal ``result`` line with the full ChatResponse. Reuses the exact
+    ``/chat/message`` logic; errors arrive as an ``error`` line."""
+    return await _stream_chat_handler(lambda: chat_message(request), "/chat/message/stream")
 
 
 @app.post("/chat/plan/confirm/stream")
