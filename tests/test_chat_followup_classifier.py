@@ -18,8 +18,9 @@ def _stub_anthropic(return_text: str):
     return fake_client
 
 
-def test_prompt_includes_ordered_decision_procedure():
-    """The new prompt must be ordered, not a flat rule list."""
+def test_prompt_is_confidence_first_biased_to_new_query():
+    """The prompt must be confidence-first: default to new_query, pick follow_up
+    only when highly confident it's answerable from already-shown text."""
     fake_client = _stub_anthropic("follow_up")
     with patch("anthropic.Anthropic", return_value=fake_client):
         server._classify_followup(
@@ -30,14 +31,26 @@ def test_prompt_includes_ordered_decision_procedure():
             new_question="Which of those has the highest PIP?",
         )
     sent_system = fake_client.messages.create.call_args.kwargs["system"]
-    # Procedure markers
-    assert "DECISION PROCEDURE" in sent_system
-    assert "1." in sent_system and "2." in sent_system and "3." in sent_system
-    # Anaphora examples must include both follow_up and new_query cases
-    assert "those" in sent_system.lower()
+    # Confidence-first bias markers
+    assert "DEFAULT TO new_query" in sent_system
+    assert "confiden" in sent_system.lower()  # "HIGHLY CONFIDENT" / "confidence"
+    # Anaphora must be explicitly called out as NOT decisive on its own
+    assert "anaphora" in sent_system.lower()
+    # Both follow_up and new_query examples present
     assert "highest PIP" in sent_system or "highest pip" in sent_system.lower()
-    # Mixed-case warning: anaphora + new dimension = new_query
-    assert "alpha cells" in sent_system.lower() or "expression" in sent_system.lower()
+    assert "expression" in sent_system.lower() or "antigen presentation" in sent_system.lower()
+
+
+def test_classifier_uses_sonnet():
+    """Routing must use Sonnet (not Haiku) for accuracy."""
+    fake_client = _stub_anthropic("new_query")
+    with patch("anthropic.Anthropic", return_value=fake_client):
+        server._classify_followup(
+            history=[{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}],
+            new_question="what pathways connect that gene to antigen presentation?",
+        )
+    model = fake_client.messages.create.call_args.kwargs["model"]
+    assert "sonnet" in model.lower()
 
 
 def test_classifier_input_truncation_widened_to_800():
