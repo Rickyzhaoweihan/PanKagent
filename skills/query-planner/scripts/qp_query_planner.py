@@ -750,6 +750,295 @@ def _resolve_prior_entities(step: dict, results_by_id: dict[int, dict]) -> dict 
     return ents
 
 
+# ---------------------------------------------------------------------------
+# Sequential KG chain: combine simple per-step queries by flowing entity IDs
+# (data-flow combine) instead of string-combining their Cypher text
+# (qp_cypher_combiner.combine_chain). The model still only ever writes simple
+# one-hop queries; the multi-hop join is performed by constraining each step's
+# join node to the prior step's entity IDs (WHERE id IN [...]).
+# ---------------------------------------------------------------------------
+
+# Feature flags (read once at import).
+_SEQUENTIAL_KG_CHAIN = os.getenv("SEQUENTIAL_KG_CHAIN", "1").strip().lower() not in ("0", "false", "no", "")
+_SEQ_KG_CHAIN_FALLBACK = os.getenv("SEQ_KG_CHAIN_FALLBACK", "1").strip().lower() not in ("0", "false", "no", "")
+
+# Order matters: prefer stable ID joins over name joins. Each entry is
+# (prior-entity bucket, matching node labels, node property holding the value).
+_ENTITY_INJECTION_MAP = [
+    ("snv_ids", ("snv", "sequence_variant", "variants", "snp"), "id"),
+    ("gene_ids", ("gene",), "id"),
+    ("donor_ids", ("donor",), "id"),
+    ("gene_names", ("gene",), "name"),
+]
+
+# Upper bound on injected join keys. Sized to cover realistic entity sets (e.g.
+# ~1.5k GWAS loci) so the join is not silently truncated — capping the keys would
+# drop qualifying rows, the same failure mode this path replaces. Neo4j handles
+# multi-thousand IN lists fine; the bound only guards pathological fan-out.
+_SEQ_KG_ID_CAP = 5000
+
+# Display cap on the TERMINAL step's output (the final answer). Smaller than the
+# join-key cap because the terminal step feeds nothing downstream — bounding it is
+# purely a result-size guard. Tunable via env. Non-terminal steps (that feed a
+# downstream join) use _SEQ_KG_ID_CAP instead so their join keys are not truncated.
+_SEQ_KG_STEP_LIMIT = int(os.getenv("SEQ_KG_STEP_LIMIT", "500"))
+
+
+def _referenced_parent_ids(steps: list[dict]) -> set:
+    """Return the set of step ids that some other step depends on (explicit
+    ``depends_on`` or the implicit ``id - 1`` predecessor). A step in this set
+    feeds a downstream join and must NOT be capped below its true key count.
+    """
+    ids = {s.get("id") for s in steps}
+    refs: set = set()
+    for s in steps:
+        dep = s.get("depends_on")
+        if dep is None:
+            dep = s.get("id", 0) - 1
+        if dep in ids:
+            refs.add(dep)
+    return refs
+
+
+def _cap_rows_before_collect(cypher: str, limit: int) -> str:
+    """Bound a step's output by injecting ``WITH <vars> LIMIT <limit>`` immediately
+    before the final ``collect()``.
+
+    Placed AFTER any ``WHERE`` (the collect is always last), so it caps the *output*
+    of a — possibly id-filtered — match, never the join keys feeding a later step.
+    No-op when the query already carries a LIMIT or has no collect to bound.
+    """
+    if not cypher or limit <= 0 or re.search(r'\bLIMIT\s+\d+', cypher, re.IGNORECASE):
+        return cypher
+    collect_match = re.search(r'\bWITH\s+collect\s*\(', cypher, re.IGNORECASE)
+    if not collect_match:
+        return cypher
+    head = cypher[:collect_match.start()]
+    node_vars = set(re.findall(r'\((\w+)(?::\w+)?[^)]*\)', head))
+    rel_vars = set(re.findall(r'\[(\w+):\w+[^\]]*\]', head))
+    all_vars = node_vars | rel_vars
+    if not all_vars:
+        return cypher
+    vars_str = ', '.join(sorted(all_vars))
+    pos = collect_match.start()
+    return cypher[:pos] + f"WITH {vars_str} LIMIT {limit}\n" + cypher[pos:]
+
+
+def _find_node_var_for_label(cypher: str, labels: tuple[str, ...]) -> str | None:
+    """Return the first node variable whose label is in *labels* (e.g. 's' for ``(s:snv)``).
+
+    Only matches explicit ``(var:Label)`` node patterns; ``collect(DISTINCT s)`` and
+    relationship brackets are not matched.
+    """
+    for var, lbl in re.findall(r'\(\s*(\w+)\s*:\s*(\w+)', cypher):
+        if lbl.lower() in labels:
+            return var
+    return None
+
+
+def _inject_ids_into_cypher(cypher: str, var: str, prop: str, ids: list[str]) -> str:
+    """Deterministically constrain ``var.prop`` to *ids* via a ``WHERE ... IN [...]``.
+
+    Inserts (or ANDs onto an existing WHERE) immediately before the first
+    WITH/RETURN. Returns *cypher* unchanged if *ids* is empty.
+    """
+    if not ids:
+        return cypher
+    id_list = ", ".join('"' + str(i).replace('"', '') + '"' for i in ids[:_SEQ_KG_ID_CAP])
+    constraint = f"{var}.{prop} IN [{id_list}]"
+
+    m = re.search(r'\b(WITH|RETURN)\b', cypher, re.IGNORECASE)
+    head = cypher[:m.start()] if m else cypher
+    tail = cypher[m.start():] if m else ""
+
+    if re.search(r'\bWHERE\b', head, re.IGNORECASE):
+        head = head.rstrip() + f"\nAND {constraint}\n"
+    else:
+        head = head.rstrip() + f"\nWHERE {constraint}\n"
+    return head + tail
+
+
+def _augment_nl_with_ids(nl: str, prior_entities: dict) -> str:
+    """Append an explicit ID-restriction hint to a step's NL (re-translation fallback)."""
+    for bucket, _labels, _prop in _ENTITY_INJECTION_MAP:
+        ids = prior_entities.get(bucket) or []
+        if ids:
+            sample = ", ".join(str(i) for i in ids[:_SEQ_KG_ID_CAP])
+            kind = bucket.replace("_", " ")
+            return (f"{nl}\n\n(Restrict to these {kind} from the previous step — "
+                    f"use a WHERE ... IN [...] filter): {sample}")
+    return nl
+
+
+def _translate_step_sync(nl_query: str, step_id: int) -> str:
+    """Synchronous single-step text2cypher translation (used by the re-translate fallback)."""
+    q: Queue = Queue()
+    _translate_one_step(nl_query, q, step_id)
+    try:
+        _sid, ok, payload = q.get_nowait()
+    except Exception:
+        return ""
+    return payload if ok else ""
+
+
+def _inject_prior_ids_into_kg_step(step: dict, prior_entities: dict) -> tuple[str, dict]:
+    """Return ``(cypher, meta)`` for a KG step constrained by the parent's entity IDs.
+
+    Deterministic-first: constrain the join node's ``id``/``name`` directly on the
+    step's pre-translated Cypher (no model call, fully reproducible). Falls back to
+    NL-augmented re-translation only when no matching join node can be located.
+    """
+    base_cypher = step.get("cypher", "") or ""
+    for bucket, labels, prop in _ENTITY_INJECTION_MAP:
+        ids = prior_entities.get(bucket) or []
+        if not ids:
+            continue
+        var = _find_node_var_for_label(base_cypher, labels) if base_cypher else None
+        if var:
+            injected = _inject_ids_into_cypher(base_cypher, var, prop, ids)
+            return injected, {
+                "mode": "deterministic", "bucket": bucket, "var": var, "prop": prop,
+                "n_ids": min(len(ids), _SEQ_KG_ID_CAP), "truncated": len(ids) > _SEQ_KG_ID_CAP,
+            }
+    # Fallback: no join node found deterministically — re-translate with an NL hint.
+    aug = _augment_nl_with_ids(step.get("natural_language", ""), prior_entities)
+    cypher = _translate_step_sync(aug, step.get("id", 0)) or base_cypher
+    return cypher, {"mode": "retranslate"}
+
+
+def _node_key(node) -> str:
+    if not isinstance(node, dict):
+        return str(node)
+    props = node.get("properties", {}) or {}
+    return str(node.get("element_id") or node.get("id")
+               or props.get("id") or props.get("name") or node)
+
+
+def _edge_key(edge) -> str:
+    if not isinstance(edge, dict):
+        return str(edge)
+    return str(edge.get("element_id") or edge.get("id")
+               or f"{edge.get('start_node_element_id')}|{edge.get('type')}|{edge.get('end_node_element_id')}")
+
+
+def _merge_step_results(step_results: list[dict]) -> dict:
+    """Union nodes+edges across every step's records into one deduplicated subgraph.
+
+    Returns a result dict shaped like ``_execute_cypher`` output:
+    ``{"records": [{"nodes": [...], "edges": [...]}], "keys": ["nodes", "edges"]}``.
+    """
+    nodes: list = []
+    edges: list = []
+    seen_n: set = set()
+    seen_e: set = set()
+    for entry in step_results:
+        res = entry.get("result") if isinstance(entry, dict) else None
+        if not isinstance(res, dict):
+            continue
+        for record in res.get("records", []) or []:
+            if not isinstance(record, dict):
+                continue
+            for n in record.get("nodes", []) or []:
+                k = _node_key(n)
+                if k not in seen_n:
+                    seen_n.add(k)
+                    nodes.append(n)
+            for e in record.get("edges", []) or []:
+                k = _edge_key(e)
+                if k not in seen_e:
+                    seen_e.add(k)
+                    edges.append(e)
+    return {"records": [{"nodes": nodes, "edges": edges}], "keys": ["nodes", "edges"]}
+
+
+def _count_collected(result: dict) -> int | None:
+    """Approx number of collected entities in a single step result (max of node/edge
+    list lengths across records). Used only to detect when a step hit its cap."""
+    if not isinstance(result, dict) or "error" in result:
+        return None
+    biggest = 0
+    for record in result.get("records", []) or []:
+        if isinstance(record, dict):
+            biggest = max(biggest, len(record.get("nodes", []) or []),
+                          len(record.get("edges", []) or []))
+    return biggest
+
+
+def _results_have_data(results: list[dict]) -> bool:
+    """True if any result entry carries at least one node or edge (and no error-only)."""
+    for entry in results:
+        res = entry.get("result") if isinstance(entry, dict) else None
+        if not isinstance(res, dict) or "error" in res:
+            continue
+        for record in res.get("records", []) or []:
+            if isinstance(record, dict) and (record.get("nodes") or record.get("edges")):
+                return True
+    return False
+
+
+def _execute_sequential_kg_chain(plan: dict) -> list[dict]:
+    """Run KG chain steps strictly sequentially, flowing entity IDs step→step.
+
+    Each step's join node is constrained to the prior step's extracted IDs
+    (``_inject_prior_ids_into_kg_step``) rather than string-combining Cypher.
+    Returns ONE merged ``{"query", "result"}`` entry (the per-step nodes+edges
+    unioned) — matching the pure-KG chain contract so downstream filtering,
+    scoring, plan display, and the graph view are unaffected.
+    """
+    steps = sorted(plan.get("steps", []), key=lambda s: s.get("id", 0))
+    if not steps:
+        return [{"query": "", "result": {"error": "No steps to execute"}}]
+
+    results_by_id: dict[int, dict] = {}
+    step_results: list[dict] = []
+    queries: list[str] = []
+
+    # Steps that feed a downstream join keep the high join-key cap; the terminal
+    # step (feeds nothing) gets the smaller display cap.
+    feeds_downstream = _referenced_parent_ids(steps)
+
+    for step in steps:
+        sid = step.get("id", 0)
+        prior = _resolve_prior_entities(step, results_by_id)
+        emit("chain_step_start", {
+            "id": sid, "source": "kg",
+            "prior_entity_counts": {k: len(v) for k, v in (prior or {}).items() if isinstance(v, list)},
+        })
+
+        if prior:
+            cypher, meta = _inject_prior_ids_into_kg_step(step, prior)
+            emit("seq_kg_inject", {"id": sid, **meta})
+        else:
+            cypher = step.get("cypher", "") or ""
+
+        if not cypher:
+            result_entry = {
+                "query": step.get("natural_language", ""),
+                "result": {"error": "No Cypher was translated for this KG step"},
+            }
+        else:
+            cap = _SEQ_KG_ID_CAP if sid in feeds_downstream else _SEQ_KG_STEP_LIMIT
+            cypher = _cap_rows_before_collect(cypher, cap)
+            cleaned, result = _execute_single_cypher_sync(cypher, index=sid - 1)
+            result_entry = {"query": cleaned, "result": result}
+            # Surface truncation rather than silently capping (no silent caps).
+            n_rows = _count_collected(result)
+            if n_rows is not None and n_rows >= cap:
+                emit("seq_kg_step_truncated", {"id": sid, "cap": cap,
+                                               "feeds_downstream": sid in feeds_downstream})
+
+        results_by_id[sid] = result_entry
+        step_results.append(result_entry)
+        queries.append(result_entry["query"])
+        emit("chain_step_done", {
+            "id": sid, "source": "kg",
+            "entity_counts": _summarize_entities(result_entry),
+        })
+
+    merged = _merge_step_results(step_results)
+    return [{"query": "\n\n".join(q for q in queries if q), "result": merged}]
+
+
 def _execute_pure_kg_chain(plan: dict) -> list[dict]:
     """Existing behaviour: combine all KG steps into one compound Cypher query."""
     cyphers = build_executable_queries(plan)
@@ -989,10 +1278,13 @@ def execute_plan(
 
     Three execution modes:
 
-    1. **Pure-KG chain** (``plan_type: "chain"``, no non-KG steps): all steps
-       are combined into one compound Cypher query via ``WITH`` clauses
-       (``qp_cypher_combiner.combine_chain``) and executed as a single Neo4j
-       query. Existing behaviour — unchanged.
+    1. **Pure-KG chain** (``plan_type: "chain"``, no non-KG steps): with
+       ``SEQUENTIAL_KG_CHAIN`` on (default), steps run sequentially and each
+       step's join node is constrained to the prior step's entity IDs
+       (``_execute_sequential_kg_chain``) — no Cypher string-combining. Falls
+       back to the legacy compound query (``qp_cypher_combiner.combine_chain``
+       via ``_execute_pure_kg_chain``) when sequential returns empty (if
+       ``SEQ_KG_CHAIN_FALLBACK`` is on) or when the flag is off.
     2. **Cross-source chain** (``plan_type: "chain"``, at least one non-KG
        step): steps execute **strictly sequentially** in ``id`` order. Each
        step receives prior entities (gene names/IDs, SNP IDs, donor IDs)
@@ -1008,6 +1300,11 @@ def execute_plan(
     has_non_kg = any(s.get("source") in _NON_KG_SOURCES for s in steps)
 
     if plan_type == "chain" and not has_non_kg:
+        if _SEQUENTIAL_KG_CHAIN:
+            seq = _execute_sequential_kg_chain(plan)
+            if _results_have_data(seq) or not _SEQ_KG_CHAIN_FALLBACK:
+                return seq
+            emit("chain_seq_fallback_to_combine", {"reason": "sequential KG chain returned empty"})
         return _execute_pure_kg_chain(plan)
 
     if plan_type == "chain":
