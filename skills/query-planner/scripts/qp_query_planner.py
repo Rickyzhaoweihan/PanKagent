@@ -805,27 +805,37 @@ def _referenced_parent_ids(steps: list[dict]) -> set:
 
 
 def _cap_rows_before_collect(cypher: str, limit: int) -> str:
-    """Bound a step's output by injecting ``WITH <vars> LIMIT <limit>`` immediately
-    before the final ``collect()``.
+    """Bound a step's output by the tier *limit*, applied immediately before the
+    final ``collect()`` (i.e. AFTER any ``WHERE`` — caps the output of a, possibly
+    id-filtered, match, never the join keys feeding a later step).
 
-    Placed AFTER any ``WHERE`` (the collect is always last), so it caps the *output*
-    of a — possibly id-filtered — match, never the join keys feeding a later step.
-    No-op when the query already carries a LIMIT or has no collect to bound.
+    If a pre-collect ``LIMIT`` is already present, its value is **overwritten** with
+    *limit* — a generic ``LIMIT 50`` injected at translation time (when the step
+    was still unconstrained) would otherwise truncate the join keys feeding a
+    downstream step. Otherwise a ``WITH <vars> LIMIT <limit>`` is injected.
+    No-op when there is no collect to bound.
     """
-    if not cypher or limit <= 0 or re.search(r'\bLIMIT\s+\d+', cypher, re.IGNORECASE):
+    if not cypher or limit <= 0:
         return cypher
     collect_match = re.search(r'\bWITH\s+collect\s*\(', cypher, re.IGNORECASE)
     if not collect_match:
         return cypher
-    head = cypher[:collect_match.start()]
-    node_vars = set(re.findall(r'\((\w+)(?::\w+)?[^)]*\)', head))
-    rel_vars = set(re.findall(r'\[(\w+):\w+[^\]]*\]', head))
+    head_end = collect_match.start()
+
+    # Overwrite an existing pre-collect LIMIT (use the last one before collect).
+    last = None
+    for m in re.finditer(r'\bLIMIT\s+\d+', cypher[:head_end], re.IGNORECASE):
+        last = m
+    if last is not None:
+        return cypher[:last.start()] + f"LIMIT {limit}" + cypher[last.end():]
+
+    node_vars = set(re.findall(r'\((\w+)(?::\w+)?[^)]*\)', cypher[:head_end]))
+    rel_vars = set(re.findall(r'\[(\w+):\w+[^\]]*\]', cypher[:head_end]))
     all_vars = node_vars | rel_vars
     if not all_vars:
         return cypher
     vars_str = ', '.join(sorted(all_vars))
-    pos = collect_match.start()
-    return cypher[:pos] + f"WITH {vars_str} LIMIT {limit}\n" + cypher[pos:]
+    return cypher[:head_end] + f"WITH {vars_str} LIMIT {limit}\n" + cypher[head_end:]
 
 
 def _find_node_var_for_label(cypher: str, labels: tuple[str, ...]) -> str | None:

@@ -134,9 +134,16 @@ def test_cap_injects_limit_after_where_before_collect():
     assert "LIMIT 500" in out
 
 
-def test_cap_noop_when_limit_present():
-    q = "MATCH (s:snv) WITH s LIMIT 10 WITH collect(DISTINCT s) AS nodes RETURN nodes;"
-    assert qp._cap_rows_before_collect(q, 500) == q
+def test_cap_overwrites_existing_pre_collect_limit():
+    # A generic LIMIT 50 injected at translation time must be raised to the tier,
+    # else it truncates the join keys feeding a downstream step.
+    q = ("MATCH (g:gene)-[r:part_of_QTL_signal]->(s:snv) WHERE s.id IN [\"rs1\"] "
+         "WITH g, r, s LIMIT 50 WITH collect(DISTINCT g)+collect(DISTINCT s) AS nodes, "
+         "collect(DISTINCT r) AS edges RETURN nodes, edges;")
+    out = qp._cap_rows_before_collect(q, 5000)
+    assert "LIMIT 5000" in out and "LIMIT 50 " not in out
+    # the id filter is preserved
+    assert 's.id IN ["rs1"]' in out
 
 
 def test_cap_noop_without_collect():
