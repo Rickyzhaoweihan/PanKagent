@@ -253,10 +253,76 @@ def test_dispatch_uses_sequential_when_data(monkeypatch):
 
 def test_dispatch_uses_combine_when_flag_off(monkeypatch):
     plan = {"plan_type": "chain", "steps": [{"id": 1, "cypher": GWAS_STEP_CYPHER}]}
-    sentinel = [{"query": "combined", "result": {"records": []}}]
+    sentinel = [_kg_result([_node("n", "snv", id="x")], [])]  # has data -> no parallel fallback
     monkeypatch.setattr(qp, "_SEQUENTIAL_KG_CHAIN", False)
     monkeypatch.setattr(qp, "_execute_sequential_kg_chain",
                         lambda p: pytest.fail("sequential should not run when flag off"))
     monkeypatch.setattr(qp, "_execute_pure_kg_chain", lambda p: sentinel)
     monkeypatch.setattr(qp, "emit", lambda *a, **k: None)
     assert qp.execute_plan(plan) is sentinel
+
+
+# ---------------------------------------------------------------------------
+# Chain -> parallel reliability fallback
+# ---------------------------------------------------------------------------
+
+def test_chain_falls_back_to_parallel_when_empty(monkeypatch):
+    plan = {"plan_type": "chain", "steps": [
+        {"id": 1, "cypher": GWAS_STEP_CYPHER, "depends_on": None},
+        {"id": 2, "cypher": QTL_STEP_CYPHER, "depends_on": 1},
+    ]}
+    events = []
+    par_out = [_kg_result([_node("g1", "gene", id="ENSG1")], [])]
+    monkeypatch.setattr(qp, "_SEQUENTIAL_KG_CHAIN", True)
+    monkeypatch.setattr(qp, "_SEQ_KG_CHAIN_FALLBACK", False)
+    monkeypatch.setattr(qp, "_CHAIN_FALLBACK_TO_PARALLEL", True)
+    monkeypatch.setattr(qp, "_execute_sequential_kg_chain", lambda p: [_kg_result([], [])])
+    monkeypatch.setattr(qp, "_execute_parallel_with_deps", lambda p, *a: par_out)
+    monkeypatch.setattr(qp, "emit", lambda *a, **k: events.append(a[0]))
+
+    out = qp.execute_plan(plan)
+    assert out is par_out
+    assert "chain_fallback_to_parallel" in events
+    # plan mutated so downstream treats it as parallel with independent steps
+    assert plan["plan_type"] == "parallel"
+    assert all(s["depends_on"] is None for s in plan["steps"])
+
+
+def test_cross_source_chain_falls_back_to_parallel(monkeypatch):
+    plan = {"plan_type": "chain", "steps": [
+        {"id": 1, "cypher": GWAS_STEP_CYPHER},
+        {"id": 2, "source": "genomic", "natural_language": "x", "depends_on": 1},
+    ]}
+    par_out = [_kg_result([_node("g1", "gene", id="ENSG1")], [])]
+    monkeypatch.setattr(qp, "_CHAIN_FALLBACK_TO_PARALLEL", True)
+    monkeypatch.setattr(qp, "_execute_cross_source_chain", lambda p, *a: [_kg_result([], [])])
+    monkeypatch.setattr(qp, "_execute_parallel_with_deps", lambda p, *a: par_out)
+    monkeypatch.setattr(qp, "emit", lambda *a, **k: None)
+    assert qp.execute_plan(plan) is par_out
+    assert plan["plan_type"] == "parallel"
+
+
+def test_chain_no_fallback_when_data(monkeypatch):
+    plan = {"plan_type": "chain", "steps": [{"id": 1, "cypher": GWAS_STEP_CYPHER}]}
+    seq_out = [_kg_result([_node("n", "snv", id="x")], [])]
+    monkeypatch.setattr(qp, "_SEQUENTIAL_KG_CHAIN", True)
+    monkeypatch.setattr(qp, "_CHAIN_FALLBACK_TO_PARALLEL", True)
+    monkeypatch.setattr(qp, "_execute_sequential_kg_chain", lambda p: seq_out)
+    monkeypatch.setattr(qp, "_execute_parallel_with_deps",
+                        lambda p, *a: pytest.fail("parallel fallback must not run when chain has data"))
+    monkeypatch.setattr(qp, "emit", lambda *a, **k: None)
+    assert qp.execute_plan(plan) is seq_out
+    assert plan["plan_type"] == "chain"  # not mutated
+
+
+def test_chain_no_fallback_when_flag_off(monkeypatch):
+    plan = {"plan_type": "chain", "steps": [{"id": 1, "cypher": GWAS_STEP_CYPHER}]}
+    empty = [_kg_result([], [])]
+    monkeypatch.setattr(qp, "_SEQUENTIAL_KG_CHAIN", True)
+    monkeypatch.setattr(qp, "_SEQ_KG_CHAIN_FALLBACK", False)
+    monkeypatch.setattr(qp, "_CHAIN_FALLBACK_TO_PARALLEL", False)
+    monkeypatch.setattr(qp, "_execute_sequential_kg_chain", lambda p: empty)
+    monkeypatch.setattr(qp, "_execute_parallel_with_deps",
+                        lambda p, *a: pytest.fail("parallel fallback disabled"))
+    monkeypatch.setattr(qp, "emit", lambda *a, **k: None)
+    assert qp.execute_plan(plan) is empty

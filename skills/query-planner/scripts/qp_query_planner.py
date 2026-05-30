@@ -761,6 +761,10 @@ def _resolve_prior_entities(step: dict, results_by_id: dict[int, dict]) -> dict 
 # Feature flags (read once at import).
 _SEQUENTIAL_KG_CHAIN = os.getenv("SEQUENTIAL_KG_CHAIN", "1").strip().lower() not in ("0", "false", "no", "")
 _SEQ_KG_CHAIN_FALLBACK = os.getenv("SEQ_KG_CHAIN_FALLBACK", "1").strip().lower() not in ("0", "false", "no", "")
+# When a chain plan yields no data (the multi-hop join failed), re-run the same
+# steps independently as a parallel plan so partial per-hop data is still returned
+# instead of an empty result that collapses the plan to literature-only.
+_CHAIN_FALLBACK_TO_PARALLEL = os.getenv("CHAIN_FALLBACK_TO_PARALLEL", "1").strip().lower() not in ("0", "false", "no", "")
 
 # Order matters: prefer stable ID joins over name joins. Each entry is
 # (prior-entity bucket, matching node labels, node property holding the value).
@@ -1293,22 +1297,43 @@ def execute_plan(
        steps respect ``depends_on`` — they wait for their parent and receive
        its extracted entities.
 
+    **Reliability fallback**: when a ``chain`` plan returns no data (the
+    multi-hop join failed), the same steps are re-run independently as a
+    ``parallel`` plan (``CHAIN_FALLBACK_TO_PARALLEL``, default on) — the plan is
+    mutated to ``plan_type: "parallel"`` so downstream filtering/scoring/display
+    stay consistent. Emits ``chain_fallback_to_parallel``.
+
     Returns a list of ``{"query", "result"}`` dicts in original step order.
     """
     plan_type = plan.get("plan_type", "parallel")
     steps = plan.get("steps", [])
     has_non_kg = any(s.get("source") in _NON_KG_SOURCES for s in steps)
 
-    if plan_type == "chain" and not has_non_kg:
-        if _SEQUENTIAL_KG_CHAIN:
-            seq = _execute_sequential_kg_chain(plan)
-            if _results_have_data(seq) or not _SEQ_KG_CHAIN_FALLBACK:
-                return seq
-            emit("chain_seq_fallback_to_combine", {"reason": "sequential KG chain returned empty"})
-        return _execute_pure_kg_chain(plan)
-
     if plan_type == "chain":
-        return _execute_cross_source_chain(
+        if not has_non_kg:
+            if _SEQUENTIAL_KG_CHAIN:
+                results = _execute_sequential_kg_chain(plan)
+                if not _results_have_data(results) and _SEQ_KG_CHAIN_FALLBACK:
+                    emit("chain_seq_fallback_to_combine", {"reason": "sequential KG chain returned empty"})
+                    results = _execute_pure_kg_chain(plan)
+            else:
+                results = _execute_pure_kg_chain(plan)
+        else:
+            results = _execute_cross_source_chain(
+                plan, hpap_handler, genomic_handler, functional_data_handler
+            )
+
+        if _results_have_data(results) or not _CHAIN_FALLBACK_TO_PARALLEL:
+            return results
+
+        # Chain join produced nothing — fall back to running the same steps
+        # independently as a parallel plan (no entity flow). Mutate the plan so
+        # downstream (_filter_empty_steps, scoring, display) treats it as parallel.
+        emit("chain_fallback_to_parallel", {"num_steps": len(steps), "had_non_kg": has_non_kg})
+        plan["plan_type"] = "parallel"
+        for s in plan.get("steps", []):
+            s["depends_on"] = None
+        return _execute_parallel_with_deps(
             plan, hpap_handler, genomic_handler, functional_data_handler
         )
 

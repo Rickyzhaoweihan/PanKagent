@@ -22,7 +22,7 @@ Active env vars the system reads at startup:
 - `VLLM_PORT` (default 8002)
 - `PORT` (server)
 - `MAX_CONCURRENT_QUERIES` (default 5 — max pipelines run concurrently; bounds the `_pipeline_semaphore`)
-- `SEQUENTIAL_KG_CHAIN` (default `1` — run pure-KG chain plans via the sequential entity-ID-flow executor instead of `combine_chain`; set `0` to force the legacy compound-query path), `SEQ_KG_CHAIN_FALLBACK` (default `1` — fall back to `combine_chain` when the sequential run returns empty), and `SEQ_KG_STEP_LIMIT` (default `500` — display cap on the terminal chain step's output; steps that feed a downstream join use the larger join-key cap `_SEQ_KG_ID_CAP=5000` so their keys aren't truncated)
+- `SEQUENTIAL_KG_CHAIN` (default `1` — run pure-KG chain plans via the sequential entity-ID-flow executor instead of `combine_chain`; set `0` to force the legacy compound-query path), `SEQ_KG_CHAIN_FALLBACK` (default `1` — fall back to `combine_chain` when the sequential run returns empty), `SEQ_KG_STEP_LIMIT` (default `500` — display cap on the terminal chain step's output; steps that feed a downstream join use the larger join-key cap `_SEQ_KG_ID_CAP=5000` so their keys aren't truncated), and `CHAIN_FALLBACK_TO_PARALLEL` (default `1` — when a chain plan returns no data, re-run the same steps independently as a parallel plan rather than returning empty)
 - `CACHE_VERSION` (default `1` — folded into the answer-cache key; bump to invalidate every cached answer, e.g. after a Neo4j reload)
 - `CACHE_HIT_DELAY_SECONDS` (default `10` — deliberate wait before returning a cached answer so a hit isn't suspiciously fast; `0` disables)
 - `GLKB_URL` (default `http://localhost:8004/stream` — the local GLKB_agent SSE endpoint for literature synthesis)
@@ -181,9 +181,11 @@ Core executor: `qp_query_planner.py:execute_plan()` has these paths:
 - `_execute_cross_source_chain()` — sequential, entities flow via `depends_on` (mixed KG + non-KG sources)
 - `_execute_parallel_with_deps()` — KG in parallel + non-KG steps respect `depends_on`
 
+**Chain → parallel reliability fallback** (`CHAIN_FALLBACK_TO_PARALLEL`, default on): if a `chain` plan (either sub-path) returns no data, `execute_plan` re-runs the same steps independently as a parallel plan — it mutates the plan to `plan_type: "parallel"` and clears `depends_on` so `_filter_empty_steps`/scoring/display stay consistent, then returns per-hop data instead of an empty result that would collapse the plan to literature-only. Emits `chain_fallback_to_parallel`.
+
 ### Streaming events (`stream_events.py`)
 
-NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `seq_kg_inject`, `seq_kg_step_truncated`, `chain_seq_fallback_to_combine`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`, `answer_cache_*`, `literature_cache_*`.
+NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `seq_kg_inject`, `seq_kg_step_truncated`, `chain_seq_fallback_to_combine`, `chain_fallback_to_parallel`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`, `answer_cache_*`, `literature_cache_*`.
 
 `markdown_normalized` is emitted by `markdown_normalizer.repair_markdown` (wired into `main.py:extract_markdown`, covering every `answer_markdown`) ONLY when the deterministic GFM repair changed something — payload `{changed, fixes: [...], llm_repair: bool}`. The deterministic pass fixes blank-lines-around-tables/HRs, delimiter rows, and cell-count mismatches; a Claude Haiku fallback repairs the rare table block left structurally ambiguous. The literature block (`combine_literature_block`) runs the deterministic pass only.
 
