@@ -898,6 +898,30 @@ def fix_disease_naming(cypher: str) -> str:
     return fixed
 
 
+# Generic words dropped before comparing cell-type token sets. Kept minimal so
+# state/subtype qualifiers ("active", "quiescent", "MUC5B") stay significant.
+_CELL_TYPE_STOPWORDS = frozenset({"cell", "cells", "pancreatic"})
+
+
+def _cell_type_token_set(value: str) -> frozenset:
+    """Tokenize a cell-type label into a comparison set: lowercase, split on any
+    non-alphanumeric (so ``+`` separates ``MUC5B+Ductal`` → muc5b, ductal), drop
+    generic stopwords."""
+    parts = re.split(r'[^a-z0-9]+', (value or "").lower())
+    return frozenset(p for p in parts if p and p not in _CELL_TYPE_STOPWORDS)
+
+
+def _build_cell_type_token_set_map(valid_cell_types) -> dict:
+    """Map token-set → canonical name, keeping only sets owned by exactly one name
+    (so an ambiguous abbreviation is left untouched rather than mis-resolved)."""
+    owners: dict = {}
+    for name in valid_cell_types:
+        ts = _cell_type_token_set(name)
+        if ts:
+            owners.setdefault(ts, []).append(name)
+    return {ts: names[0] for ts, names in owners.items() if len(names) == 1}
+
+
 def fix_cell_type_references(cypher: str) -> str:
     """
     Fix anatomical_structure (formerly cell_type) name references.
@@ -949,35 +973,38 @@ def fix_cell_type_references(cypher: str) -> str:
     all_fixes.update(case_map)
     all_fixes.update(plural_to_singular)
     all_fixes.update(short_map)  # short→canonical takes precedence
-    
+
+    # 5. Token-set mapping — resolves abbreviated/reordered cell-type labels the
+    #    model emits from display strings (e.g. "ductal" or "MUC5B+Ductal") to the
+    #    canonical schema name ("ductal cell" / "pancreatic ductal cell MUC5B+").
+    #    Tokens split on non-alphanumerics (so "+" separates), with generic words
+    #    stripped; a label maps only when EXACTLY ONE schema name shares its token
+    #    set (ambiguity guard). This is what makes id-bearing follow-ups resolve:
+    #    the guessed name no longer has to match the stored string verbatim.
+    token_set_map = _build_cell_type_token_set_map(valid_cell_types)
+
+    def _resolve(value: str):
+        """Return the canonical name for *value*, or None if it can't be resolved."""
+        vl = value.lower()
+        if vl in all_fixes:
+            return all_fixes[vl]
+        ts = _cell_type_token_set(value)
+        return token_set_map.get(ts)
+
     def fix_cell_type_value_in_braces(match):
         """Fix a cell type value in {name: "value"} pattern."""
         quote = match.group(1)
-        value = match.group(2)
-        value_lower = value.lower()
-        
-        # Try to fix the value
-        if value_lower in all_fixes:
-            fixed_name = all_fixes[value_lower]
-            # Return complete pattern with fixed value
+        fixed_name = _resolve(match.group(2))
+        if fixed_name:
             return f'{{name: {quote}{fixed_name}{quote}}}'
-        
-        # Value doesn't match any known cell type - leave unchanged
         return match.group(0)
-    
+
     def fix_cell_type_value_in_assignment(match):
         """Fix a cell type value in .name = "value" pattern."""
         quote = match.group(1)
-        value = match.group(2)
-        value_lower = value.lower()
-        
-        # Try to fix the value
-        if value_lower in all_fixes:
-            fixed_name = all_fixes[value_lower]
-            # Return complete pattern with fixed value
+        fixed_name = _resolve(match.group(2))
+        if fixed_name:
             return f'.name = {quote}{fixed_name}{quote}'
-        
-        # Value doesn't match any known cell type - leave unchanged
         return match.group(0)
     
     # Pattern 1: Match {name: 'value'} or {name: "value"} format

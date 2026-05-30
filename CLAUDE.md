@@ -22,6 +22,7 @@ Active env vars the system reads at startup:
 - `VLLM_PORT` (default 8002)
 - `PORT` (server)
 - `MAX_CONCURRENT_QUERIES` (default 5 — max pipelines run concurrently; bounds the `_pipeline_semaphore`)
+- `SEQUENTIAL_KG_CHAIN` (default `1` — run pure-KG chain plans via the sequential entity-ID-flow executor instead of `combine_chain`; set `0` to force the legacy compound-query path), `SEQ_KG_CHAIN_FALLBACK` (default `1` — fall back to `combine_chain` when the sequential run returns empty), and `SEQ_KG_STEP_LIMIT` (default `500` — display cap on the terminal chain step's output; steps that feed a downstream join use the larger join-key cap `_SEQ_KG_ID_CAP=5000` so their keys aren't truncated)
 - `CACHE_VERSION` (default `1` — folded into the answer-cache key; bump to invalidate every cached answer, e.g. after a Neo4j reload)
 - `CACHE_HIT_DELAY_SECONDS` (default `10` — deliberate wait before returning a cached answer so a hit isn't suspiciously fast; `0` disables)
 - `GLKB_URL` (default `http://localhost:8004/stream` — the local GLKB_agent SSE endpoint for literature synthesis)
@@ -57,7 +58,7 @@ nohup python -m vllm.entrypoints.openai.api_server \
 - **Local PostgreSQL 17** at `127.0.0.1:5432` db `pankgraph` (user `postgres` / pw `password`, connect with `gssencmode=disable`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
 - **GLKB API** — local `GLKB_agent` FastAPI service at `http://localhost:8004/stream` (SSE-streaming literature synthesis; override with the `GLKB_URL` env var); called by `skills/glkb/scripts/glkb_client.py`. Must be running for literature to work (else `call_glkb` returns `status:"failed"` and the literature block is simply omitted). The old remote (`glkb.dcmb.med.umich.edu/api/frontend/llm_agent`) was retired — it now 301-redirects to a static site; the client guards against that (rejects redirects / non-`event-stream` responses). HIRN is fully disabled
 - **RDS Lambda** — gene-name → Ensembl-ID resolution for text2sql
-- **Anthropic Claude** — Sonnet for orchestration + format, Haiku for chat follow-up classifier
+- **Anthropic Claude** — Sonnet (`claude-sonnet-4-6`) for orchestration + format + the chat follow-up classifier (`_classify_followup`); Haiku (`claude-haiku-4-5-20251001`) only for the live markdown-repair fallback
 
 ### Tests
 ```bash
@@ -129,6 +130,8 @@ Current schema: `PankBaseAgent/text_to_cypher/data/input/neo4j_schema_ada.json` 
 - Relationship names with semicolons MUST be backtick-escaped in Cypher: `` [r:`function_annotation;GO`] ``
 - New nodes: `donor`, `Sample node`, `data_modality`, `anatomical_structure`, `kegg`, `reactome`
 
+Regenerate the schema JSON from the live KG after a Neo4j reload with `python3 tools/resync_schema_ada.py` — it rewrites `neo4j_schema_ada.json` so node/edge types match the live graph, infers property types, enumerates `values` for low-cardinality props (`examples` otherwise), and preserves existing curated descriptions (only refreshing the trailing `(N edges|nodes)` counts).
+
 ### Server endpoints (`server.py`)
 
 All agents are pre-initialized at startup via FastAPI lifespan. `server.py` loads `.env` before any module imports so that `ANTHROPIC_API_KEY` is available to `claude.py`/`qp_query_planner.py` (which read env at import/first-use time). An alias `CLAUDE_API_KEY → ANTHROPIC_API_KEY` is applied for backward-compat.
@@ -155,7 +158,7 @@ All agents are pre-initialized at startup via FastAPI lifespan. `server.py` load
 
 1. `schema_loader.py` — caches schema, produces compact ~400-token string for vLLM
 2. `text2cypher_agent.py` — LangChain wrapper around vLLM (port 8002) — lazy singleton
-3. `cypher_validator.py` (~2000 lines) — scores 0-100, auto-fixes quotes, relationship variables, DISTINCT, direction, LIMIT injection for heavy relationships (`OCR_peak_in`, `gene_activity_score_in`, etc.)
+3. `cypher_validator.py` (~2000 lines) — scores 0-100, auto-fixes quotes, relationship variables, DISTINCT, direction, LIMIT injection for heavy relationships (`OCR_peak_in`, `gene_activity_score_in`, etc.). `fix_cell_type_references` also resolves abbreviated/reordered cell-type labels (e.g. `"ductal"`, `"MUC5B+Ductal"`) to the canonical `anatomical_structure.name` (`"ductal cell"`, `"pancreatic ductal cell MUC5B+"`) via **token-set matching** against the schema names (split on non-alphanumerics so `+` separates, generic words stripped, unique-match only) — without this, guessed names miss the stored string and the query returns 0 rows (the failure that collapses a plan to literature-only).
 4. Refinement loop: if score < 90, retry up to 5 iterations with error feedback
 
 ### Text-to-SQL (`PankBaseAgent/text_to_sql/`)
@@ -172,14 +175,15 @@ The immune-cell ssGSEA REST integration is fully disabled. `skills/ssgsea/ssgsea
 
 ### Query planner skill (`skills/query-planner/scripts/`)
 
-Core executor: `qp_query_planner.py:execute_plan()` has three paths:
-- `_execute_pure_kg_chain()` — existing `combine_chain()` + single compound Cypher via WITH clauses
-- `_execute_cross_source_chain()` — sequential, entities flow via `depends_on`
+Core executor: `qp_query_planner.py:execute_plan()` has these paths:
+- `_execute_sequential_kg_chain()` — **default for pure-KG chains** (`SEQUENTIAL_KG_CHAIN=1`). Runs steps sequentially and constrains each step's join node to the prior step's extracted entity IDs (`WHERE id IN [...]`, via `_inject_prior_ids_into_kg_step`) — **data-flow combine**, no Cypher string-stitching. The model keeps writing simple one-hop queries; the multi-hop join is performed by passing IDs. Per-step `{nodes, edges}` are unioned (deduped) into one merged result, matching the legacy single-result contract. Injection is deterministic-first (constrains the pre-translated step Cypher; ID join key capped at `_SEQ_KG_ID_CAP=5000`), falling back to NL-augmented re-translation only when no join node is found. Each step's output is bounded by a `LIMIT` injected **after** the `WHERE` (right before the final `collect()`, so it caps output not join keys — `_cap_rows_before_collect`): steps that feed a downstream join use `_SEQ_KG_ID_CAP` (5000, keys preserved), the terminal step uses `SEQ_KG_STEP_LIMIT` (500). Hitting a cap emits `seq_kg_step_truncated` (no silent truncation).
+- `_execute_pure_kg_chain()` — legacy `combine_chain()` (string-combines per-step Cypher into one compound query via WITH clauses). Now a **fallback**: used when `SEQUENTIAL_KG_CHAIN=0`, or when the sequential run returns empty and `SEQ_KG_CHAIN_FALLBACK=1` (emits `chain_seq_fallback_to_combine`). `combine_chain`'s regex variable-stitching + intermediate `LIMIT` on selective joins made it error-prone; the sequential path replaces it.
+- `_execute_cross_source_chain()` — sequential, entities flow via `depends_on` (mixed KG + non-KG sources)
 - `_execute_parallel_with_deps()` — KG in parallel + non-KG steps respect `depends_on`
 
 ### Streaming events (`stream_events.py`)
 
-NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`, `answer_cache_*`, `literature_cache_*`.
+NDJSON per line: `{"event": str, "ts": float, "data": dict}`. Event prefixes: `plan_*`, `planner_*`, `pipeline_*`, `cypher_*`, `text2cypher_*`, `genomic_*`, `functional_data_*`, `chain_step_*`, `seq_kg_inject`, `seq_kg_step_truncated`, `chain_seq_fallback_to_combine`, `format_*`, `rigor_format_*`, `hallucination_check_*`, `markdown_normalized`, `answer_cache_*`, `literature_cache_*`.
 
 `markdown_normalized` is emitted by `markdown_normalizer.repair_markdown` (wired into `main.py:extract_markdown`, covering every `answer_markdown`) ONLY when the deterministic GFM repair changed something — payload `{changed, fixes: [...], llm_repair: bool}`. The deterministic pass fixes blank-lines-around-tables/HRs, delimiter rows, and cell-count mismatches; a Claude Haiku fallback repairs the rare table block left structurally ambiguous. The literature block (`combine_literature_block`) runs the deterministic pass only.
 
