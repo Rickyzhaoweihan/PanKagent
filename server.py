@@ -239,11 +239,38 @@ async def lifespan(app: FastAPI):
         logger.error(f"✗ Failed to initialize: {e}", exc_info=True)
         raise
 
+    # Sized dispatch executor (Tier 1). Every endpoint offloads its blocking
+    # pipeline with loop.run_in_executor(None, ...) / asyncio.to_thread, which
+    # otherwise share asyncio's default ThreadPoolExecutor (~min(32, cpu+4)) —
+    # a hard ceiling below MAX_CONCURRENT_QUERIES. We install one explicitly-sized
+    # pool as the loop default so MAX_CONCURRENT_QUERIES heavy pipelines PLUS their
+    # per-request heartbeat / confirm-wait tasks all have dedicated capacity.
+    try:
+        _dispatch_threads = int(os.environ.get(
+            "DISPATCH_THREADS",
+            str(max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "30"))) + 16),
+        ))
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        _dispatch_executor = _TPE(
+            max_workers=_dispatch_threads, thread_name_prefix="dispatch",
+        )
+        asyncio.get_running_loop().set_default_executor(_dispatch_executor)
+        app.state.dispatch_executor = _dispatch_executor
+        logger.info("Dispatch executor installed: %d threads", _dispatch_threads)
+    except Exception as e:
+        app.state.dispatch_executor = None
+        logger.warning("Dispatch executor setup failed: %s", e)
+
     yield  # Server runs here
 
     _stop_cleanup.set()
 
     logger.info("Shutting down server...")
+    try:
+        if getattr(app.state, "dispatch_executor", None) is not None:
+            app.state.dispatch_executor.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
     try:
         import session_store
         session_store.close_db()
@@ -868,9 +895,11 @@ SERVER_START_TIME = time.time()
 # Bounded concurrency for pipeline execution. The pipeline no longer mutates
 # shared module-global state (rigor is passed explicitly; cypher/result buffers
 # are thread-local in utils.py), so multiple queries can run at once. The bound
-# protects the single GPU (vLLM) and external API rate limits — each pipeline
-# already fans out to ~PLANNER candidates. Tune via MAX_CONCURRENT_QUERIES.
-MAX_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "5")))
+# protects the GPU fleet (vLLM via the gpu_router load balancer) and the data
+# backends — each pipeline already fans out to ~PLANNER candidates. The sized
+# dispatch executor (lifespan) gives this many pipelines real thread capacity.
+# Tune via MAX_CONCURRENT_QUERIES (and DISPATCH_THREADS for the dispatch pool).
+MAX_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "30")))
 _pipeline_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_QUERIES)
 
 # ---------------------------------------------------------------------------
