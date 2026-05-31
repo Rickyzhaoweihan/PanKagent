@@ -68,8 +68,10 @@ def _get_neo4j_driver():
         with _neo4j_driver_lock:
             if _neo4j_driver is None:
                 from neo4j import GraphDatabase
+                _neo4j_pool_size = int(os.environ.get("NEO4J_POOL_SIZE", "150"))
                 _neo4j_driver = GraphDatabase.driver(
-                    NEO4J_BOLT_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)
+                    NEO4J_BOLT_URI, auth=(NEO4J_USER, NEO4J_PASSWORD),
+                    max_connection_pool_size=_neo4j_pool_size,
                 )
     return _neo4j_driver
 

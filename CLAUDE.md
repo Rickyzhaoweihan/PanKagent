@@ -158,7 +158,7 @@ All agents are pre-initialized at startup via FastAPI lifespan. `server.py` load
 
 1. `schema_loader.py` — caches schema, produces compact ~400-token string for vLLM
 2. `text2cypher_agent.py` — LangChain wrapper around vLLM (port 8002) — lazy singleton
-3. `cypher_validator.py` (~2000 lines) — scores 0-100, auto-fixes quotes, relationship variables, DISTINCT, direction, LIMIT injection for heavy relationships (`OCR_peak_in`, `gene_activity_score_in`, etc.). `fix_cell_type_references` also resolves abbreviated/reordered cell-type labels (e.g. `"ductal"`, `"MUC5B+Ductal"`) to the canonical `anatomical_structure.name` (`"ductal cell"`, `"pancreatic ductal cell MUC5B+"`) via **token-set matching** against the schema names (split on non-alphanumerics so `+` separates, generic words stripped, unique-match only) — without this, guessed names miss the stored string and the query returns 0 rows (the failure that collapses a plan to literature-only).
+3. `cypher_validator.py` (~2000 lines) — scores 0-100, auto-fixes quotes, relationship variables, DISTINCT, direction, LIMIT injection for heavy relationships (`OCR_peak_in`, `gene_activity_score_in`, etc.). `fix_cell_type_references` also resolves abbreviated/reordered cell-type labels (e.g. `"ductal"`, `"MUC5B+Ductal"`) to the canonical `anatomical_structure.name` (`"ductal cell"`, `"pancreatic ductal cell MUC5B+"`) via **token-set matching** against the schema names (split on non-alphanumerics so `+` separates, generic words stripped, unique-match only) — without this, guessed names miss the stored string and the query returns 0 rows (the failure that collapses a plan to literature-only). Disease names are normalized separately by `fix_disease_naming` (`"Type 1 Diabetes"`/`"T1D"` → `"type 1 diabetes"`). **Not every empty result is a naming bug, though**: some questions hit genuine data gaps (e.g. `fGSEA_enriched_in` pathway-enrichment data exists for only ~5 cell types, so "pathways enriched in beta cells" correctly returns 0 rows). When every step returns 0 rows and `_filter_empty_steps` removes them all, `main.py:format_plan_as_markdown` renders an explicit "No matching data was found" notice rather than a blank 0-step plan that reads like a failure.
 4. Refinement loop: if score < 90, retry up to 5 iterations with error feedback
 
 ### Text-to-SQL (`PankBaseAgent/text_to_sql/`)
@@ -243,6 +243,17 @@ The server runs multiple query pipelines at once, bounded by `_pipeline_semaphor
 ### Git remote policy
 
 The ONLY remote configured is `rickyzhao` (`git@github.com:Rickyzhaoweihan/Pankagent.git`). `main` tracks `rickyzhao/main`, so a bare `git push` publishes there. Do not add any other remote (in particular, not `wangyiqunumich/pank3-ai-agent` — that repo is unrelated to this working copy).
+
+### Repository layout notes (what is live vs. not)
+
+The repo root mixes live code with historical artifacts — be selective about what you trust and edit:
+
+- **Live entry points**: `main.py`, `server.py`. Most live modules sit at the root (`literature_runner.py`, `session_store.py`, `stream_events.py`, `markdown_normalizer.py`, `claude.py`, `utils.py`, `multi_thread_workers.py`, `performance_monitor.py`). Several text2cypher/text2sql modules at the root (`qp_query_planner.py`, `schema_loader.py`, `neo4j_executor.py`, `text2cypher_agent.py`, `cypher_validator.py`) are **symlinks** to their canonical homes under `PankBaseAgent/`/`skills/` — edit either path, it's the same file.
+- **Root utility scripts (not part of the server runtime)**: `run_rollouts.py` (batch rollout evaluation; `run_rollouts.sbatch` for Slurm), `view_experience.py` (inspect the experience buffer), `query_pankgraph_pg.py` (direct PostgreSQL queries), `profiling_tools.py`, `batch_evaluator.py` (experience-buffer curation).
+- **Legacy / disabled — do not edit or wire in**: `legacy/` (older copies of `main.py`/`server.py`/`PankBaseAgent`), `GLKBAgent/` and `hirn_publication_retrieval/` (superseded — GLKB now runs via `skills/glkb/` + `literature_runner.py`, HIRN is fully disabled), `TemplateToolAgent/`, `skills/hpap-database-metadata/` and `skills/ssgsea/` (both disabled, see above), `ssGSEA.R`.
+- **Historical design notes, NOT authoritative**: the many root `*.md` files (e.g. `BEFORE_AFTER_COMPARISON.md`, `CYPHER_FILTERING_*.md`, `PROMPT_OVERFITTING_FIX.md`, `FORMAT_*.md`, `PARALLEL_EXECUTION_AND_QUERY_LIMITS.md`) are point-in-time change writeups. This `CLAUDE.md` and `README.md` are the current source of truth; prefer them over the dated notes.
+- **`.env.example` is stale** — it points `NEO4J_SCHEMA_PATH` at the old `neo4j_schema.json`; the live schema is `neo4j_schema_ada.json` (see the Neo4j ADA schema section). Don't copy it verbatim.
+- Untracked at the repo root: rotated `server.log.*` files, `server.pid`/`vllm.pid`, and `tools/` (`resync_schema_ada.py` lives here but isn't committed).
 
 ## RL training (`rl_implementation/`)
 

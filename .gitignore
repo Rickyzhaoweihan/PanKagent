@@ -66,3 +66,7 @@ checkpoints/
 data/output/
 *.db
 *.sqlite
+# gpu_router runtime artifacts (machine-specific; never commit)
+gpu_router/*.pid
+gpu_router/*.lock
+gpu_router/watchdog_state.json

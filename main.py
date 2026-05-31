@@ -16,8 +16,9 @@ import re
 import time
 import hashlib
 import traceback
-from queue import Queue
+from queue import Queue, Empty
 from _thread import start_new_thread
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "skills", "query-planner", "scripts"))
@@ -32,7 +33,11 @@ PRINT_FUNC_CALL = True
 PRINT_FUNC_RESULT = True
 set_log_enable(True)
 
-PLANNER_CANDIDATES = 5
+# Outer test-time scaling: candidate plans tried per query (chat path). Each
+# candidate is a full plan→execute fan-out, so this directly multiplies the
+# per-query thread/vLLM/Neo4j load — env-tunable so it can be dialed down under
+# high concurrency without a code change.
+PLANNER_CANDIDATES = int(os.environ.get("PLANNER_CANDIDATES", "5"))
 
 
 def _select_pipeline(is_complex: bool, rigor: bool = False, **kwargs) -> str:
@@ -212,21 +217,24 @@ def chat_one_round(messages_history: list[dict], question: str, rigor: bool = Fa
     t0 = time.time()
     q: Queue = Queue()
 
+    # Bounded candidate pool (Tier 2): one worker per candidate, capped, instead
+    # of raw start_new_thread. Each candidate isolates its own Neo4j buffer via
+    # reset_cypher_queries() on entry (thread-local), so no cross-candidate bleed.
+    _cand_pool = ThreadPoolExecutor(max_workers=max(1, PLANNER_CANDIDATES))
     for i in range(PLANNER_CANDIDATES):
-        reset_cypher_queries()
-        start_new_thread(
-            _run_planner_candidate,
-            (i, messages, question_with_prefix, q),
+        _cand_pool.submit(
+            _run_planner_candidate, i, messages, question_with_prefix, q,
         )
+    _cand_pool.shutdown(wait=False)
 
     collected: dict = {}
     deadline = time.time() + 240
     while len(collected) < PLANNER_CANDIDATES and time.time() < deadline:
-        time.sleep(0.3)
-        while not q.empty():
-            item = q.get_nowait()
-            cid = item[0]
-            collected[cid] = item[1:]
+        try:
+            item = q.get(timeout=max(0.0, deadline - time.time()))
+        except Empty:
+            break
+        collected[item[0]] = item[1:]
 
     if not collected:
         emit("planner_test_time_result", {
@@ -585,6 +593,20 @@ def format_plan_as_markdown(
 
     steps_with_data = 0
 
+    if not steps:
+        # No steps survive for one of two reasons: the planner produced none, or
+        # every generated query executed cleanly but matched 0 rows and
+        # _filter_empty_steps removed them. Say so honestly instead of showing a
+        # bare "### Steps" header that reads like a system failure — the data may
+        # simply not exist in PanKgraph (e.g. fGSEA pathway-enrichment data covers
+        # only a few cell types), or the entity may be recorded under another name.
+        parts.append(
+            "_No matching data was found in the knowledge graph for this question._ "
+            "The queries ran successfully but returned no results — the requested "
+            "entity or relationship may not exist in PanKgraph, or may be recorded "
+            "under a different name. Try rephrasing or asking about a related entity.\n"
+        )
+
     for i, step in enumerate(steps):
         sid = step.get("id", i + 1)
         nl = step.get("natural_language", "")
@@ -644,7 +666,10 @@ def build_execution_summary(plan: dict, neo4j_results: list[dict]) -> list[dict]
     return summary
 
 
-PLAN_START_CANDIDATES = 5
+# Plan-mode test-time scaling: candidate plans tried per /plan/start. Env-tunable
+# (PLAN_START_CANDIDATES) so fan-out can be dialed down under high concurrency;
+# defaults to PLANNER_CANDIDATES for backward-compatible behavior.
+PLAN_START_CANDIDATES = int(os.environ.get("PLAN_START_CANDIDATES", str(PLANNER_CANDIDATES)))
 HIRN_SEARCH_TIMEOUT = 10  # seconds to wait for HIRN literature search
 
 
@@ -1321,8 +1346,11 @@ def run_plan_start(question: str, use_literature: bool = True,
     t0 = time.time()
     q: Queue = Queue()
 
+    # Bounded candidate pool (Tier 2) instead of raw start_new_thread per candidate.
+    _cand_pool = ThreadPoolExecutor(max_workers=max(1, n))
     for i in range(n):
-        start_new_thread(_run_plan_candidate, (question, i, q, None, history_context))
+        _cand_pool.submit(_run_plan_candidate, question, i, q, None, history_context)
+    _cand_pool.shutdown(wait=False)
 
     # Literature is now handled by a background thread in server.py — not spawned here.
     literature_result = ""
@@ -1330,10 +1358,11 @@ def run_plan_start(question: str, use_literature: bool = True,
     collected: dict[int, tuple] = {}
     deadline = time.time() + 180
     while len(collected) < n and time.time() < deadline:
-        time.sleep(0.3)
-        while not q.empty():
-            item = q.get_nowait()
-            collected[item[0]] = item[1:]  # (score, plan, neo4j_results, error)
+        try:
+            item = q.get(timeout=max(0.0, deadline - time.time()))
+        except Empty:
+            break
+        collected[item[0]] = item[1:]  # (score, plan, neo4j_results, error)
 
     if not collected:
         emit("plan_test_time_result", {

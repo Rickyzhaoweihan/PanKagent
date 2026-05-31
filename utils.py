@@ -5,7 +5,9 @@ import traceback
 import threading
 from typing import Tuple, List
 from _thread import start_new_thread
-from queue import Queue
+from queue import Queue, Empty
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multi_thread_workers import LEAF_THREADS
 import time
 import sys
 import re
@@ -350,25 +352,35 @@ __all__ = ['run_functions', 'reset_cypher_queries', 'add_cypher_query', 'get_all
 
 
 def run_functions(functions: list[dict]) -> str:
-    q = Queue()
+    # Bounded leaf-level fan-out via a ThreadPoolExecutor instead of one raw
+    # thread per function with a sleep() busy-wait. The leading "N." index on
+    # each result preserves output ordering after as_completed.
+    if not functions:
+        return ''
     results = []
-    num = len(functions)
-    for i in range(0, len(functions)):
+
+    def _call(i):
         name = functions[i]['name']
         input = functions[i]['input']
         func = eval(name)
-        start_new_thread(lambda _func, _input, _index: q.put(_func(_input, _index + 1)), (func, input, i))
-    while (q.qsize() < num):
-        time.sleep(0.2)
-    while (q.qsize() > 0):
-        result = q.get()
-        # Handle tuple return (from pankbase_chat_one_round which returns (result, planning_data))
-        if isinstance(result, tuple):
-            result = result[0]  # Take just the text result
-        results.append(result)
+        return func(input, i + 1)
+
+    workers = max(1, min(len(functions), LEAF_THREADS))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        fut_to_i = {pool.submit(_call, i): i for i in range(len(functions))}
+        for fut in as_completed(fut_to_i):
+            i = fut_to_i[fut]
+            try:
+                result = fut.result()
+            except Exception:
+                result = (f"{i + 1}. {functions[i]['name']}: \n"
+                          f"Status: error\nError: {traceback.format_exc()[:1000]}\n\n")
+            # Handle tuple return (from pankbase_chat_one_round which returns (result, planning_data))
+            if isinstance(result, tuple):
+                result = result[0]  # Take just the text result
+            results.append(result)
     results.sort(key=lambda x: int(x.split('.')[0]))
-    result = ''.join(results)
-    return result    
+    return ''.join(results)
 
 
 
@@ -400,18 +412,13 @@ if __name__ == "__main__":
 def template_chat_one_round(input: str, index: int) -> str:
 	q = Queue()
 	start_new_thread(_Template_Tool_Call_one_round, (input, q))
-	start = time.time()
-	while (time.time() - start < 100):
-		time.sleep(0.2)
-		if (q.qsize() == 1):
-			break
-	size = q.qsize()
 	result = f'{index}. TemplateToolAgent chat_one_round: {str([input])[1:-1]}\n'
-	if (size == 0):
+	try:
+		success, res = q.get(timeout=100)
+	except Empty:
 		result += 'Status: timeout\n'
 		result += 'Error: Cannot get response from TemplateToolAgent in 100 seconds\n\n'
 		return result
-	success, res = q.get(block=False)
 	if (success == False):
 		result += 'Status: error\n'
 		result += f'Error: {str([res])[1:-1]}\n\n'
@@ -438,19 +445,14 @@ def _Template_Tool_Call_one_round(input: str, q: Queue) -> str:
 def pankbase_chat_one_round(input: str, index: int) -> str:
 	q = Queue()
 	start_new_thread(_pankbase_chat_one_round, (input, q))
-	start = time.time()
-	while (time.time() - start < 180):  # 3 min timeout for full pipeline
-		time.sleep(0.2)
-		if (q.qsize() == 1):
-			break
-	size = q.qsize()
 	result = f'{index}. PankBaseAgent chat_one_round: {str([input])[1:-1]}\n'
 	planning_data = {}
-	if (size == 0):
+	try:
+		success, res, cypher_queries_str, planning_data = q.get(timeout=180)  # 3 min timeout for full pipeline
+	except Empty:
 		result += 'Status: timeout\n'
 		result += 'Error: Cannot get response from PankBaseAgent in 180 seconds\n\n'
 		return result, planning_data
-	success, res, cypher_queries_str, planning_data = q.get(block=False)
 	if (success == False):
 		result += 'Status: error\n'
 		result += f'Error: {str([res])[1:-1]}\n\n'
@@ -525,19 +527,14 @@ def hirn_chat_one_round(input: str, index: int) -> str:
 	"""
 	q = Queue()
 	start_new_thread(_hirn_chat_one_round, (input, q))
-	start = time.time()
-	while (time.time() - start < 30):
-		time.sleep(0.2)
-		if (q.qsize() == 1):
-			break
-	size = q.qsize()
 	result = f'{index}. HIRN_literature chat_one_round: {str([input])[1:-1]}\n'
-	if (size == 0):
+	try:
+		success, res = q.get(timeout=30)
+	except Empty:
 		result += 'Status: timeout\n'
 		result += 'Error: Cannot get response from HIRN Literature skill in 30 seconds\n\n'
 		emit("hirn_result", {"status": "timeout", "query": input[:200]})
 		return result
-	success, res = q.get(block=False)
 	if (success == False):
 		result += 'Status: error\n'
 		result += f'Error: {str([res])[1:-1]}\n\n'
