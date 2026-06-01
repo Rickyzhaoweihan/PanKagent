@@ -35,8 +35,9 @@ import time
 import logging
 import threading
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from literature_runner import combine_literature_block, run_literature_parallel
+from pipeline_stats import PipelineStats
 from datetime import datetime, timezone
 
 # Load .env BEFORE importing modules that read ANTHROPIC_API_KEY at import time
@@ -902,6 +903,58 @@ SERVER_START_TIME = time.time()
 MAX_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "30")))
 _pipeline_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_QUERIES)
 
+# Aggregate observability over the semaphore (active/waiting/service-time EMA),
+# used by /plan/stream to surface a rough queue ETA. Pure bookkeeping — the
+# semaphore remains the real admission primitive; we just instrument every
+# acquire/release so the ETA reflects ALL pipeline load (chat + plan + confirm).
+_pipeline_stats = PipelineStats(
+    MAX_CONCURRENT_QUERIES,
+    seed_service_seconds=float(os.environ.get("PLAN_STREAM_SEED_SERVICE_SECONDS", "50")),
+)
+
+
+@contextmanager
+def pipeline_slot():
+    """Drop-in for ``with _pipeline_semaphore:`` that also maintains _pipeline_stats.
+
+    Blocking acquire — used by every non-streaming pipeline endpoint.
+    """
+    _pipeline_stats.enter_wait()
+    _pipeline_semaphore.acquire()
+    _pipeline_stats.leave_wait()
+    _pipeline_stats.acquire_active()
+    t0 = time.monotonic()
+    try:
+        yield
+    finally:
+        _pipeline_stats.release_active(time.monotonic() - t0)
+        _pipeline_semaphore.release()
+
+
+def _try_admit() -> bool:
+    """Non-blocking slot acquire for the streaming admission loop. On success the
+    caller OWNS the slot and MUST eventually call ``_release_slot`` exactly once.
+    Does not touch the wait-counter (the streaming caller manages its own)."""
+    if _pipeline_semaphore.acquire(blocking=False):
+        _pipeline_stats.acquire_active()
+        return True
+    return False
+
+
+def _release_slot(duration: float) -> None:
+    """Release a slot acquired via ``_try_admit`` and fold its duration into the EMA."""
+    _pipeline_stats.release_active(duration)
+    _pipeline_semaphore.release()
+
+
+def _busy_message(eta_seconds: float) -> str:
+    """Human-friendly 'service busy' line, shown only after a non-trivial wait."""
+    if eta_seconds < 90:
+        return "The service is busy right now — your request is queued and will start shortly."
+    mins = max(1, round(eta_seconds / 60))
+    return (f"Sorry, the service is busy — a lot of users are active right now. "
+            f"Estimated wait ~{mins} min; your request is queued and will run automatically.")
+
 # ---------------------------------------------------------------------------
 # Idempotent /chat/plan/confirm — result cache + in-flight de-duplication.
 #
@@ -948,7 +1001,7 @@ def _run_query(question: str, rigor: bool = True) -> str:
     Deprecated: kept for any remaining callers, but the chat endpoints now use
     ``_run_plan_pipeline`` + ``_run_confirm`` instead (plan-mode foundation).
     """
-    with _pipeline_semaphore:
+    with pipeline_slot():
         reset_cypher_queries()
         messages = []
         _, response = chat_one_round(messages, question, rigor=rigor)
@@ -964,7 +1017,7 @@ def _run_plan_pipeline(question: str, use_literature: bool = True,
     the planner can resolve entity references against prior conversation.
     """
     clean_q = clean_user_question(question)
-    with _pipeline_semaphore:
+    with pipeline_slot():
         return {
             "interpreted_question": clean_q,
             **run_plan_start(clean_q, use_literature=use_literature, chat_history=chat_history),
@@ -980,7 +1033,7 @@ def _run_plan_revise(
     literature_result: str,
 ) -> dict:
     """Wrap run_plan_revise under the request lock."""
-    with _pipeline_semaphore:
+    with pipeline_slot():
         return run_plan_revise(
             original_question=original_question,
             current_plan=current_plan,
@@ -1014,7 +1067,7 @@ def _run_confirm(
     round's neo4j_results (same query fingerprint) but ask a different question,
     so the data-only answer cache would otherwise replay the previous answer.
     """
-    with _pipeline_semaphore:
+    with pipeline_slot():
         return run_plan_confirm(
             question=question,
             neo4j_results=neo4j_results,
@@ -1052,6 +1105,7 @@ async def root():
             "chat_history": "GET /chat/history?session_id=X — get conversation history",
             "chat_end": "DELETE /chat/end?session_id=X — end session",
             "plan_start": "POST /plan/start — start interactive plan session (manual confirm)",
+            "plan_stream": "POST /plan/stream — same as /plan/start but streams NDJSON heartbeats while queued + a rough ETA after 60s of waiting (survives proxy idle timeouts)",
             "plan_revise": "POST /plan/revise — revise plan with user prompt",
             "plan_confirm": "POST /plan/confirm — confirm plan and get final answer",
             "functional_data": "POST /functional-data — resolve NL question to functional data API params (returns endpoint + URL + params only)",
@@ -1078,38 +1132,11 @@ async def health():
 # Plan confirmation endpoints
 # ---------------------------------------------------------------------------
 
-@app.post("/plan/start", response_model=PlanResponse)
-async def plan_start(request: PlanStartRequest):
-    """Start an interactive plan session.
-
-    Runs plan_query + translate_plan + execute_plan, stores the session,
-    and returns the plan as Markdown for the user to review.
-    """
-    start_time = time.time()
-
-    if not request.question or not request.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
-
-    raw_question = request.question.strip()
-    rigor = request.rigor
-    use_lit = request.use_literature
-    logger.info(f"[/plan/start] Received (rigor={rigor}, literature={use_lit}): {raw_question[:100]}...")
-
-    _cleanup_expired_sessions()
-
-    question = clean_user_question(raw_question)
-
-    def _do_plan():
-        with _pipeline_semaphore:
-            return run_plan_start(question, use_literature=use_lit)
-
-    try:
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _do_plan)
-    except Exception as e:
-        logger.error(f"[/plan/start] Error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Planning failed: {e}")
-
+def _finalize_plan_session(raw_question: str, question: str, rigor: bool,
+                           result: dict, start_time: float) -> PlanResponse:
+    """Create + persist a PlanSession from a completed run_plan_start result and
+    return the PlanResponse. Shared by /plan/start and /plan/stream so the two
+    stay in lockstep (session storage, markdown, event log)."""
     session_id = uuid.uuid4().hex[:12]
     session = PlanSession(
         session_id=session_id,
@@ -1136,7 +1163,7 @@ async def plan_start(request: PlanStartRequest):
         _persist_plan_session(session)
 
     processing_time = (time.time() - start_time) * 1000
-    logger.info(f"[/plan/start] Session {session_id} created with {len(result['plan'].get('steps', []))} steps, literature={session.use_literature}")
+    logger.info(f"[/plan] Session {session_id} created with {len(result['plan'].get('steps', []))} steps, literature={session.use_literature}")
 
     _log_plan_event(session_id, "plan_start", {
         "raw_question": raw_question,
@@ -1160,6 +1187,130 @@ async def plan_start(request: PlanStartRequest):
     )
 
 
+@app.post("/plan/start", response_model=PlanResponse)
+async def plan_start(request: PlanStartRequest):
+    """Start an interactive plan session.
+
+    Runs plan_query + translate_plan + execute_plan, stores the session,
+    and returns the plan as Markdown for the user to review.
+    """
+    start_time = time.time()
+
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    raw_question = request.question.strip()
+    rigor = request.rigor
+    use_lit = request.use_literature
+    logger.info(f"[/plan/start] Received (rigor={rigor}, literature={use_lit}): {raw_question[:100]}...")
+
+    _cleanup_expired_sessions()
+
+    question = clean_user_question(raw_question)
+
+    def _do_plan():
+        with pipeline_slot():
+            return run_plan_start(question, use_literature=use_lit)
+
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _do_plan)
+    except Exception as e:
+        logger.error(f"[/plan/start] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Planning failed: {e}")
+
+    return _finalize_plan_session(raw_question, question, rigor, result, start_time)
+
+
+@app.post("/plan/stream")
+async def plan_stream(request: PlanStartRequest):
+    """Streaming variant of ``/plan/start`` with queue-wait feedback.
+
+    Returns NDJSON (one JSON object per line):
+      {"event":"heartbeat","ts":<float>}                              — keep-alive (queued <60s, or while working)
+      {"event":"queued","data":{"estimated_wait_seconds":N,"message":...}}  — only after >60s of waiting
+      {"event":"processing","ts":<float>}                             — a pipeline slot was acquired
+      {"event":"result","data":{...PlanResponse...}}                  — done (carries session_id)
+      {"event":"error","status":<int>,"detail":<str>}
+
+    Admission is done with a NON-BLOCKING poll in the async layer, so a queued
+    request does not tie up a dispatch thread while it waits — it only grabs one
+    for the actual work. The slot is released via the work future's done-callback
+    so a mid-processing client disconnect can't release it early.
+    """
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    raw_question = request.question.strip()
+    rigor = request.rigor
+    use_lit = request.use_literature
+    logger.info(f"[/plan/stream] Received (rigor={rigor}, literature={use_lit}): {raw_question[:100]}...")
+
+    tick = float(os.environ.get("PLAN_STREAM_TICK_SECONDS", "5"))
+    threshold = float(os.environ.get("PLAN_STREAM_HEARTBEAT_THRESHOLD_SECONDS", "60"))
+    proc_heartbeat = 15.0
+
+    def _line(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False, default=str) + "\n"
+
+    async def _gen():
+        loop = asyncio.get_running_loop()
+        start_time = time.time()
+        _cleanup_expired_sessions()
+        admitted = False
+        t0 = 0.0
+        _pipeline_stats.enter_wait()
+        try:
+            # Clean the question off the event loop (a quick Claude call).
+            question = await loop.run_in_executor(None, clean_user_question, raw_question)
+
+            # --- admission: poll for a slot without holding a dispatch thread ---
+            wait_start = time.monotonic()
+            while not _try_admit():
+                if time.monotonic() - wait_start < threshold:
+                    yield _line({"event": "heartbeat", "ts": time.time()})
+                else:
+                    eta = _pipeline_stats.estimate_eta()
+                    yield _line({"event": "queued", "data": {
+                        "estimated_wait_seconds": round(eta),
+                        "message": _busy_message(eta),
+                    }})
+                await asyncio.sleep(tick)
+
+            # Admitted: we now own a slot. Hand release to the work future's
+            # callback so it survives a client disconnect during processing.
+            _pipeline_stats.leave_wait()
+            admitted = True
+            t0 = time.monotonic()
+            yield _line({"event": "processing", "ts": time.time()})
+
+            fut = loop.run_in_executor(
+                None, lambda: run_plan_start(question, use_literature=use_lit))
+            fut.add_done_callback(lambda f: _release_slot(time.monotonic() - t0))
+
+            while True:
+                try:
+                    result = await asyncio.wait_for(asyncio.shield(fut), timeout=proc_heartbeat)
+                    break
+                except asyncio.TimeoutError:
+                    yield _line({"event": "heartbeat", "ts": time.time()})
+
+            resp = _finalize_plan_session(raw_question, question, rigor, result, start_time)
+            yield _line({"event": "result", "data": resp.model_dump()})
+        except HTTPException as he:
+            yield _line({"event": "error", "status": he.status_code, "detail": str(he.detail)})
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[/plan/stream] error: {e}", exc_info=True)
+            yield _line({"event": "error", "status": 500, "detail": str(e)})
+        finally:
+            # If we never got admitted (disconnect/error while queued), drop our
+            # wait-count. Once admitted, the future's done-callback owns release.
+            if not admitted:
+                _pipeline_stats.leave_wait()
+
+    return StreamingResponse(_gen(), media_type="application/x-ndjson")
+
+
 @app.post("/plan/revise", response_model=PlanResponse)
 async def plan_revise(request: PlanReviseRequest):
     """Revise the current plan based on a user prompt.
@@ -1179,7 +1330,7 @@ async def plan_revise(request: PlanReviseRequest):
     session.chat_history.append({"role": "user", "content": prompt})
 
     def _do_revise():
-        with _pipeline_semaphore:
+        with pipeline_slot():
             return run_plan_revise(
                 original_question=session.original_question,
                 current_plan=session.current_plan,
@@ -1257,7 +1408,7 @@ async def plan_confirm(request: PlanConfirmRequest):
     start_time = time.time()
 
     def _do_confirm():
-        with _pipeline_semaphore:
+        with pipeline_slot():
             return run_plan_confirm(
                 question=session.original_question,
                 neo4j_results=session.neo4j_results,
@@ -2353,6 +2504,7 @@ if __name__ == "__main__":
     print(f"  GET    /chat/history       — get conversation history")
     print(f"  DELETE /chat/end           — end chat session")
     print(f"  POST   /plan/start    — interactive plan session (manual confirm)")
+    print(f"  POST   /plan/stream   — streaming /plan/start: heartbeats while queued + ETA after 60s")
     print(f"  POST   /plan/revise   — revise plan with user prompt")
     print(f"  POST   /plan/confirm  — confirm plan and get final answer")
     print("\nPress Ctrl+C to stop the server")
