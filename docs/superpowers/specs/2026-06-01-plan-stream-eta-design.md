@@ -1,7 +1,31 @@
-# Design — `POST /plan/stream` (streaming plan with queue ETA)
+# Design — streaming plan with queue ETA
 
 **Date:** 2026-06-01
-**Status:** approved design → ready for implementation plan
+**Status:** SUPERSEDED in part — see correction below.
+
+> ## ⚠️ Correction (2026-06-01, after deploy)
+>
+> This spec originally added the queue ETA to a **new `POST /plan/stream`** endpoint
+> (a streaming variant of `/plan/start`). Server access-log analysis showed the
+> frontend's real flow is the **chat** path — `POST /chat/start` (409 hits over
+> May 6–31) → `/chat/plan/confirm/stream` — and uses `/plan/*` only marginally; it
+> never calls `/plan/stream`.
+>
+> **What actually shipped:**
+> - `POST /plan/stream` was **removed**.
+> - The queue-ETA keep-alive was added to the **chat streaming handler**
+>   (`_stream_chat_handler`, powering `POST /chat/start/stream` and
+>   `POST /chat/message/stream`). The frontend should adopt `/chat/start/stream`.
+> - The reusable core below — `PipelineStats` + the instrumented `pipeline_slot()`
+>   at the 7 semaphore sites — shipped **unchanged** and is what makes the ETA work.
+> - Because admission for the chat path happens *inside* the executor (the handler
+>   blocks on `pipeline_slot()` deep in the call), the chat streaming handler uses a
+>   **heuristic** instead of async poll-admission: each ~15 s keep-alive, if the
+>   request has been outstanding > `STREAM_ETA_THRESHOLD_SECONDS` (60 s) **and**
+>   `estimate_eta() > 0` (pool saturated → almost certainly queued), it emits a
+>   `queued` line with the ETA; otherwise a plain `heartbeat`. The async
+>   non-blocking admission / `processing` event / `_try_admit`/`_release_slot`
+>   machinery designed below was **not** used and was removed.
 
 ## Context / Problem
 
