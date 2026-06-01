@@ -23,7 +23,7 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
    - `GET /chat/history` — fetch conversation history
    - `DELETE /chat/end` — end a chat session
 5. [Plan Endpoints (Standalone Manual Review)](#5-plan-endpoints-standalone-manual-review)
-   - `POST /plan/start`, `POST /plan/stream` (keep-alive + queue ETA), `POST /plan/revise`, `POST /plan/confirm`
+   - `POST /plan/start`, `POST /plan/revise`, `POST /plan/confirm`
 6. [Functional Data Endpoint](#6-functional-data-endpoint)
    - `POST /functional-data` — resolve NL question to islet assay API params
 7. [Feedback Endpoint](#7-feedback-endpoint)
@@ -69,14 +69,13 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `POST` | `/chat/message` | Send a follow-up; smart-router picks path | `session_id`, `question` | `route` (`follow_up` \| `new_query_pending` \| `new_query`), `answer_markdown`, optional `pending_plan_session_id`, `history_compressed` flag |
 | `POST` | `/chat/plan/confirm` | Confirm (optionally revise first) a pending plan. **Idempotent** — a retry replays the cached answer (200) for ~10 min instead of 404 | `chat_session_id`, `plan_session_id`, `revision_prompt?` | Final KG-only `answer_markdown`, updated `round` |
 | `POST` | `/chat/plan/confirm/stream` | Same as `/chat/plan/confirm` but **streams NDJSON** (heartbeats + final result) so long answers survive proxy idle timeouts | `chat_session_id`, `plan_session_id`, `revision_prompt?` | `application/x-ndjson` lines: `heartbeat`* then a `result` (or `error`) |
-| `POST` | `/chat/start/stream` | Same as `/chat/start` but **streams NDJSON** during planning so the plan survives proxy idle timeouts | `ChatStartRequest` | `application/x-ndjson`: `heartbeat`* then `result` (the `ChatResponse`) or `error` |
-| `POST` | `/chat/message/stream` | Same as `/chat/message` but **streams NDJSON** during classify+planning so a new_query plan survives proxy idle timeouts | `ChatMessageRequest` | `application/x-ndjson`: `heartbeat`* then `result` (the `ChatResponse`) or `error` |
+| `POST` | `/chat/start/stream` | Same as `/chat/start` but **streams NDJSON** during planning so the plan survives proxy idle timeouts; emits a **`queued`** line with a rough **ETA** when the server is busy >60 s | `ChatStartRequest` | `application/x-ndjson`: `heartbeat`*/`queued`* then `result` (the `ChatResponse`) or `error` |
+| `POST` | `/chat/message/stream` | Same as `/chat/message` but **streams NDJSON** during classify+planning so a new_query plan survives proxy idle timeouts; emits a **`queued`** line with a rough **ETA** when the server is busy >60 s | `ChatMessageRequest` | `application/x-ndjson`: `heartbeat`*/`queued`* then `result` (the `ChatResponse`) or `error` |
 | `POST` | `/chat/literature` | On-demand GLKB literature for the last completed round | `session_id` | `markdown` (block to append), `glkb`, `hirn` (always `{}`), `processing_time_ms` (~25–35 s) |
 | `POST` | `/chat/revise` | Revise the last *confirmed* plan + replace the last assistant turn | `session_id`, `prompt` | Updated `answer_markdown` for the current round |
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
 | `DELETE` | `/chat/end` | End and free a chat session | query `?session_id=…` | `status: "ended"`, deletes row from SQLite |
 | `POST` | `/plan/start` | Start a single-shot plan review | `question`, `rigor?`, `use_literature?` | `session_id`, `plan_markdown`, `plan_json` |
-| `POST` | `/plan/stream` | Same as `/plan/start` but **streams NDJSON** — heartbeats while the request is queued behind the concurrency limit, a rough **ETA** after 60 s of waiting, then the plan | `question`, `rigor?`, `use_literature?` | `application/x-ndjson` lines: `heartbeat`* / `queued`* (with ETA) → `processing` → `result` (the `PlanResponse`) or `error` |
 | `POST` | `/plan/revise` | Iterate the plan | `session_id`, `prompt` | Updated plan markdown / JSON |
 | `POST` | `/plan/confirm` | Execute + format the confirmed plan | `session_id` | Final `answer_markdown`, `cypher_queries`, `reasoning_trace`; deletes the `PlanSession` |
 | `POST` | `/functional-data` | Resolve NL question to islet assay API call | `question`, `donor_ids?` | `endpoint`, `url`, `params` — **no data rows returned** |
@@ -274,17 +273,29 @@ Pass `auto_confirm: true` to skip review and run everything in one shot (returns
 
 ### 4.1a `POST /chat/start/stream` & `POST /chat/message/stream` — keep-alive streaming for planning
 
-Identical inputs/behaviour to `/chat/start` and `/chat/message`, but the response is an **NDJSON stream** (`application/x-ndjson`). While the **planner** runs (and, on `/chat/start`, an optional auto-confirm), the server emits a `heartbeat` line roughly every 15 s, then a terminal `result` line carrying the **full `ChatResponse`** (same shape as the non-stream endpoint — including `route`, `plan_markdown`, `pending_plan_session_id`, etc.), or an `error` line.
+Identical inputs/behaviour to `/chat/start` and `/chat/message`, but the response is an **NDJSON stream** (`application/x-ndjson`). While the **planner** runs (and, on `/chat/start`, an optional auto-confirm), the server emits a keep-alive line roughly every 15 s, then a terminal `result` line carrying the **full `ChatResponse`** (same shape as the non-stream endpoint — including `route`, `plan_markdown`, `pending_plan_session_id`, etc.), or an `error` line.
 
 **Use these instead of the non-stream versions** when planning may take longer than your proxy/client idle timeout (~60 s) — otherwise a heavy `new_query` can fail with a "network error" *before the plan is returned*. Pair with `/chat/plan/confirm/stream` for the confirm step to make the whole flow proxy-safe.
 
+**Queue ETA (busy server).** The keep-alive line is normally `heartbeat`. But when your request has been outstanding **longer than 60 s** *and* the server is **at its concurrency limit** (i.e. you're almost certainly waiting in line behind other users), the keep-alive line becomes a **`queued`** line carrying a rough wait estimate so you can tell the user the service is busy instead of just spinning:
+
+| `event` | When | `data` |
+|---|---|---|
+| `heartbeat` | every ~15 s while planning (normal case) | `{ ts }` |
+| `queued` | every ~15 s, **only** once the request has waited > 60 s while the server is saturated | `{ estimated_wait_seconds, message }` |
+| `result` | terminal — success | full `ChatResponse` (`route`, `plan_markdown`, `pending_plan_session_id`, …) |
+| `error` | terminal — failure | `{ status, detail }` |
+
 ```
 {"event":"heartbeat","ts":1780000000.1}
-{"event":"heartbeat","ts":1780000015.2}
+{"event":"queued","ts":1780000060.3,"data":{"estimated_wait_seconds":175,"message":"Sorry, the service is busy — a lot of users are active right now. Estimated wait ~3 min; your request is queued and will run automatically."}}
 {"event":"result","data":{ ...full ChatResponse: route, plan_markdown, pending_plan_session_id, ... }}
 ```
 
-Read line-by-line; on `result`, use `data` exactly as you'd use the non-stream JSON response (e.g. branch on `data.route`, render `data.plan_markdown`, then call `/chat/plan/confirm/stream` with `data.pending_plan_session_id`). The fetch+ReadableStream parsing loop is identical to [§4.3a](#43a-post-chatplanconfirmstream--confirm-with-keep-alive-streaming).
+Notes:
+- `estimated_wait_seconds` is a **rough** server-side estimate (current queue depth × recent average plan time) — display it loosely ("~3 min"). `message` is a ready-to-show string.
+- **Short / unloaded requests never show `queued`** — if the server isn't saturated you only ever see `heartbeat` then `result`, even if the request itself takes a while.
+- On `result`, use `data` exactly as you'd use the non-stream JSON response (e.g. branch on `data.route`, render `data.plan_markdown`, then call `/chat/plan/confirm/stream` with `data.pending_plan_session_id`). The fetch+ReadableStream parsing loop is identical to [§4.3a](#43a-post-chatplanconfirmstream--confirm-with-keep-alive-streaming); just also handle the `queued` event (show the busy message).
 
 ---
 
@@ -561,69 +572,6 @@ Use these only if you want an explicit plan-review UX **without** chat history. 
   "plan_json": { "plan_type": "parallel", "steps": [...] },
   "use_literature": false,
   "error": null
-}
-```
-
-### 5.1a `POST /plan/stream` — `/plan/start` with keep-alive + queue ETA
-
-Identical inputs and result to `POST /plan/start`, but the response is an **NDJSON stream**
-(`application/x-ndjson`, one JSON object per line). Use it when the request may sit behind the
-server's concurrency limit under load: instead of the connection hanging silently (and the proxy
-aborting it at ~60 s), the server streams keep-alive lines while the request **waits in the queue**
-and while it **runs**, and once the wait gets long it tells the user roughly how much longer.
-
-**Request body (`PlanStartRequest`):** same as `/plan/start` — `{ question, rigor?, use_literature? }`.
-
-**Stream events** (read line-by-line; one JSON object per line):
-
-| `event` | When | `data` |
-|---|---|---|
-| `heartbeat` | every ~5 s while queued **for the first 60 s**, and every ~15 s while the plan is being built | `{ ts }` |
-| `queued` | every ~5 s while queued, **only once the wait exceeds 60 s** | `{ estimated_wait_seconds, message }` |
-| `processing` | once, the moment a pipeline slot is acquired | `{ ts }` |
-| `result` | terminal — success | full `PlanResponse` (incl. `session_id`, `plan_markdown`, `plan_json`) |
-| `error` | terminal — failure | `{ status, detail }` |
-
-Notes:
-- The `estimated_wait_seconds` is a **rough** server-side estimate (current queue depth × recent
-  average plan time), not an exact position — display it loosely ("~3 min"). `message` is a
-  ready-to-show string, e.g. *"Sorry, the service is busy — a lot of users are active right now.
-  Estimated wait ~3 min; your request is queued and will run automatically."*
-- **Short waits never show the busy message** — if a slot is free (or frees within 60 s) you only
-  ever see `heartbeat`, then `processing`, then `result`. The `queued`/ETA events appear only when
-  the request actually waits longer than 60 s.
-- On `result`, use `data` exactly as you'd use the `/plan/start` JSON response (render
-  `data.plan_markdown`, keep `data.session_id` for `/plan/revise` / `/plan/confirm`).
-- The request keeps its place in the queue for the life of the connection; if the client
-  disconnects, it leaves the queue.
-
-**Frontend pattern (fetch + ReadableStream):**
-```js
-const res = await fetch(`${API_BASE}/plan/stream`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ question, rigor: true, use_literature: false }),
-});
-if (!res.ok) throw new Error(`plan/stream failed: ${res.status}`); // 400 before stream
-const reader = res.body.getReader();
-const decoder = new TextDecoder();
-let buf = "";
-for (;;) {
-  const { value, done } = await reader.read();
-  if (done) break;
-  buf += decoder.decode(value, { stream: true });
-  let nl;
-  while ((nl = buf.indexOf("\n")) >= 0) {
-    const line = buf.slice(0, nl).trim();
-    buf = buf.slice(nl + 1);
-    if (!line) continue;
-    const evt = JSON.parse(line);
-    if (evt.event === "heartbeat")       { /* keep spinner alive */ }
-    else if (evt.event === "queued")     { showBusy(evt.data.message, evt.data.estimated_wait_seconds); }
-    else if (evt.event === "processing") { showBuildingPlan(); }
-    else if (evt.event === "result")     { renderPlan(evt.data.plan_markdown); planId = evt.data.session_id; }
-    else if (evt.event === "error")      { showError(evt.detail); }
-  }
 }
 ```
 
@@ -1320,8 +1268,8 @@ Practical guidance:
 | `POST` | `/chat/message` | `ChatMessageRequest` | Follow-up; smart-routed |
 | `POST` | `/chat/plan/confirm` | `ChatPlanConfirmRequest` | Confirm pending `new_query_pending`; returns KG-only answer (idempotent: retries replay cached answer ~10 min) |
 | `POST` | `/chat/plan/confirm/stream` | `ChatPlanConfirmRequest` | Same as confirm but NDJSON heartbeats + final `result` (survives proxy idle timeouts) |
-| `POST` | `/chat/start/stream` | `ChatStartRequest` | Same as `/chat/start` but NDJSON heartbeats during planning + final `result` (survives proxy idle timeouts) |
-| `POST` | `/chat/message/stream` | `ChatMessageRequest` | Same as `/chat/message` but NDJSON heartbeats during planning + final `result` (survives proxy idle timeouts) |
+| `POST` | `/chat/start/stream` | `ChatStartRequest` | Same as `/chat/start` but NDJSON heartbeats during planning (+ a `queued` ETA line when busy >60 s) + final `result` (survives proxy idle timeouts) |
+| `POST` | `/chat/message/stream` | `ChatMessageRequest` | Same as `/chat/message` but NDJSON heartbeats during planning (+ a `queued` ETA line when busy >60 s) + final `result` (survives proxy idle timeouts) |
 | `POST` | `/chat/literature` | `ChatLiteratureRequest` | On-demand GLKB literature (~25-35s); append to answer |
 | `POST` | `/chat/revise` | `ChatReviseRequest` | Revise last confirmed plan |
 | `GET` | `/chat/history?session_id=...` | — | Fetch conversation |

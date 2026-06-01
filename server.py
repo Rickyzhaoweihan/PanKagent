@@ -904,12 +904,13 @@ MAX_CONCURRENT_QUERIES = max(1, int(os.environ.get("MAX_CONCURRENT_QUERIES", "30
 _pipeline_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_QUERIES)
 
 # Aggregate observability over the semaphore (active/waiting/service-time EMA),
-# used by /plan/stream to surface a rough queue ETA. Pure bookkeeping — the
-# semaphore remains the real admission primitive; we just instrument every
-# acquire/release so the ETA reflects ALL pipeline load (chat + plan + confirm).
+# used by the chat streaming handler to surface a rough queue ETA. Pure
+# bookkeeping — the semaphore remains the real admission primitive; we just
+# instrument every acquire/release so the ETA reflects ALL pipeline load
+# (chat + plan + confirm).
 _pipeline_stats = PipelineStats(
     MAX_CONCURRENT_QUERIES,
-    seed_service_seconds=float(os.environ.get("PLAN_STREAM_SEED_SERVICE_SECONDS", "50")),
+    seed_service_seconds=float(os.environ.get("STREAM_ETA_SEED_SERVICE_SECONDS", "50")),
 )
 
 
@@ -929,22 +930,6 @@ def pipeline_slot():
     finally:
         _pipeline_stats.release_active(time.monotonic() - t0)
         _pipeline_semaphore.release()
-
-
-def _try_admit() -> bool:
-    """Non-blocking slot acquire for the streaming admission loop. On success the
-    caller OWNS the slot and MUST eventually call ``_release_slot`` exactly once.
-    Does not touch the wait-counter (the streaming caller manages its own)."""
-    if _pipeline_semaphore.acquire(blocking=False):
-        _pipeline_stats.acquire_active()
-        return True
-    return False
-
-
-def _release_slot(duration: float) -> None:
-    """Release a slot acquired via ``_try_admit`` and fold its duration into the EMA."""
-    _pipeline_stats.release_active(duration)
-    _pipeline_semaphore.release()
 
 
 def _busy_message(eta_seconds: float) -> str:
@@ -1097,15 +1082,14 @@ async def root():
             "chat_start": "POST /chat/start — start multi-turn dialogue (returns plan for review; auto_confirm=true to run in one shot)",
             "chat_message": "POST /chat/message — follow-up; smart-routed (follow_up reuses stored data, new_query returns pending plan)",
             "chat_plan_confirm": "POST /chat/plan/confirm — confirm (and optionally revise) pending new_query plan from /chat/message (idempotent; retries replay the cached answer)",
-            "chat_start_stream": "POST /chat/start/stream — same as /chat/start but streams NDJSON heartbeats during planning + final result (survives proxy idle timeouts)",
-            "chat_message_stream": "POST /chat/message/stream — same as /chat/message but streams NDJSON heartbeats during planning + final result (survives proxy idle timeouts)",
+            "chat_start_stream": "POST /chat/start/stream — same as /chat/start but streams NDJSON heartbeats during planning (+ a 'queued' line with a rough ETA when the server is busy >60s) + final result (survives proxy idle timeouts)",
+            "chat_message_stream": "POST /chat/message/stream — same as /chat/message but streams NDJSON heartbeats during planning (+ a 'queued' line with a rough ETA when the server is busy >60s) + final result (survives proxy idle timeouts)",
             "chat_plan_confirm_stream": "POST /chat/plan/confirm/stream — same as /chat/plan/confirm but streams NDJSON heartbeats + final result (survives proxy idle timeouts on long answers)",
             "chat_revise": "POST /chat/revise — revise the most recent confirmed plan in the session, auto-confirm",
             "chat_literature": "POST /chat/literature — on-demand GLKB literature for the last completed round (~25-35s)",
             "chat_history": "GET /chat/history?session_id=X — get conversation history",
             "chat_end": "DELETE /chat/end?session_id=X — end session",
             "plan_start": "POST /plan/start — start interactive plan session (manual confirm)",
-            "plan_stream": "POST /plan/stream — same as /plan/start but streams NDJSON heartbeats while queued + a rough ETA after 60s of waiting (survives proxy idle timeouts)",
             "plan_revise": "POST /plan/revise — revise plan with user prompt",
             "plan_confirm": "POST /plan/confirm — confirm plan and get final answer",
             "functional_data": "POST /functional-data — resolve NL question to functional data API params (returns endpoint + URL + params only)",
@@ -1135,8 +1119,7 @@ async def health():
 def _finalize_plan_session(raw_question: str, question: str, rigor: bool,
                            result: dict, start_time: float) -> PlanResponse:
     """Create + persist a PlanSession from a completed run_plan_start result and
-    return the PlanResponse. Shared by /plan/start and /plan/stream so the two
-    stay in lockstep (session storage, markdown, event log)."""
+    return the PlanResponse (session storage, markdown, event log)."""
     session_id = uuid.uuid4().hex[:12]
     session = PlanSession(
         session_id=session_id,
@@ -1220,95 +1203,6 @@ async def plan_start(request: PlanStartRequest):
         raise HTTPException(status_code=500, detail=f"Planning failed: {e}")
 
     return _finalize_plan_session(raw_question, question, rigor, result, start_time)
-
-
-@app.post("/plan/stream")
-async def plan_stream(request: PlanStartRequest):
-    """Streaming variant of ``/plan/start`` with queue-wait feedback.
-
-    Returns NDJSON (one JSON object per line):
-      {"event":"heartbeat","ts":<float>}                              — keep-alive (queued <60s, or while working)
-      {"event":"queued","data":{"estimated_wait_seconds":N,"message":...}}  — only after >60s of waiting
-      {"event":"processing","ts":<float>}                             — a pipeline slot was acquired
-      {"event":"result","data":{...PlanResponse...}}                  — done (carries session_id)
-      {"event":"error","status":<int>,"detail":<str>}
-
-    Admission is done with a NON-BLOCKING poll in the async layer, so a queued
-    request does not tie up a dispatch thread while it waits — it only grabs one
-    for the actual work. The slot is released via the work future's done-callback
-    so a mid-processing client disconnect can't release it early.
-    """
-    if not request.question or not request.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
-
-    raw_question = request.question.strip()
-    rigor = request.rigor
-    use_lit = request.use_literature
-    logger.info(f"[/plan/stream] Received (rigor={rigor}, literature={use_lit}): {raw_question[:100]}...")
-
-    tick = float(os.environ.get("PLAN_STREAM_TICK_SECONDS", "5"))
-    threshold = float(os.environ.get("PLAN_STREAM_HEARTBEAT_THRESHOLD_SECONDS", "60"))
-    proc_heartbeat = 15.0
-
-    def _line(obj: dict) -> str:
-        return json.dumps(obj, ensure_ascii=False, default=str) + "\n"
-
-    async def _gen():
-        loop = asyncio.get_running_loop()
-        start_time = time.time()
-        _cleanup_expired_sessions()
-        admitted = False
-        t0 = 0.0
-        _pipeline_stats.enter_wait()
-        try:
-            # Clean the question off the event loop (a quick Claude call).
-            question = await loop.run_in_executor(None, clean_user_question, raw_question)
-
-            # --- admission: poll for a slot without holding a dispatch thread ---
-            wait_start = time.monotonic()
-            while not _try_admit():
-                if time.monotonic() - wait_start < threshold:
-                    yield _line({"event": "heartbeat", "ts": time.time()})
-                else:
-                    eta = _pipeline_stats.estimate_eta()
-                    yield _line({"event": "queued", "data": {
-                        "estimated_wait_seconds": round(eta),
-                        "message": _busy_message(eta),
-                    }})
-                await asyncio.sleep(tick)
-
-            # Admitted: we now own a slot. Hand release to the work future's
-            # callback so it survives a client disconnect during processing.
-            _pipeline_stats.leave_wait()
-            admitted = True
-            t0 = time.monotonic()
-            yield _line({"event": "processing", "ts": time.time()})
-
-            fut = loop.run_in_executor(
-                None, lambda: run_plan_start(question, use_literature=use_lit))
-            fut.add_done_callback(lambda f: _release_slot(time.monotonic() - t0))
-
-            while True:
-                try:
-                    result = await asyncio.wait_for(asyncio.shield(fut), timeout=proc_heartbeat)
-                    break
-                except asyncio.TimeoutError:
-                    yield _line({"event": "heartbeat", "ts": time.time()})
-
-            resp = _finalize_plan_session(raw_question, question, rigor, result, start_time)
-            yield _line({"event": "result", "data": resp.model_dump()})
-        except HTTPException as he:
-            yield _line({"event": "error", "status": he.status_code, "detail": str(he.detail)})
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"[/plan/stream] error: {e}", exc_info=True)
-            yield _line({"event": "error", "status": 500, "detail": str(e)})
-        finally:
-            # If we never got admitted (disconnect/error while queued), drop our
-            # wait-count. Once admitted, the future's done-callback owns release.
-            if not admitted:
-                _pipeline_stats.leave_wait()
-
-    return StreamingResponse(_gen(), media_type="application/x-ndjson")
 
 
 @app.post("/plan/revise", response_model=PlanResponse)
@@ -2152,17 +2046,25 @@ async def chat_plan_confirm(request: ChatPlanConfirmRequest):
 
 async def _stream_chat_handler(make_coro, label: str):
     """Run an async chat handler (which returns a ChatResponse) while emitting an
-    NDJSON heartbeat every ~15s, so a slow planning step survives an upstream
-    proxy's idle-read timeout. The handler runs as a shielded task — a heartbeat
-    timeout never cancels it. Terminal line is `result` (the full ChatResponse)
-    or `error`. Same wire format as /chat/plan/confirm/stream.
+    NDJSON keep-alive line every ~15s, so a slow planning step survives an upstream
+    proxy's idle-read timeout. The handler runs as a shielded task — a keep-alive
+    timeout never cancels it.
+
+    Keep-alive lines are normally ``heartbeat``. But when the request has been
+    outstanding longer than ``STREAM_ETA_THRESHOLD_SECONDS`` (default 60s) AND the
+    pipeline pool is saturated (so the request is almost certainly waiting behind
+    the concurrency limit), the keep-alive becomes a ``queued`` line carrying a
+    rough ETA + a 'service is busy' message. Terminal line is `result` (the full
+    ChatResponse) or `error`. Same wire format as /chat/plan/confirm/stream.
     """
     heartbeat = 15.0
+    eta_threshold = float(os.environ.get("STREAM_ETA_THRESHOLD_SECONDS", "60"))
 
     def _line(obj: dict) -> str:
         return json.dumps(obj, ensure_ascii=False, default=str) + "\n"
 
     async def _gen():
+        start = time.monotonic()
         task = asyncio.ensure_future(make_coro())
         try:
             while True:
@@ -2170,7 +2072,18 @@ async def _stream_chat_handler(make_coro, label: str):
                     resp = await asyncio.wait_for(asyncio.shield(task), timeout=heartbeat)
                     break
                 except asyncio.TimeoutError:
-                    yield _line({"event": "heartbeat", "ts": time.time()})
+                    # Show the busy/ETA message only once the wait is non-trivial
+                    # AND the pool is actually saturated (estimate_eta() > 0 means
+                    # no slot is free) — otherwise it's just a slow-but-running
+                    # request, so keep a plain heartbeat.
+                    eta = _pipeline_stats.estimate_eta()
+                    if time.monotonic() - start >= eta_threshold and eta > 0:
+                        yield _line({"event": "queued", "ts": time.time(), "data": {
+                            "estimated_wait_seconds": round(eta),
+                            "message": _busy_message(eta),
+                        }})
+                    else:
+                        yield _line({"event": "heartbeat", "ts": time.time()})
             data = resp.model_dump() if hasattr(resp, "model_dump") else resp
             yield _line({"event": "result", "data": data})
         except HTTPException as he:
@@ -2504,7 +2417,6 @@ if __name__ == "__main__":
     print(f"  GET    /chat/history       — get conversation history")
     print(f"  DELETE /chat/end           — end chat session")
     print(f"  POST   /plan/start    — interactive plan session (manual confirm)")
-    print(f"  POST   /plan/stream   — streaming /plan/start: heartbeats while queued + ETA after 60s")
     print(f"  POST   /plan/revise   — revise plan with user prompt")
     print(f"  POST   /plan/confirm  — confirm plan and get final answer")
     print("\nPress Ctrl+C to stop the server")
