@@ -23,7 +23,7 @@ Complete reference for all HTTP endpoints exposed by `server.py`. Aimed at front
    - `GET /chat/history` — fetch conversation history
    - `DELETE /chat/end` — end a chat session
 5. [Plan Endpoints (Standalone Manual Review)](#5-plan-endpoints-standalone-manual-review)
-   - `POST /plan/start`, `POST /plan/revise`, `POST /plan/confirm`
+   - `POST /plan/start`, `POST /plan/stream` (keep-alive + queue ETA), `POST /plan/revise`, `POST /plan/confirm`
 6. [Functional Data Endpoint](#6-functional-data-endpoint)
    - `POST /functional-data` — resolve NL question to islet assay API params
 7. [Feedback Endpoint](#7-feedback-endpoint)
@@ -76,6 +76,7 @@ Both use the same underlying pipelines. Chat endpoints additionally maintain con
 | `GET` | `/chat/history` | Fetch the full conversation history | query `?session_id=…` | `rounds`, `history: [{role, content}, …]` |
 | `DELETE` | `/chat/end` | End and free a chat session | query `?session_id=…` | `status: "ended"`, deletes row from SQLite |
 | `POST` | `/plan/start` | Start a single-shot plan review | `question`, `rigor?`, `use_literature?` | `session_id`, `plan_markdown`, `plan_json` |
+| `POST` | `/plan/stream` | Same as `/plan/start` but **streams NDJSON** — heartbeats while the request is queued behind the concurrency limit, a rough **ETA** after 60 s of waiting, then the plan | `question`, `rigor?`, `use_literature?` | `application/x-ndjson` lines: `heartbeat`* / `queued`* (with ETA) → `processing` → `result` (the `PlanResponse`) or `error` |
 | `POST` | `/plan/revise` | Iterate the plan | `session_id`, `prompt` | Updated plan markdown / JSON |
 | `POST` | `/plan/confirm` | Execute + format the confirmed plan | `session_id` | Final `answer_markdown`, `cypher_queries`, `reasoning_trace`; deletes the `PlanSession` |
 | `POST` | `/functional-data` | Resolve NL question to islet assay API call | `question`, `donor_ids?` | `endpoint`, `url`, `params` — **no data rows returned** |
@@ -560,6 +561,69 @@ Use these only if you want an explicit plan-review UX **without** chat history. 
   "plan_json": { "plan_type": "parallel", "steps": [...] },
   "use_literature": false,
   "error": null
+}
+```
+
+### 5.1a `POST /plan/stream` — `/plan/start` with keep-alive + queue ETA
+
+Identical inputs and result to `POST /plan/start`, but the response is an **NDJSON stream**
+(`application/x-ndjson`, one JSON object per line). Use it when the request may sit behind the
+server's concurrency limit under load: instead of the connection hanging silently (and the proxy
+aborting it at ~60 s), the server streams keep-alive lines while the request **waits in the queue**
+and while it **runs**, and once the wait gets long it tells the user roughly how much longer.
+
+**Request body (`PlanStartRequest`):** same as `/plan/start` — `{ question, rigor?, use_literature? }`.
+
+**Stream events** (read line-by-line; one JSON object per line):
+
+| `event` | When | `data` |
+|---|---|---|
+| `heartbeat` | every ~5 s while queued **for the first 60 s**, and every ~15 s while the plan is being built | `{ ts }` |
+| `queued` | every ~5 s while queued, **only once the wait exceeds 60 s** | `{ estimated_wait_seconds, message }` |
+| `processing` | once, the moment a pipeline slot is acquired | `{ ts }` |
+| `result` | terminal — success | full `PlanResponse` (incl. `session_id`, `plan_markdown`, `plan_json`) |
+| `error` | terminal — failure | `{ status, detail }` |
+
+Notes:
+- The `estimated_wait_seconds` is a **rough** server-side estimate (current queue depth × recent
+  average plan time), not an exact position — display it loosely ("~3 min"). `message` is a
+  ready-to-show string, e.g. *"Sorry, the service is busy — a lot of users are active right now.
+  Estimated wait ~3 min; your request is queued and will run automatically."*
+- **Short waits never show the busy message** — if a slot is free (or frees within 60 s) you only
+  ever see `heartbeat`, then `processing`, then `result`. The `queued`/ETA events appear only when
+  the request actually waits longer than 60 s.
+- On `result`, use `data` exactly as you'd use the `/plan/start` JSON response (render
+  `data.plan_markdown`, keep `data.session_id` for `/plan/revise` / `/plan/confirm`).
+- The request keeps its place in the queue for the life of the connection; if the client
+  disconnects, it leaves the queue.
+
+**Frontend pattern (fetch + ReadableStream):**
+```js
+const res = await fetch(`${API_BASE}/plan/stream`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ question, rigor: true, use_literature: false }),
+});
+if (!res.ok) throw new Error(`plan/stream failed: ${res.status}`); // 400 before stream
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buf = "";
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buf += decoder.decode(value, { stream: true });
+  let nl;
+  while ((nl = buf.indexOf("\n")) >= 0) {
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    const evt = JSON.parse(line);
+    if (evt.event === "heartbeat")       { /* keep spinner alive */ }
+    else if (evt.event === "queued")     { showBusy(evt.data.message, evt.data.estimated_wait_seconds); }
+    else if (evt.event === "processing") { showBuildingPlan(); }
+    else if (evt.event === "result")     { renderPlan(evt.data.plan_markdown); planId = evt.data.session_id; }
+    else if (evt.event === "error")      { showError(evt.detail); }
+  }
 }
 ```
 
