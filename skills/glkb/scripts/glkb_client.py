@@ -1,7 +1,7 @@
 """GLKB (Graph Language Knowledge Base) API client.
 
 Targets the local GLKB_agent service's SSE endpoint (default
-http://localhost:8004/stream; override with the GLKB_URL env var). It accepts
+http://localhost:8006/stream; override with the GLKB_URL env var). It accepts
 POST {question, session_id?} and streams an SSE response whose terminal event
 has step=='Complete' and carries the synthesised answer + structured PubMed
 references.
@@ -21,10 +21,10 @@ import requests
 
 
 # Local GLKB_agent service (FastAPI) /stream endpoint. Override via env, e.g.
-# GLKB_URL=http://localhost:8004/stream. The old remote
+# GLKB_URL=http://localhost:8006/stream. The old remote
 # (glkb.dcmb.med.umich.edu/api/frontend/llm_agent) now 301-redirects to a static
 # site and no longer serves the API.
-GLKB_URL = os.environ.get("GLKB_URL", "http://localhost:8004/stream")
+GLKB_URL = os.environ.get("GLKB_URL", "http://localhost:8006/stream")
 DEFAULT_TIMEOUT_S = 60
 
 logger = logging.getLogger(__name__)

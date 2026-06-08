@@ -25,7 +25,7 @@ Active env vars the system reads at startup:
 - `SEQUENTIAL_KG_CHAIN` (default `1` — run pure-KG chain plans via the sequential entity-ID-flow executor instead of `combine_chain`; set `0` to force the legacy compound-query path), `SEQ_KG_CHAIN_FALLBACK` (default `1` — fall back to `combine_chain` when the sequential run returns empty), `SEQ_KG_STEP_LIMIT` (default `500` — display cap on the terminal chain step's output; steps that feed a downstream join use the larger join-key cap `_SEQ_KG_ID_CAP=5000` so their keys aren't truncated), and `CHAIN_FALLBACK_TO_PARALLEL` (default `1` — when a chain plan returns no data, re-run the same steps independently as a parallel plan rather than returning empty)
 - `CACHE_VERSION` (default `1` — folded into the answer-cache key; bump to invalidate every cached answer, e.g. after a Neo4j reload)
 - `CACHE_HIT_DELAY_SECONDS` (default `10` — deliberate wait before returning a cached answer so a hit isn't suspiciously fast; `0` disables)
-- `GLKB_URL` (default `http://localhost:8004/stream` — the local GLKB_agent SSE endpoint for literature synthesis)
+- `GLKB_URL` (default `http://localhost:8006/stream` — the local GLKB_agent SSE endpoint for literature synthesis. The service runs on **:8006** — `uvicorn service.api:app --port 8006` from `/db/usr/rickyhan/GLKB_agent`. Set this in `.env`; older docs/defaults said `:8004`, which is wrong)
 - `OPENAI_API_KEY` (only required for `batch_evaluator.py`)
 
 ### Running
@@ -56,7 +56,7 @@ nohup python -m vllm.entrypoints.openai.api_server \
 ### External services used at runtime
 - **Local Neo4j PanKgraph ADA** at `bolt://localhost:8687` / browser `:8475` — 5.4M nodes, schema in `PankBaseAgent/text_to_cypher/data/input/neo4j_schema_ada.json`
 - **Local PostgreSQL 17** at `127.0.0.1:5432` db `pankgraph` (user `postgres` / pw `password`, connect with `gssencmode=disable`), four entity tables: `ensembl_genes_node`, `gwas_snp_id_node`, `ocr_peak_node`, `qtl_snp_node` (5.4M rows total)
-- **GLKB API** — local `GLKB_agent` FastAPI service at `http://localhost:8004/stream` (SSE-streaming literature synthesis; override with the `GLKB_URL` env var); called by `skills/glkb/scripts/glkb_client.py`. Must be running for literature to work (else `call_glkb` returns `status:"failed"` and the literature block is simply omitted). The old remote (`glkb.dcmb.med.umich.edu/api/frontend/llm_agent`) was retired — it now 301-redirects to a static site; the client guards against that (rejects redirects / non-`event-stream` responses). HIRN is fully disabled
+- **GLKB API** — local `GLKB_agent` FastAPI service at `http://localhost:8006/stream` (SSE-streaming literature synthesis; the service runs on **:8006**, launched `uvicorn service.api:app --port 8006` from `/db/usr/rickyhan/GLKB_agent`; point the app at it with `GLKB_URL` in `.env`); called by `skills/glkb/scripts/glkb_client.py`. Must be running for literature to work (else `call_glkb` returns `status:"failed"` and the literature block is simply omitted). The old remote (`glkb.dcmb.med.umich.edu/api/frontend/llm_agent`) was retired — it now 301-redirects to a static site; the client guards against that (rejects redirects / non-`event-stream` responses). HIRN is fully disabled
 - **RDS Lambda** — gene-name → Ensembl-ID resolution for text2sql
 - **Anthropic Claude** — Sonnet (`claude-sonnet-4-6`) for orchestration + format + the chat follow-up classifier (`_classify_followup`); Haiku (`claude-haiku-4-5-20251001`) only for the live markdown-repair fallback
 
