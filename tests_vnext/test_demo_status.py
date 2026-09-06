@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="Node.js is needed for sour
 
 DOM = r"""
 class DomNode {
-  constructor(tag,kind=1,text=''){this.tag=tag;this.nodeType=kind;this.value=text;this.children=[];this.attributes={};this.style={};this.className='';this.hidden=false;this.classList={toggle(){}};}
+  constructor(tag,kind=1,text=''){this.tag=tag;this.nodeType=kind;this.value=text;this.children=[];this.attributes={};this.style={};this.className='';this.hidden=false;this.checked=true;this.listeners={};this.classList={toggle(){}};}
   append(...items){for(let item of items){if(typeof item==='string')item=new DomNode('#text',3,item);if(item.nodeType===11){this.children.push(...item.children);item.children=[];}else this.children.push(item);}}
   prepend(...items){this.children.unshift(...items);}
   replaceChildren(...items){this.children=[];this.append(...items);}
@@ -25,7 +25,9 @@ class DomNode {
   set outerHTML(_){throw new Error('unsafe HTML sink');}
   insertAdjacentHTML(){throw new Error('unsafe HTML sink');}
   setAttribute(key,value){this.attributes[key]=String(value);}
-  addEventListener(){}
+  addEventListener(type,callback){(this.listeners[type] ||= []).push(callback);}
+  async dispatch(type){await Promise.all((this.listeners[type] || []).map(callback=>callback({preventDefault(){}})));}
+  focus(){}
 }
 const elements=new Map();
 const document={getElementById:id=>{if(!elements.has(id))elements.set(id,new DomNode('DIV'));return elements.get(id);},querySelectorAll:()=>[],createElement:tag=>new DomNode(tag.toUpperCase()),createElementNS:(_,tag)=>new DomNode(tag),createTextNode:text=>new DomNode('#text',3,String(text)),createDocumentFragment:()=>new DomNode('#fragment',11)};
@@ -124,10 +126,11 @@ def test_plan_review_renders_each_steps_required_filters_without_html_execution(
         {"id": "s1", "question": "Retrieve CFTR relations", "constraints": [constraint]},
         {"id": "s2", "question": "Inspect <img onerror=attack> neighbors", "constraints": []},
     ], "constraints": [{"property": "name", "operator": "eq", "value": "CFTR"}], "literature": False}
-    views = demo_actions([{"kind": "plan", "value": plan}, {"kind": "plan", "value": {**plan, "steps": [{"question": "No filters", "constraints": []}], "constraints": []}}])
-    assert "target.name" in views[0]["steps"]["text"] and "ductal cell" in views[0]["steps"]["text"]
+    views = demo_actions([{"kind": "snapshot", "value": {"status": "awaiting_confirmation", "plan": plan, "preview": {"status": "empty", "evidence": EMPTY}}}, {"kind": "snapshot", "value": {"status": "awaiting_confirmation", "plan": {**plan, "steps": [{"question": "No filters", "constraints": []}], "constraints": []}}}])
+    assert "Focus on ductal cell" in views[0]["steps"]["text"]
+    assert "target.name" not in views[0]["steps"]["text"] and '"property"' not in views[0]["steps"]["text"]
     assert "Inspect <img onerror=attack> neighbors" in views[0]["steps"]["text"]
     assert "CFTR" in views[0]["constraints"]["text"]
     assert views[0]["confirm-button"]["hidden"] is False
-    assert "Required constraints" not in views[1]["steps"]["text"]
+    assert "Focus on" not in views[1]["steps"]["text"]
     assert views[1]["constraints"]["text"] == ""

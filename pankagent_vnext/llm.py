@@ -18,11 +18,14 @@ PLAN_SCHEMA = {
   'steps':{'type':'array','items':{
    'type':'object','additionalProperties':False,'properties':{
     'id':{'type':'string'},'question':{'type':'string'},
+    'title':{'type':'string'},'rationale':{'type':'string'},
+    'relation_types':{'type':'array','items':{'type':'string'}},
     'depends_on':{'type':'array','items':{'type':'string'}},
     'constraints':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{
      'property':{'type':'string'},'operator':{'type':'string','enum':['=','IN','CONTAINS','STARTS WITH','ENDS WITH','>','>=','<','<=']},
-     'value':{'type':'string'}},'required':['property','operator','value']}},
-    'complete':{'type':'boolean'}},'required':['id','question','depends_on','constraints','complete']}},
+     'entity_type':{'type':['string','null']},
+     'value':{'type':'string'}},'required':['property','operator','value','entity_type']}},
+    'complete':{'type':'boolean'}},'required':['id','question','title','rationale','relation_types','depends_on','constraints','complete']}},
   'literature':{'type':'boolean'},'clarification':{'type':['string','null']}},
  'required':['interpreted_question','steps','literature','clarification']}
 
@@ -30,6 +33,13 @@ PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concis
 
 # Schema-only reference: accepted PanKgraph 08_04 property export, not held-out answers.
 PLAN_SYSTEM += '''
+Plan review contract:
+- The application will resolve entities against the configured graph and retrieve a bounded initial evidence preview before asking the user to confirm. Do not claim any retrieval succeeded in this planning call.
+- Give each step a short title and one-sentence rationale readable by an islet biologist. For example, "Check CFTR enrichment in ductal cells" and "Find the measured enrichment, study condition and supporting source." Keep Cypher, raw relationship names, JSON and implementation details out of titles and rationales. Describe computed enrichment as measured evidence, not as a curated marker annotation.
+- Preserve a clean standalone biological question. Do not append machine-oriented parenthetical lists of gene names, cell names, ontology IDs or relationship labels; put these in structured constraints and relation_types. Retain identifiers only when the user supplied them.
+- For identity constraints set entity_type to the real graph node label (for example Gene for CFTR and anatomical_structure for ductal cells). For a measurement or relationship-property predicate use null. Never label a gene symbol as a GO term or treat a cell name as a disease.
+- Record required exact relationship types in relation_types: enrichment uses GENE_ENRICHED_IN, detection uses GENE_DETECTED_IN, curated marker annotation uses MARKER_GENE_OF. These evidence types are distinct. For a broader investigation record only confidently supported schema types, otherwise ask for clarification.
+- The application may add one clearly labeled related-evidence check for a resolved simple gene/cell question. Keep the primary planner focused on the user's request; do not add speculative pathways, causes or unbounded neighborhood searches.
 Release schema notes:
 - Gene, disease, anatomical_structure, GO_term, reactome: id/name identify entities. Gene symbols use name. anatomical_structure has no tissue_id property; cell names identify cell types.
 - Include EVERY named entity in constraints: a question naming both a gene and a cell type requires both, not just the gene. Verified common-cell names in this release are alpha cell (CL_0000171), beta cell (CL_0000169), delta cell (CL_0000173), ductal cell (CL_0002079), and endothelial cell (CL_0000115). Use these exact name values for unambiguous common-cell requests; if the user explicitly supplies the matching ID, use that ID without a redundant name constraint. Do not broaden modified subclasses, negate exclusions, or collapse multiple cell types into one. Preserve the original question instead of adding investigations.
@@ -43,7 +53,7 @@ Release schema notes:
 '''
 
 SYNTHESIS_SYSTEM = (Path(__file__).parent / 'prompts' / 'answer_style.md').read_text()
-ANSWER_CONTRACT = '''Final presentation contract: return the answer summary only, without follow-up questions or suggested searches. For a simple lookup use a direct sentence, one small table with at most five columns if useful, a source line and one brief evidence caveat (aim for 80–160 words total). Preserve IDs and units exactly. Include only returned entities and supported observations. Earlier interpretation templates do not require every listed field or extra sections. Never infer unreturned records from generation settings or invent incompleteness when explicit status is complete and sampling/truncation are false.'''
+ANSWER_CONTRACT = '''Final presentation contract: return the answer summary only, without follow-up questions or suggested searches. For a simple lookup use a direct sentence, one small table with at most five columns if useful, a source line and one brief evidence caveat (aim for 80–160 words total). Preserve IDs and units exactly. Include only returned entities and supported observations. Answer the primary question first; a context step supplies a brief additional observation, not a replacement answer. Distinguish detection from enrichment and exclusive expression. Do not compare measurements across conditions, cohorts or sources as if matched. rank_in_cell_type ranks genes within one cell type; it does not rank cell types for a gene. Never infer the strongest cell type from that rank or from a query restricted to one cell type. Earlier interpretation templates do not require every listed field or extra sections. Never infer unreturned records from generation settings or invent incompleteness when explicit status is complete and sampling/truncation are false.'''
 STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT).encode()).hexdigest()[:16]
 
 

@@ -15,6 +15,24 @@ def test_normal_json_and_sse_event_are_unchanged():
     assert sse_event_bytes(envelope) == ("id: 3\nevent: graph_answer\ndata: " + json.dumps(envelope, ensure_ascii=False) + "\n\n").encode()
 
 
+def test_oversized_plan_preview_preserves_review_identity_and_marks_omissions():
+    envelope = {"version": 2, "run_id": "run-preview", "plan_id": "plan-preview", "sequence": 4,
+                "type": "plan_ready", "status": "awaiting_confirmation", "payload": {
+                    "plan": {"steps": [{"id": "primary", "title": "Check gene enrichment"}]},
+                    "preview": {"status": "complete", "evidence": {"completeness": "complete",
+                        "nodes": [{"id": "gene", "properties": {"raw": "x" * RESPONSE_BYTE_LIMIT}}]}}}}
+    frame = sse_event_bytes(envelope)
+    assert len(frame) <= RESPONSE_BYTE_LIMIT
+    value = json.loads(next(line[6:] for line in frame.decode().splitlines() if line.startswith("data: ")))
+    assert value["status"] == "awaiting_confirmation"
+    assert value["payload"]["plan"]["steps"][0]["id"] == "primary"
+    preview = value["payload"]["preview"]
+    assert preview["delivery_status"] == "partial"
+    assert preview["evidence"]["completeness"] == "partial"
+    assert preview["evidence"]["nodes"] == []
+    assert preview["evidence"]["omitted_counts"]["nodes"] == 1
+
+
 def test_oversized_json_snapshot_is_explicitly_partial_with_identity_preserved(tmp_path):
     async def scenario():
         async with service(tmp_path) as (client, runtime, gateway, graph, literature):

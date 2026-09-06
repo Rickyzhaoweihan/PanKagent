@@ -50,7 +50,8 @@ except OSError:raise SystemExit('Port already occupied; no existing process chan
 finally:s.close()
 with (state/'service.log').open('ab') as log:
     child=subprocess.Popen([str(a.app_dir/'.venv/bin/python'),'-m','uvicorn','pankagent_vnext.app:create_app',
-      '--factory','--host','127.0.0.1','--port',str(port),'--workers','1','--no-access-log'],cwd=a.app_dir,env=env,
+      '--factory','--host','127.0.0.1','--port',str(port),'--workers','1','--no-access-log',
+      '--timeout-graceful-shutdown','2'],cwd=a.app_dir,env=env,
       stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     time.sleep(.5)
     if child.poll() is not None:raise SystemExit('New service failed at startup; inspect its private log.')

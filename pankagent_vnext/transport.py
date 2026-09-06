@@ -14,7 +14,7 @@ PRIORITY_FIELDS = (
     "version", "run_id", "plan_id", "session_id", "sequence", "timestamp", "type",
     "status", "stage", "elapsed_ms", "id", "step_id", "evidence_id", "label",
     "delta", "payload", "answer", "graph_answer", "text", "response", "plan",
-    "evidence", "literature", "steps", "perspectives", "graph_version", "error",
+    "preview", "evidence", "literature", "steps", "perspectives", "graph_version", "error",
 )
 
 

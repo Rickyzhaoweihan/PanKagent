@@ -16,7 +16,7 @@ from typing import Any
 
 TARGET_BYTES = 75_000
 MAX_BYTES = 100_000
-_SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question")
+_SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for")
 
 
 @dataclass(frozen=True)

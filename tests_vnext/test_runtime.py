@@ -155,7 +155,9 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
                 {"property": "name", "operator": "=", "value": "CFTR"},
                 {"property": "name", "operator": "=", "value": "ductal cell"},
             ]
-            assert graph.calls == 0
+            assert graph.calls == 1
+            assert run["preview"]["evidence"]["steps"][0]["status"] == "complete"
+            assert gateway.syntheses == literature.calls == 0
             assert gateway.plans == 1
     asyncio.run(scenario())
 
@@ -251,10 +253,11 @@ def test_health_polling_no_inference_and_dependency_failures(tmp_path):
 def test_cancellation_does_not_restart_on_reconnect(tmp_path):
     async def scenario():
         async with service(tmp_path, graph=Graph(delay=5)) as (client, runtime, gateway, graph, literature):
-            created = await new_plan(client)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            await wait_state(client, created["run_id"], {"running"})
-            await asyncio.sleep(0.02)
+            created = (await client.post("/v2/plans", json={"question": "Which cell types express INS?"})).json()
+            for _ in range(100):
+                if graph.calls:
+                    break
+                await asyncio.sleep(0.01)
             response = await client.post(f'/v2/runs/{created["run_id"]}/cancel')
             assert response.json()["status"] == "cancelled"
             await asyncio.sleep(0.02)
@@ -276,8 +279,9 @@ def test_restart_interrupts_work_but_preserves_unconfirmed_plan(tmp_path):
         async with service(tmp_path) as (client, runtime, *_):
             assert (await client.get(f'/v2/runs/{active["run_id"]}')).json()["status"] == "interrupted"
             assert (await client.get(f'/v2/runs/{waiting["run_id"]}')).json()["status"] == "awaiting_confirmation"
-            assert (await client.post(f'/v2/plans/{waiting["plan_id"]}/confirm')).status_code == 202
-            await wait_state(client, waiting["run_id"], {"completed"})
+            response = await client.post(f'/v2/plans/{waiting["plan_id"]}/confirm')
+            assert response.status_code == 409
+            assert "Revise this saved plan" in response.json()["detail"]
     asyncio.run(scenario())
 
 
@@ -316,7 +320,7 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
 
 def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
     async def scenario():
-        async with service(tmp_path, graph=Graph(delay=5), run_timeout=0.03) as (client, runtime, *_):
+        async with service(tmp_path, graph=Graph(delay=5), preview_timeout=0.03, run_timeout=0.03) as (client, runtime, *_):
             created = await new_plan(client)
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             run = await wait_state(client, created["run_id"], {"partial"})
@@ -377,7 +381,8 @@ def test_budget_exhaustion_rejects_new_work_before_gpu_calls(tmp_path):
             gateway.budget.remaining = 0
             assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 503
             assert (await client.post("/v2/plans", json={"question": "Another question"})).status_code == 503
-            assert gateway.plans == 1 and graph.calls == 0
+            assert gateway.plans == graph.calls == 1
+            assert gateway.syntheses == 0
             assert (await client.get(f'/v2/runs/{created["run_id"]}')).json()["status"] == "awaiting_confirmation"
     asyncio.run(scenario())
 

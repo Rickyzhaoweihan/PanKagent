@@ -13,7 +13,7 @@ from typing import Any
 from uuid import uuid4
 
 
-TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted"}
+TERMINAL = {"completed", "partial", "failed", "cancelled", "interrupted", "superseded"}
 ACTIVE = {"planning", "queued", "running"}
 
 
@@ -52,6 +52,13 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS runs_session ON runs(session_id, created_epoch);
         """)
+        # Additive migration preserves sessions created before plan previews.
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(runs)")}
+        for name in ("preview", "preview_cache", "replacement_run_id"):
+            if name not in columns:
+                self.db.execute(f"ALTER TABLE runs ADD COLUMN {name} TEXT")
+        if "include_context" not in columns:
+            self.db.execute("ALTER TABLE runs ADD COLUMN include_context INTEGER NOT NULL DEFAULT 1")
         self.db.commit()
 
     @staticmethod
@@ -59,42 +66,72 @@ class Store:
         if row is None:
             return None
         value = dict(row)
-        for key in ("plan", "evidence", "literature", "error"):
+        value["include_context"] = bool(value["include_context"])
+        for key in ("plan", "evidence", "literature", "error", "preview", "preview_cache"):
             value[key] = json.loads(value[key]) if value[key] is not None else None
         return value
 
-    def create(self, question: str, session_id: str | None = None) -> dict:
+    def _create_locked(self, question: str, session_id: str | None = None, *, include_context: bool = True) -> dict:
         now = utc_now()
-        with self.lock, self.db:
-            if session_id is not None:
-                if not self.db.execute("SELECT 1 FROM sessions WHERE session_id=?", (session_id,)).fetchone():
-                    raise KeyError("session")
-            else:
-                session_id = str(uuid4())
-                self.db.execute("INSERT INTO sessions VALUES (?, ?)", (session_id, now))
-            run_id, plan_id = str(uuid4()), str(uuid4())
-            self.db.execute(
-                "INSERT INTO runs (run_id,plan_id,session_id,question,status,stage,created_at,updated_at,created_epoch) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (run_id, plan_id, session_id, question, "planning", "queued", now, now, time.time()),
-            )
+        if session_id is not None:
+            if not self.db.execute("SELECT 1 FROM sessions WHERE session_id=?", (session_id,)).fetchone():
+                raise KeyError("session")
+        else:
+            session_id = str(uuid4())
+            self.db.execute("INSERT INTO sessions VALUES (?, ?)", (session_id, now))
+        run_id, plan_id = str(uuid4()), str(uuid4())
+        self.db.execute(
+            "INSERT INTO runs (run_id,plan_id,session_id,question,status,stage,created_at,updated_at,created_epoch,include_context) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (run_id, plan_id, session_id, question, "planning", "queued", now, now, time.time(), int(include_context)),
+        )
         return self.get(run_id)
+
+    def create(self, question: str, session_id: str | None = None, *, include_context: bool = True) -> dict:
+        with self.lock, self.db:
+            return self._create_locked(question, session_id, include_context=include_context)
+
+    def revise(self, plan_id: str, question: str, *, include_context: bool = True) -> tuple[dict, dict]:
+        """Atomically invalidate an unconfirmed plan and create its replacement."""
+        with self.lock, self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            old = self.by_plan(plan_id)
+            if old is None:
+                raise KeyError("plan")
+            if old["status"] not in {"planning", "awaiting_confirmation"}:
+                raise ValueError("plan_already_confirmed_or_ended")
+            new = self._create_locked(question, old["session_id"], include_context=include_context)
+            self.db.execute(
+                "UPDATE runs SET status='superseded',stage='superseded',replacement_run_id=?,updated_at=? WHERE run_id=?",
+                (new["run_id"], utc_now(), old["run_id"]),
+            )
+            return self.get(old["run_id"]), new
 
     def get(self, run_id: str) -> dict | None:
         with self.lock:
             return self._decode(self.db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone())
+
+    def snapshot(self, run_id: str) -> dict | None:
+        """Pair the current state with its replay high-water mark."""
+        with self.lock:
+            run = self.get(run_id)
+            if run is not None:
+                run["event_sequence"] = self.db.execute(
+                    "SELECT COALESCE(MAX(sequence),0) FROM events WHERE run_id=?", (run_id,),
+                ).fetchone()[0]
+            return run
 
     def by_plan(self, plan_id: str) -> dict | None:
         with self.lock:
             return self._decode(self.db.execute("SELECT * FROM runs WHERE plan_id=?", (plan_id,)).fetchone())
 
     def update(self, run_id: str, **fields: Any) -> dict:
-        allowed = {"status", "stage", "plan", "graph_answer", "evidence", "literature", "error"}
+        allowed = {"status", "stage", "plan", "graph_answer", "evidence", "literature", "error", "preview", "preview_cache"}
         if not fields or not set(fields).issubset(allowed):
             raise ValueError("Unsupported run update")
         values = []
         for key, value in fields.items():
-            values.append(json.dumps(value, ensure_ascii=False) if key in {"plan", "evidence", "literature", "error"} and value is not None else value)
+            values.append(json.dumps(value, ensure_ascii=False) if key in {"plan", "evidence", "literature", "error", "preview", "preview_cache"} and value is not None else value)
         sql = "UPDATE runs SET " + ",".join(f"{key}=?" for key in fields) + ",updated_at=? WHERE run_id=?"
         with self.lock, self.db:
             self.db.execute(sql, [*values, utc_now(), run_id])

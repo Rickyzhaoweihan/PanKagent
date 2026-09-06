@@ -19,8 +19,12 @@ python3 -m venv .venv-vnext
   --host 127.0.0.1 --port 8794 --workers 1 --no-access-log
 ```
 
-Open `/demo`. Submit a question, inspect its plan, and confirm before retrieval.
-The graph answer appears before independently completed literature perspectives.
+Open `/demo`. Submit a question to resolve its entities and retrieve validated
+initial graph evidence. Review the biological plan alongside that preview, edit
+the question or switch off the related-evidence check, then confirm to write the
+answer. A revision creates a new plan and invalidates confirmation of the old one.
+Fresh matching preview evidence is reused. The graph answer appears before
+independently completed literature perspectives.
 The demo renders scientific Markdown tables, lists and citations with safe DOM
 construction; model-produced HTML is never executed.
 
@@ -106,10 +110,11 @@ database deployment remains a promotion prerequisite.
 
 | Endpoint | Contract |
 |---|---|
-| `POST /v2/plans` | `{question, session_id?}` → 202 with plan/run IDs and URLs |
-| `GET /v2/plans/{id}` | Retrieve a plan and its state |
+| `POST /v2/plans` | `{question, session_id?, include_context?: true}` → 202; prepare plan and initial evidence |
+| `GET /v2/plans/{id}` | Retrieve a plan, validated preview and state |
+| `POST /v2/plans/{id}/revise` | `{question, include_context?: true}` → replacement plan/run in the same session; unconfirmed plans only |
 | `POST /v2/plans/{id}/confirm` | Idempotent; returns the original run |
-| `GET /v2/runs/{id}` | Durable state, graph evidence, available literature |
+| `GET /v2/runs/{id}` | Durable state, initial preview, final graph evidence, available literature |
 | `GET /v2/runs/{id}/events` | SSE; resume with `Last-Event-ID` or `after` sequence |
 | `POST /v2/runs/{id}/cancel` | Stop new work and attempt active-call cancellation |
 | `GET /health/live` | Event-loop/process liveness |
@@ -121,9 +126,19 @@ Events contain `version`, `run_id`, `session_id`, `sequence`, UTC `timestamp`,
 `stage`, `status`, `elapsed_ms`, `type` and `payload`. Persisted SSE IDs prevent
 reconnects from starting duplicate inference. Two-second heartbeats describe
 current activity without completion percentages. Terminal events include
-completed, partial, failed, cancelled and interrupted outcomes. Service restarts
+completed, partial, failed, cancelled, interrupted and superseded outcomes. Service restarts
 preserve answers and mark abandoned active work interrupted; they do not replay
 billable work automatically. Awaiting-confirmation plans remain reviewable.
+Legacy saved plans without initial previews require an explicit revision before
+confirmation; refreshing their page does not initiate new model or graph calls.
+
+`preview_step` events contain validated step outcomes; `plan_ready` includes the
+saved preview. The separate preview deadline defaults to 45 seconds. Failed,
+empty and truncated evidence remain visible. Confirmation reuses successful
+outcomes for up to 300 seconds only when the plan, graph configuration and
+dependency inputs match. Failed steps may be attempted once at confirmation.
+Set `PANK_VNEXT_PREVIEW_TIMEOUT` and `PANK_VNEXT_PREVIEW_TTL_SECONDS` to configure
+these bounds. No answer synthesis or literature request runs before confirmation.
 
 Graph evidence includes stable nodes/edges, rows, executed queries, validation,
 provenance, graph version and truncation. Failed/empty steps remain visible. Limits

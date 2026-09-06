@@ -499,7 +499,7 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
             self.calls += 1
             result = detection_evidence()["s1"]
             result["step_id"] = step["id"]
-            result["status"] = statuses[self.calls - 1]
+            result["status"] = statuses[int(step["id"][1:]) - 1]
             if result["status"] in {"failed", "empty"}:
                 result.update(nodes=[], edges=[], rows=[])
             return result
@@ -517,7 +517,7 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
                 assert response.status_code == 202
                 run = await await_state(client, created["run_id"], {expected_status})
-                assert graph.calls == len(statuses)
+                assert graph.calls == len(statuses) + statuses.count("failed")
                 assert gateway.prepare_calls == len(fake.stream_calls) == 1
                 assert fake.create_calls == []
                 assert gateway.budget.snapshot()["calls"] == 1

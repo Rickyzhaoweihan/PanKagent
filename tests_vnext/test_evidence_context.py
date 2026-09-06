@@ -19,6 +19,20 @@ def evidence(nodes=None, edges=None, rows=None, **extra):
 
 
 class EvidenceContextTests(unittest.TestCase):
+    def test_primary_and_related_evidence_roles_survive_compaction(self):
+        result = compact_evidence({
+            "primary": evidence([node("gene"), node("cell", "anatomical_structure")],
+                [edge("gene", "cell", "GENE_ENRICHED_IN", condition="ND")],
+                step_id="primary", purpose="primary", title="Check enrichment"),
+            "related": evidence([node("gene"), node("other", "anatomical_structure")],
+                [edge("gene", "other", "GENE_DETECTED_IN", condition="T2D")],
+                step_id="related", purpose="context", context_for="primary", title="Check detection elsewhere"),
+        })
+        self.assertEqual([item["purpose"] for item in result], ["primary", "context"])
+        self.assertEqual(result[1]["context_for"], "primary")
+        self.assertEqual([item["evidence_id"] for item in result], ["G1", "G2"])
+        self.assertEqual([item["edges"][0]["properties"]["condition"] for item in result], ["ND", "T2D"])
+
     def test_rare_edge_after_first_hundred_survives_with_labeled_endpoints(self):
         nodes = [node("g" + str(i)) for i in range(150)] + [node("cell", "anatomical_structure")]
         edges = [edge("g" + str(i), "cell") for i in range(130)]

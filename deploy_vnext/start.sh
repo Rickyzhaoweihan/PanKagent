@@ -6,4 +6,4 @@ set -a
 source "$ENV_FILE"
 set +a
 cd "$APP_DIR"
-exec .venv/bin/python -m uvicorn pankagent_vnext.app:create_app --factory --host 127.0.0.1 --port "${PANK_VNEXT_PORT:-8794}" --workers 1 --no-access-log
+exec .venv/bin/python -m uvicorn pankagent_vnext.app:create_app --factory --host 127.0.0.1 --port "${PANK_VNEXT_PORT:-8794}" --workers 1 --no-access-log --timeout-graceful-shutdown 2

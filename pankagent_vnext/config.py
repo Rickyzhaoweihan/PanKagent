@@ -21,6 +21,8 @@ class Settings:
     max_queue: int = field(default_factory=lambda: int(env('MAX_QUEUE','8')))
     heartbeat_seconds: float = 2.0
     plan_timeout: float = 20.0
+    preview_timeout: float = field(default_factory=lambda: float(env('PREVIEW_TIMEOUT','45')))
+    preview_ttl_seconds: float = field(default_factory=lambda: float(env('PREVIEW_TTL_SECONDS','300')))
     run_timeout: float = 40.0
     provider_status_url: str = "https://status.claude.com/api/v2/summary.json"
     literature_api_version: str = field(default_factory=lambda: env('LITERATURE_API_VERSION','hirn-agent-v1'))
@@ -52,3 +54,5 @@ class Settings:
             raise ValueError('model must have an explicitly configured price')
         if not 0 < self.budget_usd <= 10 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
             raise ValueError('invalid development budget or queue limits')
+        if not 0 < self.preview_timeout <= 120 or not 0 <= self.preview_ttl_seconds <= 3600:
+            raise ValueError('invalid preview deadline or reuse window')
