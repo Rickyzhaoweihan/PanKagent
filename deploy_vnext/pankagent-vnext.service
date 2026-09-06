@@ -1,0 +1,15 @@
+[Unit]
+Description=Isolated PanKagent vNext development service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/pankagent-vnext
+ExecStart=%h/projects/pankagent-vnext/deploy_vnext/start.sh
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

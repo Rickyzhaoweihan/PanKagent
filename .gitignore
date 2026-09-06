@@ -70,3 +70,13 @@ data/output/
 gpu_router/*.pid
 gpu_router/*.lock
 gpu_router/watchdog_state.json
+
+# Isolated vNext local runtime and evaluation artifacts
+.venv-vnext/
+var/vnext/
+eval_vnext_results/
+deploy_vnext/*.env
+deploy_vnext/*identity*.json
+
+# This service-owned configuration contains names/defaults only, never keys.
+!pankagent_vnext/config.py

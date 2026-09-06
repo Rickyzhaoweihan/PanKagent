@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>PanKagent · Research workspace</title>
+  <style>
+    :root{--ink:#193735;--muted:#5d716f;--line:#dce7e3;--paper:#fff;--wash:#f3f7f4;--teal:#126d60;--mint:#dfefe6;--amber:#946123;--danger:#9d4435}
+    *{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,textarea,input{font:inherit}button{cursor:pointer;border:1px solid transparent;border-radius:9px;padding:10px 17px;font-weight:650;background:var(--teal);color:white}button:hover:not(:disabled){filter:brightness(.92)}button:disabled{opacity:.45;cursor:not-allowed}button.secondary{background:white;color:var(--ink);border-color:var(--line)}button.quiet{background:transparent;color:var(--muted);padding:6px 10px}button:focus-visible,a:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #68adba;outline-offset:3px}a{color:var(--teal)}
+    header{background:var(--paper);border-bottom:1px solid var(--line)}.bar{max-width:1160px;margin:auto;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:21px;font-weight:760;letter-spacing:-.6px}.brand span{font-weight:450;color:var(--muted)}.badge{display:inline-flex;gap:6px;align-items:center;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--mint);color:var(--teal);padding:4px 9px;border-radius:20px;font-weight:650}.badge.warn{background:#fbefdc;color:var(--amber)}.badge.error{background:#fbe9e5;color:var(--danger)}
+    main{max-width:1160px;margin:0 auto;padding:36px 28px 70px}.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--teal)}h1{font-size:clamp(27px,4vw,39px);line-height:1.2;letter-spacing:-1.4px;margin:10px 0}h2{font-size:18px;line-height:1.4;letter-spacing:-.3px;margin:0}h3{font-size:15px;line-height:1.5;margin:0 0 10px}.intro{max-width:690px;color:var(--muted);margin:12px 0 26px}.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 3px 12px #19373503}.card-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.muted{color:var(--muted)}.small{font-size:12px}.split{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,1fr);gap:20px}.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}.two>.card{margin:0}textarea{display:block;width:100%;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:15px;color:var(--ink);background:#fcfefd;min-height:104px;margin:9px 0 13px}label{font-weight:650}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.actions .note{margin-left:auto;font-size:12px;color:var(--muted)}.examples{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}.example{font-size:12px;padding:5px 10px!important;border:1px solid var(--line)!important;background:white!important;color:var(--muted)!important;font-weight:450}
+    .status{display:flex;gap:10px;align-items:flex-start}.dot{height:8px;width:8px;flex:0 0 8px;margin-top:8px;background:var(--teal);border-radius:50%}.active .dot{animation:pulse 1.8s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.active .dot{animation:none}}#stage{font-weight:650}#timeline{list-style:none;margin:18px 0 0;padding:0;max-height:270px;overflow:auto}#timeline li{border-left:1px solid var(--line);padding:0 0 13px 15px;margin-left:4px;font-size:12px;color:var(--muted)}#timeline time{display:block;font-size:10px;color:#879794}.answer{white-space:pre-wrap;overflow-wrap:anywhere}.answer:empty::before{content:'Evidence and a grounded answer will appear here.';color:var(--muted)}.step{padding:12px 0;border-top:1px solid var(--line)}.step:first-child{border:0}.step-number{font-size:11px;color:var(--teal);font-weight:700;letter-spacing:.06em}.details{border-top:1px solid var(--line);margin-top:18px;padding-top:12px}summary{cursor:pointer;font-size:13px;font-weight:650}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--wash);border-radius:8px;padding:13px;max-height:350px;overflow:auto}.notice{border-radius:8px;background:#fcf3e5;color:var(--amber);padding:10px 13px;margin-top:12px;font-size:12px}.error-box{background:#fbece8;color:var(--danger);padding:14px;border-radius:10px;margin-bottom:20px}.reference{border-top:1px solid var(--line);padding:12px 0;font-size:12px;overflow-wrap:anywhere}.reference:first-child{margin-top:12px}.ref-meta{color:var(--muted);font-size:11px}.lit-answer{font-size:14px}.table-wrap{overflow:auto;max-height:320px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:8px;overflow-wrap:anywhere}th{color:var(--muted);font-weight:600;position:sticky;top:0;background:white}.empty{font-size:13px;color:var(--muted);padding:12px 0}.graph-preview{width:100%;height:260px;border:1px solid var(--line);border-radius:9px;background:#f9fcfa}.graph-preview text{fill:var(--ink);font-family:system-ui;font-size:9px}.graph-preview line{stroke:#acc5bd;stroke-width:1}.graph-preview circle{fill:var(--teal);stroke:white;stroke-width:2}.section-label{display:flex;justify-content:space-between;gap:15px;align-items:center;margin:30px 0 14px}[hidden]{display:none!important}footer{font-size:11px;color:var(--muted);margin-top:30px;border-top:1px solid var(--line);padding-top:18px}
+    @media(max-width:780px){.split,.two{grid-template-columns:1fr}.bar{padding:15px 18px}main{padding:28px 16px}.card{padding:19px}.actions .note{margin-left:0;width:100%}.brand span{display:none}.section-label{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<header><div class="bar"><div class="brand">PanKagent <span>/ research workspace</span></div><span class="badge">Development preview</span></div></header>
+<main>
+  <div class="eyebrow">PanKgraph + literature evidence</div>
+  <h1>Start with a research question.</h1>
+  <p class="intro">Review the plan, explore evidence from the knowledge graph, and read literature perspectives as they become available.</p>
+  <div id="error" class="error-box" role="alert" hidden></div>
+  <form id="question-form" class="card">
+    <label for="question">What would you like to investigate?</label>
+    <textarea id="question" maxlength="6000" required placeholder="Which cell types express INS?" aria-describedby="question-note"></textarea>
+    <div class="actions"><button id="plan-button" type="submit">Create a plan <span aria-hidden="true">→</span></button><button id="new-button" type="button" class="secondary">New session</button><span class="note" id="question-note">You confirm the plan before retrieval begins.</span></div>
+    <div class="examples"><button class="example" type="button">Which cell types express INS?</button><button class="example" type="button">What evidence links SLC30A8 to beta-cell function?</button></div>
+  </form>
+  <div id="work" hidden>
+    <div class="split">
+      <section class="card" aria-labelledby="plan-heading">
+        <div class="card-head"><h2 id="plan-heading">Research plan</h2><span id="plan-badge" class="badge">Preparing</span></div>
+        <p id="interpretation" class="muted">Interpreting your question…</p>
+        <div id="steps"></div><div id="constraints" class="small muted"></div>
+        <details id="plan-details" class="details" hidden><summary>Full plan</summary><pre id="plan-json"></pre></details>
+        <div class="actions" style="margin-top:18px"><button id="confirm-button" type="button" hidden>Confirm and retrieve</button><button id="cancel-button" type="button" class="secondary">Cancel</button></div>
+      </section>
+      <aside class="card" aria-labelledby="activity-heading">
+        <div class="card-head"><h2 id="activity-heading">Activity</h2><span id="elapsed" class="small muted">0s</span></div>
+        <div id="activity" class="status"><span class="dot" aria-hidden="true"></span><div><div id="stage" role="status" aria-live="polite">Preparing plan</div><div id="activity-detail" class="small muted">Waiting for the service.</div></div></div>
+        <ol id="timeline" aria-label="Completed activity transitions"></ol>
+      </aside>
+    </div>
+    <section class="card" aria-labelledby="graph-heading">
+      <div class="card-head"><h2 id="graph-heading">Graph answer</h2><span id="graph-badge" class="badge">Awaiting confirmation</span></div>
+      <div id="graph-answer" class="answer"></div><div id="graph-notice" class="notice" hidden></div>
+      <div id="graph-evidence" hidden>
+        <div class="details"><h3 id="graph-counts">Graph evidence</h3><svg id="graph-preview" class="graph-preview" role="img" aria-label="Preview of graph evidence" viewBox="0 0 640 260"></svg><p id="graph-preview-note" class="small muted"></p></div>
+        <details class="details"><summary>Nodes and relationships</summary><div class="table-wrap"><table><thead><tr><th>Node</th><th>Type</th><th>Properties</th></tr></thead><tbody id="nodes"></tbody></table></div><div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>Source</th><th>Relationship</th><th>Target</th></tr></thead><tbody id="edges"></tbody></table></div></details>
+        <details class="details"><summary>Queries, provenance, and validation</summary><pre id="evidence-json"></pre></details>
+      </div>
+    </section>
+    <section aria-labelledby="literature-heading"><div class="section-label"><h2 id="literature-heading">Literature perspectives</h2><span id="literature-badge" class="badge">Waiting for plan</span></div><p id="literature-note" class="small muted">Evidence strength can differ between perspectives. A missing perspective does not establish that an explanation is false.</p><div id="literature" class="two"></div></section>
+  </div>
+  <footer>PanKagent development service · Graph completeness and source provenance are shown with each result. Review evidence before drawing scientific conclusions.</footer>
+</main>
+<script>
+(() => {
+  'use strict';
+  const el = id => document.getElementById(id);
+  const terminalStates = new Set(['completed','partial','failed','cancelled','interrupted']);
+  let runId = null, planId = null, sessionId = null, source = null, sequence = 0, answer = '', lastStage = '', busy = false;
+  const text = (id,value) => { el(id).textContent = value == null ? '' : String(value); };
+  const show = (id,visible = true) => { el(id).hidden = !visible; };
+  const label = value => String(value || '').replace(/_/g,' ').replace(/^./, c => c.toUpperCase());
+  function safeUrl(value) { try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) && !u.username ? u.href : null; } catch (_) { return null; } }
+  function node(tag,value,className) { const n = document.createElement(tag); if (value != null) n.textContent = String(value); if(className) n.className = className; return n; }
+  function renderAnswer(container,value) {
+    const body=String(value ?? '');container.replaceChildren();let cursor=0;
+    for(const match of body.matchAll(/\*\*([^\n]+?)\*\*/g)) {
+      container.append(document.createTextNode(body.slice(cursor,match.index)),node('strong',match[1]));
+      cursor=match.index+match[0].length;
+    }
+    container.append(document.createTextNode(body.slice(cursor)));
+  }
+  function error(message) { text('error',message); show('error'); }
+  function badge(id,value,warn = false) { text(id,value); el(id).className = warn ? 'badge warn' : 'badge'; }
+  async function api(path,body) {
+    const response = await fetch(path,{method: body === undefined ? 'GET' : 'POST',headers: body === undefined ? {} : {'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)});
+    let result; try { result = await response.json(); } catch (_) { throw new Error('The service returned an unreadable response.'); }
+    if(!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : result.error?.message || result.message || `Request failed (${response.status}).`);
+    return result;
+  }
+  function setBusy(value) { busy = value; el('plan-button').disabled = value; el('new-button').disabled = value; el('activity').classList.toggle('active',value); }
+  function resetView() {
+    if(source) source.close(); source = null; sequence = 0; answer = ''; lastStage = '';
+    ['steps','constraints','timeline','literature','graph-answer','nodes','edges','graph-preview'].forEach(id => el(id).replaceChildren());
+    ['graph-evidence','graph-notice','plan-details','confirm-button','error'].forEach(id => show(id,false));
+    show('cancel-button'); el('cancel-button').disabled = false; el('confirm-button').disabled = false;
+    text('interpretation','Interpreting your question…'); text('elapsed','0s'); text('activity-detail','Waiting for the service.');
+    badge('plan-badge','Preparing'); badge('graph-badge','Awaiting confirmation'); badge('literature-badge','Waiting for plan');
+    text('literature-note','Evidence strength can differ between perspectives. A missing perspective does not establish that an explanation is false.');
+  }
+  function stage(value,detail,elapsed) {
+    if(value) { text('stage',label(value)); if(value !== lastStage) { const row = node('li',label(value)); row.append(node('time',new Date().toLocaleTimeString())); el('timeline').prepend(row); lastStage = value; } }
+    if(detail) text('activity-detail',detail);
+    if(Number.isFinite(elapsed)) text('elapsed',`${(elapsed/1000).toFixed(1)}s`);
+  }
+  function renderPlan(plan) {
+    if(!plan || typeof plan !== 'object') return;
+    text('interpretation',plan.interpreted_question || plan.question || plan.summary || 'Review the plan below.');
+    const steps = plan.graph_steps || plan.steps || [];
+    el('steps').replaceChildren();
+    steps.forEach((step,index) => { const row=node('div',null,'step'); row.append(node('div',`STEP ${index+1}`,'step-number'),node('div',step.question || step.description || step.purpose || step.instruction || JSON.stringify(step))); el('steps').append(row); });
+    const constraints = plan.required_filters || plan.constraints;
+    text('constraints',constraints && (Array.isArray(constraints) ? constraints.length : Object.keys(constraints).length) ? `Required constraints: ${JSON.stringify(constraints)}` : '');
+    text('plan-json',JSON.stringify(plan,null,2)); show('plan-details');
+    const lit = plan.literature?.enabled ?? plan.literature_enabled ?? plan.include_literature ?? (typeof plan.literature === 'boolean' ? plan.literature : false);
+    badge('literature-badge',lit ? 'Included in plan' : 'Graph only');
+    const clarification = plan.clarification || plan.needs_clarification || plan.requires_clarification;
+    if(typeof clarification === 'string') text('constraints',clarification);
+    badge('plan-badge',clarification ? 'Refine question' : 'Ready for review',!!clarification);
+    show('confirm-button',!clarification);
+  }
+  function renderGraph(evidence) {
+    if(!evidence || typeof evidence !== 'object') return;
+    const graph = evidence.graph || evidence;
+    const nodes = graph.nodes || [], edges = graph.edges || graph.relationships || [];
+    show('graph-evidence'); text('graph-counts',`${nodes.length} nodes · ${edges.length} relationships`);
+    const metadata = {...evidence}; delete metadata.nodes; delete metadata.edges; delete metadata.relationships; if(metadata.graph) metadata.graph = {node_count:nodes.length,edge_count:edges.length};
+    text('evidence-json',JSON.stringify(metadata,null,2));
+    const completeness = evidence.completeness;
+    const truncated = evidence.truncated || completeness?.truncated || completeness === 'truncated';
+    const uncertain = truncated || completeness === 'partial' || completeness?.status === 'partial' || completeness?.complete === false;
+    if(uncertain){ text('graph-notice',truncated ? 'The result reached a retrieval limit. The displayed graph is incomplete.' : `Completeness requires review: ${JSON.stringify(completeness)}`); show('graph-notice'); }
+    el('nodes').replaceChildren(); el('edges').replaceChildren();
+    const idOf = n => String(n.id ?? n.element_id ?? n.elementId ?? n.name ?? '');
+    const nameOf = n => n.name || n.properties?.name || n.properties?.symbol || idOf(n);
+    nodes.forEach(n => { const r=node('tr'); r.append(node('td',nameOf(n)),node('td',(n.labels || [n.label || n.type || '']).join(', ')),node('td',JSON.stringify(n.properties || {}))); el('nodes').append(r); });
+    edges.forEach(e => { const r=node('tr'); r.append(node('td',e.start_id ?? e.source ?? e.start ?? e.start_node_id),node('td',e.type ?? e.label),node('td',e.end_id ?? e.target ?? e.end ?? e.end_node_id)); el('edges').append(r); });
+    const svg=el('graph-preview'); svg.replaceChildren();
+    const visible = nodes.slice(0,32), positions = new Map();
+    const addSvg = (tag,attrs,content) => { const item=document.createElementNS('http://www.w3.org/2000/svg',tag); Object.entries(attrs).forEach(([k,v])=>item.setAttribute(k,String(v))); if(content!=null)item.textContent=String(content);svg.append(item); return item; };
+    visible.forEach((n,i)=>{const a=2*Math.PI*i/Math.max(visible.length,1)-Math.PI/2;positions.set(idOf(n),[320+Math.cos(a)*235,130+Math.sin(a)*94]);});
+    edges.forEach(e=>{ const a=positions.get(String(e.start_id ?? e.source ?? e.start ?? e.start_node_id)),b=positions.get(String(e.end_id ?? e.target ?? e.end ?? e.end_node_id));if(a&&b)addSvg('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1]}); });
+    visible.forEach(n=>{const [x,y]=positions.get(idOf(n));const dot=addSvg('circle',{cx:x,cy:y,r:6});const title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent=nameOf(n);dot.append(title);addSvg('text',{x,y:y+17,'text-anchor':'middle'},String(nameOf(n)).slice(0,21));});
+    if(!nodes.length) addSvg('text',{x:320,y:130,'text-anchor':'middle'},'No graph nodes returned');
+    text('graph-preview-note',nodes.length > visible.length ? `Preview shows ${visible.length} of ${nodes.length} returned nodes; the tables contain all returned evidence.` : 'Preview of returned graph evidence. Inspect node properties and executed queries below.');
+  }
+  function renderReferences(container,references) {
+    (references || []).forEach((ref,i) => {
+      const entry=node('div',null,'reference'); const title=ref.title || ref.document_id || ref.id || (ref.pmid ? `PMID ${ref.pmid}` : `Reference ${i+1}`);
+      const url=safeUrl(ref.url) || (ref.pmid && /^\d+$/.test(String(ref.pmid)) ? `https://pubmed.ncbi.nlm.nih.gov/${ref.pmid}/` : null);
+      if(url){const a=node('a',`[${i+1}] ${title}`);a.href=url;a.target='_blank';a.rel='noopener noreferrer';entry.append(a);} else entry.append(node('div',`[${i+1}] ${title}`));
+      entry.append(node('div',[ref.source_type || ref.source,ref.journal,ref.date || ref.year,ref.pmid ? `PMID ${ref.pmid}` : ref.document_id || ref.id].filter(Boolean).join(' · '),'ref-meta'));container.append(entry);
+    });
+  }
+  function renderPerspective(p) {
+    if(!p || !p.id) return;
+    const id=`perspective-${p.id}`; let card=document.getElementById(id);
+    if(!card){card=node('article',null,'card');card.id=id;el('literature').append(card);}card.replaceChildren();
+    const head=node('div',null,'card-head');head.append(node('h3',p.label || label(p.id)),node('span',label(p.status || 'complete'),'badge'));const body=node('div',null,'answer lit-answer');renderAnswer(body,p.answer || p.response || 'No evidence returned.');card.append(head,body);
+    if(p.status === 'no_evidence' || p.status === 'unavailable') card.append(node('div','No supporting references were returned for this perspective.','notice'));
+    if(p.citation_validation?.unresolved_markers?.length) card.append(node('div',`Some citation markers could not be linked: ${p.citation_validation.unresolved_markers.join(', ')}`,'notice'));
+    renderReferences(card,p.references);
+    (p.alternatives || []).forEach((alternative,i)=>{const details=node('details',null,'details'),body=node('div',null,'answer lit-answer');renderAnswer(body,alternative.answer);details.append(node('summary',`Additional retrieved answer ${i+1}`),body);renderReferences(details,alternative.references);card.append(details);});
+    badge('literature-badge','Evidence available');
+  }
+  function renderLiterature(value) {
+    if(!value) return;
+    if(value.status === 'not_requested') {badge('literature-badge','Graph only');text('literature-note','This plan uses graph evidence only. Literature retrieval was not requested.');return;}
+    (Array.isArray(value.perspectives) ? value.perspectives : Object.values(value.perspectives || {})).forEach(renderPerspective);
+    badge('literature-badge',label(value.status || 'available'),['partial','unavailable'].includes(value.status));
+    text('literature-note',`Source policy: ${value.source_policy || 'mixed'} · Corpus: ${value.corpus_version || 'not reported'}. Evidence strength can differ between perspectives.${value.error_category ? ` Literature status: ${label(value.error_category)}.` : ''}`);
+  }
+  function finish(status) { setBusy(false);show('cancel-button',false);show('confirm-button',false);if(source)source.close();stage(status, status === 'completed' ? 'Available answer sections are ready.' : 'Review available evidence and component outcomes.');badge('plan-badge',label(status),status !== 'completed'); }
+  function renderSnapshot(snapshot) {
+    if(snapshot.plan) renderPlan(snapshot.plan);
+    if(snapshot.graph_answer){answer = typeof snapshot.graph_answer === 'string' ? snapshot.graph_answer : snapshot.graph_answer.answer || snapshot.graph_answer.text || '';renderAnswer(el('graph-answer'),answer);badge('graph-badge','Evidence available');}
+    if(snapshot.evidence)renderGraph(snapshot.evidence);
+    if(snapshot.literature)renderLiterature(snapshot.literature);
+    if(snapshot.error)error(typeof snapshot.error === 'string' ? snapshot.error : JSON.stringify(snapshot.error));
+    stage(snapshot.stage || snapshot.status);
+    if(terminalStates.has(snapshot.status))finish(snapshot.status);
+    else if(snapshot.status === 'awaiting_confirmation'){show('confirm-button',!snapshot.plan?.clarification);text('activity-detail',snapshot.plan?.clarification || 'Review the plan, then confirm to begin retrieval.');}
+    else show('confirm-button',false);
+  }
+  async function refresh() { if(!runId)return; try{renderSnapshot(await api(`/v2/runs/${encodeURIComponent(runId)}`));}catch(e){error(e.message);} }
+  function handle(event) {
+    let envelope;try{envelope=JSON.parse(event.data);}catch(_){return;}
+    const seq=Number(envelope.sequence || envelope.seq || 0);if(seq && seq <= sequence)return;sequence=Math.max(sequence,seq);
+    const type=envelope.type || event.type,p=envelope.payload || envelope.data || {};
+    stage(envelope.stage,p.message,envelope.elapsed_ms);
+    if(type==='plan_ready'){planId=p.plan_id || planId;renderPlan(p.plan || p);text('activity-detail','Review the plan, then confirm to begin retrieval.');}
+    if(type==='graph_answer'){if(p.delta)answer += p.text || '';else{answer=p.answer ?? p.text ?? answer;if(p.evidence)renderGraph(p.evidence);badge('graph-badge','Evidence available');}renderAnswer(el('graph-answer'),answer);}
+    if(type==='literature_perspective')renderPerspective(p.perspective || p);
+    if(type==='literature_result' || type==='literature_complete')renderLiterature(p);
+    if(type==='error'){error(p.message || p.error_category || 'This stage could not complete.');}
+    if(type==='terminal'){finish(p.status || envelope.status);refresh();}
+  }
+  function connect(url) {
+    if(source)source.close();source=new EventSource(url || `/v2/runs/${encodeURIComponent(runId)}/events`);
+    ['message','stage','progress','heartbeat','plan_ready','graph_step','graph_answer','graph_evidence','literature_progress','literature_perspective','literature_result','literature_complete','error','terminal','queued','plan'].forEach(type=>source.addEventListener(type,event=>{if(event.data)handle(event);}));
+    source.onerror = () => { if(busy)text('activity-detail','Reconnecting to progress; the current run continues.'); };
+  }
+  el('question-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(busy)return;const question=el('question').value.trim();if(!question)return;
+    resetView();show('work');setBusy(true);stage('planning');
+    try{const request={question};if(sessionId)request.session_id=sessionId;const created=await api('/v2/plans',request);runId=created.run_id;planId=created.plan_id;sessionId=created.session_id || sessionId;connect(created.events_url);await refresh();}catch(e){setBusy(false);error(e.message);}
+  });
+  el('confirm-button').addEventListener('click',async()=>{el('confirm-button').disabled=true;show('error',false);try{await api(`/v2/plans/${encodeURIComponent(planId)}/confirm`,{});show('confirm-button',false);badge('plan-badge','Confirmed');badge('graph-badge','Retrieving');stage('queued','Waiting for graph retrieval.');}catch(e){el('confirm-button').disabled=false;error(e.message);}});
+  el('cancel-button').addEventListener('click',async()=>{if(!runId)return;el('cancel-button').disabled=true;try{await api(`/v2/runs/${encodeURIComponent(runId)}/cancel`,{});await refresh();}catch(e){el('cancel-button').disabled=false;error(e.message);}});
+  el('new-button').addEventListener('click',()=>{if(busy)return;sessionId=null;runId=null;planId=null;resetView();show('work',false);el('question').value='';el('question').focus();});
+  document.querySelectorAll('.example').forEach(button=>button.addEventListener('click',()=>{if(!busy){el('question').value=button.textContent;el('question').focus();}}));
+})();
+</script>
+</body>
+</html>
