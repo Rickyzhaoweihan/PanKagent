@@ -1,0 +1,29 @@
+# Stage inside the existing HTTPS server block. An operator must validate and
+# reload nginx; these snippets do not replace any existing production location.
+location = /pankgraph-vnext {
+    return 308 /pankgraph-vnext/;
+}
+
+location ^~ /pankgraph-vnext/ {
+    # No URI suffix: preserve /pankgraph-vnext/ in the upstream request path.
+    proxy_pass http://127.0.0.1:8795;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+    proxy_set_header Authorization $http_authorization;
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    client_max_body_size 256k;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Cache-Control "no-store" always;
+    # HTTP Basic is implemented by the application with a protected password
+    # hash. Do not add a separate htpasswd file or browser credentials.
+}

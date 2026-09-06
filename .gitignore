@@ -80,3 +80,8 @@ deploy_vnext/*identity*.json
 
 # This service-owned configuration contains names/defaults only, never keys.
 !pankagent_vnext/config.py
+
+# Separate results runtime; only configuration code, never runtime env, is tracked.
+var/results*/
+!pankgraph_results/config.py
+!pankgraph_results/vendor/graph_viewer/layout_engine/config.py

@@ -1,0 +1,58 @@
+{
+  "branch": "codex/graph-viewer-timeout-errors",
+  "commit": "362025db24b1d37223c3c44ccf02a55eb2756a42",
+  "files": {
+    "filtering.py": {
+      "changes": [
+        "Extract get_node_type, _effective_real_node_budget, filter_graph only",
+        "Regular KG mode only; no genome expansion",
+        "Adapter ceiling 100, default 25; scoring unchanged"
+      ],
+      "modified": true,
+      "sha256": "65789d3c776baecfc1ff6a8580f18929df9c9fecbc7b80134bcc583511b184fc",
+      "upstream_path": "app/index.py",
+      "upstream_sha256": "10dc93821d1da860c542469a4c71375f5d921aa6878d0bdfc197f86cec285226"
+    },
+    "layout_engine/__init__.py": {
+      "modified": false,
+      "sha256": "6a7f918aff8c6a5a18daf80049f1eeb27ee9b825162e6ee80822102fe204d8ec",
+      "upstream_path": "app/layout_engine/__init__.py"
+    },
+    "layout_engine/config.py": {
+      "modified": false,
+      "sha256": "b98d2c32ecbbe6243e20f33687641c86f1c662db4a8cd800c094672737e5540b",
+      "upstream_path": "app/layout_engine/config.py"
+    },
+    "layout_engine/constraints.py": {
+      "modified": false,
+      "sha256": "5418b9b310b94e0cdebab0bcf2da6424996e766b053bad4aabf87a2353fff20f",
+      "upstream_path": "app/layout_engine/constraints.py"
+    },
+    "layout_engine/engine.py": {
+      "modified": false,
+      "sha256": "8e19a4c3526e747eca19f445dcf4173b79a6347a32310680ee6f207f6a8cc5e2",
+      "upstream_path": "app/layout_engine/engine.py"
+    },
+    "layout_engine/geometry.py": {
+      "modified": false,
+      "sha256": "14272ffdad7f08e0a003d11abe8279759ea3e99dc8537da5296bd71d2b566827",
+      "upstream_path": "app/layout_engine/geometry.py"
+    },
+    "layout_engine/metrics.py": {
+      "modified": false,
+      "sha256": "4ad39b09a580ca84e0b013574d1ca764b4173c7fa6a9d1ac27c9b8a296aeda68",
+      "upstream_path": "app/layout_engine/metrics.py"
+    },
+    "layout_engine/optimizer.py": {
+      "modified": false,
+      "sha256": "aa4058e47f2e5df6ca42370450c8c817215ddbfe7830a3498e04df8ab724375d",
+      "upstream_path": "app/layout_engine/optimizer.py"
+    },
+    "layout_engine/router.py": {
+      "modified": false,
+      "sha256": "3d91e7f03abdd24a5d2554822ec8a2ed38efc9f1e588229316aa78c7e0147583",
+      "upstream_path": "app/layout_engine/router.py"
+    }
+  },
+  "repository": "https://github.com/RingoMao/Graph_viewer"
+}

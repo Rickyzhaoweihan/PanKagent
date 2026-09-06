@@ -1,0 +1,18 @@
+[
+  {
+    "source": "1_eQTL-gtex-susie",
+    "credible_set": "ENSG00000001084__GCLC__credibleSet1"
+  },
+  {
+    "source": "1_eQTL-inspire-susie",
+    "credible_set": "ENSG00000001561__ENPP4__credibleSet1"
+  },
+  {
+    "source": "1_sQTL-gtex-susie",
+    "credible_set": "ENSG00000001626__CFTR__chr7:117542108:117559464:clu_25847:ENSG00000001626.14__credibleSet1"
+  },
+  {
+    "source": "1_exonQTL-inspire-susie",
+    "credible_set": "ENSG00000001084__GCLC__ENSG00000001084.6_53373974_53375246__credibleSet1"
+  }
+]
