@@ -141,6 +141,25 @@ async def new_plan(client, question="Which cell types express INS?", **options):
     return created
 
 
+def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
+    async def scenario():
+        plan = json.loads(json.dumps(PLAN))
+        question = "Is CFTR specifically enriched in ductal cells?"
+        plan["interpreted_question"] = question
+        plan["steps"][0].update(question=question, constraints=[{"property": "name", "operator": "=", "value": "CFTR"}])
+        async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
+            created = await new_plan(client, question)
+            run = (await client.get(f'/v2/runs/{created["run_id"]}')).json()
+            assert run["status"] == "awaiting_confirmation"
+            assert run["plan"]["steps"][0]["constraints"] == [
+                {"property": "name", "operator": "=", "value": "CFTR"},
+                {"property": "name", "operator": "=", "value": "ductal cell"},
+            ]
+            assert graph.calls == 0
+            assert gateway.plans == 1
+    asyncio.run(scenario())
+
+
 def test_confirmation_replay_and_followup_are_idempotent(tmp_path):
     async def scenario():
         async with service(tmp_path) as (client, runtime, gateway, graph, literature):

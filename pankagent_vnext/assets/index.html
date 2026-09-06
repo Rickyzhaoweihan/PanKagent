@@ -186,7 +186,7 @@
   }
   // END SAFE ANSWER RENDERER
   function error(message) { text('error',message); show('error'); }
-  function badge(id,value,warn = false) { text(id,value); el(id).className = warn ? 'badge warn' : 'badge'; }
+  function badge(id,value,warn = false) { text(id,value); el(id).className = warn === 'error' ? 'badge error' : warn ? 'badge warn' : 'badge'; }
   async function api(path,body) {
     const response = await fetch(path,{method: body === undefined ? 'GET' : 'POST',headers: body === undefined ? {} : {'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)});
     let result; try { result = await response.json(); } catch (_) { throw new Error('The service returned an unreadable response.'); }
@@ -213,7 +213,13 @@
     text('interpretation',plan.interpreted_question || plan.question || plan.summary || 'Review the plan below.');
     const steps = plan.graph_steps || plan.steps || [];
     el('steps').replaceChildren();
-    steps.forEach((step,index) => { const row=node('div',null,'step'); row.append(node('div',`STEP ${index+1}`,'step-number'),node('div',step.question || step.description || step.purpose || step.instruction || JSON.stringify(step))); el('steps').append(row); });
+    steps.forEach((step,index) => {
+      const row=node('div',null,'step'),body=node('div');
+      body.append(node('div',step.question || step.description || step.purpose || step.instruction || JSON.stringify(step)));
+      const filters=step.required_filters || step.constraints;
+      if(filters && Object.keys(filters).length)body.append(node('div',`Required constraints: ${JSON.stringify(filters)}`,'small muted'));
+      row.append(node('div',`STEP ${index+1}`,'step-number'),body);el('steps').append(row);
+    });
     const constraints = plan.required_filters || plan.constraints;
     text('constraints',constraints && (Array.isArray(constraints) ? constraints.length : Object.keys(constraints).length) ? `Required constraints: ${JSON.stringify(constraints)}` : '');
     text('plan-json',JSON.stringify(plan,null,2)); show('plan-details');
@@ -224,17 +230,33 @@
     badge('plan-badge',clarification ? 'Refine question' : 'Ready for review',!!clarification);
     show('confirm-button',!clarification);
   }
+  function graphOutcome(evidence) {
+    if(!evidence || typeof evidence !== 'object')return {label:'Evidence unavailable',tone:true,notice:'No graph evidence was supplied with this answer.'};
+    const graph=evidence.graph || evidence,steps=Array.isArray(evidence.steps) ? evidence.steps : Object.values(evidence.steps || {});
+    const statusOf=item=>typeof item.completeness === 'object' ? item.completeness?.status : item.completeness;
+    const failed=new Set(['failed','unavailable','error','timeout','cancelled','interrupted']);
+    const states=steps.map(step=>step.status || statusOf(step));
+    const status=statusOf(evidence) || evidence.status;
+    const hasData=item=>['nodes','edges','relationships','rows'].some(key=>Array.isArray(item[key]) && item[key].length);
+    const data=hasData(graph) || steps.some(step=>!failed.has(step.status || statusOf(step)) && hasData(step));
+    const failure=failed.has(status) || states.some(state=>failed.has(state)) || !!evidence.error;
+    const truncated=evidence.truncated || evidence.completeness?.truncated || status === 'truncated' || steps.some(step=>step.truncated);
+    const partial=truncated || evidence.delivery_status === 'partial' || status === 'partial' || evidence.completeness?.complete === false || states.includes('partial');
+    if(!data && failure)return {label:'Retrieval failed',tone:'error',notice:'Graph retrieval did not return usable evidence. Review the step outcomes and validation details below.'};
+    if(partial || (data && failure))return {label:'Partial evidence',tone:true,notice:evidence.delivery_status === 'partial' ? 'Some evidence was omitted from this response. The displayed graph is incomplete.' : truncated ? 'The result reached a retrieval limit. The displayed graph is incomplete.' : 'Some graph retrieval steps were incomplete or failed. Review the step outcomes below.'};
+    if(data)return {label:'Evidence available',tone:false,notice:''};
+    if(['complete','completed','empty'].includes(status) || (states.length && states.every(state=>['complete','empty'].includes(state))))return {label:'No matching evidence',tone:true,notice:'The completed graph queries returned no matching evidence. This does not establish biological absence.'};
+    return {label:'Evidence unavailable',tone:true,notice:'Graph retrieval has no verified outcome yet. Review the available step details below.'};
+  }
   function renderGraph(evidence) {
-    if(!evidence || typeof evidence !== 'object') return;
+    const outcome=graphOutcome(evidence);badge('graph-badge',outcome.label,outcome.tone);
+    text('graph-notice',outcome.notice);show('graph-notice',!!outcome.notice);
+    if(!evidence || typeof evidence !== 'object'){show('graph-evidence',false);return;}
     const graph = evidence.graph || evidence;
     const nodes = graph.nodes || [], edges = graph.edges || graph.relationships || [];
     show('graph-evidence'); text('graph-counts',`${nodes.length} nodes · ${edges.length} relationships`);
     const metadata = {...evidence}; delete metadata.nodes; delete metadata.edges; delete metadata.relationships; if(metadata.graph) metadata.graph = {node_count:nodes.length,edge_count:edges.length};
     text('evidence-json',JSON.stringify(metadata,null,2));
-    const completeness = evidence.completeness;
-    const truncated = evidence.truncated || completeness?.truncated || completeness === 'truncated';
-    const uncertain = truncated || completeness === 'partial' || completeness?.status === 'partial' || completeness?.complete === false;
-    if(uncertain){ text('graph-notice',truncated ? 'The result reached a retrieval limit. The displayed graph is incomplete.' : `Completeness requires review: ${JSON.stringify(completeness)}`); show('graph-notice'); }
     el('nodes').replaceChildren(); el('edges').replaceChildren();
     const idOf = n => String(n.id ?? n.element_id ?? n.elementId ?? n.name ?? '');
     const nameOf = n => n.name || n.properties?.name || n.properties?.symbol || idOf(n);
@@ -278,8 +300,8 @@
   function finish(status) { setBusy(false);show('cancel-button',false);show('confirm-button',false);if(source)source.close();stage(status, status === 'completed' ? 'Available answer sections are ready.' : 'Review available evidence and component outcomes.');badge('plan-badge',label(status),status !== 'completed'); }
   function renderSnapshot(snapshot) {
     if(snapshot.plan) renderPlan(snapshot.plan);
-    if(snapshot.graph_answer){answer = typeof snapshot.graph_answer === 'string' ? snapshot.graph_answer : snapshot.graph_answer.answer || snapshot.graph_answer.text || '';renderAnswer(el('graph-answer'),answer);badge('graph-badge','Evidence available');}
-    if(snapshot.evidence)renderGraph(snapshot.evidence);
+    if(snapshot.graph_answer){answer = typeof snapshot.graph_answer === 'string' ? snapshot.graph_answer : snapshot.graph_answer.answer || snapshot.graph_answer.text || '';renderAnswer(el('graph-answer'),answer);}
+    if(snapshot.evidence || snapshot.graph_answer)renderGraph(snapshot.evidence);
     if(snapshot.literature)renderLiterature(snapshot.literature);
     if(snapshot.error)error(typeof snapshot.error === 'string' ? snapshot.error : JSON.stringify(snapshot.error));
     stage(snapshot.stage || snapshot.status);
@@ -294,7 +316,7 @@
     const type=envelope.type || event.type,p=envelope.payload || envelope.data || {};
     stage(envelope.stage,p.message,envelope.elapsed_ms);
     if(type==='plan_ready'){planId=p.plan_id || planId;renderPlan(p.plan || p);text('activity-detail','Review the plan, then confirm to begin retrieval.');}
-    if(type==='graph_answer'){if(p.delta)answer += p.text || '';else{answer=p.answer ?? p.text ?? answer;if(p.evidence)renderGraph(p.evidence);badge('graph-badge','Evidence available');}renderAnswer(el('graph-answer'),answer);}
+    if(type==='graph_answer'){if(p.delta)answer += p.text || '';else{answer=p.answer ?? p.text ?? answer;renderGraph(p.evidence);}renderAnswer(el('graph-answer'),answer);}
     if(type==='literature_perspective')renderPerspective(p.perspective || p);
     if(type==='literature_result' || type==='literature_complete')renderLiterature(p);
     if(type==='error'){error(p.message || p.error_category || 'This stage could not complete.');}

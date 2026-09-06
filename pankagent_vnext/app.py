@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from .config import Settings
 from .health import HealthMonitor, Metrics, error_category
+from .plan_constraints import repair_step_constraints
 from .store import ACTIVE, TERMINAL, Store
 from .transport import JSONResponseLimitMiddleware, sse_event_bytes
 
@@ -75,7 +76,7 @@ def normalize_plan(plan: dict) -> dict:
     if len(plan["steps"]) > 3:
         return {**plan, "steps": [], "clarification": "Please narrow this to at most three graph investigations."}
     seen = set()
-    for step in plan["steps"]:
+    for index, step in enumerate(plan["steps"]):
         if not isinstance(step, dict) or not step.get("id") or not isinstance(step.get("question"), str):
             raise ValueError("Invalid graph step")
         if step["id"] in seen or any(dependency not in seen for dependency in step.get("depends_on", [])):
@@ -84,6 +85,7 @@ def normalize_plan(plan: dict) -> dict:
         step.setdefault("depends_on", [])
         step.setdefault("constraints", [])
         step.setdefault("complete", True)
+        plan["steps"][index] = repair_step_constraints(step)
     plan.setdefault("literature", False)
     plan.setdefault("clarification", None)
     if not plan["steps"] and not plan["clarification"]:

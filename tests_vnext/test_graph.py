@@ -177,6 +177,24 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["provenance"], [{"property": "data_source", "value": "paper"}])
         self.assertEqual([payload["stage"] for _, payload in self.events][-1], "querying_graph")
 
+    async def test_confirmed_plan_recovers_requested_cell_without_weakening_guards(self):
+        original = step(question="Is CFTR (gene) specifically enriched in ductal cells (GENE_ENRICHED_IN relation)?",
+                        constraints=[{"property": "name", "operator": "=", "value": "CFTR"}])
+        broad = "MATCH (g:Gene)-[r:GENE_ENRICHED_IN]->(c:anatomical_structure) WHERE g.name='CFTR' RETURN g,r,c"
+        invented = broad.replace(" RETURN", " AND c.name='beta cell' RETURN")
+        requested = broad.replace(" RETURN", " AND c.name='ductal cell' RETURN")
+        adapter = FakeAdapter([[broad], [invented, requested]])
+        result = await adapter.execute(original, {}, self.emit)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(adapter.retrieved, [(requested, {})])
+        self.assertEqual([n for _, n in adapter.generated], [1, 8])
+        self.assertIn("missing_required_filter:name", result["validation"][0]["reasons"])
+        self.assertIn("unrequested_identity_filter:name", result["validation"][1]["reasons"])
+        self.assertIn("Gene nodes named CFTR", adapter.generated[0][0])
+        self.assertIn("anatomical_structure nodes named ductal cell", adapter.generated[0][0])
+        self.assertEqual(result["question"], original["question"])
+        self.assertEqual(original["constraints"], [{"property": "name", "operator": "=", "value": "CFTR"}])
+
     async def test_never_executes_after_two_invalid_batches(self):
         adapter = FakeAdapter([[VALID + " LIMIT 10"], [VALID + " LIMIT 20"]])
         result = await adapter.execute(step(), {}, self.emit)

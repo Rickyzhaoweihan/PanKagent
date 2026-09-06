@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 from neo4j import AsyncGraphDatabase, READ_ACCESS
 from neo4j.graph import Node, Path as Neo4jPath, Relationship
+from .plan_constraints import build_generation_question, repair_step_constraints
 
 
 class GraphValidationError(ValueError):
@@ -680,6 +681,9 @@ class GraphAdapter:
                 "status": "partial" if truncated else "complete" if nodes or rows else "empty"}
 
     async def execute(self, step: dict, previous: dict, emit) -> dict:
+        # Older confirmed plans may name a cell in prose but omit its predicate.
+        # Recover only the narrow, verified entity constraint; guards stay strict.
+        step = repair_step_constraints(step)
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
                 "truncated": False, "status": "failed", "provenance": []}
@@ -715,7 +719,7 @@ class GraphAdapter:
             name = "dep_" + str(index)
             parameters[name] = ids
             dependency_notes.append(f"Preserve the entities from step {dependency}: constrain the appropriate node's id IN ${name}; this parameter contains {len(ids)} existing graph IDs.")
-        question = str(step.get("question", ""))
+        question = build_generation_question(step)
         if dependency_notes:
             question += "\n" + "\n".join(dependency_notes)
         if len(question) > 4000:

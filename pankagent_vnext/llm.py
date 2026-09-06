@@ -9,6 +9,7 @@ import anthropic
 from .answer_router import AnswerSkillRouter
 from .budget import Budget
 from .evidence_context import compact_evidence
+from .plan_constraints import repair_step_constraints
 
 PLAN_SCHEMA = {
  'type':'object','additionalProperties':False,
@@ -31,6 +32,7 @@ PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concis
 PLAN_SYSTEM += '''
 Release schema notes:
 - Gene, disease, anatomical_structure, GO_term, reactome: id/name identify entities. Gene symbols use name. anatomical_structure has no tissue_id property; cell names identify cell types.
+- Include EVERY named entity in constraints: a question naming both a gene and a cell type requires both, not just the gene. Verified common-cell names in this release are alpha cell (CL_0000171), beta cell (CL_0000169), delta cell (CL_0000173), ductal cell (CL_0002079), and endothelial cell (CL_0000115). Use these exact name values for unambiguous common-cell requests; if the user explicitly supplies the matching ID, use that ID without a redundant name constraint. Do not broaden modified subclasses, negate exclusions, or collapse multiple cell types into one. Preserve the original question instead of adding investigations.
 - GENE_ENRICHED_IN: padj (adjusted p), pvalue, condition, rank_in_cell_type, log2_fold_change. T1D_DEG_IN instead uses adjusted_p_value. Never interchange these. A named cell's canonical name is not necessarily its short synonym; do not fabricate equality values.
 - GENE_DETECTED_IN: condition, median_donor_cpm, expression_call.
 - GENE_ACTIVITY_SCORE_IN: ocr_gene_activity_score_mean, type_1_diabetes_ocr_gene_activity_score_mean, type_2_diabetes_ocr_gene_activity_score_mean, non_diabetic_ocr_gene_activity_score_mean, aab_pos_ocr_gene_activity_score_mean (and corresponding median columns). Cohort-specific activity is encoded in columns, not condition_id predicates.
@@ -91,6 +93,7 @@ class ClaudeGateway:
                         raise ValueError('invalid_plan_dependencies')
                     seen.add(step['id'])
                 if len(plan['steps'])>3: raise ValueError('plan_too_large')
+                plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
                 self.last_success=time.time()
                 return plan
         raise ValueError('missing_structured_plan')
