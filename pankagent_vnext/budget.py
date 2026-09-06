@@ -1,4 +1,5 @@
 """Persistent atomic reservations: interrupted/ambiguous calls retain their bound."""
+import json
 import sqlite3
 import threading
 import time
@@ -42,5 +43,23 @@ class Budget:
     def snapshot(self):
         with self.lock,self._db() as db:
             actual,reserved,calls,pending=db.execute('SELECT COALESCE(SUM(actual),0),COALESCE(SUM(CASE WHEN actual IS NULL THEN reserved ELSE 0 END),0),COUNT(*),SUM(CASE WHEN actual IS NULL THEN 1 ELSE 0 END) FROM usage').fetchone()
+            settled_usage=db.execute('SELECT tokens FROM usage WHERE actual IS NOT NULL AND tokens IS NOT NULL').fetchall()
+        fields={'input_tokens':'input_tokens','output_tokens':'output_tokens',
+                'cache_read_tokens':'cache_read_input_tokens','cache_creation_tokens':'cache_creation_input_tokens'}
+        totals={field:0 for field in fields}
+        for (raw_usage,) in settled_usage:
+            # Usage metadata must not make an otherwise valid financial snapshot
+            # unavailable; old/corrupt metadata contributes no invented tokens.
+            try:
+                usage=json.loads(raw_usage)
+            except (TypeError,ValueError):
+                continue
+            if not isinstance(usage,dict):
+                continue
+            for field,source in fields.items():
+                value=usage.get(source,0)
+                if isinstance(value,int) and not isinstance(value,bool) and value>=0:
+                    totals[field]+=value
         return {'limit_usd':self.limit,'spent_usd':round(actual,6),'reserved_usd':round(reserved,6),
-                'remaining_usd':round(max(0,self.limit-actual-reserved),6),'calls':calls,'pending_calls':pending or 0}
+                'remaining_usd':round(max(0,self.limit-actual-reserved),6),'calls':calls,'pending_calls':pending or 0,
+                **totals}

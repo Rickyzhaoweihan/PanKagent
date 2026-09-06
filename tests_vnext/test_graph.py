@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 from neo4j.graph import Graph, Node
 
 from pankagent_vnext.graph import GraphAdapter, schema_fingerprint, suppress_driver_query_logging, validate_cypher
@@ -351,6 +352,75 @@ class RetrievalTests(unittest.IsolatedAsyncioTestCase):
             file.write_text(json.dumps(manifest))
             with self.assertRaisesRegex(ValueError, "graph_identity_mismatch"):
                 await adapter._verify_identity()
+
+
+class CypherHealthTests(unittest.IsolatedAsyncioTestCase):
+    async def probe(self, data, health_status=200, info_status=200):
+        calls = []
+
+        def response(request):
+            calls.append((request.method, request.url.path))
+            if request.url.path == "/health":
+                return httpx.Response(health_status, json=data)
+            return httpx.Response(info_status, json={"model": "local-model", "prompt_version": "v0"})
+
+        adapter = object.__new__(GraphAdapter)
+        adapter.settings = SimpleNamespace(cypher_url="https://example.test", cypher_token="test-token")
+        adapter.last_generation_success = None
+        adapter.last_generation_error = None
+        async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+            adapter.http = client
+            result = await adapter.probe_cypher()
+        self.assertCountEqual(calls, [("GET", "/health"), ("GET", "/v1/info")])
+        return result
+
+    async def test_fractional_replica_counts_report_one_and_zero_failures(self):
+        for count, state, available in [("2/2", "healthy", 2), ("1/2", "degraded", 1), ("0/2", "unavailable", 0)]:
+            with self.subTest(count=count):
+                result = await self.probe({"status": "ok", "backends_up": count})
+                self.assertEqual(result["state"], state)
+                self.assertEqual(result["healthy_replicas"], available)
+                self.assertEqual(result["total_replicas"], 2)
+
+    async def test_unavailable_http_responses_keep_reported_replica_counts(self):
+        result = await self.probe({"status": "down", "backends_up": "0/2"}, health_status=503, info_status=503)
+        self.assertEqual(result["state"], "unavailable")
+        self.assertEqual(result["healthy_replicas"], 0)
+        self.assertEqual(result["total_replicas"], 2)
+        self.assertFalse(result["authenticated"])
+
+    async def test_integer_available_and_explicit_total(self):
+        for available, total, state in [(3, 3, "healthy"), (2, 3, "degraded"), (0, 3, "unavailable")]:
+            result = await self.probe({"status": "healthy", "backends_up": available, "backends_total": total})
+            self.assertEqual(result["state"], state)
+            self.assertEqual(result["healthy_replicas"], available)
+            self.assertEqual(result["total_replicas"], total)
+
+    async def test_integer_without_total_does_not_invent_replica_capacity(self):
+        for value in [2, "2"]:
+            result = await self.probe({"status": "ok", "backends_up": value})
+            self.assertEqual(result["state"], "degraded")
+            self.assertEqual(result["healthy_replicas"], 2)
+            self.assertIsNone(result["total_replicas"])
+
+    async def test_missing_and_malformed_counts_never_report_healthy(self):
+        for count in [None, True, -1, 1025, "bad", "3/2", "1/0", "0/0", "1/99999", [2], {"up": 2}]:
+            with self.subTest(count=count):
+                result = await self.probe({"status": "ok", "backends_up": count})
+                self.assertEqual(result["state"], "degraded")
+                self.assertIsNone(result["healthy_replicas"])
+                self.assertEqual(result["error_category"], "invalid_response")
+
+    async def test_reported_degraded_status_is_not_overridden_by_counts(self):
+        result = await self.probe({"status": "degraded", "backends_up": "2/2"})
+        self.assertEqual(result["state"], "degraded")
+
+    async def test_authentication_failure_is_separate_from_live_replicas(self):
+        result = await self.probe({"status": "ok", "backends_up": "2/2"}, info_status=401)
+        self.assertEqual(result["state"], "unavailable")
+        self.assertEqual(result["healthy_replicas"], 2)
+        self.assertEqual(result["total_replicas"], 2)
+        self.assertEqual(result["error_category"], "authentication")
 
 
 if __name__ == "__main__":

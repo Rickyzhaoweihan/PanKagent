@@ -89,6 +89,9 @@ apply to materialized graph results across steps (2,000 nodes, 5,000 edges,
 1,000 rows and 2 MB); the public aggregate plus per-step disclosures can make the
 serialized run larger than the graph materialization bound. This is a development
 API, with no public authentication or production routing installed.
+Every JSON response and individual SSE frame has a separate hard 8 MiB ceiling.
+Oversized delivery preserves execution IDs/status and bounded answer previews,
+but explicitly marks omitted evidence and delivery as partial/truncated.
 
 ## Health and spending
 

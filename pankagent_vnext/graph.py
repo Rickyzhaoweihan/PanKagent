@@ -495,15 +495,64 @@ class GraphAdapter:
             health, info = await asyncio.gather(
                 self.http.get(self.settings.cypher_url.rstrip("/") + "/health"),
                 self.http.get(self.settings.cypher_url.rstrip("/") + "/v1/info", headers=headers),
+                return_exceptions=True,
             )
-            health.raise_for_status()
-            info.raise_for_status()
-            h, metadata = health.json(), info.json()
-            replicas = h.get("backends_up")
-            state = "healthy" if h.get("status") in {"ok", "healthy"} else "degraded"
-            if isinstance(replicas, int) and replicas < 2:
-                state = "degraded" if replicas else "unavailable"
-            return {"state": state, "authenticated": True, "backends_up": replicas,
+
+            def body(response):
+                if not isinstance(response, httpx.Response):
+                    return None
+                try:
+                    value = response.json()
+                    return value if isinstance(value, dict) else None
+                except (ValueError, TypeError):
+                    return None
+
+            def count(value):
+                # Booleans are integers in Python, but never replica counts.
+                if type(value) is int and 0 <= value <= 1024:
+                    return value
+                if isinstance(value, str) and re.fullmatch(r"\s*[0-9]{1,4}\s*", value):
+                    parsed = int(value)
+                    return parsed if parsed <= 1024 else None
+                return None
+
+            h, metadata = body(health), body(info)
+            health_ok = isinstance(health, httpx.Response) and health.is_success and h is not None
+            authenticated = isinstance(info, httpx.Response) and info.is_success and metadata is not None
+            h, metadata = h or {}, metadata or {}
+            raw = h.get("backends_up")
+            available, total = None, None
+            fraction = re.fullmatch(r"\s*([0-9]{1,4})\s*/\s*([0-9]{1,4})\s*", raw) if isinstance(raw, str) else None
+            if fraction:
+                available, total = count(fraction[1]), count(fraction[2])
+                if available is None or total is None or total == 0 or available > total:
+                    available, total = None, None
+            else:
+                available = count(raw)
+                total = count(h.get("backends_total"))
+                if total == 0 or available is not None and total is not None and available > total:
+                    available, total = None, None
+
+            state = "degraded"
+            if available == 0 or not health_ok or not authenticated or h.get("status") in {"down", "unavailable"}:
+                state = "unavailable"
+            elif available is not None and total is not None and available == total and h.get("status") in {"ok", "healthy"}:
+                state = "healthy"
+
+            category = None
+            if isinstance(info, httpx.Response) and info.status_code in {401, 403}:
+                category = "authentication" if info.status_code == 401 else "authorization"
+            elif any(isinstance(value, httpx.TimeoutException) for value in (health, info)):
+                category = "timeout"
+            elif any(isinstance(value, BaseException) for value in (health, info)):
+                category = "connection"
+            elif not health_ok or not authenticated or available == 0:
+                category = "dependency_unavailable"
+            elif available is None:
+                category = "invalid_response"
+            return {"state": state, "authenticated": authenticated, "backends_up": available,
+                    "healthy_replicas": available, "total_replicas": total,
+                    "error_category": category,
                     "model": metadata.get("model"), "prompt_version": metadata.get("prompt_version"),
                     "recent_generation_success": self.last_generation_success,
                     "generation_error_category": self.last_generation_error}

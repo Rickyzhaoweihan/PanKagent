@@ -70,11 +70,15 @@ class Metrics:
     def __init__(self):
         self.counts: Counter = Counter()
         self.durations: dict[str, list[float]] = defaultdict(list)
+        self.duration_counts: Counter = Counter()
+        self.duration_sums: dict[str, float] = defaultdict(float)
 
     def count(self, name: str, count: int = 1) -> None:
         self.counts[name] += count
 
     def observe(self, stage: str, seconds: float) -> None:
+        self.duration_counts[stage] += 1
+        self.duration_sums[stage] += seconds
         values = self.durations[stage]
         values.append(seconds)
         if len(values) > 10000:
@@ -87,8 +91,8 @@ class Metrics:
         for stage, values in sorted(self.durations.items()):
             ordered = sorted(values)
             lines.extend([
-                f'pankagent_stage_seconds_count{{stage="{stage}"}} {len(values)}',
-                f'pankagent_stage_seconds_sum{{stage="{stage}"}} {sum(values):.6f}',
+                f'pankagent_stage_seconds_count{{stage="{stage}"}} {self.duration_counts[stage]}',
+                f'pankagent_stage_seconds_sum{{stage="{stage}"}} {self.duration_sums[stage]:.6f}',
                 f'pankagent_stage_seconds{{stage="{stage}",quantile="0.5"}} {ordered[(len(ordered)-1)//2]:.6f}',
                 f'pankagent_stage_seconds{{stage="{stage}",quantile="0.95"}} {ordered[max(0, int(len(ordered)*0.95+0.999)-1)]:.6f}',
             ])

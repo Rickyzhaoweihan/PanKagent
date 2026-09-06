@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from .config import Settings
 from .health import HealthMonitor, Metrics, error_category
 from .store import ACTIVE, TERMINAL, Store
+from .transport import JSONResponseLimitMiddleware, sse_event_bytes
 
 
 class PlanRequest(BaseModel):
@@ -399,6 +400,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         await runtime.close()
 
     app = FastAPI(title="PanKagent vNext", version="2.0.0", lifespan=lifespan)
+    app.add_middleware(JSONResponseLimitMiddleware)
     app.state.runtime = runtime
 
     def get_run(run_id):
@@ -493,7 +495,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                 batch = runtime.store.events_after(run_id, cursor)
                 for event in batch:
                     cursor = event["sequence"]
-                    yield f'id: {cursor}\nevent: {event["type"]}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n'
+                    yield sse_event_bytes(event)
                 if not batch and runtime.store.get(run_id)["status"] in TERMINAL:
                     return
                 await asyncio.sleep(0.1)
