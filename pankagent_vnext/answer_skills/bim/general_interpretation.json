@@ -1,0 +1,30 @@
+{
+  "T1D_stage_definitions": {
+    "source": "ADA/JDRF presymptomatic T1D staging standard",
+    "review": "Stage definitions reviewed by islet expert",
+    "autoantibodies": [
+      "GADA",
+      "IA2",
+      "IAA",
+      "ZNT8"
+    ],
+    "stages": {
+      "Stage 1": {
+        "definition": "Two or more positive islet autoantibodies with normal glucose metabolism",
+        "key_rules": "AAB >= 2; glucose normal; no clinical symptoms",
+        "agent_interpretation": "Early presymptomatic T1D"
+      },
+      "Stage 2": {
+        "definition": "Two or more positive islet autoantibodies with dysglycemia",
+        "key_rules": "AAB >= 2; dysglycemia present; no clinical symptoms",
+        "agent_interpretation": "Presymptomatic T1D with metabolic progression"
+      },
+      "Stage 3": {
+        "definition": "Clinical T1D diagnosis and/or diagnostic hyperglycemia",
+        "key_rules": "T1D diagnosis or diagnostic hyperglycemia is sufficient evidence",
+        "agent_interpretation": "Clinical T1D",
+        "aab_note": "Positive AAB supports autoimmune T1D; negative or missing AAB should be flagged but does not override Stage 3 when diagnosis/hyperglycemia is present"
+      }
+    }
+  }
+}

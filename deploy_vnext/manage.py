@@ -42,7 +42,10 @@ if a.action=='stop':
     pidfile.unlink(missing_ok=True);print('Only isolated vNext process stopped.');raise SystemExit()
 if pid and owned(pid): print('Isolated vNext is already running.');raise SystemExit()
 s=socket.socket()
-try:s.bind(('127.0.0.1',port))
+try:
+    # Match uvicorn's restart behavior: TIME_WAIT is reusable, a live listener is not.
+    s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+    s.bind(('127.0.0.1',port))
 except OSError:raise SystemExit('Port already occupied; no existing process changed.')
 finally:s.close()
 with (state/'service.log').open('ab') as log:

@@ -1,0 +1,685 @@
+{
+  "version": 1,
+  "bundle_version": "1.0.0",
+  "source": {
+    "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
+    "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
+    "path": "BIM_skill"
+  },
+  "files": {
+    "schema": "bim/schema_skill.json",
+    "functional": "bim/functional_data_interpretation_skill.json",
+    "general": "bim/general_interpretation.json"
+  },
+  "sha256": {
+    "upstream/schema_skill.json": "f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3",
+    "bim/schema_skill.json": "49af59b5db8604fcb8f0185639e6779b87f4f91c0d78e256804066e7d07f8d23",
+    "upstream/functional_data_interpretation_skill.json": "d5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80",
+    "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
+    "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
+    "bim/general_interpretation.json": "c1e3c308eb85af9b1af3f7bcfdc078bf844016d7e10e11b0ff4a248769dd6261"
+  },
+  "aliases": {
+    "nodes": {
+      "GENE": [
+        "Gene",
+        "gene",
+        "coding_elements;gene"
+      ],
+      "VARIANT": [
+        "variants",
+        "sequence_variant",
+        "variants;sequence_variant;",
+        "sequence_variant;variants",
+        "snp",
+        "snv",
+        "insertion",
+        "deletion",
+        "indel"
+      ],
+      "OCR_PEAK": [
+        "OCR_peak",
+        "OCR_peak;regulatory_elements"
+      ],
+      "GO": [
+        "GO_term",
+        "gene_ontology",
+        "gene_ontology;ontology",
+        "ontology;gene_ontology"
+      ],
+      "KEGG": [
+        "kegg",
+        "kegg;ontology",
+        "ontology;kegg"
+      ],
+      "REACTOME": [
+        "reactome",
+        "ontology;reactome",
+        "reactome;ontology"
+      ],
+      "ANATOMICAL_STRUCTURE": [
+        "anatomical_structure"
+      ],
+      "SAMPLE": [
+        "Sample_node",
+        "Sample node",
+        "Sample",
+        "sample"
+      ],
+      "DONOR": [
+        "donor",
+        "donor;provenance"
+      ],
+      "DATA_MODALITY": [
+        "data_modality"
+      ]
+    },
+    "edges": {
+      "T1D_DEG_IN": [
+        "T1D_DEG_in"
+      ],
+      "GENE_DETECTED_IN": [
+        "gene_detected_in"
+      ],
+      "GENE_ENRICHED_IN": [
+        "gene_enriched_in"
+      ],
+      "GENE_ACTIVITY_SCORE_IN": [
+        "gene_activity_score_in"
+      ],
+      "OCR_PEAK_IN": [
+        "OCR_peak_in"
+      ],
+      "EFFECTOR_GENE_OF": [
+        "effector_gene_of;",
+        "effector_gene_of",
+        "CMDKP_effector_gene_of",
+        "CMDKP_EFFECTOR_GENE_OF"
+      ],
+      "PHYSICAL_INTERACTION": [
+        "physical_interaction"
+      ],
+      "GENETIC_INTERACTION": [
+        "genetic_interaction"
+      ],
+      "FUNCTION_ANNOTATION": [
+        "function_annotation",
+        "function_annotation;GO",
+        "ASSOCIATED_WITH_GO"
+      ],
+      "FGSEA_ENRICHED_IN": [
+        "fGSEA_enriched_in"
+      ],
+      "MARKER_GENE_OF": [
+        "marker_gene_of"
+      ],
+      "PART_OF_GWAS_SIGNAL": [
+        "part_of_GWAS_signal"
+      ],
+      "SIGNAL_COLOC_WITH": [
+        "signal_COLOC_with"
+      ],
+      "PART_OF_QTL_SIGNAL": [
+        "part_of_QTL_signal"
+      ],
+      "PATHWAY_ANNOTATION": [
+        "pathway_annotation",
+        "pathway_annotation;KEGG",
+        "pathway_annotation;reactome"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "id": "node.gene",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "GENE"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "coding_elements;gene"
+      }
+    },
+    {
+      "id": "node.variant",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "VARIANT"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "variants;sequence_variant;"
+      }
+    },
+    {
+      "id": "node.ocr_peak",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "OCR_PEAK"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "OCR_peak"
+      }
+    },
+    {
+      "id": "node.go",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "GO"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "gene_ontology"
+      }
+    },
+    {
+      "id": "node.kegg",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "KEGG"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "kegg"
+      }
+    },
+    {
+      "id": "node.reactome",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "REACTOME"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "reactome"
+      }
+    },
+    {
+      "id": "node.anatomical_structure",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "ANATOMICAL_STRUCTURE"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "anatomical_structure"
+      }
+    },
+    {
+      "id": "node.sample",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "SAMPLE"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "Sample node"
+      }
+    },
+    {
+      "id": "node.donor",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "DONOR"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "donor;provenance"
+      }
+    },
+    {
+      "id": "node.data_modality",
+      "kind": "node",
+      "match": {
+        "nodes_any": [
+          "DATA_MODALITY"
+        ],
+        "nodes_all": [],
+        "edges_any": [],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "data_modality"
+      }
+    },
+    {
+      "id": "edge.t1d_deg_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "T1D_DEG_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "T1D_DEG_in"
+      }
+    },
+    {
+      "id": "edge.gene_detected_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "GENE_DETECTED_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "gene_detected_in"
+      }
+    },
+    {
+      "id": "edge.gene_enriched_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "GENE_ENRICHED_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "gene_enriched_in"
+      }
+    },
+    {
+      "id": "edge.gene_activity_score_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "GENE_ACTIVITY_SCORE_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "gene_activity_score_in"
+      }
+    },
+    {
+      "id": "edge.ocr_peak_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "OCR_PEAK_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "OCR_peak_in"
+      }
+    },
+    {
+      "id": "edge.effector_gene_of",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "EFFECTOR_GENE_OF"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "effector_gene_of;"
+      }
+    },
+    {
+      "id": "edge.physical_interaction",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "PHYSICAL_INTERACTION"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "physical_interaction"
+      }
+    },
+    {
+      "id": "edge.genetic_interaction",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "GENETIC_INTERACTION"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "genetic_interaction"
+      }
+    },
+    {
+      "id": "edge.function_annotation",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "FUNCTION_ANNOTATION"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "function_annotation"
+      }
+    },
+    {
+      "id": "edge.fgsea_enriched_in",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "FGSEA_ENRICHED_IN"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "fGSEA_enriched_in"
+      }
+    },
+    {
+      "id": "edge.marker_gene_of",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "MARKER_GENE_OF"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "marker_gene_of"
+      }
+    },
+    {
+      "id": "edge.part_of_gwas_signal",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "PART_OF_GWAS_SIGNAL"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "part_of_GWAS_signal"
+      }
+    },
+    {
+      "id": "edge.signal_coloc_with",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "SIGNAL_COLOC_WITH"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "signal_COLOC_with"
+      }
+    },
+    {
+      "id": "edge.part_of_qtl_signal",
+      "kind": "edge",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "PART_OF_QTL_SIGNAL"
+        ],
+        "edges_all": []
+      },
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "part_of_QTL_signal"
+      }
+    },
+    {
+      "id": "composite.rna_atac.activity",
+      "kind": "composite",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "T1D_DEG_IN",
+          "GENE_DETECTED_IN",
+          "GENE_ENRICHED_IN"
+        ],
+        "edges_all": [
+          "GENE_ACTIVITY_SCORE_IN"
+        ]
+      },
+      "source": {
+        "file": "schema",
+        "section": "complex_skill",
+        "key": "T1D_DEG_in#gene_detected_in#gene_activity_score_in#OCR_peak_in"
+      }
+    },
+    {
+      "id": "composite.rna_atac.peak",
+      "kind": "composite",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "T1D_DEG_IN",
+          "GENE_DETECTED_IN",
+          "GENE_ENRICHED_IN"
+        ],
+        "edges_all": [
+          "OCR_PEAK_IN"
+        ]
+      },
+      "source": {
+        "file": "schema",
+        "section": "complex_skill",
+        "key": "T1D_DEG_in#gene_detected_in#gene_activity_score_in#OCR_peak_in"
+      }
+    },
+    {
+      "id": "composite.genetics",
+      "kind": "composite",
+      "match": {
+        "nodes_any": [],
+        "nodes_all": [],
+        "edges_any": [
+          "PART_OF_QTL_SIGNAL",
+          "PART_OF_GWAS_SIGNAL",
+          "SIGNAL_COLOC_WITH",
+          "EFFECTOR_GENE_OF"
+        ],
+        "edges_all": [],
+        "min_edge_types": 2
+      },
+      "source": {
+        "file": "schema",
+        "section": "complex_skill",
+        "key": "part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
+      }
+    },
+    {
+      "id": "composite.pathway_annotation_enrichment",
+      "kind": "composite",
+      "match": {
+        "nodes_any": [
+          "GO",
+          "KEGG",
+          "REACTOME"
+        ],
+        "nodes_all": [],
+        "edges_any": [
+          "FUNCTION_ANNOTATION",
+          "PATHWAY_ANNOTATION"
+        ],
+        "edges_all": [
+          "FGSEA_ENRICHED_IN"
+        ]
+      },
+      "source": {
+        "file": "schema",
+        "section": "complex_skill",
+        "key": "pathway_annotation;KEGG#pathway_annotation;reactome#function_annotation;GO#fGSEA_enriched_in"
+      }
+    }
+  ],
+  "excluded_rules": [
+    {
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "DEG_in"
+      },
+      "reason": "Legacy DEG relation; use the current T1D_DEG_in interpretation only for matching current edges.",
+      "source_key": "DEG_in"
+    },
+    {
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "expression_level_in"
+      },
+      "reason": "Legacy expression-summary relation; current detection and enrichment rules preserve their distinct measurement meanings.",
+      "source_key": "expression_level_in"
+    },
+    {
+      "source": {
+        "file": "schema",
+        "section": "edge_skill",
+        "key": "OCR_locate_in"
+      },
+      "reason": "Obsolete placeholder-OCR assumption must not be applied to current peak-level OCR evidence.",
+      "source_key": "OCR_locate_in"
+    },
+    {
+      "source": {
+        "file": "schema",
+        "section": "complex_skill",
+        "key": "DEG_in#expression_level_in#OCR_activity_in#OCR_locate_in"
+      },
+      "reason": "Legacy multimodal template assumes obsolete OCR/expression relations and imposes a presentation format; modern matched-modality guidance is used instead.",
+      "source_key": "DEG_in#expression_level_in#OCR_activity_in#OCR_locate_in"
+    },
+    {
+      "source": {
+        "file": "schema",
+        "section": "node_skill",
+        "key": "donor"
+      },
+      "reason": "Equivalent donor metadata guidance is retained once through donor;provenance, routed by the donor label and never by a generic provenance label alone.",
+      "source_key": "donor"
+    }
+  ],
+  "normalization": [
+    {
+      "file": "upstream/schema_skill.json",
+      "transformation": "Remove trailing commas outside quoted strings before strict JSON parsing.",
+      "character_offsets": [
+        8437
+      ]
+    }
+  ]
+}

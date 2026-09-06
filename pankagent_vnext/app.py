@@ -246,8 +246,20 @@ class Runtime:
         answer = ""
         citation_filter = CitationFilter(len(previous))
         synthesis_error = None
+        synthesis_started = False
         try:
-            async for token in self.gateway.synthesize(run["plan"].get("interpreted_question", run["question"]), previous):
+            question = run["plan"].get("interpreted_question", run["question"])
+            options = {}
+            if hasattr(self.gateway, "prepare_answer"):
+                prepared = self.gateway.prepare_answer(question, previous)
+                evidence["answer_profile"] = prepared.profile
+                self.store.update(run_id, evidence=evidence)
+                self.metrics.observe("answer_skill_selection", prepared.profile["timing_ms"]["total"] / 1000)
+                self.metrics.count("answer_skill_cache_hit" if prepared.profile["cache_hit"] else "answer_skill_cache_miss")
+                await self.emit(run_id, "answer_profile", {"profile": prepared.profile})
+                options["prepared"] = prepared
+            synthesis_started = True
+            async for token in self.gateway.synthesize(question, previous, **options):
                 self.check_active(run_id)
                 visible = citation_filter.feed(token)
                 if visible:
@@ -264,7 +276,13 @@ class Runtime:
             raise
         except Exception as exc:
             synthesis_error = safe_error(exc)
-            self.health.record_inference("claude", False, synthesis_error["category"])
+            if synthesis_started:
+                self.health.record_inference("claude", False, synthesis_error["category"])
+            else:
+                # A local context failure did not attempt provider inference.
+                synthesis_error = {"category": "answer_preparation", "message": "The retrieved evidence could not be prepared for an answer."}
+                self.metrics.count("answer_preparation_errors")
+                evidence["answer_preparation_error"] = synthesis_error
             answer = answer + "\n\n" + synthesis_error["message"] if answer else synthesis_error["message"] + " The graph evidence is available below."
         if not answer.strip():
             answer = "No answer text was returned. Inspect the graph evidence and step outcomes below."

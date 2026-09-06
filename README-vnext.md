@@ -21,7 +21,49 @@ python3 -m venv .venv-vnext
 
 Open `/demo`. Submit a question, inspect its plan, and confirm before retrieval.
 The graph answer appears before independently completed literature perspectives.
-Plain text rendering intentionally avoids executing model-produced HTML.
+The demo renders scientific Markdown tables, lists and citations with safe DOM
+construction; model-produced HTML is never executed.
+
+## Schema-selected answer guidance
+
+`pankagent_vnext/prompts/answer_style.md` restores the original running agent's
+rigorous answer conventions: direct answers, tables for structured evidence,
+exact values and concise interpretation of the current evidence. It adapts the
+format to the question instead of imposing a fixed essay. Planning and streamed
+synthesis remain one Claude call each, with the existing 1,600-token output cap.
+The old `follow_up_questions` field was separate from `summary`; questions are
+not appended to the vNext graph-answer stream. A final presentation contract
+keeps a skill's older templates from expanding or overriding the answer format.
+
+The [BIM bundle](pankagent_vnext/answer_skills/SKILL.md) pins the source repository,
+original files, normalized JSON and checksums. `answer_skills/manifest.json`
+declares explicit aliases and node/edge/composite predicates. The router loads
+and verifies it once at startup, scans the full bounded answer graph before
+context sampling, and selects only matching guidance. Functional interpretation
+requires exact assay feature names; clinical guidance requires recorded clinical
+fields. It does not add retrieval tools or infer missing evidence.
+
+There are no routing model calls, network requests or per-request file reads.
+A bounded 128-profile LRU caches trusted compiled guidance by schema, recognized
+features and clinical field names, without caching questions or evidence values.
+At most 18,000 guidance characters are admitted as whole rules; omissions are
+reported. Unknown types retain generic evidence interpretation. Multimodal type
+co-occurrence selects cautions but does not establish a connected mechanism.
+
+`evidence.answer_profile` and the additive `answer_profile` SSE event record the
+bundle/source/style identity, selected rule IDs, matched types, omitted rules,
+sampling and routing time. The static style and matched guidance are separate
+cacheable Claude prefixes, followed by the concise presentation contract.
+`/metrics` includes answer-skill latency and cache
+hits. Replaying a run retains its original profile without invoking a model.
+
+To add or revise a skill, follow the bundle's maintenance instructions, update
+the manifest and tests, then restart only the isolated service. A corrupt bundle
+fails startup. Benchmark local selection without inference:
+
+```sh
+.venv-vnext/bin/python -m pankagent_vnext.benchmark_answer_router
+```
 
 ## Configuration
 
