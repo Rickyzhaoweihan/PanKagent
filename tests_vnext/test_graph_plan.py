@@ -85,6 +85,82 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Find all GENE_ENRICHED_IN relationships", build_generation_question(step))
         self.assertTrue(self.graph._resolution_verified(step))
 
+    async def test_known_measurement_report_suffix_uses_canonical_request_without_dropping_properties(self):
+        question = ("Is CFTR specifically enriched in ductal cells? Report the measured enrichment values "
+                    "(log2 fold change, adjusted p-value, condition, rank in cell type) supporting this.")
+        source = plan(include_context=True, question=question)
+        before = copy.deepcopy(source)
+        prepared = await self.graph.prepare_plan(source, self.emit)
+        primary = prepared["steps"][0]
+        expected = ("Find all GENE_ENRICHED_IN relationships from Gene nodes named CFTR "
+                    "to anatomical_structure nodes named ductal cell. Return the gene, cell and relationship "
+                    "with their properties, without LIMIT or list slices.")
+        self.assertEqual(build_generation_question(primary), expected)
+        self.assertEqual(primary["question"], question)
+        self.assertEqual(primary["constraints"], before["steps"][0]["constraints"])
+        self.assertEqual(source, before)
+        self.assertEqual(len(prepared["steps"]), 2)
+        self.assertEqual(prepared["steps"][1]["purpose"], "context")
+        result = await self.graph.execute(primary, {}, self.emit)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(self.graph.generated, [(expected, 1)])
+
+    async def test_report_clause_never_discards_threshold_unknown_metric_or_extra_task(self):
+        questions = [
+            "Is CFTR enriched in ductal cells? Report the measured enrichment values (padj < 0.05, condition) supporting this.",
+            "Is CFTR enriched in ductal cells? Report the measured enrichment values (enrichment_score) supporting this.",
+            "Is CFTR enriched in ductal cells? Report the measured enrichment values (padj) supporting this. Also compare beta cells.",
+            "Is CFTR enriched in ductal cells under T1D? Report the measured enrichment values (padj) supporting this.",
+        ]
+        for question in questions:
+            with self.subTest(question=question):
+                prepared = await self.graph.prepare_plan(plan(include_context=True, question=question), self.emit)
+                self.assertEqual(build_generation_question(prepared["steps"][0]), question)
+                self.assertEqual(len(prepared["steps"]), 1)
+
+    async def test_enrichment_schema_is_relation_scoped_and_complete_lookup_rejects_invented_cutoffs(self):
+        prepared = await self.prepared()
+        for wrong in ("adjusted_p_value", "enrichment_rank_in_cell_type", "enrichment_score"):
+            query = BASE + " ORDER BY r." + wrong
+            self.assertTrue(any(reason.startswith("invalid_relation_property:GENE_ENRICHED_IN." + wrong)
+                                for reason in validate_cypher(query, prepared)))
+        self.assertEqual(validate_cypher(BASE + " ORDER BY r.rank_in_cell_type", prepared), [])
+        self.assertEqual(validate_cypher(BASE + ", 'r.enrichment_score'", prepared), [])
+        renamed = BASE.replace("[r:", "[enrichment_score:").replace("RETURN g,r,c", "RETURN g,enrichment_score,c")
+        self.assertEqual(validate_cypher(renamed, prepared), [])
+        for query in (BASE.replace(" RETURN", " AND r.padj < 0.05 RETURN"),
+                      BASE.replace("]->", " {padj: 0.05}]->"),
+                      BASE.replace(" RETURN", " AND r.log2_fold_change >= 2 RETURN")):
+            self.assertTrue(any(reason.startswith("unrequested_measurement_filter:")
+                                for reason in validate_cypher(query, prepared)))
+        requested = copy.deepcopy(prepared)
+        requested["constraints"].append({"property": "padj", "operator": "<", "value": "0.05"})
+        self.assertEqual(validate_cypher(BASE.replace(" RETURN", " AND r.padj < 0.05 RETURN"), requested), [])
+        other_relation = {**prepared, "relation_types": ["T1D_DEG_IN"]}
+        self.assertEqual(validate_cypher(BASE.replace("GENE_ENRICHED_IN", "T1D_DEG_IN") + " ORDER BY r.adjusted_p_value", other_relation), [])
+
+    async def test_saved_bad_candidate_stays_rejected_and_recovery_uses_only_one_escalation(self):
+        prepared = await self.prepared()
+        missing_cell = BASE.replace(" AND c.id='CL_0002079'", "")
+        # Same failure as the saved live n=8 candidate: an unrequested cutoff on
+        # the wrong edge property and an invented ordering property.
+        bad = BASE.replace(" RETURN", " AND r.adjusted_p_value < 0.05 RETURN") + " ORDER BY r.enrichment_rank_in_cell_type"
+        corrected = BASE + " ORDER BY r.rank_in_cell_type"
+        batches = [[missing_cell], [bad, corrected]]
+
+        async def generate(question, n):
+            self.graph.generated.append((question, n))
+            return batches.pop(0)
+        self.graph._generate = generate
+        result = await self.graph.execute(prepared, {}, self.emit)
+        self.assertEqual([n for _, n in self.graph.generated], [1, 8])
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(self.graph.retrieved, [corrected])
+        self.assertEqual(result["validation"][1]["candidate_cypher"], bad)
+        self.assertFalse(result["validation"][1]["valid"])
+        self.assertIn("unrequested_measurement_filter:adjusted_p_value", result["validation"][1]["reasons"])
+        self.assertEqual(result["queries"], [{"cypher": corrected, "parameters": {}}])
+
     async def test_resolution_is_typed_parameterized_bounded_and_reuses_identity_reads(self):
         self.graph.rows.append({"id": "donor-CFTR", "name": "CFTR", "labels": ["donor"]})
         await self.prepared()

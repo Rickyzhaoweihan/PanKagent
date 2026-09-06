@@ -403,6 +403,52 @@ def _choice_present(tokens, choice, parameters):
     return _predicate_present(tokens, choice, parameters, variables)
 
 
+def _enrichment_property_errors(tokens: list[Token], step: dict, parameters: dict) -> list[str]:
+    """Reject known wrong enrichment fields and unrequested direct cutoffs.
+
+    Neo4j warns about property keys globally: a property on a different edge
+    type can otherwise appear valid here. No query predicate is ever rewritten.
+    """
+    variables = set()
+    for i in range(len(tokens) - 4):
+        if (tokens[i].value == "[" and tokens[i + 1].kind in {"WORD", "IDENT"}
+                and tokens[i + 2].value == ":" and tokens[i + 3].kind in {"WORD", "IDENT"}
+                and tokens[i + 3].value == "GENE_ENRICHED_IN" and tokens[i + 4].value in {"]", "{"}):
+            variables.add(tokens[i + 1].value)
+    if not variables:
+        return []
+    wrong = {"adjusted_p_value": "padj", "enrichment_rank_in_cell_type": "rank_in_cell_type",
+             "enrichment_score": None}
+    measurements = {"padj", "pvalue", "log2_fold_change", "rank_in_cell_type", *wrong}
+    simple_lookup = resolved_lookup(step)
+    errors = []
+    for i, token in enumerate(tokens):
+        if token.kind not in {"WORD", "IDENT"} or token.value not in measurements:
+            continue
+        property_access = i >= 2 and tokens[i - 1].value == "."
+        map_property = i > 0 and i + 1 < len(tokens) and tokens[i - 1].value in {"{", ","} and tokens[i + 1].value == ":"
+        if not (property_access or map_property) or _predicate_owner(tokens, i) not in variables:
+            continue
+        if token.value in wrong:
+            reason = "invalid_relation_property:GENE_ENRICHED_IN." + token.value
+            if wrong[token.value]:
+                reason += ":use_" + wrong[token.value]
+            errors.append(reason)
+        if not simple_lookup or token.value not in measurements or i + 2 >= len(tokens):
+            continue
+        operator = tokens[i + 1].value.upper()
+        operator = "=" if operator == ":" else operator
+        if operator not in {"=", "<", "<=", ">", ">="}:
+            continue
+        actual, end = _value(tokens, i + 2, parameters)
+        if end == i + 2 or not isinstance(actual, (float, int)) or isinstance(actual, bool):
+            continue
+        observed = {"property": token.value, "operator": operator, "value": actual}
+        if _predicate_present(tokens, observed, parameters, variables):
+            errors.append("unrequested_measurement_filter:" + token.value)
+    return errors
+
+
 def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> list[str]:
     parameters = parameters or {}
     if not isinstance(query, str) or not query.strip() or len(query) > 24000:
@@ -459,6 +505,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
     relations = step_relation_types(step)
     for part in branches:
         _, paths = _pattern_bindings(part)
+        errors.extend(_enrichment_property_errors(part, step, parameters))
         for relation in relations:
             if not any(relation in kinds for _, _, kinds in paths):
                 errors.append("missing_required_relation:" + str(relation))
@@ -990,6 +1037,8 @@ class GraphAdapter:
                     correction = "\nCorrect the previous validation failures: " + ", ".join(reason.split(":", 2)[0] for reason in failures) + ". Preserve every required filter and dependency."
                     if step.get("complete", True):
                         correction += " Return all matches without LIMIT or list slices."
+                    if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
+                        correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
                     if len(question) + len(correction) <= 4000:
                         attempt_question += correction
                 candidates = await self._generate(attempt_question, n)

@@ -149,6 +149,17 @@ def _simple_resolved_scope(step: dict) -> bool:
     # A planner may make the evidence basis explicit without changing scope.
     # Match this complete trailing phrase, not arbitrary "based on" clauses.
     text = re.sub(r",?\s+based on measured enrichment evidence(?=[?.!]*\s*$)", "", text, flags=re.I)
+    # This exact planner-added clause asks for returned properties, not extra
+    # retrieval or filtering. Unknown fields, cutoffs and trailing tasks retain
+    # the original request instead of being silently discarded.
+    report = re.search(r"[?.!]\s+Report (?:the )?measured enrichment values\s*\(([^()]*)\)\s+supporting this[?.!]*\s*$",
+                       text, flags=re.I)
+    if report and step_relation_types(step) == ["GENE_ENRICHED_IN"]:
+        fields = {" ".join(field.lower().split()) for field in report[1].split(",")}
+        allowed_fields = {"log2 fold change", "log2_fold_change", "adjusted p-value", "adjusted p value", "padj",
+                          "p-value", "pvalue", "condition", "rank in cell type", "rank_in_cell_type"}
+        if fields and fields <= allowed_fields:
+            text = text[:report.start()] + "?"
     literals = [str(item[key]) for item in step.get("resolved_entities") or [] for key in ("name", "id") if item.get(key)]
     literals += [literal + "s" for literal in literals if literal.endswith(" cell")]
     literals += [str(item.get("value")) for item in step.get("constraints") or [] if item.get("value")]
