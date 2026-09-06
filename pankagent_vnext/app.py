@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from .config import Settings
 from .health import HealthMonitor, Metrics, error_category
+from .literature_policy import apply_literature_policy
 from .plan_constraints import repair_step_constraints
 from .store import ACTIVE, TERMINAL, Store
 from .transport import JSONResponseLimitMiddleware, sse_event_bytes
@@ -201,7 +202,7 @@ class Runtime:
                 self.check_active(run_id)
                 self.health.record_inference("claude", True)
                 claude_pending = False
-                plan = normalize_plan(proposed)
+                plan = apply_literature_policy(normalize_plan(proposed), run["question"])
                 plan["include_context"] = run["include_context"]
                 self.store.update(run_id, plan=plan)
                 preview_started = time.monotonic()

@@ -159,6 +159,37 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
             assert run["preview"]["evidence"]["steps"][0]["status"] == "complete"
             assert gateway.syntheses == literature.calls == 0
             assert gateway.plans == 1
+            assert run["plan"]["literature"] is True
+            assert run["plan"]["literature_intent"]["reason"] == "scientific_interpretation"
+            ready = next(event for event in runtime.store.events_after(created["run_id"], 0)
+                         if event["type"] == "plan_ready")
+            assert ready["payload"]["plan"]["literature_intent"] == run["plan"]["literature_intent"]
+            responses = await asyncio.gather(*[client.post(f'/v2/plans/{created["plan_id"]}/confirm') for _ in range(3)])
+            assert all(response.status_code == 202 for response in responses)
+            completed = await wait_state(client, created["run_id"], {"completed"})
+            assert completed["literature"]["status"] == "complete"
+            assert gateway.plans == gateway.syntheses == graph.calls == literature.calls == 1
+            await client.get(created["events_url"])
+            await client.get(f'/v2/runs/{created["run_id"]}')
+            assert literature.calls == 1
+    asyncio.run(scenario())
+
+
+def test_graph_only_interpretation_opt_out_survives_model_rewrite_and_confirmation(tmp_path):
+    async def scenario():
+        question = "Is KRT19 selectively expressed in ductal cells? Use graph evidence only."
+        plan = json.loads(json.dumps(PLAN))
+        plan.update(interpreted_question="Is KRT19 selectively expressed in ductal cells?", literature=True)
+        plan["steps"][0]["question"] = plan["interpreted_question"]
+        async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
+            created = await new_plan(client, question)
+            saved = runtime.store.get(created["run_id"])
+            assert saved["plan"]["literature"] is False
+            assert saved["plan"]["literature_intent"]["reason"] == "explicit_opt_out"
+            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            completed = await wait_state(client, created["run_id"], {"completed"})
+            assert completed["literature"]["status"] == "not_requested" and literature.calls == 0
+            assert gateway.plans == gateway.syntheses == graph.calls == 1
     asyncio.run(scenario())
 
 
