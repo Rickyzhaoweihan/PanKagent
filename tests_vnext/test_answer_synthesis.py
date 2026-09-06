@@ -382,6 +382,9 @@ def test_answer_profile_persists_and_replays_once_with_citation_filter(monkeypat
                 assert profile["source_commit"]
                 assert profile["context_sampled"] is False
                 assert run["evidence"]["answer_reference_validation"]["valid"] is not invalid_reference
+                assert run["evidence"]["answer_reference_validation"]["model_references_present"] is True
+                assert run["evidence"]["answer_reference_validation"]["application_fallback"] is False
+                assert "Graph evidence supplied:" not in run["graph_answer"]
                 assert "[G1]" in run["graph_answer"]
                 assert "[G99]" not in run["graph_answer"]
                 if invalid_reference:
@@ -469,4 +472,77 @@ def test_local_preparation_failure_preserves_graph_and_successful_claude_health(
                 final = [event for event in events if event["type"] == "graph_answer"][-1]
                 assert final["payload"]["evidence"] == evidence
                 assert events[-1]["payload"]["status"] == "partial"
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("statuses,tokens,expected_ids,expected_status", [
+    (["complete", "empty", "complete"], ["The requested measurements are shown."], [1, 3], "completed"),
+    (["partial", "failed", "empty"], ["Some requested measurements were retrieved."], [1], "partial"),
+    (["empty", "failed"], ["No usable graph evidence was retrieved."], [], "partial"),
+    (["empty"], ["No matching evidence was retrieved."], [], "completed"),
+    (["failed"], ["The graph request failed."], [], "partial"),
+    (["complete"], [], [], "partial"),
+    (["complete"], ["Invalid model reference ", "[G9", "9]."], [], "partial"),
+])
+def test_missing_model_references_get_only_supplied_graph_evidence_footer(
+    monkeypatch, tmp_path, statuses, tokens, expected_ids, expected_status,
+):
+    class MultiStepGateway(RuntimeGateway):
+        async def plan(self, question, history):
+            plan = await super().plan(question, history)
+            plan["steps"] = [{"id": f"s{index}", "question": question, "depends_on": [], "constraints": [], "complete": True}
+                             for index in range(1, len(statuses) + 1)]
+            return plan
+
+    class MultiStepGraph(RuntimeGraph):
+        async def execute(self, step, previous, emit):
+            self.calls += 1
+            result = detection_evidence()["s1"]
+            result["step_id"] = step["id"]
+            result["status"] = statuses[self.calls - 1]
+            if result["status"] in {"failed", "empty"}:
+                result.update(nodes=[], edges=[], rows=[])
+            return result
+
+    async def scenario():
+        gateway, fake, settings = gateway_with_mock(monkeypatch, tmp_path, tokens, MultiStepGateway)
+        graph = MultiStepGraph()
+        app = create_app(settings, gateway, graph, UnrequestedLiterature())
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
+                response = await client.post("/v2/plans", json={"question": QUESTION})
+                assert response.status_code == 202
+                created = response.json()
+                await await_state(client, created["run_id"], {"awaiting_confirmation"})
+                response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+                assert response.status_code == 202
+                run = await await_state(client, created["run_id"], {expected_status})
+                assert graph.calls == len(statuses)
+                assert gateway.prepare_calls == len(fake.stream_calls) == 1
+                assert fake.create_calls == []
+                assert gateway.budget.snapshot()["calls"] == 1
+                assert gateway.budget.snapshot()["pending_calls"] == 0
+                validation = run["evidence"]["answer_reference_validation"]
+                assert validation["scope"] == "reference_ids_only"
+                assert validation["model_references_present"] is False
+                assert validation["application_fallback"] is bool(expected_ids)
+                events = sse_events(await client.get(created["events_url"]))
+                graph_events = [event for event in events if event["type"] == "graph_answer"]
+                deltas = [event["payload"]["text"] for event in graph_events if event["payload"].get("delta")]
+                if expected_ids:
+                    footer = "\n\nGraph evidence supplied: " + ", ".join(f"[G{index}]" for index in expected_ids) + "."
+                    assert run["graph_answer"] == "".join(tokens) + footer
+                    assert deltas[-1] == footer
+                    assert "".join(deltas) == run["graph_answer"]
+                    assert validation["valid"] is True
+                else:
+                    assert "Graph evidence supplied:" not in run["graph_answer"]
+                    assert not any("Graph evidence supplied:" in delta for delta in deltas)
+                assert graph_events[-1]["payload"]["answer"] == run["graph_answer"]
+                assert graph_events[-1]["payload"]["evidence"]["answer_reference_validation"] == validation
+                if "[G99]" in "".join(tokens):
+                    assert validation["valid"] is False
+                    assert validation["invalid_references_removed"] is True
+                    assert "[unverified reference]" in run["graph_answer"]
+                assert app.state.runtime.store.get(created["run_id"])["graph_answer"] == run["graph_answer"]
     asyncio.run(scenario())

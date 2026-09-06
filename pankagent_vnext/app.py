@@ -49,6 +49,7 @@ class CitationFilter:
 
     def __init__(self, count: int):
         self.count, self.pending, self.invalid = count, "", False
+        self.seen: set[int] = set()
 
     def feed(self, value: str, final: bool = False) -> str:
         value = self.pending + value
@@ -60,6 +61,7 @@ class CitationFilter:
 
         def replace(match):
             if 1 <= int(match.group(1)) <= self.count:
+                self.seen.add(int(match.group(1)))
                 return match.group(0)
             self.invalid = True
             return "[unverified reference]"
@@ -287,10 +289,24 @@ class Runtime:
         if not answer.strip():
             answer = "No answer text was returned. Inspect the graph evidence and step outcomes below."
             synthesis_error = {"category": "invalid_response", "message": "No answer text was returned."}
+        reference_validation = {
+            "valid": not citation_filter.invalid, "scope": "reference_ids_only",
+            "model_references_present": bool(citation_filter.seen), "application_fallback": False,
+        }
         if citation_filter.invalid:
-            evidence["answer_reference_validation"] = {"valid": False, "invalid_references_removed": True}
-        else:
-            evidence["answer_reference_validation"] = {"valid": True}
+            reference_validation["invalid_references_removed"] = True
+        elif synthesis_error is None and not citation_filter.seen:
+            # Identify supplied evidence without asserting claim-level support.
+            supplied = [f"[G{index}]" for index, step in enumerate(previous.values(), 1)
+                        if step.get("status") in {"complete", "partial"}
+                        and any(step.get(kind) for kind in ("nodes", "edges", "rows"))]
+            if supplied:
+                footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
+                answer += footer
+                reference_validation["application_fallback"] = True
+                self.store.update(run_id, graph_answer=answer)
+                await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
+        evidence["answer_reference_validation"] = reference_validation
         if synthesis_error:
             evidence["synthesis_error"] = synthesis_error
         self.store.update(run_id, graph_answer=answer, evidence=evidence)
