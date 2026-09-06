@@ -305,3 +305,132 @@ def test_database_source_urls_are_external_and_preserve_exact_ensembl_release(tm
         assert "doi:10.1038/s41588-021-00880-5" in result["resources_tabs"]["references"]
         await m.close()
     run(scenario())
+
+
+@pytest.mark.parametrize("code,category", [(403, "access_denied"), (404, "not_found")])
+def test_health_exposes_exact_source_failures_without_polling_io(tmp_path, monkeypatch, code, category):
+    from pankgraph_results.health import ResultsHealth
+
+    async def scenario():
+        calls = []
+        m = await manager(tmp_path, lambda request: calls.append(request) or httpx.Response(code, text="private upstream details"))
+        initial = m.snapshot()
+        assert len(initial["source_observations"]) == len(SOURCES)
+        assert all(item["state"] == "unknown" and item["checked_at"] is None
+                   for item in initial["source_observations"].values())
+        assert initial["source_observations"]["t1d_gwas"]["verification"] == "unverified_prefix"
+        with pytest.raises(ResourceError, match=category):
+            await m.download("1_t1d-susie", "UBE2G1__credibleSet1")
+        after = m.snapshot()
+        failed = after["source_observations"]["t1d_gwas"]
+        assert failed["state"] == "unavailable" and failed["error_category"] == category
+        assert failed["scope"] == "latest_exact_object_attempt"
+        assert failed["source_key"] == "1_t1d-susie/UBE2G1__credibleSet1.txt"
+        assert failed["checked_at"] > 0 and failed["latency_ms"] >= 0 and failed["last_success"] is None
+        assert failed["verification"] == "unverified_prefix"
+        assert after["source_observations"]["gtex_eqtl"]["state"] == "unknown"
+        assert after["plot_generation"]["state"] == "unknown"
+        assert "private upstream" not in json.dumps(after)
+        # This is the resource snapshot consumed by GET /health/components.
+        health = ResultsHealth(SimpleNamespace(resources=m, layout=SimpleNamespace(snapshot=lambda: {}),
+            active=0, tasks={}, settings=SimpleNamespace(max_queue=2)))
+        monkeypatch.setattr(m, "_coverage", lambda: pytest.fail("Health must not read the index"))
+        monkeypatch.setattr(m, "_object", lambda *_: pytest.fail("Health must not read object metadata"))
+        for _ in range(20):
+            observed = health.snapshot()["resources"]["source_observations"]["t1d_gwas"]
+            assert observed["checked_at"] == failed["checked_at"]
+            assert observed["age_seconds"] >= 0
+            health.metrics()
+        assert len(calls) == 1
+        after["source_observations"]["t1d_gwas"]["state"] = "healthy"
+        assert m.snapshot()["source_observations"]["t1d_gwas"]["state"] == "unavailable"
+        await m.close()
+    run(scenario())
+
+
+def test_cached_file_cannot_erase_newer_source_failure_or_refresh_remote_check(tmp_path):
+    async def scenario():
+        calls = []
+        responses = [httpx.Response(200, content=DATA), httpx.Response(403)]
+        m = await manager(tmp_path, lambda request: calls.append(request) or responses.pop(0))
+        await m.download("1_eQTL-gtex-susie", SET)
+        success = m.snapshot()["source_observations"]["gtex_eqtl"]
+        assert success["state"] == "healthy" and success["last_success"] == success["checked_at"]
+        assert m.snapshot()["plot_generation"]["state"] == "unknown"
+        with pytest.raises(ResourceError, match="access_denied"):
+            await m.download("1_eQTL-gtex-susie", SET.replace("credibleSet1", "credibleSet2"))
+        failure = m.snapshot()["source_observations"]["gtex_eqtl"]
+        assert failure["last_success"] == success["last_success"]
+        await m.download("1_eQTL-gtex-susie", SET)
+        cached = m.snapshot()["source_observations"]["gtex_eqtl"]
+        assert cached["state"] == "unavailable" and cached["error_category"] == "access_denied"
+        assert cached["checked_at"] == failure["checked_at"] and len(calls) == 2
+        await m.close()
+        reopened = await manager(tmp_path, lambda request: pytest.fail("Startup must not fetch"))
+        restored = reopened.snapshot()["source_observations"]["gtex_eqtl"]
+        assert restored["state"] == "unavailable" and restored["checked_at"] == failure["checked_at"]
+        assert restored["last_success"] == success["last_success"]
+        await reopened.close()
+    run(scenario())
+
+
+def test_plot_health_records_actual_success_then_failure_separately_from_download(tmp_path, monkeypatch):
+    async def scenario():
+        m = await manager(tmp_path, lambda request: httpx.Response(200, content=DATA))
+        await m.download("1_eQTL-gtex-susie", SET)
+        source = m.snapshot()["source_observations"]["gtex_eqtl"]
+        assert m.snapshot()["plot_generation"]["state"] == "unknown"
+
+        async def coordinates(ids):
+            return {variant: {"chrom": "1", "pos": 100 + index, "assembly": "GRCh38",
+                              "verified": True, "source": "fixture"} for index, variant in enumerate(ids)}
+        m.coordinate_lookup = coordinates
+
+        def renderer(rows, positions, path, **kwargs):
+            path.write_bytes(b"fixture plot bytes")
+            return {"status": "available", "coverage": {"input_rows": 2, "plotted_rows": 2}}
+        monkeypatch.setattr("pankgraph_results.resources.render_regional_plot", renderer)
+        assert (await m.resolve(evidence()))["status"] == "available"
+        success = m.snapshot()["plot_generation"]
+        assert success["state"] == "healthy" and success["last_success"] == success["checked_at"]
+        assert success["scope"] == "latest_plot_attempt"
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("private rendering details")
+        monkeypatch.setattr("pankgraph_results.resources.render_regional_plot", broken)
+        result = await m.resolve(evidence())
+        failed = m.snapshot()["plot_generation"]
+        assert result["status"] == "partial" and result["assets"]
+        assert failed["state"] == "unavailable" and failed["error_category"] == "plot_generation_failed"
+        assert failed["last_success"] == success["last_success"] and failed["checked_at"] >= success["checked_at"]
+        assert failed["source_key"] == "1_eQTL-gtex-susie/" + SET + ".txt"
+        assert m.snapshot()["source_observations"]["gtex_eqtl"]["checked_at"] == source["checked_at"]
+        assert m.snapshot()["source_observations"]["gtex_eqtl"]["state"] == "healthy"
+        assert "private rendering" not in json.dumps(m.snapshot())
+        await m.close()
+    run(scenario())
+
+
+def test_startup_restores_source_history_without_fetch_and_expires_old_observations(tmp_path):
+    async def scenario():
+        m = await manager(tmp_path, lambda request: httpx.Response(403, text="private upstream details"))
+        with pytest.raises(ResourceError, match="access_denied"):
+            await m.download("1_t1d-susie", "UBE2G1__credibleSet1")
+        failed = m.snapshot()["source_observations"]["t1d_gwas"]
+        await m.close()
+        reopened = await manager(tmp_path, lambda request: pytest.fail("Restoration must not fetch"))
+        restored = reopened.snapshot()["source_observations"]["t1d_gwas"]
+        for key in ("state", "checked_at", "last_success", "source_key", "scope", "verification", "error_category"):
+            assert restored[key] == failed[key]
+        assert restored["latency_ms"] is None  # Historical metadata does not record duration.
+        assert reopened.snapshot()["plot_generation"]["state"] == "unknown"
+        reopened.ttl = 0
+        historical = reopened.snapshot()["source_observations"]["t1d_gwas"]
+        assert historical["state"] == "unknown" and historical["stale"] is True
+        assert historical["last_observed_state"] == "unavailable"
+        assert historical["checked_at"] == failed["checked_at"] and historical["error_category"] == "access_denied"
+        untouched = reopened.snapshot()["source_observations"]["gtex_eqtl"]
+        assert untouched["state"] == "unknown" and untouched["checked_at"] is None and not untouched["stale"]
+        assert len(reopened.snapshot()["source_observations"]) == len(SOURCES)
+        await reopened.close()
+    run(scenario())

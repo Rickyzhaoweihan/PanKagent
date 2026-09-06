@@ -31,6 +31,35 @@ class ResourceError(ValueError):
     """Sanitized, stable failure category with no raw upstream response."""
 
 
+_OBSERVATION_ERRORS = frozenset({
+    "access_denied", "not_found", "upstream_http_error", "upstream_timeout", "upstream_unreachable",
+    "object_too_large", "invalid_encoding", "schema_mismatch", "row_limit_exceeded",
+    "invalid_variant_id", "invalid_statistic", "invalid_allele", "duplicate_variant_in_set",
+    "empty_resource", "cache_capacity_exceeded", "coordinate_provider_unavailable",
+    "coordinate_lookup_failed", "plot_generation_failed", "plot_dependency_unavailable",
+    "verified_coordinates_or_statistics_missing", "multiple_chromosomes_in_regional_set",
+})
+
+
+def _unknown_observation(scope: str) -> dict:
+    return {"state": "unknown", "scope": scope, "checked_at": None, "last_success": None,
+            "latency_ms": None, "error_category": None, "source_key": None}
+
+
+def _record_observation(observation: dict, result: dict, started: float):
+    """Only called after real work; file-cache hits and health reads do not probe."""
+    now = result.get("checked_at") or time.time()
+    successful = result.get("status") == "available"
+    category = result.get("error_category")
+    if successful:
+        observation["last_success"] = max(now, observation.get("last_success") or 0)
+    if (observation.get("checked_at") or 0) > now:
+        return
+    observation.update(state="healthy" if successful else "unavailable", checked_at=now,
+        latency_ms=(time.monotonic() - started) * 1000, source_key=result.get("source_key"),
+        error_category=None if successful else (category if category in _OBSERVATION_ERRORS else "resource_operation_failed"))
+
+
 def parse_association_tsv(raw: bytes, *, max_rows: int = 50000) -> list[dict]:
     try:
         text = raw.decode("utf-8-sig")
@@ -206,11 +235,53 @@ class ResourceManager:
         """)
         self._snapshot = {"state": "unknown", "check_time": None, "last_success": None,
             "error_category": None, "registry": registry_snapshot(self.registry),
-            "coverage": self._coverage(), "active_fetches": 0}
+            "coverage": self._coverage(), "active_fetches": 0,
+            "source_observations": {source.id: {**_unknown_observation("latest_exact_object_attempt"),
+                "prefix": source.prefix, "verification": "verified_prefix" if source.verified else "unverified_prefix"}
+                for source in self.registry},
+            "plot_generation": _unknown_observation("latest_plot_attempt")}
+        self._restore_source_observations()
+
+    def _restore_source_observations(self):
+        """Restore at most one observation per registered source, only at startup."""
+        for source in self.registry:
+            with self._db_lock:
+                row = self._db.execute("""
+                    WITH source_objects AS (
+                        SELECT status, metadata,
+                               CAST(json_extract(metadata, '$.checked_at') AS REAL) AS checked_at
+                        FROM objects WHERE json_extract(metadata, '$.source_id') = ?
+                            AND status IN ('available', 'unavailable')
+                    )
+                    SELECT status, metadata, checked_at,
+                        (SELECT MAX(CASE WHEN status = 'available' THEN checked_at
+                            ELSE CAST(json_extract(metadata, '$.last_success') AS REAL) END)
+                         FROM source_objects) AS last_success
+                    FROM source_objects WHERE checked_at > 0
+                    ORDER BY checked_at DESC LIMIT 1
+                """, (source.id,)).fetchone()
+            if row is None:
+                continue
+            metadata = json.loads(row["metadata"])
+            category = metadata.get("error_category")
+            successful = row["status"] == "available"
+            self._snapshot["source_observations"][source.id].update(
+                state="healthy" if successful else "unavailable", checked_at=row["checked_at"],
+                last_success=row["last_success"], source_key=metadata.get("source_key"),
+                error_category=None if successful else (category if category in _OBSERVATION_ERRORS else "resource_operation_failed"))
 
     def snapshot(self) -> dict:
         """Cached observation only: this method performs no network, DB or inference."""
-        return json.loads(json.dumps(self._snapshot))
+        snapshot = json.loads(json.dumps(self._snapshot))
+        now = time.time()
+        for observation in [*snapshot["source_observations"].values(), snapshot["plot_generation"]]:
+            checked = observation["checked_at"]
+            observation["age_seconds"] = max(0, now - checked) if checked is not None else None
+            observation["stale"] = checked is not None and observation["age_seconds"] >= self.ttl
+            if observation["stale"]:
+                observation["last_observed_state"] = observation["state"]
+                observation["state"] = "unknown"
+        return snapshot
 
     def _coverage(self) -> dict:
         with self._db_lock:
@@ -365,12 +436,16 @@ class ResourceManager:
                     cached = None
             async with self._semaphore:
                 self._snapshot["active_fetches"] += 1
+                started = time.monotonic()
+                observation = self._snapshot["source_observations"][source.id]
                 try:
                     async with self._client.stream("GET", source.url(credible_set), headers=headers) as response:
                         if response.status_code == 304 and cached:
                             cached["checked_at"] = time.time()
                             await asyncio.to_thread(self._mark_object, key, "available", cached)
-                            return dict(cached, cache="revalidated")
+                            result = dict(cached, cache="revalidated")
+                            _record_observation(observation, result, started)
+                            return result
                         if response.status_code != 200:
                             category = {403: "access_denied", 404: "not_found"}.get(response.status_code, "upstream_http_error")
                             raise ResourceError(category)
@@ -392,15 +467,20 @@ class ResourceManager:
                             "prefix_verification": "verified" if source.verified else "unverified",
                             "etag": response.headers.get("ETag"), "last_modified": response.headers.get("Last-Modified"),
                             "checked_at": time.time()}
-                        return await asyncio.to_thread(self._store_download, key, bytes(raw), rows, metadata)
+                        result = await asyncio.to_thread(self._store_download, key, bytes(raw), rows, metadata)
+                        _record_observation(observation, result, started)
+                        return result
                 except (ResourceError, httpx.HTTPError) as exc:
                     category = str(exc) if isinstance(exc, ResourceError) else (
                         "upstream_timeout" if isinstance(exc, httpx.TimeoutException) else "upstream_unreachable")
                     failure = {"source_id": source.id, "source_key": key, "data_source": source.aliases[0],
                         "credible_set": credible_set, "checked_at": time.time(), "error_category": category,
+                        "last_success": observation.get("last_success"),
                         "prefix_verification": "verified" if source.verified else "unverified"}
                     await asyncio.to_thread(self._mark_object, key, "unavailable", failure)
-                    return dict(failure, status="unavailable")
+                    result = dict(failure, status="unavailable")
+                    _record_observation(observation, result, started)
+                    return result
                 finally:
                     self._snapshot["active_fetches"] -= 1
 
@@ -427,6 +507,16 @@ class ResourceManager:
              "data_source": source.aliases[0] if source else data_source}, limit)
 
     async def _plot(self, metadata: dict) -> dict:
+        started = time.monotonic()
+        try:
+            result = await self._generate_plot(metadata)
+        except Exception:
+            result = {"status": "unavailable", "error_category": "plot_generation_failed"}
+        _record_observation(self._snapshot["plot_generation"],
+            {**result, "source_key": metadata["source_key"]}, started)
+        return result
+
+    async def _generate_plot(self, metadata: dict) -> dict:
         if self.coordinate_lookup is None:
             return {"status": "unavailable", "error_category": "coordinate_provider_unavailable"}
         async with self._plot_semaphore:
