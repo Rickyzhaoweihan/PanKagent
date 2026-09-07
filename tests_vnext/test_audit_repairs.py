@@ -150,3 +150,40 @@ def test_model_plan_structure_reports_specific_issue():
     assert plan_structure_issue({'steps':[{'id':'a','depends_on':['b']}]}) == 'invalid_plan_dependencies'
     assert plan_structure_issue({'steps':[{'id':str(i),'depends_on':[]} for i in range(4)]}) == 'plan_too_large'
     assert plan_structure_issue({'steps':[{'id':'a','depends_on':[]},{'id':'b','depends_on':['a']}]}) is None
+
+
+def test_additive_revision_does_not_silently_replace_old_investigations():
+    from pankagent_vnext.revision_guard import preserve_additive_scope
+    parent={'steps':[{'id':'a','relation_types':['FUNCTION_ANNOTATION'],'constraints':[{'property':'name','operator':'=','value':'HLA-DRA'}]}]}
+    changed={'steps':[{'id':'b','relation_types':['PART_OF_GWAS_SIGNAL'],'constraints':[{'property':'name','operator':'=','value':'HLA-DRA'}]}]}
+    guarded=preserve_additive_scope(changed,parent,'add in human genetics data')
+    assert guarded['steps']==parent['steps'] and guarded['clarification']
+    assert guarded['proposal_issue']=='additive_revision_scope_loss'
+    repeated=preserve_additive_scope(changed,guarded,'did you add the requested evidence?')
+    assert repeated['steps']==parent['steps'] and repeated['clarification']
+    assert preserve_additive_scope(changed,parent,'replace pathways with human genetics')==changed
+
+
+def test_additive_scope_guard_preserves_verified_name_id_equivalence():
+    from pankagent_vnext.revision_guard import preserve_additive_scope
+    parent={'steps':[{'id':'a','relation_types':['FUNCTION_ANNOTATION'],'constraints':[{'property':'name','value':'TEST','operator':'='}], 'resolved_entities':[{'state':'resolved','id':'ID1','name':'TEST','entity_type':'Gene'}]}]}
+    changed={'steps':[{'id':'a','relation_types':['FUNCTION_ANNOTATION'],'constraints':[{'property':'id','value':'ID1','operator':'='}]}]}
+    assert preserve_additive_scope(changed,parent,'also check genetics')==changed
+
+
+def test_additive_scope_failure_retains_preview_and_blocks_confirmation(tmp_path):
+    class DroppingGateway(Gateway):
+        async def plan(self,question,history):
+            if question.startswith('add'):
+                return {**copy.deepcopy(PLAN),'steps':[{'id':'different','question':'new scope','relation_types':['PHYSICAL_INTERACTION'],'constraints':[],'depends_on':[]}]}
+            p=copy.deepcopy(PLAN);p['steps'][0]['relation_types']=['GENE_ENRICHED_IN'];return p
+    async def scenario():
+        async with service(tmp_path,gateway=DroppingGateway()) as (client,runtime,*_):
+            created=await new_plan(client,'Is INS enriched in beta cells?')
+            parent=runtime.store.get(created['run_id'])
+            res=await client.post(f'/v2/plans/{created["plan_id"]}/revise',json={'question':'add genetics','revision_instruction':'add genetics','revision_mode':'instruction'})
+            child=await wait_state(client,res.json()['run_id'],{'awaiting_confirmation'})
+            assert child['plan']['proposal_issue']=='additive_revision_scope_loss'
+            assert child['preview']['evidence']['nodes']==parent['preview']['evidence']['nodes']
+            assert (await client.post(f'/v2/plans/{child["plan_id"]}/confirm',json={})).status_code==409
+    asyncio.run(scenario())

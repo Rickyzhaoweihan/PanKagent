@@ -120,3 +120,21 @@ Record existing 8794 and shared-service health before and after smoke checks.
 Rollback removes only this new nginx location through the same operator
 validation/reload process and stops only the results PID. Retain private result
 state and the shared budget ledger; do not delete or replace the old deployment.
+
+## Local access before public-route activation
+
+Use an existing SSH forward to the isolated results port, or start a loopback
+forward on a free local port:
+
+```bash
+ssh -N -L 127.0.0.1:18796:127.0.0.1:8795 jieliulab3-codex
+```
+
+In a separate terminal, run `python3 deploy_results/local_demo_proxy.py
+--access-file /path/to/protected/access.txt`. The owner-only file contains the
+existing `Username:` and `Password:` fields. Open
+`http://127.0.0.1:18795/pankgraph-vnext/`. Credentials stay server-side; the helper
+accepts only loopback Host/Origin values and the demo prefix. It does not create
+credentials, manage remote services or activate nginx. Stop only the helper and
+SSH processes you started. A public-route 404 must not be presented as a working
+public deployment.

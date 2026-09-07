@@ -107,8 +107,9 @@ def normalize_release_constraints(step):
     constraints, mappings = [], list(result.get('schema_bindings') or [])
     for constraint in result.get('constraints', []):
         c = dict(constraint)
-        if kinds == {'ASSOCIATED_WITH_GO'} and c.get('property') in ('namespace', 'ontology_namespace') and c.get('entity_type') in (None, 'GO_term'):
-            mappings.append({'from': deepcopy(c), 'to': 'GO_term.go_domain', 'contract': VERSION})
+        if kinds == {'ASSOCIATED_WITH_GO'} and c.get('property') in ('namespace', 'ontology_namespace', 'go_domain') and c.get('entity_type') in (None, 'GO_term'):
+            if c.get('property') != 'go_domain' or c.get('entity_type') != 'GO_term':
+                mappings.append({'from': deepcopy(c), 'to': 'GO_term.go_domain', 'contract': VERSION})
             c.update(property='go_domain', entity_type='GO_term')
         if kinds == {'T1D_DEG_IN'} and c.get('entity_type') == 'disease' and c.get('operator', '=') == '=' and (c.get('property'), c.get('value')) in (('id', 'MONDO_0005147'), ('name', 'type 1 diabetes')):
             mappings.append({'from': deepcopy(c), 'to': 'required relationship T1D_DEG_IN', 'contract': VERSION})

@@ -239,6 +239,8 @@ class Runtime:
                 parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
+                    from .revision_guard import preserve_additive_scope
+                    plan = preserve_additive_scope(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
                     plan["revision_trace"] = {"parent_plan_id": parent["plan_id"],
                         "original_question": metadata.get("original_question"),
                         "instruction": metadata.get("revision_instruction") or run["question"],
@@ -380,6 +382,10 @@ class Runtime:
         cache = {"identity": self.preview_identity(plan), "step_completed_epochs": {}, "step_identities": {}}
         previous = {}
         if plan.get("clarification"):
+            metadata = self.store.audit_metadata(run_id) or {}
+            parent = self.store.get(metadata.get("parent_run_id")) if plan.get('retained_previous_plan') and metadata.get('parent_run_id') else None
+            if parent:
+                previous = {s['step_id']: deepcopy(s) for s in ((parent.get('preview') or {}).get('evidence') or {}).get('steps', [])}
             self.save_preview(run_id, previous, {"identity": None, "step_completed_epochs": {}})
             return
         metadata = self.store.audit_metadata(run_id) or {}
