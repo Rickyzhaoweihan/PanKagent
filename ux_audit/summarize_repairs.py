@@ -28,7 +28,7 @@ def stage_times(events):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--root',type=Path,required=True);parser.add_argument('--state',type=Path,required=True);args=parser.parse_args()
     bundle={'version':1,'measurement':'server API events, not browser or human timing','acceptance':'not accepted','batches':[]}
-    for folder in ('cases','schema-cases'):
+    for folder in ('cases','schema-cases','structure-cases'):
         rows=[]
         for path in sorted((args.root/folder).glob('*-vnext.json')):
             c=json.loads(path.read_text());r=c.get('final') or (c.get('revisions') or [{}])[-1].get('run') or c.get('initial') or {}

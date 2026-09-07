@@ -143,3 +143,10 @@ def test_repair_timing_excludes_user_confirmation_wait():
     assert result['plan_ready_s']==10
     assert result['graph_last_chunk_after_confirmation_s']==5
     assert result['graph_first_chunk_after_confirmation_s']==3
+
+
+def test_model_plan_structure_reports_specific_issue():
+    from pankagent_vnext.llm import plan_structure_issue
+    assert plan_structure_issue({'steps':[{'id':'a','depends_on':['b']}]}) == 'invalid_plan_dependencies'
+    assert plan_structure_issue({'steps':[{'id':str(i),'depends_on':[]} for i in range(4)]}) == 'plan_too_large'
+    assert plan_structure_issue({'steps':[{'id':'a','depends_on':[]},{'id':'b','depends_on':['a']}]}) is None

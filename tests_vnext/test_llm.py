@@ -25,8 +25,10 @@ def test_provider_schema_and_local_step_cap(tmp_path):
                     'steps': [{'id': str(i), 'depends_on': []} for i in range(4)]})])
         gateway.client.messages.create = create
         try:
-            with pytest.raises(ValueError, match='plan_too_large'):
-                await gateway.plan('Which cell types express INS?', [])
+            plan = await gateway.plan('Which cell types express INS?', [])
+            assert plan['proposal_issue'] == 'plan_too_large'
+            assert plan['steps'] == [] and plan['clarification']
+            assert gateway.last_success is not None
             assert len(called) == 1
             assert called[0]['thinking'] == {'type': 'disabled'}
             assert not {'temperature', 'top_p', 'top_k'} & called[0].keys()

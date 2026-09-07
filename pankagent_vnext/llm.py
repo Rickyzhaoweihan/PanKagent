@@ -73,6 +73,17 @@ class PreparedAnswer:
     system: list
     profile: dict
 
+
+def plan_structure_issue(plan):
+    if len(plan['steps']) > 3:
+        return 'plan_too_large'
+    seen = set()
+    for step in plan['steps']:
+        if not step['id'] or step['id'] in seen or any(dependency not in seen for dependency in step['depends_on']):
+            return 'invalid_plan_dependencies'
+        seen.add(step['id'])
+    return None
+
 class ClaudeGateway:
     def __init__(self,settings):
         self.settings=settings
@@ -107,14 +118,13 @@ class ClaudeGateway:
         for block in reply.content:
             if block.type=='tool_use' and block.name=='record_plan':
                 plan=block.input
-                seen=set()
-                for step in plan['steps']:
-                    if not step['id'] or step['id'] in seen or any(d not in seen for d in step['depends_on']):
-                        raise ValueError('invalid_plan_dependencies')
-                    seen.add(step['id'])
-                if len(plan['steps'])>3: raise ValueError('plan_too_large')
-                plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
                 self.last_success=time.time()
+                issue = plan_structure_issue(plan)
+                provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
+                if issue:
+                    return {**plan, 'steps': [], 'proposal_issue': issue,
+                        'clarification': ('This investigation needs more than three graph checks. Please narrow it to the evidence you want to prioritize.' if issue == 'plan_too_large' else 'The proposed checks could not be linked safely. Please specify which evidence to check first; your question and revision instruction have been retained.')}
+                plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
                 return independent_measurement_steps(plan)
         raise ValueError('missing_structured_plan')
     def prepare_answer(self,question,evidence):
