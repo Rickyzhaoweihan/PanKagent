@@ -996,6 +996,7 @@ class GraphAdapter:
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
+                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True)},
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
         limits = {
             "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},

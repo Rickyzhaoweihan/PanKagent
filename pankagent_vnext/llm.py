@@ -10,6 +10,8 @@ from .answer_router import AnswerSkillRouter
 from .budget import Budget
 from .evidence_context import compact_evidence
 from .plan_constraints import repair_step_constraints
+from .scope_guard import ScopeTextFilter, broad_cell_search, NOTE as SCOPE_NOTE
+from .audit import provider_event
 
 PLAN_SCHEMA = {
  'type':'object','additionalProperties':False,
@@ -121,7 +123,8 @@ class ClaudeGateway:
         compact=compact_evidence(evidence)
         profile={**routed.profile,'style_version':STYLE_VERSION}
         profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
-        body=json.dumps({'question':question,'evidence':compact},ensure_ascii=False,default=str)
+        body=json.dumps({'question':question,'evidence':compact,
+            'verified_search_scope': SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s requested scope; do not infer unqueried entities from a small returned graph.'},ensure_ascii=False,default=str)
         if len(body.encode())>100000: raise ValueError('evidence_context_too_large')
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]
         if routed.guidance:
@@ -140,17 +143,23 @@ class ClaudeGateway:
         prepared=prepared or self.prepare_answer(question,evidence)
         body=prepared.body
         rid=self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,1600)
+        scope_filter = ScopeTextFilter(evidence)
         try:
             async with self.client.messages.stream(model=self.settings.model,max_tokens=1600,
                 system=prepared.system,
                 messages=[{'role':'user','content':body}],**self._options()) as stream:
-                async for text in stream.text_stream: yield text
+                async for text in stream.text_stream:
+                    visible = scope_filter.feed(text)
+                    if visible: yield visible
                 final=await stream.get_final_message()
         except anthropic.APIStatusError as exc:
             if exc.status_code in (400,401,403,404,413,422,429):
                 self.budget.settle(rid,{})
             raise
         self.budget.settle(rid,final.usage.model_dump()); self.last_success=time.time()
+        tail = scope_filter.feed('', final=True)
+        if tail: yield tail
+        provider_event('answer_scope_validation', {'scope': 'known_cell_search_contradictions_only', 'corrections': scope_filter.corrections})
         if final.stop_reason=='max_tokens': yield '\n\n[Answer reached its output limit.]'
     async def probe(self):
         if not self.settings.anthropic_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}

@@ -74,3 +74,20 @@ def test_followups_only_describe_returned_measurement_types():
     questions = followup_questions({'s': {'status': 'complete', 'nodes': [{'labels': ['Gene'], 'properties': {'name': 'INS'}}], 'edges': [{'type': 'GENE_ENRICHED_IN'}]}})
     assert questions and all('INS' in q for q in questions)
     assert not any('colocalization' in q for q in questions)
+
+
+def test_scope_guard_does_not_stream_a_known_false_query_scope():
+    from pankagent_vnext.scope_guard import ScopeTextFilter, broad_cell_search
+    evidence = {'s': {'status': 'complete', 'queries': [{'cypher': 'validated'}], 'requested_scope': {
+        'complete': True, 'relation_types': ['GENE_ENRICHED_IN'],
+        'constraints': [{'entity_type': 'Gene', 'property': 'name', 'value': 'INS'}]}}}
+    assert broad_cell_search(evidence)
+    guard = ScopeTextFilter(evidence)
+    chunks = ['Measured value 1.23 [G1].\n\n', 'No other cell types were ', 'queried here.\n\n', 'Inspect the source.']
+    output = ''.join(guard.feed(chunk) for chunk in chunks) + guard.feed('', final=True)
+    assert 'Measured value 1.23 [G1].' in output
+    assert 'No other cell types' not in output
+    assert 'all matching cell types' in output and guard.corrections == 1
+    evidence['s']['status'] = 'partial'
+    assert not broad_cell_search(evidence)
+    assert ScopeTextFilter({}).feed('No other cell types were queried.') == 'No other cell types were queried.'
