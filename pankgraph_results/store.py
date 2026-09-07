@@ -13,12 +13,14 @@ def digest(value):
 
 class ResultStore:
     def __init__(self, directory):
+        self.audit_dropped = 0
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = self.directory / "results.sqlite3"
         with self.db() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("CREATE TABLE IF NOT EXISTS results (id TEXT PRIMARY KEY, cache_key TEXT UNIQUE, source TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS audit_events (result_id TEXT, event_id TEXT, kind TEXT, received REAL, payload TEXT, PRIMARY KEY(result_id,event_id))")
         self.path.chmod(0o600)
 
     def db(self):
@@ -81,7 +83,21 @@ class ResultStore:
             if pending:
                 self.update(row["id"], status="interrupted" if value["status"] == "preparing" else "ready", component_status=pending, error="service_restarted")
 
+    def audit_event(self, rid, kind, payload, event_id=None):
+        try:
+            raw = json.dumps(payload, allow_nan=False)
+            if len(raw.encode()) > 32000: raise ValueError("audit_payload_limit")
+            with self.db() as db:
+                db.execute("BEGIN IMMEDIATE")
+                if event_id and db.execute("SELECT 1 FROM audit_events WHERE result_id=? AND event_id=?", (rid,event_id)).fetchone(): return "duplicate"
+                if db.execute("SELECT COUNT(*) FROM audit_events WHERE result_id=?", (rid,)).fetchone()[0] >= 1000: raise ValueError("audit_event_limit")
+                db.execute("INSERT INTO audit_events VALUES (?,?,?,?,?)", (rid,event_id or str(uuid.uuid4()),kind,time.time(),raw))
+            return "recorded"
+        except (sqlite3.Error, ValueError, TypeError):
+            self.audit_dropped += 1
+            return "unavailable"
+
     def probe(self):
         with self.db() as db:
             db.execute("SELECT 1").fetchone()
-        return {"state": "healthy"}
+        return {"state": "healthy", "audit_dropped": self.audit_dropped}

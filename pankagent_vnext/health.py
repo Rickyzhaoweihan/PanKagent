@@ -19,7 +19,7 @@ ERRORS = {
 }
 HARD_INFERENCE_ERRORS = {"authentication", "authorization", "billing", "budget_exhausted", "not_configured", "graph_identity"}
 SAFE_DETAIL_KEYS = {
-    "model", "prompt_version", "replicas", "healthy_replicas", "total_replicas",
+    "audit_dropped", "model", "prompt_version", "replicas", "healthy_replicas", "total_replicas",
     "reachable", "authenticated", "auth_ok", "model_access", "generation_health",
     "graph_version", "graph_identity", "identity_verified", "read_access", "read_only",
     "database", "corpus_version", "source_policy", "service_version", "upstream_state",

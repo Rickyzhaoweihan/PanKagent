@@ -13,11 +13,14 @@ import re
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Literal
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from .audit import InteractionRequest, deployment_identity, recorder
 from .config import Settings
 from .health import HealthMonitor, Metrics, error_category
 from .literature_policy import apply_literature_policy
@@ -29,6 +32,9 @@ from .transport import JSONResponseLimitMiddleware, sse_event_bytes
 class RevisionRequest(BaseModel):
     question: str = Field(min_length=1, max_length=6000)
     include_context: bool = True
+    revision_instruction: str | None = Field(default=None, max_length=6000)
+    revision_mode: Literal["replacement_question", "instruction", "legacy_replacement"] = "legacy_replacement"
+    event_source: Literal["user", "audit_replay", "synthetic_fault"] = "user"
 
 
 class PlanRequest(RevisionRequest):
@@ -129,6 +135,7 @@ class Runtime:
     def __init__(self, settings, gateway, graph, literature):
         self.settings, self.gateway, self.graph, self.literature = settings, gateway, graph, literature
         self.store = Store(settings.state_dir)
+        self.audit_identity = deployment_identity(settings)
         self.tasks: dict[str, asyncio.Task] = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
         self.active = 0
@@ -137,7 +144,7 @@ class Runtime:
         self.shutting_down = False
 
     def queue_snapshot(self):
-        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent}
+        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped}
 
     def check_capacity(self, replacing=None):
         queued = len(self.tasks) - int(replacing in self.tasks)
@@ -154,7 +161,13 @@ class Runtime:
             raise asyncio.CancelledError
 
     def launch(self, run_id: str, coroutine):
-        task = asyncio.create_task(coroutine, name=f"vnext-{run_id}")
+        async def audited():
+            token = recorder.set(lambda kind, payload: self.store.audit_event(run_id, kind, payload))
+            try:
+                return await coroutine
+            finally:
+                recorder.reset(token)
+        task = asyncio.create_task(audited(), name=f"vnext-{run_id}")
         self.tasks[run_id] = task
 
         def finished(done):
@@ -622,13 +635,17 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         raise HTTPException(403, "Operator access required.")
 
     @app.post("/v2/plans", status_code=202)
-    async def plan(body: PlanRequest):
+    async def plan(body: PlanRequest, request: Request):
+        if body.event_source != "user":
+            operator(request)
         runtime.check_capacity()
         question = body.question.strip()
         if not question:
             raise HTTPException(422, "Question must not be blank.")
         try:
-            run = runtime.store.create(question, body.session_id, include_context=body.include_context)
+            run = runtime.store.create(question, body.session_id, include_context=body.include_context,
+                audit={"original_question": body.question, "source": body.event_source, "versions": runtime.audit_identity,
+                       "requested_options": {"include_context": body.include_context}})
         except KeyError:
             raise HTTPException(404, "Session not found.") from None
         runtime.store.event(run["run_id"], "progress", {"stage": "queued"})
@@ -637,7 +654,9 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         return {key: run[key] for key in ("plan_id", "run_id", "session_id", "status")} | {"events_url": f'/v2/runs/{run["run_id"]}/events', "plan_url": f'/v2/plans/{run["plan_id"]}'}
 
     @app.post("/v2/plans/{plan_id}/revise", status_code=202)
-    async def revise(plan_id: str, body: RevisionRequest):
+    async def revise(plan_id: str, body: RevisionRequest, request: Request):
+        if body.event_source != "user":
+            operator(request)
         question = body.question.strip()
         if not question:
             raise HTTPException(422, "Question must not be blank.")
@@ -648,7 +667,9 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             raise HTTPException(409, "Only an unconfirmed plan can be revised; create a new plan.")
         runtime.check_capacity(replacing=old["run_id"])
         try:
-            old, run = runtime.store.revise(plan_id, question, include_context=body.include_context)
+            old, run = runtime.store.revise(plan_id, question, include_context=body.include_context,
+                audit={"source": body.event_source, "versions": runtime.audit_identity,
+                       "revision_instruction": body.revision_instruction, "revision_mode": body.revision_mode})
         except ValueError:
             raise HTTPException(409, "This plan was already confirmed or ended.") from None
         runtime.store.event(old["run_id"], "terminal", {"status": "superseded", "replacement_run_id": run["run_id"]})
@@ -705,6 +726,23 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             if task:
                 task.cancel()
         return {"run_id": run_id, "status": runtime.store.get(run_id)["status"]}
+
+    @app.post("/v2/runs/{run_id}/interactions")
+    async def interaction(run_id: str, body: InteractionRequest, request: Request):
+        operator(request)
+        get_run(run_id)
+        payload = body.model_dump(mode="json", exclude={"event_id", "kind"})
+        metadata = runtime.store.audit_metadata(run_id) or {}
+        payload["source"] = metadata.get("source", "unknown")
+        status = runtime.store.audit_event(run_id, body.kind, payload, str(body.event_id))
+        runtime.metrics.count("audit_interactions_" + status)
+        return JSONResponse({"version": 1, "status": status}, status_code=503 if status == "unavailable" else 200)
+
+    @app.get("/v2/runs/{run_id}/audit")
+    async def audit(run_id: str, request: Request):
+        operator(request)
+        get_run(run_id)
+        return runtime.store.audit_snapshot(run_id)
 
     @app.get("/v2/runs/{run_id}/events")
     async def events(run_id: str, request: Request, after: int = Query(default=0, ge=0)):

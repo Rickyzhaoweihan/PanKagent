@@ -1,5 +1,6 @@
 """Persistent atomic reservations: interrupted/ambiguous calls retain their bound."""
 import json
+from .audit import provider_event
 import sqlite3
 import threading
 import time
@@ -30,6 +31,7 @@ class Budget:
             if used+amount > self.limit: raise BudgetExceeded('development_budget_exhausted')
             rid=uuid.uuid4().hex
             db.execute('INSERT INTO usage VALUES (?,?,?,?,NULL,?,NULL)',(rid,model,purpose,amount,time.time()))
+        provider_event('model_reserved', {'reservation_id': rid, 'model': model, 'purpose': purpose, 'reserved_usd': amount})
         return rid
     def settle(self,rid,usage):
         import json
@@ -40,6 +42,7 @@ class Budget:
                     usage.get('cache_creation_input_tokens',0)*ip*1.25+
                     usage.get('cache_read_input_tokens',0)*ip*.1)/1e6
             db.execute('UPDATE usage SET actual=?,tokens=? WHERE id=?',(actual,json.dumps(usage),rid))
+        provider_event('model_settled', {'reservation_id': rid, 'usage': usage, 'actual_usd': actual})
     def snapshot(self):
         with self.lock,self._db() as db:
             actual,reserved,calls,pending=db.execute('SELECT COALESCE(SUM(actual),0),COALESCE(SUM(CASE WHEN actual IS NULL THEN reserved ELSE 0 END),0),COUNT(*),SUM(CASE WHEN actual IS NULL THEN 1 ELSE 0 END) FROM usage').fetchone()

@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from pankagent_vnext.app import CitationFilter, safe_error
+from pankagent_vnext.audit import InteractionRequest, recorder
 from pankagent_vnext.config import Settings
 from pankagent_vnext.llm import ClaudeGateway
 from pankagent_vnext.transport import JSONResponseLimitMiddleware
@@ -127,6 +128,7 @@ class ResultsRuntime:
         started = time.monotonic()
         text = ""
         citations = CitationFilter(len(evidence.get("steps", [])))
+        audit_token = recorder.set(lambda kind, payload: self.store.audit_event(rid, kind, payload))
         try:
             # Scope note is explicit in both the human question and step evidence.
             question = source["question"] + ("\nEvidence scope: " + evidence["scope_note"] if evidence.get("scope_note") else "")
@@ -153,6 +155,7 @@ class ResultsRuntime:
             self.health.record("synthesis", "unavailable", time.monotonic() - started, error["category"])
             self.health.count("synthesis_errors")
         finally:
+            recorder.reset(audit_token)
             self.health.duration("synthesis", time.monotonic() - started)
 
     async def execute(self, rid, source):
@@ -263,6 +266,16 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     async def create_result(body: ResultRequest):
         return await runtime.create(body)
 
+    @app.post("/api/results/{result_id}/interactions")
+    async def result_interaction(result_id: UUID, body: InteractionRequest):
+        rid = str(result_id)
+        if runtime.store.get(rid) is None:
+            raise HTTPException(404, "Result not found.")
+        status = await asyncio.to_thread(runtime.store.audit_event, rid, body.kind,
+            body.model_dump(mode="json", exclude={"event_id", "kind"}), str(body.event_id))
+        runtime.health.count("audit_interactions_" + status)
+        return JSONResponse({"version": 1, "status": status}, status_code=503 if status == "unavailable" else 200)
+
     @app.get("/api/results/{result_id}")
     async def result(result_id: UUID):
         value = await asyncio.to_thread(runtime.store.get, str(result_id))
@@ -303,8 +316,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     @app.api_route("/api/agent/{path:path}", methods=["GET", "POST"])
     async def agent_proxy(path: str, request: Request):
         allowed = (request.method == "POST" and path == "v2/plans") or re.fullmatch(
-            r"v2/(?:plans/[0-9a-f-]{36}(?:/(?:confirm|revise))?|runs/[0-9a-f-]{36}(?:/(?:events|cancel))?)", path)
-        post = path == "v2/plans" or path.endswith(("/confirm", "/revise", "/cancel"))
+            r"v2/(?:plans/[0-9a-f-]{36}(?:/(?:confirm|revise))?|runs/[0-9a-f-]{36}(?:/(?:events|cancel|interactions))?)", path)
+        post = path == "v2/plans" or path.endswith(("/confirm", "/revise", "/cancel", "/interactions"))
         if not allowed or (request.method == "POST") != post:
             raise HTTPException(404, "Unknown agent operation.")
         raw = await request.body()
@@ -317,6 +330,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
         upstream_request = runtime.http.build_request(request.method, settings.agent_url + "/" + path + ("?" + query if query else ""), headers=headers, content=raw)
         for sensitive in ("authorization", "cookie", "x-operator-token", "x-api-key"):
             upstream_request.headers.pop(sensitive, None)
+        if path.endswith("/interactions") and runtime.vnext.operator_token:
+            upstream_request.headers["authorization"] = "Bearer " + runtime.vnext.operator_token
         response = await runtime.http.send(upstream_request, stream=True)
         if path.endswith("/cancel") and response.status_code < 300:
             await runtime.cancel_run_presentations(path.split("/")[2])
