@@ -434,3 +434,20 @@ def test_startup_restores_source_history_without_fetch_and_expires_old_observati
         assert len(reopened.snapshot()["source_observations"]) == len(SOURCES)
         await reopened.close()
     run(scenario())
+
+
+def test_donor_index_download_retains_all_unique_donors_and_no_file_claim(tmp_path):
+    async def scenario():
+        m=await manager(tmp_path,lambda request: pytest.fail('Donor index must not download upstream data'))
+        try:
+            nodes=[{'id':f'HPAP-{i:03d}','labels':['donor'],'properties':{'data_source':'HPAP','t1d_stage':'Stage 3'}} for i in range(44)]
+            result=await m.resolve({'nodes':nodes,'edges':[],'graph_version':'fixture'})
+            assert result['status']=='available'
+            asset=result['assets'][0]
+            path,media,name=await m.asset(asset['asset_id'])
+            assert len(path.read_text().splitlines())==45
+            assert 'not_verified' in path.read_text()
+            assert result['resources_tabs']['empirical_evidence']['status']=='download_only'
+            assert 'image_url' not in result['resources_tabs']['empirical_evidence']
+        finally:await m.close()
+    asyncio.run(scenario())

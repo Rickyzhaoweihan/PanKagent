@@ -229,6 +229,12 @@ def _pattern_bindings(tokens: list[Token]):
             edges.append((source, target, kinds))
             if values[0] != "<" and values[-1] != ">":
                 edges.append((target, source, kinds))
+    # Preserve node types through simple WITH aliases; never infer a property projection as a node.
+    for i, token in enumerate(tokens[1:-1], 1):
+        if _word(token, "AS") and tokens[i-1].value in nodes and (i < 2 or tokens[i-2].value != '.'):
+            old,new=tokens[i-1].value,tokens[i+1].value
+            nodes.setdefault(new, set()).update(nodes[old])
+            edges += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(edges) if old in (a,b)]
     return nodes, edges
 
 
@@ -330,7 +336,7 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
     return False
 
 
-def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], parameters: dict) -> list[str]:
+def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], parameters: dict, extra_properties=()) -> list[str]:
     """Catch invented identifier/entity restrictions on complete set queries."""
     errors = []
     bindings, _ = _pattern_bindings(tokens)
@@ -338,7 +344,7 @@ def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], 
         if token.kind not in {"WORD", "IDENT"}:
             continue
         prop = token.value
-        if not (prop.lower().endswith(("name", "_id")) or prop.lower() in {"id", "condition", "gender", "sex", "t1d_stage"}):
+        if not (prop in extra_properties or prop.lower().endswith(("name", "_id")) or prop.lower() in {"id", "condition", "gender", "sex", "t1d_stage", "diabetes_type", "derived_diabetes_status", "data_modality", "data_source"}):
             continue
         at, transform = i + 1, None
         if at < len(tokens) and tokens[at].value == ")" and i >= 4 and tokens[i - 3].value == "(":
@@ -395,9 +401,12 @@ def _constraint_choices(step: dict, index: int, constraint: dict) -> list[dict]:
                 and constraint.get("operator", "=") == "="):
             return [{"property": prop, "operator": "=", "value": entity[prop], "_entity_type": entity["entity_type"]}
                     for prop in ("id", "name") if isinstance(entity.get(prop), str) and entity[prop]]
+    if constraint.get('property')=='data_modality' and step.get('semantic_registry',{}).get('modality_links_verified'):
+        return [{**constraint,'_entity_type':'Sample_node'},
+                {**constraint,'property':'id','_entity_type':'data_modality'}]
     if constraint.get("property") == "go_domain" and constraint.get("entity_type") == "GO_term":
         return [{**constraint, "_entity_type": "GO_term"}]
-    return [constraint]
+    return [{**constraint, **({"_entity_type": constraint["entity_type"]} if constraint.get("entity_type") else {})}]
 
 
 def _choice_present(tokens, choice, parameters):
@@ -516,6 +525,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         _, paths = _pattern_bindings(part)
         errors.extend(_enrichment_property_errors(part, step, parameters))
         bindings, _ = _pattern_bindings(part)
+        from .semantic_registry import validation_errors
+        errors.extend(validation_errors(part, step, parameters, bindings, paths, _predicate_present, choices))
         for source, target, kinds in paths:
             correct = lambda a, b: 'Gene' in bindings.get(a, set()) and 'anatomical_structure' in bindings.get(b, set())
             undirected = (target, source, kinds) in paths
@@ -542,7 +553,9 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         if not all(_predicate_present(part, wanted, parameters) for part in branches):
             errors.append("missing_dependency:" + name)
     if step.get("complete", True):
-        errors.extend(_unrequested_identity_filters(tokens, [choice for group in choices for choice in group], parameters))
+        from .semantic_registry import PROPERTIES
+        extra={p for fields in PROPERTIES.values() for p in fields} if step.get('semantic_registry') else set()
+        errors.extend(_unrequested_identity_filters(tokens, [choice for group in choices for choice in group], parameters, extra))
     return list(dict.fromkeys(errors))
 
 
@@ -590,6 +603,8 @@ class GraphAdapter:
         self._resolution_secret = secrets.token_bytes(32)
         self._entity_cache = {}
         self.release_labels, self.release_relations = set(), set()
+        self._semantic_cache = None
+        self._semantic_lock = asyncio.Lock()
 
     async def close(self):
         await self.http.aclose()
@@ -682,7 +697,14 @@ class GraphAdapter:
         if invalid_metadata:
             result = {**entry, "reason": "unsupported_canonical_entity"}
         elif not candidates:
-            result = {**entry, "state": "not_found", "candidates": []}
+            suggestions=[]
+            if label and prop=='name':
+                from difflib import get_close_matches
+                # Bounded metadata suggestions only; never substitute a fuzzy entity.
+                names=await asyncio.wait_for(self._small_query(f"MATCH {node} WHERE n.name IS NOT NULL RETURN n.name AS name ORDER BY n.name LIMIT 2000"), timeout)
+                pool=[r['name'] for r in names if isinstance(r.get('name'),str)]
+                suggestions=get_close_matches(value,pool,n=3,cutoff=.65)
+            result = {**entry, "state": "not_found", "candidates": [], "suggestions":suggestions}
         elif len(candidates) != 1:
             result = {**entry, "state": "ambiguous", "candidates": candidates, "candidate_limit": 3,
                       "candidates_complete": len(candidates) < 3}
@@ -700,9 +722,27 @@ class GraphAdapter:
             cache.pop(next(iter(cache)))
         return {**result, "requested": dict(constraint)}
 
+    async def semantic_vocabulary(self):
+        from .semantic_registry import DIGEST
+        key=(self.settings.graph_version,DIGEST)
+        if not hasattr(self, '_semantic_lock'): self._semantic_lock=asyncio.Lock()
+        async with self._semantic_lock:
+            cached=getattr(self,'_semantic_cache',None)
+            if cached and cached[0]==key and time.monotonic()-cached[1]<300:return cached[2]
+            rows=await self._small_query("MATCH (d:donor) RETURN collect(DISTINCT d.t1d_stage) AS stages, collect(DISTINCT d.data_source) AS sources")
+            modalities=await self._small_query("MATCH (s:Sample_node) RETURN collect(DISTINCT s.data_modality) AS modalities")
+            check=await self._small_query("MATCH (m:data_modality)-[:HAS_SAMPLE]->(s:Sample_node) RETURN count(CASE WHEN m.id <> s.data_modality OR s.data_modality IS NULL THEN 1 END) AS mismatches, count(*) AS links")
+            tissues=await self._small_query("MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(:Sample_node) RETURN DISTINCT a.id AS id, a.name AS name LIMIT 2000")
+            value={'tissues':tissues,**(rows[0] if rows else {}),**(modalities[0] if modalities else {}), 'modality_links_verified':bool(check and check[0]['links'] and check[0]['mismatches']==0)}
+            self._semantic_cache=(key,time.monotonic(),value)
+            return value
+
     async def _prepare_step(self, source: dict, emit) -> dict:
         step = repair_step_constraints({key: value for key, value in source.items()
                                         if key not in {"resolution_key", "resolved_entities", "entity_resolution"}})
+        from .semantic_registry import donor_intent, resolve
+        if donor_intent(step):
+            step=resolve(step,await self.semantic_vocabulary(),self.settings.graph_version)
         step["graph_version"] = self.settings.graph_version
         step["relation_types"] = step_relation_types(step)
         identities = [(index, constraint) for index, constraint in enumerate(step.get("constraints") or [])
@@ -716,7 +756,7 @@ class GraphAdapter:
         step["resolved_entities"] = entities
         unresolved = [item for item in entities if item["state"] not in {"resolved", "literal_predicate"}]
         unknown_relations = [kind for kind in step["relation_types"] if getattr(self, "release_relations", set()) and kind not in self.release_relations]
-        step["entity_resolution"] = {"state": "needs_clarification" if unresolved or unknown_relations else "resolved" if entities else "not_required",
+        step["entity_resolution"] = {"state": "needs_clarification" if unresolved or unknown_relations or step.get("semantic_issues") else "resolved" if entities else "not_required",
                                      "graph_version": self.settings.graph_version, "unknown_relations": unknown_relations}
         step["resolution_key"] = self._resolution_signature(step)
         return step
@@ -729,11 +769,15 @@ class GraphAdapter:
         prepared = {**plan, "steps": []}
         for source in plan.get("steps") or []:
             prepared["steps"].append(await self._prepare_step(source, emit))
+        if any('scRNA-seq' in group and 'snMultiomics' in group for step in prepared['steps'] for group in step.get('sample_requirements',{}).get('modality_groups',[])):
+            interpretation=prepared.get('interpreted_question') or prepared['steps'][0]['question']
+            note=' Include documented RNA components of HPAP multiome assays, retaining their original assay labels.'
+            if note.strip() not in interpretation:prepared['interpreted_question']=interpretation+note
         context = related_context_step(prepared)
         if context:
             prepared["steps"].append(await self._prepare_step(context, emit))
         issues = [{"step_id": step["id"], "entities": [item for item in step["resolved_entities"] if item["state"] not in {"resolved", "literal_predicate"}],
-                   "unknown_relations": step["entity_resolution"]["unknown_relations"]}
+                   "unknown_relations": step["entity_resolution"]["unknown_relations"], "terminology":step.get("semantic_issues",[])}
                   for step in prepared["steps"] if step["entity_resolution"]["state"] == "needs_clarification"]
         prepared["entity_resolution"] = {"state": "needs_clarification" if issues else "resolved",
                                           "graph_version": self.settings.graph_version, "issues": issues}
@@ -879,6 +923,7 @@ class GraphAdapter:
                 self.settings.cypher_url.rstrip("/") + "/v1/cypher",
                 headers={"Authorization": "Bearer " + self.settings.cypher_token},
                 json={"question": question, "n": n},
+                timeout=min(30, self.settings.cypher_timeout * (2 if n == 8 else 1)),
             )
             response.raise_for_status()
             body = response.json()
@@ -985,7 +1030,8 @@ class GraphAdapter:
                     if truncated or len(rows) >= row_limit or size + width > byte_limit:
                         truncated = True
                     else:
-                        rows.append(row)
+                        from .semantic_registry import meaningful_row
+                        if meaningful_row(row): rows.append(row)
                         size += width
                     if truncated:
                         # Exiting without a commit rolls back the read tx and
@@ -1063,7 +1109,7 @@ class GraphAdapter:
                 attempt_question = question
                 if n == 8:
                     failures = sorted({reason for check in base["validation"] for reason in check["reasons"]})
-                    correction = "\nCorrect the previous validation failures: " + ", ".join(reason.split(":", 2)[0] for reason in failures) + ". Preserve every required filter and dependency."
+                    correction = "\nCorrect the previous validation failures: " + ", ".join(reason for reason in failures) + ". Preserve every required filter and dependency."
                     if step.get("complete", True):
                         correction += " Return all matches without LIMIT or list slices."
                     if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
@@ -1107,6 +1153,11 @@ class GraphAdapter:
                     base["validation"].append({"valid": False, "reasons": ["graph_execution_failed:" + type(exc).__name__]})
                     return base
                 base.update(result)
+                from .semantic_registry import donor_summary
+                base['resolved_constraints']=step.get('resolved_constraints',[])
+                base['semantic_registry']=step.get('semantic_registry')
+                summary=donor_summary(base)
+                if summary:base['donor_summary']=summary
                 if inherited_partial or not step.get("complete", True):
                     base["status"] = "partial"
                 sources = set()

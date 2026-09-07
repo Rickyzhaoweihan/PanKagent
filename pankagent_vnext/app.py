@@ -45,7 +45,12 @@ class PlanRequest(RevisionRequest):
 
 
 def public_run(run: dict) -> dict:
-    return {key: value for key, value in run.items() if key not in {"created_epoch", "preview_cache"}}
+    result={key: value for key, value in run.items() if key not in {"created_epoch", "preview_cache"}}
+    from .semantic_registry import donor_intent
+    plan=run.get('plan') or {}
+    if plan.get('contract_sha256')!=CONTRACT_DIGEST and any(donor_intent(s) for s in plan.get('steps',[])):
+        result['rerun_advisory']='This saved donor result predates corrected terminology and sample-path checks. Rerun the question before using its conclusion.'
+    return result
 
 
 def safe_error(exc: BaseException) -> dict:
@@ -319,7 +324,7 @@ class Runtime:
         # Credential changes can change accessible data. Hashes remain private;
         # credentials and the reusable-cache metadata never enter public events.
         access = [getattr(self.settings, field, "") for field in ("neo4j_user", "neo4j_password", "cypher_token")]
-        raw = json.dumps({"version": 1, "plan": plan, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
+        raw = json.dumps({"version": 2, "validator_contract": CONTRACT_DIGEST, "plan": plan, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def save_preview(self, run_id, previous, cache, *, error=None):
@@ -808,6 +813,8 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         if run["status"] == "planning":
             raise HTTPException(409, "The plan is still being prepared.")
         if run["status"] == "awaiting_confirmation":
+            if public_run(run).get('rerun_advisory'):
+                raise HTTPException(409, 'This donor plan uses outdated checks. Revise it before confirmation.')
             if run.get("preview") is None:
                 raise HTTPException(409, "Revise this saved plan to validate initial evidence.")
             if run["plan"].get("clarification"):

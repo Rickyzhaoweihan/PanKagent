@@ -6,7 +6,7 @@ Measurement guidance is release-specific, not a scientific answer template.
 import hashlib
 import json
 
-VERSION = 'pankgraph-08-04-intent-v2'
+VERSION = 'pankgraph-08-04-intent-v3'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
     'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Return recorded measurements and condition without inventing significance cutoffs.',
@@ -34,7 +34,8 @@ LABELS = ['Gene', 'disease', 'anatomical_structure', 'GO_term', 'reactome', 'keg
           'variants', 'donor', 'Sample_node', 'data_modality', 'OCR_peak',
           'regulatory_elements', 'ontology', 'sequence_variant', 'snv', 'deletion',
           'indel', 'insertion', 'provenance']
-DIGEST = hashlib.sha256(json.dumps({'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+from .semantic_registry import DIGEST as SEMANTIC_DIGEST
+DIGEST = hashlib.sha256(json.dumps({'semantics': SEMANTIC_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
 
 
 def planner_notes():
@@ -52,13 +53,27 @@ def generation_request(step, base_question):
             bindings.append(f"{e['entity_type']} with id {json.dumps(e['id'])} (verified name {json.dumps(e.get('name'))}); these identify the same entity")
         else:
             bindings.append(f"{c.get('entity_type') or 'recorded property'} {c.get('property')} {c.get('operator')} {json.dumps(c.get('value'))}")
+    if step.get('semantic_registry'):
+        requirements=step.get('sample_requirements',{})
+        samples=bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
+        paths='disease -HAS_DONOR-> donor'
+        if samples:paths+='; donor -HAS_SAMPLE-> Sample_node; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
+        text=base_question+'\nUse these verified bindings (replace shorthand values in the question): '+'; '.join(bindings)+'.'
+        text+='\nRequired connected schema paths: '+paths+'.'
+        if samples:text+=' Sample_node.data_modality stores the assay. Tissue is matched on the linked anatomical_structure; do not filter the descriptive Sample_node.anatomical_structure string.'
+        else:text+=' Donor-only lookup: no sample or assay joins or filters.'
+        if requirements.get('separate_bindings'):text+=' For RNA AND ATAC use two Sample_node variables, each linked to the SAME donor and requested tissue and constrained to its corresponding modality group. They may identify the same multiome sample.'
+        text+=' Return all matched nodes and connecting relationships with properties, as nodes and edges. No LIMIT, SKIP, list slices, rank, or additional filters.'
+        if len(text)>4000:raise ValueError('generation_question_too_long')
+        return text
     notes = [RELATIONS[r] for r in relations if r in RELATIONS]
     suffix = '\nRequired relationship types: '+', '.join(relations)+'.' if relations else ''
     if bindings: suffix += '\nRequired entity/property constraints: '+'; '.join(bindings)+'.'
     if notes: suffix += '\n'+'\n'.join(notes)
     suffix += '\nReturn matching nodes and relationships with properties. Do not add unrequested disease, donor, significance or rank filters.'
     if step.get('complete', True): suffix += ' Return all matches without LIMIT, SKIP or list slices.'
-    result = base_question + suffix
+    from .semantic_registry import generation_guidance
+    result = base_question + suffix + generation_guidance(step)
     # Never silently truncate a scientific constraint to fit the API.
     if len(result) > 4000:
         raise ValueError('generation_question_too_long')

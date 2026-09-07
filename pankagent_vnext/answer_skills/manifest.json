@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.1.0",
+  "bundle_version": "1.2.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -13,7 +13,7 @@
   },
   "sha256": {
     "upstream/schema_skill.json": "f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3",
-    "bim/schema_skill.json": "49af59b5db8604fcb8f0185639e6779b87f4f91c0d78e256804066e7d07f8d23",
+    "bim/schema_skill.json": "50ab9b7c106e352ccacbb466c31fdc0c3d53f0ff8dceee7fbc7f2b0b243f75c6",
     "upstream/functional_data_interpretation_skill.json": "d5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80",
     "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",

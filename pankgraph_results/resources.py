@@ -186,6 +186,10 @@ def _reference_tabs(nodes: list[dict], edges: list[dict]) -> dict:
                 "https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=" + quote(node_id)])
         elif re.fullmatch(r"rs\d+", node_id):
             tabs["external_links"].append(["dbSNP", f"View {node_id} in dbSNP", "https://www.ncbi.nlm.nih.gov/snp/" + node_id])
+    if any('donor' in n.get('labels',[]) and _properties(n).get('data_source')=='HPAP' for n in nodes):
+        tabs['external_links'].append(['HPAP data portal','Browse donor/sample records; file availability and access requirements must be checked at the source.','https://hpap.pmacs.upenn.edu/'])
+        if any('Sample_node' in n.get('labels',[]) and _properties(n).get('data_modality')=='snMultiomics' for n in nodes):
+            tabs['references']['hpap-multiome']={'id':'hpap-multiome','title':'HPAP RNA + ATAC multiome analysis','subtitle':'Protocol/assay capability source; not verification of individual downloadable files','href':'https://hpap.pmacs.upenn.edu/analysis'}
     edge_types = {_type(edge) for edge in edges}
     if edge_types & {"PART_OF_QTL_SIGNAL", "PART_OF_QTL", "PART_OF_GWAS_SIGNAL", "PART_OF_GWAS", "COLOCALIZATION", "COLOCALIZED_WITH", "SIGNAL_COLOC_WITH"}:
         tabs["pankbase_links"] += [["QTL/GWAS data sources", "https://pankgraph.org/qtldatasource"],
@@ -616,9 +620,20 @@ class ResourceManager:
                 **({"image_url": plot["asset"]["url"]} if plot["status"] == "available" else {})}}
             if "empirical_evidence" not in tabs:
                 tabs.update(result["resources_tabs"])
+        from pankagent_vnext.semantic_registry import donor_summary, DIGEST as semantic_digest
+        cohort=donor_summary({'nodes':nodes,'edges':edges})
+        if cohort:
+            buffer=io.StringIO()
+            writer=csv.DictWriter(buffer,fieldnames=['donor_id','recorded_stage','sample_count','recorded_assays','file_availability'],delimiter='\t')
+            writer.writeheader()
+            for row in cohort['rows']:writer.writerow({**row,'recorded_assays':'; '.join(row['recorded_assays'])})
+            asset=await asyncio.to_thread(self._save_asset,buffer.getvalue().encode(),kind='donor_index',identity=semantic_digest+str(evidence.get('graph_version')),media_type='text/tab-separated-values',download_name='retrieved-donor-samples.tsv',extra={'file_availability':'not_verified','unique_donors':cohort['unique_donors'],'unique_samples':cohort['unique_samples']})
+            assets.append(asset)
+            groups.append({'kind':'donor_index','status':'available','asset_id':asset['asset_id']})
+            tabs.setdefault('empirical_evidence',{'title':'Retrieved donor and sample index','description':'Unique donors and their matching indexed samples from the retrieved graph evidence. This is a metadata download, not sequencing files; truncation is reported with the graph result.','status':'download_only','link_text':'Download donor/sample metadata ↗','link':asset['url'],'download_url':asset['url']})
         available = [group for group in groups if group["status"] == "available"]
         status = "not_applicable" if not groups else ("unavailable" if not available else (
-            "partial" if len(available) < len(groups) or any(group.get("plot", {}).get("status") != "available" for group in available) else "available"))
+            "partial" if len(available) < len(groups) or any(group.get("kind") != "donor_index" and group.get("plot", {}).get("status") != "available" for group in available) else "available"))
         coverage = await asyncio.to_thread(self._coverage)
         now = time.time()
         if groups:

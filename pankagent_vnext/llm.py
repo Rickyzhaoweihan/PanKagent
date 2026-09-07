@@ -115,7 +115,8 @@ class ClaudeGateway:
             raise
     async def plan(self,question,history):
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
-        user=json.dumps({'question':question,'history':history[-6:]},ensure_ascii=False)
+        from .semantic_registry import planner_guidance
+        user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         rid=self._reserve('plan',PLAN_SYSTEM,user,1600)
         reply=await self._create(rid,model=self.settings.model,max_tokens=1600,
           system=[{'type':'text','text':PLAN_SYSTEM,'cache_control':{'type':'ephemeral'}}],
@@ -150,6 +151,8 @@ class ClaudeGateway:
             system.append({'type':'text','text':'Matched interpretation guidance (apply under the evidence and presentation rules above):\n'+routed.guidance,
                            'cache_control':{'type':'ephemeral'}})
         system.append({'type':'text','text':ANSWER_CONTRACT})
+        if any(step.get('donor_summary',{}).get('unique_donors') for step in evidence.values()):
+            system.append({'type':'text','text':'For this nonempty donor cohort, start with the number of donors matching the approved scope, including documented assay capabilities. Explain the exact assay-label distinction afterward. Do not open with No donors when the approved capability search returned matching donors. Preserve all counts, provenance and file-availability caveats.'})
         return PreparedAnswer(body,system,profile)
 
     async def synthesize(self,question,evidence,*,prepared=None):
