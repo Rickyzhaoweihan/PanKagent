@@ -219,3 +219,30 @@ class AnswerSkillRouter:
         end = time.perf_counter()
         profile["timing_ms"] = {"scan": round((scanned-start)*1000, 4), "compile": round((end-scanned)*1000, 4), "total": round((end-start)*1000, 4)}
         return RoutedSkills(guidance, profile)
+
+
+def followup_questions(evidence):
+    """Use the bundled interpretation rules and actual returned schema only."""
+    if isinstance(evidence, dict) and 'steps' in evidence:
+        steps = evidence['steps']
+    elif isinstance(evidence, dict):
+        steps = list(evidence.values())
+    else:
+        steps = list(evidence or [])
+    usable = [s for s in steps if s.get('status') in {'complete', 'partial'}]
+    kinds = {e.get('type', '') for s in usable for e in s.get('edges', [])}
+    genes = sorted({str(n.get('properties', {}).get('name')) for s in usable for n in s.get('nodes', [])
+                    if 'Gene' in n.get('labels', []) and n.get('properties', {}).get('name')})
+    subject = ', '.join(genes[:2]) or 'these results'
+    questions = []
+    for rule in _followup_rules():
+        if kinds.intersection(rule['relations']):
+            questions.append(rule['question'].replace('{subject}', subject))
+    return questions[:3]
+
+
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def _followup_rules():
+    return json.loads((BUNDLE / 'manifest.json').read_text()).get('followup_rules', [])

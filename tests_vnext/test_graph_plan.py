@@ -103,7 +103,9 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prepared["steps"][1]["purpose"], "context")
         result = await self.graph.execute(primary, {}, self.emit)
         self.assertEqual(result["status"], "complete")
-        self.assertEqual(self.graph.generated, [(expected, 1)])
+        self.assertEqual(self.graph.generated[0][1], 1)
+        self.assertTrue(self.graph.generated[0][0].startswith(expected))
+        self.assertIn("Required relationship types: GENE_ENRICHED_IN", self.graph.generated[0][0])
 
     async def test_report_clause_never_discards_threshold_unknown_metric_or_extra_task(self):
         questions = [

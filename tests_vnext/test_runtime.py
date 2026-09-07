@@ -341,9 +341,10 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
         graph.error = ConnectionError("a token is SECRET_VALUE")
         async with service(tmp_path, gateway=Gateway(plan=plan), graph=graph) as (client, runtime, *_):
             created = await new_plan(client)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            run = await wait_state(client, created["run_id"], {"partial"})
-            assert run["evidence"]["steps"][0]["status"] == "failed"
+            response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            assert response.status_code == 409
+            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            assert run["preview"]["evidence"]["steps"][0]["status"] == "failed"
             assert graph.previous[1]["s1"]["status"] == "failed"
             assert "SECRET_VALUE" not in json.dumps(run)
     asyncio.run(scenario())
@@ -353,10 +354,11 @@ def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
     async def scenario():
         async with service(tmp_path, graph=Graph(delay=5), preview_timeout=0.03, run_timeout=0.03) as (client, runtime, *_):
             created = await new_plan(client)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            run = await wait_state(client, created["run_id"], {"partial"})
-            assert run["error"]["category"] == "timeout"
-            assert run["evidence"]["completeness"] == "partial"
+            response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            assert response.status_code == 409
+            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            assert run["preview"]["error"]["category"] == "timeout"
+            assert run["preview"]["evidence"]["completeness"] == "partial"
     asyncio.run(scenario())
 
 

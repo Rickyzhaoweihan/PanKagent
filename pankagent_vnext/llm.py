@@ -53,6 +53,13 @@ Release schema notes:
 - When a scientific filter cannot be mapped confidently to a real property/value, request clarification instead of inventing a hard constraint or silently omitting it.
 '''
 
+from .graph_contract import planner_notes, RELATIONS, LABELS, independent_measurement_steps
+PLAN_SCHEMA['properties']['steps']['items']['properties']['relation_types']['items']['enum'] = list(RELATIONS)
+PLAN_SCHEMA['properties']['steps']['items']['properties']['evidence_combination'] = {'type': 'string', 'enum': ['independent', 'cooccurrence']}
+PLAN_SCHEMA['properties']['steps']['items']['required'].append('evidence_combination')
+PLAN_SYSTEM += "\nRetrieve independent detection, enrichment and marker measurements in separate steps. Cooccurrence is only for a user explicitly requesting entities that satisfy multiple measurements together. For specificity/exclusivity, inspect other cell types too; a restriction to the named cell cannot establish exclusivity."
+PLAN_SYSTEM += planner_notes() + "\nFor revision_context in history, apply its instruction to its parent plan and original question. Preserve unrelated constraints, return a standalone revised question, and retain the parent's explicit literature choice unless changed. A short revision is not a new question lacking an entity."
+
 SYNTHESIS_SYSTEM = (Path(__file__).parent / 'prompts' / 'answer_style.md').read_text()
 ANSWER_CONTRACT = '''Final presentation contract: return the answer summary only, without follow-up questions or suggested searches. For a simple lookup use a direct sentence, one small table with at most five columns if useful, a source line and one brief evidence caveat (aim for 80–160 words total). Preserve IDs and units exactly. Include only returned entities and supported observations. Answer the primary question first; a context step supplies a brief additional observation, not a replacement answer. Distinguish detection from enrichment and exclusive expression. Do not compare measurements across conditions, cohorts or sources as if matched. rank_in_cell_type ranks genes within one cell type; it does not rank cell types for a gene. Never infer the strongest cell type from that rank or from a query restricted to one cell type. Earlier interpretation templates do not require every listed field or extra sections. Never infer unreturned records from generation settings or invent incompleteness when explicit status is complete and sampling/truncation are false.'''
 STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT).encode()).hexdigest()[:16]
@@ -68,7 +75,7 @@ class ClaudeGateway:
     def __init__(self,settings):
         self.settings=settings
         self.budget=Budget(settings.state_dir/'budget.sqlite3',settings.budget_usd)
-        self.client=anthropic.AsyncAnthropic(api_key=settings.anthropic_key or 'not-configured',max_retries=0,timeout=18)
+        self.client=anthropic.AsyncAnthropic(api_key=settings.anthropic_key or 'not-configured',max_retries=0,timeout=self.settings.plan_timeout)
         self.last_success=None
         self.answer_router=AnswerSkillRouter()
     def _options(self):
@@ -106,7 +113,7 @@ class ClaudeGateway:
                 if len(plan['steps'])>3: raise ValueError('plan_too_large')
                 plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
                 self.last_success=time.time()
-                return plan
+                return independent_measurement_steps(plan)
         raise ValueError('missing_structured_plan')
     def prepare_answer(self,question,evidence):
         # Inspect full bounded evidence before sampling; this does not call a model.
@@ -124,6 +131,11 @@ class ClaudeGateway:
         return PreparedAnswer(body,system,profile)
 
     async def synthesize(self,question,evidence,*,prepared=None):
+        from .evidence_status import outcome_message
+        message = outcome_message(evidence)
+        if message:
+            yield message
+            return
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         prepared=prepared or self.prepare_answer(question,evidence)
         body=prepared.body

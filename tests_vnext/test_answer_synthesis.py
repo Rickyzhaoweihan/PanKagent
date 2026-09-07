@@ -515,12 +515,17 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 created = response.json()
                 await await_state(client, created["run_id"], {"awaiting_confirmation"})
                 response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+                if all(status == "failed" for status in statuses):
+                    assert response.status_code == 409
+                    assert not fake.stream_calls
+                    return
                 assert response.status_code == 202
                 run = await await_state(client, created["run_id"], {expected_status})
                 assert graph.calls == len(statuses) + statuses.count("failed")
-                assert gateway.prepare_calls == len(fake.stream_calls) == 1
+                expected_calls = int(any(status in {"complete", "partial"} for status in statuses))
+                assert gateway.prepare_calls == len(fake.stream_calls) == expected_calls
                 assert fake.create_calls == []
-                assert gateway.budget.snapshot()["calls"] == 1
+                assert gateway.budget.snapshot()["calls"] == expected_calls
                 assert gateway.budget.snapshot()["pending_calls"] == 0
                 validation = run["evidence"]["answer_reference_validation"]
                 assert validation["scope"] == "reference_ids_only"

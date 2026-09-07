@@ -20,7 +20,7 @@ class Settings:
     max_concurrent: int = field(default_factory=lambda: int(env('MAX_CONCURRENT','2')))
     max_queue: int = field(default_factory=lambda: int(env('MAX_QUEUE','8')))
     heartbeat_seconds: float = 2.0
-    plan_timeout: float = 20.0
+    plan_timeout: float = 30.0
     preview_timeout: float = field(default_factory=lambda: float(env('PREVIEW_TIMEOUT','45')))
     preview_ttl_seconds: float = field(default_factory=lambda: float(env('PREVIEW_TTL_SECONDS','300')))
     run_timeout: float = 40.0

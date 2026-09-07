@@ -3,7 +3,7 @@
 import re
 
 
-POLICY_VERSION = "scientific-intent-v1"
+POLICY_VERSION = "scientific-intent-v2"
 _GRAPH = r"(?:pan\s*k\s*graph|knowledge\s+graph|graph|kg)"
 _LITERATURE = r"(?:literature|papers?|publications?|published\s+(?:studies|evidence)|external\s+(?:sources|evidence))"
 _OPTOUT = re.compile(
@@ -13,7 +13,7 @@ _OPTOUT = re.compile(
     rf"|\b(?:use|using|from)\s+(?:the\s+)?{_GRAPH}(?:\s+(?:evidence|results|data))?\s+only\b"
     rf"|(?:^|[.!?;,(])\s*no\s+(?:(?:the|any|additional|external|published)\s+)*{_LITERATURE}"
     rf"(?:\s+(?:search|enrichment))?(?:\s+please)?(?=$|[.!?;,)])"
-    rf"|\b(?:without|skip|exclude|avoid)\s+(?:(?:the|any|additional|external|published)\s+)*{_LITERATURE}\b"
+    rf"|\b(?:without|skip|exclude|avoid|disable|remove)\s+(?:(?:the|any|additional|external|published)\s+)*{_LITERATURE}\b"
     rf"|\b(?:do\s+not|don't|dont)\s+(?:use|search|include|consult|retrieve|add)\s+"
     rf"(?:(?:the|any|for|additional|external)\s+)*{_LITERATURE}\b",
     re.I,
@@ -58,3 +58,31 @@ def apply_literature_policy(plan: dict, question: str) -> dict:
     return {**plan, "literature": included,
             "literature_intent": {"included": included, "reason": reason, "summary": summary,
                                   "policy_version": POLICY_VERSION}}
+
+
+def explicit_preference(question):
+    text = ' '.join(str(question).split()).replace('’', "'")
+    if _OPTOUT.search(text):
+        return False
+    if re.search(r'\b(?:enable|add|include|use|search|retrieve)\s+(?:the\s+)?'+_LITERATURE, text, re.I):
+        return True
+    return None
+
+
+def preserve_revision_preference(plan, parent_plan, instruction):
+    choice = explicit_preference(instruction)
+    if choice is None and (parent_plan.get('literature_intent') or {}).get('reason') in {'explicit_opt_out', 'explicit_request', 'inherited_explicit'}:
+        choice = parent_plan.get('literature', False)
+    if choice is None:
+        return plan
+    # A narrowly recognized preference-only edit cannot change the biology.
+    # Mixed instructions remain with the structured planner and its full context.
+    if re.fullmatch(r'(?:please\s+)?(?:disable|remove|skip|exclude|enable|add|include|use)\s+(?:the\s+)?'+_LITERATURE+r'(?:\s+please)?[.!]?', instruction.strip(), re.I):
+        from copy import deepcopy
+        for key in ('steps', 'entities', 'interpreted_question', 'clarification'):
+            if key in parent_plan:
+                plan[key] = deepcopy(parent_plan[key])
+    return {**plan, 'literature': choice, 'literature_intent': {
+        'included': choice, 'reason': 'explicit_request' if choice else 'explicit_opt_out',
+        'summary': 'Include linked literature evidence as requested.' if choice else 'Use graph evidence only, as requested.',
+        'policy_version': POLICY_VERSION}}

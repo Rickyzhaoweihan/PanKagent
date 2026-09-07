@@ -209,6 +209,29 @@ def test_agent_result_reuses_persisted_evidence_answer_and_literature_without_qu
     asyncio.run(scenario())
 
 
+def test_searched_variant_never_inherits_lead_variant_pip(tmp_path):
+    class Query(FakeQuery):
+        async def search(self, *args, **kwargs):
+            return {"items": [{"snp": "rsLead", "pip": .13, "credible_set": "cs1", "data_source": "study"}],
+                    "coverage": {"complete": True}}
+    class Resources(FakeResources):
+        async def indexed_lookup(self, **kwargs):
+            return {"rows": [{"snp": "rsSearched", "pip": 0, "credible_set": "cs1", "data_source": "study"}],
+                    "coverage": {"exhaustive": False}}
+    async def scenario():
+        async with service(tmp_path, query=Query(), resources=Resources()) as s:
+            result = await s.runtime.search("credible_set", "", "qtl_by_variant", {"variant_id": "rsSearched"})
+            row = result["items"][0]
+            assert (row["searched_snp"], row["searched_pip"]) == ("rsSearched", 0)
+            assert (row["lead_snp"], row["lead_pip"]) == ("rsLead", .13)
+            assert row["snp"] == "rsLead"  # The graph endpoint remains its actual node.
+            assert result["coverage"]["complete"] is False
+            s.runtime.resources = FakeResources()
+            unknown = (await s.runtime.search("credible_set", "", "qtl_by_variant", {"variant_id": "rsMissing"}))["items"][0]
+            assert unknown["searched_pip"] is None and unknown["lead_pip"] == .13
+    asyncio.run(scenario())
+
+
 def test_conventional_result_is_executed_and_synthesized_once_across_duplicate_and_reload(tmp_path):
     async def scenario():
         body = {"template_id": "expression_by_gene", "parameters": {"gene_id": NODE["id"]}, "question": "Describe GCLC expression"}

@@ -135,6 +135,26 @@ def test_preview_precedes_confirmation_and_reuses_validated_results(tmp_path):
     asyncio.run(scenario())
 
 
+def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_path):
+    async def scenario():
+        graph = PreviewGraph()
+        async with service(tmp_path, graph=graph, gateway=BiologicalGateway(plan={**PLAN, "literature": True})) as (client, runtime, gateway, graph, literature):
+            initial = await new_plan(client, "Which cell types express INS?")
+            parent = (await client.get(initial["plan_url"])).json()
+            response = await client.post(f'/v2/plans/{parent["plan_id"]}/revise', json={
+                "question": "Disable literature", "revision_instruction": "Disable literature", "revision_mode": "instruction"})
+            revised = await wait_state(client, response.json()["run_id"], {"awaiting_confirmation"})
+            assert revised["plan"]["steps"] == parent["plan"]["steps"]
+            assert revised["plan"]["literature"] is False
+            assert graph.calls == 1
+            assert runtime.metrics.counts["revision_preview_reused"] == 1
+            await client.post(f'/v2/plans/{revised["plan_id"]}/confirm', json={})
+            done = await wait_state(client, revised["run_id"], {"completed", "partial"})
+            assert graph.calls == 1 and literature.calls == 0
+            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s1"]
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("status", ["complete", "empty", "partial"])
 def test_successful_preflight_outcome_is_reused_without_completeness_upgrade(tmp_path, status):
     async def scenario():

@@ -63,7 +63,7 @@ def test_definitive_stream_rejection_releases_reservation(tmp_path):
         gateway.client.messages.stream = lambda **kwargs: RejectedStream()
         try:
             with pytest.raises(anthropic.BadRequestError):
-                async for _ in gateway.synthesize('Which cell types express INS?', []):
+                async for _ in gateway.synthesize('Which cell types express INS?', {'s1': {'status': 'complete', 'nodes': [{'id': 'INS', 'labels': ['Gene'], 'properties': {'name': 'INS'}}]}}):
                     pass
             assert gateway.budget.snapshot()['reserved_usd'] == 0
         finally:

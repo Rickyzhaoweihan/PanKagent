@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 from neo4j import AsyncGraphDatabase, READ_ACCESS
 from neo4j.graph import Node, Path as Neo4jPath, Relationship
+from .graph_contract import DIGEST as CONTRACT_DIGEST, RELATIONS, MEASUREMENTS, generation_request
 from .plan_constraints import (CELL_TYPES, build_generation_question, related_context_step,
                                repair_step_constraints, resolved_lookup, step_relation_types)
 
@@ -504,6 +505,12 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
             errors.append("missing_required_filter:" + str(constraint.get("property", "unknown")))
     relations = step_relation_types(step)
     for part in branches:
+        if step.get("evidence_combination", "independent") == "independent":
+            _, bindings = _pattern_bindings(part)
+            measurement_paths = [path for path in bindings if path[2] & MEASUREMENTS]
+            if len({kind for path in measurement_paths for kind in path[2] & MEASUREMENTS}) > 1:
+                errors.append("independent_measurements_require_separate_steps")
+    for part in branches:
         _, paths = _pattern_bindings(part)
         errors.extend(_enrichment_property_errors(part, step, parameters))
         for relation in relations:
@@ -746,6 +753,8 @@ class GraphAdapter:
         if schema_fingerprint(labels, relationships) != manifest["schema_sha256"]:
             raise GraphValidationError("graph_schema_identity_mismatch")
         self.release_labels, self.release_relations = set(labels), set(relationships)
+        if self.settings.graph_version == "PanKgraph_08_04" and not set(RELATIONS) <= self.release_relations:
+            raise GraphValidationError("graph_contract_relationship_mismatch")
         for anchor in manifest["anchors"]:
             label, prop = anchor.get("label", ""), anchor.get("property", "")
             if not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", label) or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", prop):
@@ -881,7 +890,11 @@ class GraphAdapter:
                 raise GraphValidationError("no_usable_cypher")
             self.last_generation_success = datetime.now(timezone.utc).isoformat()
             self.last_generation_error = None
-            return queries
+            class Candidates(list):
+                pass
+            result = Candidates(queries)
+            result.metadata = {key: body.get(key) for key in ('ok', 'model', 'prompt_version', 'backend_port')}
+            return result
         except Exception as exc:
             self.last_generation_error = type(exc).__name__
             raise
@@ -919,7 +932,8 @@ class GraphAdapter:
                 return
             budget_key = key if budget_key is None else budget_key
             width = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
-            if budget_key not in seen and len(seen) >= maximum or size + width > byte_limit:
+            if (budget_key not in seen and len(seen) >= maximum or size + width > byte_limit
+                    or target is nodes and len(nodes) >= limits.get("max_step_nodes", self.settings.max_nodes)):
                 truncated = True
                 return
             target[key] = value
@@ -981,13 +995,14 @@ class GraphAdapter:
         step = repair_step_constraints(step)
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
-                "truncated": False, "status": "failed", "provenance": [],
+                "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
         limits = {
             "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
             "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
             "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
             "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
+            "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
         }
         if limits["used_bytes"] >= getattr(self.settings, "max_bytes", 2_000_000):
             base["status"], base["truncated"] = "partial", True
@@ -1022,13 +1037,18 @@ class GraphAdapter:
             name = "dep_" + str(index)
             parameters[name] = ids
             dependency_notes.append(f"Preserve the entities from step {dependency}: constrain the appropriate node's id IN ${name}; this parameter contains {len(ids)} existing graph IDs.")
-        question = build_generation_question(step)
+        try:
+            question = generation_request(step, build_generation_question(step))
+        except ValueError as exc:
+            base["validation"].append({"valid": False, "reasons": [str(exc)]})
+            return base
         if dependency_notes:
             question += "\n" + "\n".join(dependency_notes)
         if len(question) > 4000:
             base["validation"].append({"valid": False, "reasons": ["generation_question_too_long"]})
             return base
         for n in (1, 8):
+            base["generator_attempts"].append({"n": n})
             await emit("progress", {"stage": "generating_cypher", "step_id": step.get("id"), "candidates_requested": n})
             try:
                 attempt_question = question
@@ -1042,6 +1062,10 @@ class GraphAdapter:
                     if len(question) + len(correction) <= 4000:
                         attempt_question += correction
                 candidates = await self._generate(attempt_question, n)
+                base["generator_attempts"][-1].update(
+                    request_sha256=hashlib.sha256(attempt_question.encode()).hexdigest(),
+                    candidate_count=len(candidates),
+                    reported_identity=getattr(candidates, "metadata", {}))
             except GraphValidationError as exc:
                 base["validation"].append({"valid": False, "n": n, "reasons": [str(exc)]})
                 continue

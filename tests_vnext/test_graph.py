@@ -135,7 +135,7 @@ class GuardTests(unittest.TestCase):
 
 class FakeAdapter(GraphAdapter):
     def __init__(self, batches):
-        self.settings = SimpleNamespace(graph_version="rl-test", graph_timeout=1)
+        self.settings = SimpleNamespace(graph_version="rl-test", graph_timeout=1, max_nodes=500)
         self.identity_verified = True
         self.identity_check_time = time.monotonic()
         self.batches = list(batches)

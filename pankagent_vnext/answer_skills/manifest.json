@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.0.0",
+  "bundle_version": "1.1.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -680,6 +680,40 @@
       "character_offsets": [
         8437
       ]
+    }
+  ],
+  "followup_rules": [
+    {
+      "relations": [
+        "GENE_ENRICHED_IN",
+        "GENE_DETECTED_IN"
+      ],
+      "question": "How should I interpret enrichment versus detection for {subject}?"
+    },
+    {
+      "relations": [
+        "GENE_ENRICHED_IN"
+      ],
+      "question": "What do the enrichment rank and comparison mean for {subject}?"
+    },
+    {
+      "relations": [
+        "SIGNAL_COLOC_WITH"
+      ],
+      "question": "What does colocalization support, and what does it not prove, for {subject}?"
+    },
+    {
+      "relations": [
+        "PART_OF_QTL_SIGNAL",
+        "PART_OF_GWAS_SIGNAL"
+      ],
+      "question": "How do the lead variant and other credible-set candidates differ for {subject}?"
+    },
+    {
+      "relations": [
+        "PART_OF_QTL_SIGNAL"
+      ],
+      "question": "Does the molecular QTL evidence establish a disease effect for {subject}?"
     }
   ]
 }

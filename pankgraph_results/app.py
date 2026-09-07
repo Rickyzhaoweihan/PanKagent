@@ -15,6 +15,7 @@ from pankagent_vnext.app import CitationFilter, safe_error
 from pankagent_vnext.audit import InteractionRequest, recorder
 from pankagent_vnext.config import Settings
 from pankagent_vnext.llm import ClaudeGateway
+from pankagent_vnext.evidence_status import outcome_message
 from pankagent_vnext.transport import JSONResponseLimitMiddleware
 
 from .assembly import assemble
@@ -29,7 +30,7 @@ from .resource_registry import REGISTRY_VERSION
 from .resources import ResourceManager, ResourceError
 from .store import ResultStore
 
-RESULT_VERSION = "results-1"
+RESULT_VERSION = "results-2-audit-repair"
 
 
 class PrefixMiddleware:
@@ -123,8 +124,11 @@ class ResultsRuntime:
     async def answer(self, rid, source, evidence):
         if source["kind"] == "agent":
             return await self.update(rid, component_status={"answer": "available" if source["answer"] else "not_requested"})
-        if not evidence.get("nodes") and not evidence.get("edges") and not evidence.get("rows"):
-            return await self.update(rid, answer="No matching records were retrieved from the configured graph. This does not establish absence from other datasets.", component_status={"answer": "empty"})
+        status_message = outcome_message(evidence.get("steps") or [])
+        if status_message:
+            failed = any(s.get("status") == "failed" for s in evidence.get("steps", []))
+            return await self.update(rid, answer=status_message, component_status={"answer": "unavailable" if failed else "empty"},
+                answer_validation={"scope": "deterministic_retrieval_status", "inference_used": False})
         started = time.monotonic()
         text = ""
         citations = CitationFilter(len(evidence.get("steps", [])))
@@ -224,6 +228,18 @@ class ResultsRuntime:
                     for item in matches["items"]:
                         result["items"].append({**item, "searched_snp": variant, "association": row})
                         known.add(identity)
+        if kind == "credible_set" and variant:
+            for item in result["items"]:
+                original_snp, original_pip = item.get("snp"), item.get("pip")
+                association = item.get("association") or next((row for row in indexed["rows"]
+                    if row.get("credible_set") == item.get("credible_set")
+                    and row.get("data_source") == item.get("data_source")), {})
+                item["searched_snp"] = variant
+                item["searched_pip"] = association.get("pip") if association else (original_pip if original_snp == variant else None)
+                item["lead_snp"] = item.get("lead_snp") or original_snp
+                if item.get("lead_pip") is None and original_snp == item["lead_snp"]:
+                    item["lead_pip"] = original_pip
+                item["association"] = association
         return result
 
     async def close(self):

@@ -211,5 +211,5 @@ def related_context_step(plan: dict) -> dict | None:
     return {"id": str(source["id"]) + "_context", "question": question,
             "title": f"Related {'detection' if kind == 'detection_across_cells' else 'enrichment'} context for {gene['name']}", "rationale": rationale,
             "purpose": "context", "context_for": source["id"], "context_kind": kind,
-            "constraints": [gene_filter], "depends_on": [], "complete": True,
+            "constraints": [gene_filter], "depends_on": [], "complete": False, "max_context_nodes": 20,
             "relation_types": [relation]}

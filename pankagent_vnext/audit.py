@@ -33,6 +33,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 class InteractionRequest(BaseModel):
+    actor_source: Literal["user", "audit_replay", "synthetic_fault", "unknown"] = "unknown"
     event_id: UUID
     page_id: UUID
     kind: Literal["plan_displayed", "answer_section_displayed", "graph_evidence_inspected", "resource_accessed"]
