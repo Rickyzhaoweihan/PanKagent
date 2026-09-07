@@ -145,12 +145,12 @@ def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_
                 "question": "Disable literature", "revision_instruction": "Disable literature", "revision_mode": "instruction"})
             revised = await wait_state(client, response.json()["run_id"], {"awaiting_confirmation"})
             assert revised["plan"]["steps"] == parent["plan"]["steps"]
-            assert revised["plan"]["literature"] is False
+            assert revised["plan"]["literature"] is True
             assert graph.calls == 1
             assert runtime.metrics.counts["revision_preview_reused"] == 1
             await client.post(f'/v2/plans/{revised["plan_id"]}/confirm', json={})
             done = await wait_state(client, revised["run_id"], {"completed", "partial"})
-            assert graph.calls == 1 and literature.calls == 0
+            assert graph.calls == 1 and literature.calls == 1
             assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s1"]
     asyncio.run(scenario())
 

@@ -227,16 +227,24 @@ class Runtime:
                 entered = True
                 run = self.store.get(run_id)
                 await self.emit(run_id, "progress", {"stage": "planning"})
-                claude_pending = True
-                model_started = time.monotonic()
-                proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run)), self.settings.plan_timeout)
-                self.metrics.observe("model_plan", time.monotonic() - model_started)
-                self.check_active(run_id)
-                self.health.record_inference("claude", True)
-                claude_pending = False
-                plan = apply_literature_policy(normalize_plan(proposed), run["question"])
+                from .planning_fastpath import literature_only_revision, enable_literature
                 metadata = self.store.audit_metadata(run_id) or {}
                 parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
+                instruction = metadata.get('revision_instruction') or run['question']
+                fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
+                if fast:
+                    proposed = deepcopy(parent['plan'])
+                    self.metrics.count('planning_model_bypassed')
+                    self.store.audit_event(run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'})
+                else:
+                    claude_pending = True
+                    model_started = time.monotonic()
+                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run)), self.settings.plan_timeout)
+                    self.metrics.observe("model_plan", time.monotonic() - model_started)
+                    self.check_active(run_id)
+                    self.health.record_inference("claude", True)
+                    claude_pending = False
+                plan = normalize_plan(proposed)
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
                     from .revision_guard import preserve_additive_scope
@@ -246,6 +254,8 @@ class Runtime:
                         "instruction": metadata.get("revision_instruction") or run["question"],
                         "before_steps": (parent.get("plan") or {}).get("steps", []),
                         "after_steps": deepcopy(plan["steps"])}
+                plan = enable_literature(plan)
+                plan.pop("review_ready", None)
                 plan["contract_sha256"] = CONTRACT_DIGEST
                 plan["original_question"] = metadata.get("original_question", run["question"])
                 plan["include_context"] = run["include_context"]
@@ -335,12 +345,17 @@ class Runtime:
         self.store.update(run_id, preview=preview, preview_cache=cache)
         return preview
 
-    async def execute_step(self, run_id, step, previous):
+    async def execute_step(self, run_id, step, previous, before_query=None):
         self.check_active(run_id)
         prior_generation = getattr(self.graph, "last_generation_success", None)
         prior_query = getattr(self.graph, "last_query_success", None)
         try:
-            result = await self.graph.execute(step, previous, lambda kind, payload: self.emit(run_id, kind, payload))
+            async def progress(kind, payload):
+                if before_query and payload.get('stage') == 'querying_graph':
+                    await before_query()
+                    self.check_active(run_id)
+                await self.emit(run_id, kind, payload)
+            result = await self.graph.execute(step, previous, progress)
             self.check_active(run_id)
             result.setdefault("step_id", step["id"])
             result.setdefault("question", step["question"])
@@ -379,6 +394,10 @@ class Runtime:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
             self.store.update(run_id, plan=plan)
+        plan['review_ready'] = True
+        self.store.update(run_id, plan=plan)
+        self.store.event(run_id, 'plan_validated', {'plan_id':self.store.get(run_id)['plan_id'], 'plan':plan,
+            'validation_scope':'plan structure, recorded constraints and entity resolution; graph queries still require validation'})
         cache = {"identity": self.preview_identity(plan), "step_completed_epochs": {}, "step_identities": {}}
         previous = {}
         if plan.get("clarification"):
@@ -393,7 +412,13 @@ class Runtime:
         parent_cache = (parent or {}).get("preview_cache") or {}
         parent_steps = {s["step_id"]: s for s in (((parent or {}).get("preview") or {}).get("evidence") or {}).get("steps", [])}
         reused = set()
-        for step in plan["steps"]:
+        done = [asyncio.Event() for _ in plan['steps']]
+        indices = {step['id']: i for i, step in enumerate(plan['steps'])}
+        async def worker(index, step):
+            async def wait_prior():
+                if index: await done[index-1].wait()
+            for dependency in step.get('depends_on', []):
+                await done[indices[dependency]].wait()
             fingerprint = self.preview_identity({"steps": [step], "contract_sha256": CONTRACT_DIGEST})
             old = parent_steps.get(step["id"], {})
             epoch = parent_cache.get("step_completed_epochs", {}).get(step["id"], 0)
@@ -402,18 +427,28 @@ class Runtime:
                 and 0 <= time.time() - epoch < self.settings.preview_ttl_seconds
                 and set(step.get("depends_on", [])) <= reused)
             if can_reuse:
-                previous[step["id"]] = deepcopy(old)
+                result = deepcopy(old)
                 reused.add(step["id"])
                 self.metrics.count("revision_preview_reused")
                 await self.emit(run_id, "preview_reused", {"step_id": step["id"], "source": "parent_plan"})
             else:
-                previous[step["id"]] = await self.execute_step(run_id, step, previous)
+                result = await self.execute_step(run_id, step, previous, before_query=wait_prior)
                 epoch = time.time()
+            await wait_prior()
             self.check_active(run_id)
+            previous[step["id"]] = result
             cache["step_completed_epochs"][step["id"]] = epoch
             cache["step_identities"][step["id"]] = fingerprint
             preview = self.save_preview(run_id, previous, cache)
             await self.emit(run_id, "preview_step", {"step_id": step["id"], "evidence": previous[step["id"]], "preview": preview})
+            done[index].set()
+        tasks = [asyncio.create_task(worker(i, step)) for i, step in enumerate(plan['steps'])]
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done(): task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
         if self.preview_identity(plan) != cache["identity"]:
             cache["identity"] = None
         self.save_preview(run_id, previous, cache)

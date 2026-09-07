@@ -160,7 +160,7 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
             assert gateway.syntheses == literature.calls == 0
             assert gateway.plans == 1
             assert run["plan"]["literature"] is True
-            assert run["plan"]["literature_intent"]["reason"] == "scientific_interpretation"
+            assert run["plan"]["literature_intent"]["reason"] == "always_enabled"
             ready = next(event for event in runtime.store.events_after(created["run_id"], 0)
                          if event["type"] == "plan_ready")
             assert ready["payload"]["plan"]["literature_intent"] == run["plan"]["literature_intent"]
@@ -175,7 +175,7 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
     asyncio.run(scenario())
 
 
-def test_graph_only_interpretation_opt_out_survives_model_rewrite_and_confirmation(tmp_path):
+def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path):
     async def scenario():
         question = "Is KRT19 selectively expressed in ductal cells? Use graph evidence only."
         plan = json.loads(json.dumps(PLAN))
@@ -184,11 +184,11 @@ def test_graph_only_interpretation_opt_out_survives_model_rewrite_and_confirmati
         async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
             created = await new_plan(client, question)
             saved = runtime.store.get(created["run_id"])
-            assert saved["plan"]["literature"] is False
-            assert saved["plan"]["literature_intent"]["reason"] == "explicit_opt_out"
+            assert saved["plan"]["literature"] is True
+            assert saved["plan"]["literature_intent"]["reason"] == "always_enabled"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             completed = await wait_state(client, created["run_id"], {"completed"})
-            assert completed["literature"]["status"] == "not_requested" and literature.calls == 0
+            assert completed["literature"]["status"] == "complete" and literature.calls == 1
             assert gateway.plans == gateway.syntheses == graph.calls == 1
     asyncio.run(scenario())
 
@@ -202,7 +202,7 @@ def test_confirmation_replay_and_followup_are_idempotent(tmp_path):
             assert {response.json()["run_id"] for response in responses} == {created["run_id"]}
             run = await wait_state(client, created["run_id"], {"completed"})
             assert graph.calls == gateway.syntheses == gateway.plans == 1
-            assert literature.calls == 0
+            assert literature.calls == 1
             assert run["evidence"]["graph_version"] == "test-release"
             assert run["graph_answer"] == "INS is linked to beta cells [G1]."
             initial = await client.get(created["events_url"])

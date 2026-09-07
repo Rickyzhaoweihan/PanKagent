@@ -327,7 +327,7 @@ class RuntimeGraph:
 
 class UnrequestedLiterature:
     async def search(self, *_):
-        raise AssertionError("A graph-only plan must not invoke literature")
+        return {"status": "complete", "perspectives": []}
 
     async def probe(self):
         return {"state": "healthy", "source_policy": "mixed", "corpus_version": "synthetic"}

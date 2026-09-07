@@ -43,13 +43,13 @@ def test_unconfirmed_parent_is_available_to_revision_planner(tmp_path):
         async with service(tmp_path, gateway=gateway) as (client, runtime, *_):
             created = await new_plan(client, 'Which cell types express INS?')
             response = await client.post(f'/v2/plans/{created["plan_id"]}/revise', json={
-                'question': 'Disable literature', 'revision_instruction': 'Disable literature', 'revision_mode': 'instruction'})
+                'question': 'Change the disease filter to T2D', 'revision_instruction': 'Change the disease filter to T2D', 'revision_mode': 'instruction'})
             revised = await wait_state(client, response.json()['run_id'], {'awaiting_confirmation'})
             context = gateway.history[-1]['revision_context']
             assert context['original_question'] == 'Which cell types express INS?'
             assert context['parent_plan']['steps']
-            assert context['instruction'] == 'Disable literature'
-            assert revised['plan']['literature'] is False
+            assert context['instruction'] == 'Change the disease filter to T2D'
+            assert revised['plan']['literature'] is True
             assert revised['plan']['original_question'] == context['original_question']
     asyncio.run(scenario())
 

@@ -1070,7 +1070,10 @@ class GraphAdapter:
                         correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
                     if len(question) + len(correction) <= 4000:
                         attempt_question += correction
-                candidates = await self._generate(attempt_question, n)
+                if not hasattr(self, "_generation_slots"):
+                    self._generation_slots = asyncio.Semaphore(2)
+                async with self._generation_slots:
+                    candidates = await self._generate(attempt_question, n)
                 base["generator_attempts"][-1].update(
                     request_sha256=hashlib.sha256(attempt_question.encode()).hexdigest(),
                     candidate_count=len(candidates),
@@ -1090,6 +1093,13 @@ class GraphAdapter:
                 if reasons:
                     continue
                 await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})
+                limits = {
+                    "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
+                    "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
+                    "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
+                    "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
+                    "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
+                }
                 base["queries"].append({"cypher": query, "parameters": parameters})
                 try:
                     result = await asyncio.wait_for(self._retrieve(query, parameters, limits), timeout=self.settings.graph_timeout + 1)
