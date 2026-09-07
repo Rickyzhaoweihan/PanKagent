@@ -200,13 +200,16 @@ class Runtime:
             self.store.event(run_id, "heartbeat", {"activity": run["stage"]})
 
     def planning_history(self, run):
+        from .revision_context import parent_context
         history = self.store.history(run["session_id"])
         metadata = self.store.audit_metadata(run["run_id"]) or {}
         parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
         if parent and metadata.get("revision_mode") == "instruction":
+            parent_plan, preview_summary = parent_context(parent)
             history.append({"revision_context": {
                 "original_question": metadata.get("original_question", parent["question"]),
-                "parent_plan": parent.get("plan"),
+                "parent_plan": parent_plan,
+                "preview_summary": preview_summary,
                 "instruction": metadata.get("revision_instruction") or run["question"],
                 "preview_status": (parent.get("preview") or {}).get("status"),
                 "rule": "Revise this existing investigation. Preserve all unrelated entities, filters, completeness and explicit preferences. Return a standalone revised biological question and executable steps."}})

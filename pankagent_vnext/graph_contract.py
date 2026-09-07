@@ -6,15 +6,15 @@ Measurement guidance is release-specific, not a scientific answer template.
 import hashlib
 import json
 
-VERSION = 'pankgraph-08-04-intent-v1'
+VERSION = 'pankgraph-08-04-intent-v2'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
     'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Return recorded measurements and condition without inventing significance cutoffs.',
     'MARKER_GENE_OF': 'Gene -> anatomical_structure; marker annotation is distinct from measured enrichment.',
-    'T1D_DEG_IN': 'Gene -> anatomical_structure; differential expression in T1D; adjusted_p_value is distinct from enrichment padj.',
+    'T1D_DEG_IN': 'Gene -> anatomical_structure; differential expression in T1D. T1D context is encoded by this relationship, not a disease endpoint or extra disease-id predicate. No GENE_ANNOTATION join exists. adjusted_p_value is distinct from enrichment padj.',
     'EFFECTOR_GENE_OF': 'Gene -> disease; effector prioritization evidence, not differential expression. Preserve the requested disease.',
     'FUNCTION_ANNOTATION': 'Gene -> kegg or reactome; pathway membership is annotation, not pathway activation.',
-    'ASSOCIATED_WITH_GO': 'Gene -> GO_term; preserve requested ontology namespace such as biological_process.',
+    'ASSOCIATED_WITH_GO': 'Gene -> GO_term; GO_term.go_domain stores biological_process, molecular_function or cellular_component. Neither namespace nor ontology_namespace exists. Constrain the GO_term node go_domain for a requested ontology domain.',
     'PHYSICAL_INTERACTION': 'Gene interaction evidence; preserve both requested endpoints.',
     'GENETIC_INTERACTION': 'Gene interaction evidence; preserve both requested endpoints.',
     'PART_OF_QTL_SIGNAL': 'Molecular QTL evidence; tissue_id, tissue_name, nominal_p, pip. Molecular association is not disease association.',
@@ -96,4 +96,24 @@ def independent_measurement_steps(plan):
     for step in expanded:
         step['depends_on'] = [child for parent in step.get('depends_on', []) for child in mapping.get(parent, [parent])]
     result['steps'] = expanded
+    return result
+
+
+def normalize_release_constraints(step):
+    """Bind two verified release concepts without changing generated Cypher."""
+    from copy import deepcopy
+    result = deepcopy(step)
+    kinds = set(result.get('relation_types') or [])
+    constraints, mappings = [], list(result.get('schema_bindings') or [])
+    for constraint in result.get('constraints', []):
+        c = dict(constraint)
+        if kinds == {'ASSOCIATED_WITH_GO'} and c.get('property') in ('namespace', 'ontology_namespace') and c.get('entity_type') in (None, 'GO_term'):
+            mappings.append({'from': deepcopy(c), 'to': 'GO_term.go_domain', 'contract': VERSION})
+            c.update(property='go_domain', entity_type='GO_term')
+        if kinds == {'T1D_DEG_IN'} and c.get('entity_type') == 'disease' and c.get('operator', '=') == '=' and (c.get('property'), c.get('value')) in (('id', 'MONDO_0005147'), ('name', 'type 1 diabetes')):
+            mappings.append({'from': deepcopy(c), 'to': 'required relationship T1D_DEG_IN', 'contract': VERSION})
+            continue
+        constraints.append(c)
+    result['constraints'] = constraints
+    if mappings: result['schema_bindings'] = mappings
     return result

@@ -91,3 +91,55 @@ def test_scope_guard_does_not_stream_a_known_false_query_scope():
     evidence['s']['status'] = 'partial'
     assert not broad_cell_search(evidence)
     assert ScopeTextFilter({}).feed('No other cell types were queried.') == 'No other cell types were queried.'
+
+
+def test_revision_context_preserves_filters_and_preview_identities_without_internal_duplication():
+    from pankagent_vnext.revision_context import parent_context
+    parent = {'plan': {'steps': [{'id': 's1', 'constraints': [{'property': 'condition', 'value': 'T2D'}],
+        'resolution_key': 'internal-signature', 'resolved_entities': [{'internal': 'details'}]}],
+        'revision_trace': {'before_steps': ['redundant-history']}},
+        'preview': {'status': 'complete', 'evidence': {'nodes': [{'id': 'cell'+str(i), 'labels': ['anatomical_structure'], 'properties': {'name': 'Cell '+str(i)}} for i in range(41)]}}}
+    plan, preview = parent_context(parent)
+    assert plan['steps'][0]['constraints'] == parent['plan']['steps'][0]['constraints']
+    assert 'resolution_key' not in plan['steps'][0] and 'revision_trace' not in plan
+    assert preview['entities'][0]['id'] == 'cell0' and preview['entity_list_sampled']
+    assert preview['node_count'] == 41 and len(preview['entities']) == 40
+
+
+def test_release_go_domain_mapping_preserves_filter_and_owner():
+    from pankagent_vnext.plan_constraints import repair_step_constraints
+    from pankagent_vnext.graph import validate_cypher
+    step = repair_step_constraints({'question':'biological process annotations', 'relation_types':['ASSOCIATED_WITH_GO'], 'constraints':[{'property':'namespace','operator':'=','value':'biological_process','entity_type':'GO_term'}]})
+    assert step['constraints'][0]['property'] == 'go_domain'
+    assert step['schema_bindings'][0]['from']['property'] == 'namespace'
+    query="MATCH (g:Gene)-[r:ASSOCIATED_WITH_GO]->(t:GO_term) WHERE t.go_domain = 'biological_process' RETURN g,r,t"
+    assert validate_cypher(query, step) == []
+    assert 'missing_required_filter:go_domain' in validate_cypher(query.replace('t.go_domain','g.go_domain'), step)
+
+
+def test_t1d_context_maps_to_required_relation_without_dropping_other_diseases():
+    from pankagent_vnext.plan_constraints import repair_step_constraints
+    from pankagent_vnext.graph import validate_cypher
+    original={'question':'T1D differential expression', 'relation_types':['T1D_DEG_IN'], 'constraints':[{'property':'id','entity_type':'disease','operator':'=','value':'MONDO_0005147'}]}
+    step=repair_step_constraints(original)
+    assert step['constraints'] == []
+    assert step['schema_bindings'][0]['from'] == original['constraints'][0]
+    assert 'missing_required_relation:T1D_DEG_IN' in validate_cypher('MATCH (g:Gene) RETURN g',step)
+    assert 'measurement_endpoint_schema_mismatch' in validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(d:disease) RETURN g,r,d',step)
+    assert validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(c:anatomical_structure) RETURN g,r,c',step) == []
+    original['constraints'][0]['value']='MONDO_0005148'
+    assert repair_step_constraints(original)['constraints'] == original['constraints']
+
+
+def test_measurement_endpoint_check_allows_undirected_gene_cell_match():
+    from pankagent_vnext.graph import validate_cypher
+    assert validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]-(c:anatomical_structure) RETURN g,r,c', {'relation_types':['T1D_DEG_IN']}) == []
+
+
+def test_repair_timing_excludes_user_confirmation_wait():
+    from ux_audit.summarize_repairs import stage_times
+    events=[{'type':'progress','status':'planning','elapsed_ms':1}, {'type':'plan_ready','elapsed_ms':10000}, {'type':'progress','status':'queued','elapsed_ms':90000}, {'type':'graph_answer','elapsed_ms':93000}, {'type':'graph_answer','elapsed_ms':95000}]
+    result=stage_times(events)
+    assert result['plan_ready_s']==10
+    assert result['graph_last_chunk_after_confirmation_s']==5
+    assert result['graph_first_chunk_after_confirmation_s']==3

@@ -395,6 +395,8 @@ def _constraint_choices(step: dict, index: int, constraint: dict) -> list[dict]:
                 and constraint.get("operator", "=") == "="):
             return [{"property": prop, "operator": "=", "value": entity[prop], "_entity_type": entity["entity_type"]}
                     for prop in ("id", "name") if isinstance(entity.get(prop), str) and entity[prop]]
+    if constraint.get("property") == "go_domain" and constraint.get("entity_type") == "GO_term":
+        return [{**constraint, "_entity_type": "GO_term"}]
     return [constraint]
 
 
@@ -513,6 +515,12 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
     for part in branches:
         _, paths = _pattern_bindings(part)
         errors.extend(_enrichment_property_errors(part, step, parameters))
+        bindings, _ = _pattern_bindings(part)
+        for source, target, kinds in paths:
+            correct = lambda a, b: 'Gene' in bindings.get(a, set()) and 'anatomical_structure' in bindings.get(b, set())
+            undirected = (target, source, kinds) in paths
+            if kinds & MEASUREMENTS and bindings.get(source) and bindings.get(target) and not (correct(source, target) or undirected and correct(target, source)):
+                errors.append('measurement_endpoint_schema_mismatch')
         for relation in relations:
             if not any(relation in kinds for _, _, kinds in paths):
                 errors.append("missing_required_relation:" + str(relation))

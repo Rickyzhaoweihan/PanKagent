@@ -44,6 +44,8 @@ def repair_step_constraints(step: dict) -> dict:
     """Return a copy, adding at most one certain cell filter without rewriting."""
     repaired = {**step, "constraints": [dict(item) if isinstance(item, dict) else item
                                         for item in step.get("constraints", [])]}
+    from .graph_contract import normalize_release_constraints
+    repaired = normalize_release_constraints(repaired)
     question = step.get("question")
     if not isinstance(question, str):
         return repaired
