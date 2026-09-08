@@ -633,9 +633,10 @@ class GraphAdapter:
 
     def preview_identity(self) -> dict:
         """Stable release/config identity for durable preview reuse, without keys."""
+        from .anatomy_resolution import VERSION as anatomy_version
         path = Path(getattr(self.settings, "graph_identity_file", ""))
         manifest_hash = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
-        return {"graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
+        return {"anatomy_resolver": anatomy_version, "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
                 "identity_verified": self.identity_verified,
                 **{key: getattr(self.settings, key, None) for key in (
                     "neo4j_uri", "neo4j_database", "cypher_url", "max_nodes", "max_edges", "max_rows",
@@ -661,7 +662,7 @@ class GraphAdapter:
 
     def _entity_type(self, constraint: dict, step: dict) -> str | None:
         if constraint.get("entity_type"):
-            return constraint["entity_type"]
+            return {"cell_type":"anatomical_structure", "tissue":"anatomical_structure", "cell":"anatomical_structure"}.get(constraint["entity_type"], constraint["entity_type"])
         prop, value = str(constraint.get("property", "")), str(constraint.get("value", ""))
         prefix = prop.split(".")[0].lower() if "." in prop else ""
         if prefix in {"gene", "cell", "disease", "donor"}:
@@ -678,6 +679,19 @@ class GraphAdapter:
         entry = {"constraint_index": index, "requested": dict(constraint), "state": "unsupported",
                  "graph_version": self.settings.graph_version, "labels": []}
         prop, value = str(constraint.get("property", "")).split(".")[-1], constraint.get("value")
+        if self._entity_type(constraint, step) == 'anatomical_structure' and prop in {'name','id'} and isinstance(value,str) and 0 < len(value) <= 512:
+            explicit_pattern = constraint.get('operator','=') == 'CONTAINS' and re.search(r'\bcontains?\b|\bcontaining\b|substring|names? matching',step.get('question',''),re.I)
+            if constraint.get('operator','=') in {'=','CONTAINS'} and not explicit_pattern:
+                from .anatomy_resolution import resolve_anatomy, VERSION
+                if not hasattr(self, '_anatomy_lock'): self._anatomy_lock=asyncio.Lock()
+                async with self._anatomy_lock:
+                    key=(self.settings.graph_version, VERSION, json.dumps(self.preview_identity(),sort_keys=True))
+                    cached=getattr(self, '_anatomy_inventory', None)
+                    if not cached or cached[0]!=key or time.monotonic()-cached[1]>300:
+                        rows=await self._small_query("MATCH (n:anatomical_structure) RETURN n.id AS id,n.name AS name,labels(n) AS labels")
+                        self._anatomy_inventory=(key,time.monotonic(),rows)
+                    records=self._anatomy_inventory[2]
+                return {**entry, **resolve_anatomy(value,records,self.settings.graph_version,prop)}
         if constraint.get("operator", "=") == "CONTAINS" and constraint.get("entity_type") in {"kegg", "reactome", "anatomical_structure"} and prop == "name":
             selector = "n:anatomical_structure" if constraint.get("entity_type") == "anatomical_structure" else "n:kegg OR n:reactome"
             rows = await self._small_query("MATCH (n) WHERE ("+selector+") AND toLower(n.name) CONTAINS toLower($value) RETURN n.id AS id, n.name AS name, labels(n) AS labels LIMIT 3", {"value":value})
