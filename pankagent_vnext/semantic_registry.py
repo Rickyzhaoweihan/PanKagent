@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-semantics-v3-count1'
+VERSION = 'pankgraph-semantics-v3-count1-pln1'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -75,10 +75,11 @@ def resolve(step, vocabulary, release):
         # Explicit cohort identity; never derive stage from diabetes status.
         constraints=[c for c in constraints if not (c.get('entity_type')=='disease' and c.get('property') in ('name','id'))]
         bind('id','disease','MONDO_0005147' if number=='1' else 'MONDO_0005148',requested=disease.group(0))
-    tissues=[t for t in vocabulary.get('tissues',[]) if isinstance(t.get('name'),str) and re.search(r'(?<!\w)'+re.escape(t['name'])+r'(?!\w)',q,re.I)]
+    from .tissue_aliases import matched_tissues
+    tissues=matched_tissues(q, vocabulary.get('tissues',[]))
     if len(tissues)==1:
         constraints=[c for c in constraints if not (c.get('entity_type')=='anatomical_structure' and c.get('property') in ('id','name'))]
-        bind('id','anatomical_structure',tissues[0]['id'],kind='exact',requested=tissues[0]['name'])
+        bind('id','anatomical_structure',tissues[0]['id'],kind=tissues[0].get('match_kind','exact'),requested=tissues[0].get('requested_alias',tissues[0]['name']))
     elif len(tissues)>1:
         issues.append('Multiple sample tissues were named. Separate the tissue checks so each sample remains attached to its intended tissue.')
     old_assay=[c for c in constraints if c.get('property')=='data_modality' or c.get('entity_type')=='data_modality']
