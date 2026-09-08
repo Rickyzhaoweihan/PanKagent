@@ -345,7 +345,8 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
             assert response.status_code == 409
             run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
             assert run["preview"]["evidence"]["steps"][0]["status"] == "failed"
-            assert graph.previous[1]["s1"]["status"] == "failed"
+            assert len(graph.previous) == 1  # dependent checks wait for confirmation
+            assert run["plan"]["steps"][1]["depends_on"] == ["s1"]
             assert "SECRET_VALUE" not in json.dumps(run)
     asyncio.run(scenario())
 

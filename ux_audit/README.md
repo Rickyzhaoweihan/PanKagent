@@ -38,3 +38,19 @@ Task-local provider hooks persist budget reservation/settlement references for b
 ```
 
 The 2026-09-06 baseline report lives in the PanKgraph project-home repository under `docs/pankgraph-vnext-results/ux-audit-2026-09-06/`. Scientific failure findings are backlog items for a subsequent candidate, not changes made during baseline measurement.
+
+
+## Release-capability inventory
+
+`python -m ux_audit.build_release_inventory --output inventory.json` performs
+read-only full-release schema/property/category scans using externally configured
+`Settings`. It verifies the configured graph identity and refuses to overwrite an
+existing reviewed inventory. Review aliases and categorical bindings before
+promoting this file into `pankagent_vnext/release_schema.json`. It runs outside
+request processing and contains no reference-answer or production-query fallback.
+
+The 2026-09-07 capability candidate uses a separate 28-case manifest (seven
+regressions, nine previously unseen positives, six negatives, six revisions).
+Keep its full reference memberships, answers and attempts in protected storage;
+only authored task definitions, hashes, counts and timing summaries belong in
+project documentation. Its reserved historical 40-task audit set is unchanged.

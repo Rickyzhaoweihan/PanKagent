@@ -1,0 +1,15 @@
+{
+  "version": "evidence-glossary-v1",
+  "terms": {
+    "IBA": "Inferred from Biological aspect of Ancestor: a phylogenetically inferred GO annotation, not biological aggregation.",
+    "ISS": "Inferred from Sequence or structural Similarity.",
+    "IEA": "Inferred from Electronic Annotation.",
+    "PIP": "Posterior inclusion probability under the recorded fine-mapping model; not effect size or proof that a variant is causal.",
+    "PP.H4": "Posterior support for a shared association signal under the recorded colocalization model; not proof of a biological mechanism.",
+    "NES": "Normalized enrichment score for the recorded ranked analysis. Direction requires its ranking contrast; it does not establish activation of every pathway gene."
+  },
+  "sources": {
+    "GO": "https://geneontology.org/docs/guide-go-evidence-codes/",
+    "interpretation": "Pinned BIM bundle; actual recorded measurements and context take precedence."
+  }
+}

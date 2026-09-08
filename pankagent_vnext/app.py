@@ -48,8 +48,8 @@ def public_run(run: dict) -> dict:
     result={key: value for key, value in run.items() if key not in {"created_epoch", "preview_cache"}}
     from .semantic_registry import donor_intent
     plan=run.get('plan') or {}
-    if plan.get('contract_sha256')!=CONTRACT_DIGEST and any(donor_intent(s) for s in plan.get('steps',[])):
-        result['rerun_advisory']='This saved donor result predates corrected terminology and sample-path checks. Rerun the question before using its conclusion.'
+    if plan.get('contract_sha256')!=CONTRACT_DIGEST and plan.get('steps'):
+        result['rerun_advisory']='This saved result predates corrected terminology and relationship-path checks. Rerun the question before using its conclusion.'
     return result
 
 
@@ -95,8 +95,8 @@ class CitationFilter:
 def normalize_plan(plan: dict) -> dict:
     if not isinstance(plan, dict) or not isinstance(plan.get("steps"), list):
         raise ValueError("Invalid structured plan")
-    if len(plan["steps"]) > 3:
-        return {**plan, "steps": [], "clarification": "Please narrow this to at most three graph investigations."}
+    if len(plan["steps"]) > 12:
+        return {**plan, "steps": [], "clarification": "Please narrow this to at most twelve graph investigations."}
     seen = set()
     for index, step in enumerate(plan["steps"]):
         if not isinstance(step, dict) or not step.get("id") or not isinstance(step.get("question"), str):
@@ -112,7 +112,8 @@ def normalize_plan(plan: dict) -> dict:
     plan.setdefault("clarification", None)
     if not plan["steps"] and not plan["clarification"]:
         plan["clarification"] = "Please provide a concrete entity or graph question."
-    return plan
+    from .investigations import group_plan
+    return group_plan(plan)
 
 
 def aggregate_evidence(previous: dict) -> dict:
@@ -136,6 +137,9 @@ def aggregate_evidence(previous: dict) -> dict:
     states = [step.get("status", "complete") for step in steps]
     result["completeness"] = "partial" if any(state in {"failed", "partial"} for state in states) else "empty" if states and all(state == "empty" for state in states) else "complete"
     result["truncated"] = any(step.get("truncated") for step in steps)
+    result["retrieval"] = {"completeness": result["completeness"], "truncated": result["truncated"],
+                           "checks": len(steps), "failed_checks": states.count("failed"),
+                           "node_count": len(result["nodes"]), "edge_count": len(result["edges"])}
     return result
 
 
@@ -280,7 +284,7 @@ class Runtime:
                     current = self.store.get(run_id)
                     plan = current["plan"]
                     previous = {step["step_id"]: step for step in (current["preview"] or {}).get("evidence", {}).get("steps", [])}
-                    for step in plan["steps"]:
+                    for step in [s for s in plan["steps"] if not s.get("depends_on")][:2]:
                         previous.setdefault(step["id"], self.failed_step(step, error))
                     cache = current["preview_cache"] or {"identity": None, "step_completed_epochs": {}}
                     self.save_preview(run_id, previous, cache, error=error)
@@ -324,11 +328,13 @@ class Runtime:
         # Credential changes can change accessible data. Hashes remain private;
         # credentials and the reusable-cache metadata never enter public events.
         access = [getattr(self.settings, field, "") for field in ("neo4j_user", "neo4j_password", "cypher_token")]
-        raw = json.dumps({"version": 2, "validator_contract": CONTRACT_DIGEST, "plan": plan, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
+        raw = json.dumps({"version": 3, "validator_contract": CONTRACT_DIGEST, "plan": plan, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def save_preview(self, run_id, previous, cache, *, error=None):
         evidence = aggregate_evidence(previous)
+        from .investigations import coverage
+        evidence["category_outcomes"] = coverage(self.store.get(run_id)["plan"] or {}, previous)
         states = [step.get("status") for step in previous.values()]
         status = "not_requested" if not states else "failed" if error or all(state == "failed" for state in states) else evidence["completeness"]
         plan = self.store.get(run_id)["plan"] or {}
@@ -417,8 +423,11 @@ class Runtime:
         parent_cache = (parent or {}).get("preview_cache") or {}
         parent_steps = {s["step_id"]: s for s in (((parent or {}).get("preview") or {}).get("evidence") or {}).get("steps", [])}
         reused = set()
-        done = [asyncio.Event() for _ in plan['steps']]
-        indices = {step['id']: i for i, step in enumerate(plan['steps'])}
+        preview_steps = [step for step in plan['steps'] if not step.get('depends_on') and step.get('purpose') != 'context'][:2]
+        if len(preview_steps) < 2:
+            preview_steps += [step for step in plan['steps'] if not step.get('depends_on') and step not in preview_steps][:2-len(preview_steps)]
+        done = [asyncio.Event() for _ in preview_steps]
+        indices = {step['id']: i for i, step in enumerate(preview_steps)}
         async def worker(index, step):
             async def wait_prior():
                 if index: await done[index-1].wait()
@@ -447,7 +456,7 @@ class Runtime:
             preview = self.save_preview(run_id, previous, cache)
             await self.emit(run_id, "preview_step", {"step_id": step["id"], "evidence": previous[step["id"]], "preview": preview})
             done[index].set()
-        tasks = [asyncio.create_task(worker(i, step)) for i, step in enumerate(plan['steps'])]
+        tasks = [asyncio.create_task(worker(i, step)) for i, step in enumerate(preview_steps)]
         try:
             await asyncio.gather(*tasks)
         finally:
@@ -472,6 +481,8 @@ class Runtime:
     def preview_reuse_reason(self, step, cached, cache, matching, reused, previous):
         if not matching:
             return "identity_changed"
+        if step["id"] not in cache.get("step_completed_epochs", {}):
+            return "not_previewed"
         age = time.time() - cache.get("step_completed_epochs", {}).get(step["id"], 0)
         if not 0 <= age < self.settings.preview_ttl_seconds:
             return "expired"
@@ -499,7 +510,12 @@ class Runtime:
         cached_steps = {step["step_id"]: step for step in preview.get("evidence", {}).get("steps", [])}
         reused = set()
         reuse_info = {"reused_step_ids": [], "retrieved_step_ids": [], "unreused_reasons": {}}
-        for step in run["plan"]["steps"]:
+        done = {step['id']: asyncio.Event() for step in run['plan']['steps']}
+        async def retrieve(index, step):
+            async def wait_prior():
+                if index: await done[run['plan']['steps'][index-1]['id']].wait()
+            for dependency in step.get('depends_on', []):
+                await done[dependency].wait()
             self.check_active(run_id)
             try:
                 matching = bool(cache.get("identity")) and cache["identity"] == self.preview_identity(run["plan"])
@@ -521,14 +537,31 @@ class Runtime:
                 reuse_info["retrieved_step_ids"].append(step["id"])
                 reuse_info["unreused_reasons"][step["id"]] = reason
                 self.metrics.count("preview_retrieved_steps")
-                previous[step["id"]] = await self.execute_step(run_id, step, previous)
+                result = await self.execute_step(run_id, step, previous, before_query=wait_prior)
+                await wait_prior()
+                previous[step["id"]] = result
             evidence = aggregate_evidence(previous)
             evidence["preview_reuse"] = reuse_info
             self.store.update(run_id, evidence=evidence)
             await self.emit(run_id, "graph_step", {"step_id": step["id"], "evidence": previous[step["id"]], "reused_preview": reason is None})
 
+            done[step['id']].set()
+        tasks = [asyncio.create_task(retrieve(i, step)) for i, step in enumerate(run['plan']['steps'])]
+        try:
+            await asyncio.wait_for(asyncio.gather(*tasks), 120 if len(tasks)>2 else self.settings.run_timeout)
+        except TimeoutError:
+            for step in run['plan']['steps']:
+                previous.setdefault(step['id'], self.failed_step(step, {'category':'retrieval_timeout','message':'Retrieval deadline exceeded.'}))
+        finally:
+            for task in tasks:
+                if not task.done(): task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        previous = {step['id']: previous[step['id']] for step in run['plan']['steps']}
+
         evidence = aggregate_evidence(previous)
         evidence["preview_reuse"] = reuse_info
+        from .investigations import coverage
+        evidence["category_outcomes"] = coverage(run["plan"], previous)
         await self.emit(run_id, "progress", {"stage": "writing_answer"})
         answer = ""
         citation_filter = CitationFilter(len(previous))
@@ -651,7 +684,7 @@ class Runtime:
                     self.store.event(run_id, "progress", {"stage": "searching_literature", "parallel": True})
                     literature_task = asyncio.create_task(retrieve_literature())
                 try:
-                    _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run), self.settings.run_timeout)
+                    _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run), 160 if len(run["plan"]["steps"]) > 2 else self.settings.run_timeout)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -814,7 +847,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             raise HTTPException(409, "The plan is still being prepared.")
         if run["status"] == "awaiting_confirmation":
             if public_run(run).get('rerun_advisory'):
-                raise HTTPException(409, 'This donor plan uses outdated checks. Revise it before confirmation.')
+                raise HTTPException(409, 'Revise this saved plan to validate initial evidence.')
             if run.get("preview") is None:
                 raise HTTPException(409, "Revise this saved plan to validate initial evidence.")
             if run["plan"].get("clarification"):

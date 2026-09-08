@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-semantics-v1'
+VERSION = 'pankgraph-semantics-v3'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -33,7 +33,7 @@ def donor_intent(step):
 def planner_guidance(question):
     if not re.search(r'\bdonors?\b|\bHPAP\b|multiom|scRNA|ATAC', question,re.I): return ''
     return ('\nDonor/sample terminology: stage labels and assay names are resolved by the application against current graph values. '
-            'Keep requested stages in ordinary biological wording. donor.t1d_stage belongs only to donor. '
+            'Keep requested stages in ordinary biological wording. donor.t1d_stage belongs only to donor. A recorded T1D stage is not an additional diagnosed-diabetes category restriction; add the latter only when explicitly requested. '
             'Sample_node.data_modality is the assay; tissue uses anatomical_structure -HAS_SAMPLE-> Sample_node. '
             'RNA can be a documented component of multiome; retain exact-only or paired requirements. '
             'Always connect each sample directly to its donor; do not add samples to a donor-only lookup.')
@@ -66,7 +66,11 @@ def resolve(step, vocabulary, release):
         if 'HPAP' in vocabulary.get('sources',[]):bind('data_source','donor','HPAP',kind='exact',requested='HPAP')
         else:issues.append('HPAP donor source is not verified in this release.')
     disease=re.search(r'\bT([12])D\b|\btype\s*([12])\s*diabetes\b',q,re.I)
-    if disease:
+    stage_only_t1d = bool(stage and disease and (disease.group(1) or disease.group(2))=='1' and not re.search(r'diagnos|clinical diabetes|disease (?:link|category)|diabetes_type',q,re.I))
+    if stage_only_t1d:
+        constraints=[c for c in constraints if not (c.get('entity_type')=='disease' and c.get('property') in ('name','id'))]
+        matches.append({'requested':disease.group(0),'canonical_binding':{'entity_type':'donor','property':'t1d_stage'},'match_kind':'recorded_stage_scope','registry_version':VERSION,'source':'verified stage versus disease-category aggregate inventory','explanation':'T1D stage is recorded donor metadata; it does not add a separate diagnosed-diabetes filter.'})
+    if disease and not stage_only_t1d:
         number=disease.group(1) or disease.group(2)
         # Explicit cohort identity; never derive stage from diabetes status.
         constraints=[c for c in constraints if not (c.get('entity_type')=='disease' and c.get('property') in ('name','id'))]
@@ -100,6 +104,9 @@ def resolve(step, vocabulary, release):
                 raw=str(old_assay[0]['value']);canonical=ALIASES.get(re.sub(r'[^a-z0-9]','',raw.lower()),raw)
                 groups=[[canonical]]
         for values in groups:
+            for i, value in enumerate(values):
+                candidates=[m for m in available if m.casefold()==value.casefold()]
+                if len(candidates)==1: values[i]=candidates[0]
             unknown=[v for v in values if v not in available]
             if unknown:
                 suggestions=get_close_matches(unknown[0],available,n=3,cutoff=.45)
@@ -107,7 +114,7 @@ def resolve(step, vocabulary, release):
             c={'property':'data_modality','entity_type':'Sample_node','operator':'IN' if len(values)>1 else '=','value':json.dumps(values) if len(values)>1 else values[0]}
             constraints.append(c)
             matches.append({'requested':'RNA/ATAC assay intent','canonical_binding':c,'match_kind':'capability' if len(values)>1 or paired else 'alias','registry_version':VERSION,'source':SOURCE})
-    if groups and not re.search(r'\bHPAP\b',q,re.I):
+    if groups and any(len(group)>1 or paired for group in groups) and not re.search(r'\bHPAP\b',q,re.I):
         issues.append('Assay capability mapping is verified for HPAP; specify HPAP or an exact recorded assay before expanding the search.')
     out['constraints']=constraints
     out['resolved_constraints']=matches
@@ -116,12 +123,19 @@ def resolve(step, vocabulary, release):
     out['sample_requirements']={'modality_groups':groups,'paired':paired,'separate_bindings':len(groups)>1,
         'source':SOURCE,'file_availability':'not_verified'}
     if groups:out['semantic_summary']='Include documented RNA/ATAC components of the recorded assays; show the original assay labels and distinguish indexed samples from downloadable files.' if not exact else 'Match only the explicitly requested assay label; do not include related multiome assays.'
+    if groups:
+        recorded = [v for group in groups for v in group]
+        capability = any(v in ('scRNA-seq','scATAC-seq','snMultiomics') for v in recorded)
+        if not capability:
+            out['semantic_summary'] = 'Match recorded '+', '.join(recorded)+' assay metadata; indexed samples do not verify file availability or measured functional outcomes.'
+            for match in out['resolved_constraints']:
+                if match.get('requested') == 'RNA/ATAC assay intent': match['requested'] = 'recorded assay intent'
     return out
 
 
 def generation_guidance(step):
     if not step.get('semantic_registry'):return ''
-    notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
+    notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. A recorded T1D stage does not imply a second disease diagnosis filter: apply only the resolved disease constraint, if present. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
     notes+=' Do not filter sample.anatomical_structure: this is descriptive text, not a tissue identifier; constrain the linked anatomy node instead.'
     if not step.get('sample_requirements',{}).get('modality_groups') and not any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])):
         notes+=' DONOR-ONLY lookup: do not MATCH Sample_node, data_modality, anatomical_structure or HAS_SAMPLE. Return all matching donors and their disease link, without any assay restriction.'

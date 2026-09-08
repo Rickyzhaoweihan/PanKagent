@@ -5,8 +5,9 @@ Measurement guidance is release-specific, not a scientific answer template.
 """
 import hashlib
 import json
+import re
 
-VERSION = 'pankgraph-08-04-intent-v3'
+VERSION = 'pankgraph-08-04-intent-v4'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
     'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Return recorded measurements and condition without inventing significance cutoffs.',
@@ -35,7 +36,8 @@ LABELS = ['Gene', 'disease', 'anatomical_structure', 'GO_term', 'reactome', 'keg
           'regulatory_elements', 'ontology', 'sequence_variant', 'snv', 'deletion',
           'indel', 'insertion', 'provenance']
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST
-DIGEST = hashlib.sha256(json.dumps({'semantics': SEMANTIC_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+from .release_schema import DIGEST as SCHEMA_DIGEST
+DIGEST = hashlib.sha256(json.dumps({'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
 
 
 def planner_notes():
@@ -44,6 +46,14 @@ def planner_notes():
 
 def generation_request(step, base_question):
     """Add binding guidance without removing any original biological modifier."""
+    from .release_schema import guidance
+    if any(r.get('match_kind') == 'recorded_stage_scope' for r in step.get('resolved_constraints', [])) and base_question == step.get('question'):
+        # Disambiguate only the verified stage terminology in generator input.
+        # The original wording and canonical stored stage remain in the plan.
+        base_question = re.sub(r'\bT1D\b|\btype\s*1\s*diabetes\b', 'donor-stage metadata', base_question, flags=re.I)
+    base_question += guidance(step.get('relation_types') or [])
+    if set(step.get('relation_types') or []) & {'PHYSICAL_INTERACTION','GENETIC_INTERACTION'}:
+        base_question += '\nFor all interaction partners use an undirected relationship match, covering either stored endpoint. Only use a directional match if the user explicitly requested incoming/outgoing direction.'
     relations = step.get('relation_types') or []
     bindings = []
     resolved = {e.get('constraint_index'): e for e in step.get('resolved_entities', []) if e.get('state') == 'resolved'}
@@ -56,7 +66,8 @@ def generation_request(step, base_question):
     if step.get('semantic_registry'):
         requirements=step.get('sample_requirements',{})
         samples=bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
-        paths='disease -HAS_DONOR-> donor'
+        disease_requested=any(c.get('entity_type')=='disease' for c in step.get('constraints',[]))
+        paths='disease -HAS_DONOR-> donor' if disease_requested else 'donor (all recorded disease groups; no disease identity filter was requested)'
         if samples:paths+='; donor -HAS_SAMPLE-> Sample_node; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
         text=base_question+'\nUse these verified bindings (replace shorthand values in the question): '+'; '.join(bindings)+'.'
         text+='\nRequired connected schema paths: '+paths+'.'
@@ -105,8 +116,8 @@ def independent_measurement_steps(plan):
             mapping[step['id']] = ids
         else:
             expanded.append(step)
-    if len(expanded) > 3:
-        result.update(steps=[], clarification='This comparison needs more than three independent evidence checks. Please narrow the requested measurements or entities.')
+    if len(expanded) > 12:
+        result.update(steps=[], clarification='This comparison needs more than twelve independent evidence checks. Please narrow the requested measurements or entities.')
         return result
     for step in expanded:
         step['depends_on'] = [child for parent in step.get('depends_on', []) for child in mapping.get(parent, [parent])]

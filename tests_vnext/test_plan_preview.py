@@ -215,12 +215,12 @@ def test_failed_preview_retries_once_and_invalidates_dependent_reuse(tmp_path):
             assert runtime.health.inference["claude"]["state"] == "healthy"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             done = await wait_state(client, created["run_id"], {"completed"})
-            assert graph.step_calls == {"s1": 2, "s2": 2, "s3": 1}
+            assert graph.step_calls == {"s1": 2, "s2": 1, "s3": 1}
             assert graph.previous[-1]["s1"]["status"] == "complete"
-            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s3"]
-            assert done["evidence"]["preview_reuse"]["unreused_reasons"]["s2"] == "dependency_changed"
+            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s3"]  # preview selects independent checks
+            assert done["evidence"]["preview_reuse"]["unreused_reasons"]["s2"] == "not_previewed"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            assert graph.calls == 5 and gateway.syntheses == 1
+            assert graph.calls == 4 and gateway.syntheses == 1
     asyncio.run(scenario())
 
 

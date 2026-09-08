@@ -185,7 +185,7 @@ def _normalized_expected(expected: Any, actual: Any, operator: str) -> Any:
     return expected
 
 
-def _pattern_bindings(tokens: list[Token]):
+def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None):
     """Read mandatory node/edge pattern bindings; never infer from prose/literals."""
     nodes, patterns, edges = {}, [], []
     mandatory, i = False, 0
@@ -220,21 +220,25 @@ def _pattern_bindings(tokens: list[Token]):
         if not between or between[0].value not in {"-", "<"}:
             continue
         values = [token.value for token in between]
-        if "[" not in values or "]" not in values or any(token.kind == "SYMBOL" and token.value in {"|", "*"} for token in between):
+        if "[" not in values or "]" not in values or any(token.kind == "SYMBOL" and token.value in {"*"} for token in between):
             continue
         kinds = {between[i + 1].value for i, token in enumerate(between[:-1])
-                 if token.value == ":" and between[i + 1].kind in {"WORD", "IDENT"}}
+                 if token.value in {":", "|"} and between[i + 1].kind in {"WORD", "IDENT"}}
         if kinds:
             source, target = (right[2], left[2]) if values[0] == "<" else (left[2], right[2])
             edges.append((source, target, kinds))
             if values[0] != "<" and values[-1] != ">":
                 edges.append((target, source, kinds))
+                if undirected_patterns is not None:
+                    undirected_patterns.extend([(source,target,kinds),(target,source,kinds)])
     # Preserve node types through simple WITH aliases; never infer a property projection as a node.
     for i, token in enumerate(tokens[1:-1], 1):
         if _word(token, "AS") and tokens[i-1].value in nodes and (i < 2 or tokens[i-2].value != '.'):
             old,new=tokens[i-1].value,tokens[i+1].value
             nodes.setdefault(new, set()).update(nodes[old])
             edges += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(edges) if old in (a,b)]
+            if undirected_patterns is not None:
+                undirected_patterns += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(undirected_patterns) if old in (a,b)]
     return nodes, edges
 
 
@@ -411,6 +415,10 @@ def _constraint_choices(step: dict, index: int, constraint: dict) -> list[dict]:
 
 def _choice_present(tokens, choice, parameters):
     bindings, _ = _pattern_bindings(tokens)
+    if choice.get("relationship_type"):
+        from .release_schema import relationship_bindings
+        variables = {v for v, kinds in relationship_bindings(tokens).items() if choice["relationship_type"] in kinds}
+        return bool(variables) and _predicate_present(tokens, choice, parameters, variables)
     variables = {variable for variable, labels in bindings.items() if choice["_entity_type"] in labels} if choice.get("_entity_type") else None
     return _predicate_present(tokens, choice, parameters, variables)
 
@@ -519,11 +527,13 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         if step.get("evidence_combination", "independent") == "independent":
             _, bindings = _pattern_bindings(part)
             measurement_paths = [path for path in bindings if path[2] & MEASUREMENTS]
-            if len({kind for path in measurement_paths for kind in path[2] & MEASUREMENTS}) > 1:
+            if len(measurement_paths) > 1 and len({kind for path in measurement_paths for kind in path[2] & MEASUREMENTS}) > 1:
                 errors.append("independent_measurements_require_separate_steps")
     for part in branches:
         _, paths = _pattern_bindings(part)
         errors.extend(_enrichment_property_errors(part, step, parameters))
+        from .release_schema import structural_errors
+        errors.extend(structural_errors(part, step, parameters))
         bindings, _ = _pattern_bindings(part)
         from .semantic_registry import validation_errors
         errors.extend(validation_errors(part, step, parameters, bindings, paths, _predicate_present, choices))
@@ -666,6 +676,17 @@ class GraphAdapter:
         entry = {"constraint_index": index, "requested": dict(constraint), "state": "unsupported",
                  "graph_version": self.settings.graph_version, "labels": []}
         prop, value = str(constraint.get("property", "")).split(".")[-1], constraint.get("value")
+        if constraint.get("operator", "=") == "CONTAINS" and constraint.get("entity_type") in {"kegg", "reactome", "anatomical_structure"} and prop == "name":
+            selector = "n:anatomical_structure" if constraint.get("entity_type") == "anatomical_structure" else "n:kegg OR n:reactome"
+            rows = await self._small_query("MATCH (n) WHERE ("+selector+") AND toLower(n.name) CONTAINS toLower($value) RETURN n.id AS id, n.name AS name, labels(n) AS labels LIMIT 3", {"value":value})
+            if not re.search(r'\bcontains?\b|\bcontaining\b|substring|names? matching', step.get('question',''), re.I):
+                exact_rows = await self._small_query("MATCH (n) WHERE ("+selector+") AND toLower(n.name) = toLower($value) RETURN n.id AS id, n.name AS name, labels(n) AS labels LIMIT 3", {"value":value})
+                if len(exact_rows)==1: rows=exact_rows
+            if len(rows) == 1:
+                candidate = rows[0]
+                kind = next(k for k in ("kegg", "reactome", "anatomical_structure") if k in candidate['labels'])
+                return {**entry, **candidate, "entity_type":kind, "state":"resolved", "unique_pattern_match":True}
+            return {**entry, "state":"ambiguous" if rows else "not_found", "candidates":rows}
         if constraint.get("operator", "=") != "=":
             return {**entry, "state": "literal_predicate"}
         if prop not in {"id", "name"} or constraint.get("operator", "=") != "=" or not isinstance(value, str) or not value or len(value) > 512:
@@ -680,12 +701,14 @@ class GraphAdapter:
         cached = cache.get(cache_key)
         if cached and time.monotonic() - cached[0] < 300:
             return {**deepcopy(cached[1]), "constraint_index": index, "requested": dict(constraint)}
-        node = f"(n:`{label}`)" if label else "(n)"
-        query = f"MATCH {node} WHERE n.`{prop}` = $value RETURN n.id AS id, n.name AS name, labels(n)[..16] AS labels LIMIT 3"
+        pathway = label in {"kegg", "reactome"} and prop == "name"
+        node = "(n)" if pathway else f"(n:`{label}`)" if label else "(n)"
+        collection_filter = "(n:kegg OR n:reactome) AND " if pathway else ""
+        query = f"MATCH {node} WHERE {collection_filter}n.`{prop}` = $value RETURN n.id AS id, n.name AS name, labels(n)[..16] AS labels LIMIT 3"
         timeout = min(self.settings.graph_timeout, 3)
         rows = await asyncio.wait_for(self._small_query(query, {"value": value}), timeout)
         if not rows and prop == "name":
-            query = f"MATCH {node} WHERE toLower(n.name) = toLower($value) RETURN n.id AS id, n.name AS name, labels(n)[..16] AS labels LIMIT 3"
+            query = f"MATCH {node} WHERE {collection_filter}toLower(n.name) = toLower($value) RETURN n.id AS id, n.name AS name, labels(n)[..16] AS labels LIMIT 3"
             rows = await asyncio.wait_for(self._small_query(query, {"value": value}), timeout)
         candidates = [{"id": row.get("id"), "name": row.get("name"), "labels": row.get("labels", [])}
                       for row in rows[:3]]
@@ -710,7 +733,7 @@ class GraphAdapter:
                       "candidates_complete": len(candidates) < 3}
         else:
             candidate = candidates[0]
-            canonical_type = label or next((kind for kind in ("Gene", "anatomical_structure", "disease", "donor", "variants", "GO_term", "reactome", "kegg", "Sample_node", "data_modality") if kind in candidate["labels"]), None)
+            canonical_type = (next((k for k in ("kegg", "reactome") if k in candidate["labels"]), None) if pathway else label) or next((kind for kind in ("Gene", "anatomical_structure", "disease", "donor", "variants", "GO_term", "reactome", "kegg", "Sample_node", "data_modality") if kind in candidate["labels"]), None)
             if (not canonical_type or canonical_type not in candidate["labels"] or
                     not isinstance(candidate["id"], str) or not candidate["id"] or len(candidate["id"]) > 512 or
                     candidate["name"] is not None and (not isinstance(candidate["name"], str) or len(candidate["name"]) > 512)):
@@ -740,6 +763,8 @@ class GraphAdapter:
     async def _prepare_step(self, source: dict, emit) -> dict:
         step = repair_step_constraints({key: value for key, value in source.items()
                                         if key not in {"resolution_key", "resolved_entities", "entity_resolution"}})
+        from .release_schema import normalize_constraints
+        step = normalize_constraints(step)
         from .semantic_registry import donor_intent, resolve
         if donor_intent(step):
             step=resolve(step,await self.semantic_vocabulary(),self.settings.graph_version)
@@ -753,6 +778,13 @@ class GraphAdapter:
         for index, constraint in identities:
             await emit("progress", {"stage": "resolving_entities", "step_id": step.get("id")})
             entities.append(await self._resolve_constraint(constraint, index, step))
+        for entry in entities:
+            if entry.get("state") == "resolved" and entry.get("entity_type") in {"kegg", "reactome", "anatomical_structure"}:
+                entry["original_requested"] = deepcopy(entry["requested"])
+                if entry.get("unique_pattern_match"):
+                    step["constraints"][entry["constraint_index"]].update(property="id", operator="=", value=entry["id"])
+                step["constraints"][entry["constraint_index"]]["entity_type"] = entry["entity_type"]
+                entry["requested"] = deepcopy(step["constraints"][entry["constraint_index"]])
         step["resolved_entities"] = entities
         unresolved = [item for item in entities if item["state"] not in {"resolved", "literal_predicate"}]
         unknown_relations = [kind for kind in step["relation_types"] if getattr(self, "release_relations", set()) and kind not in self.release_relations]
@@ -764,7 +796,7 @@ class GraphAdapter:
     async def prepare_plan(self, plan: dict, emit) -> dict:
         """Resolve bounded entity identities and expose one context step for review."""
         await self._ensure_identity()
-        if len(plan.get("steps") or []) > 3:
+        if len(plan.get("steps") or []) > 12:
             raise GraphValidationError("plan_too_large")
         prepared = {**plan, "steps": []}
         for source in plan.get("steps") or []:
@@ -1131,11 +1163,14 @@ class GraphAdapter:
                 base["validation"].append({"valid": False, "n": n, "reasons": ["generation_unavailable:" + type(exc).__name__]})
                 return base
             for query in candidates:
+                original_query = query
+                from .release_schema import canonicalize_symbols
+                query, normalizations = canonicalize_symbols(query) if getattr(self.settings, "graph_version", None) == "PanKgraph_08_04" else (query, [])
                 await emit("progress", {"stage": "validating", "step_id": step.get("id")})
                 reasons = validate_cypher(query, step, parameters)
                 if not reasons:
                     reasons = await self._explain(query, parameters)
-                base["validation"].append({"valid": not reasons, "n": n, "candidate_cypher": query, "reasons": reasons})
+                base["validation"].append({"valid": not reasons, "n": n, "candidate_cypher": query, "original_candidate_cypher": original_query, "schema_normalizations": normalizations, "failure_categories": sorted({r.split(":",1)[0] for r in reasons}), "reasons": reasons})
                 if reasons:
                     continue
                 await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})

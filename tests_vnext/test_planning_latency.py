@@ -46,7 +46,8 @@ def test_parallel_preview_keeps_order_dependencies_and_early_plan(tmp_path):
         async with service(tmp_path,gateway=Gateway(plan=plan),graph=graph) as (client,runtime,*_):
             created=await new_plan(client,'INS expression')
             run=runtime.store.get(created['run_id'])
-            assert graph.reads==['s1','s2','s3']
+            assert graph.reads==['s1','s2']
+            assert run['preview']['pending_step_ids']==['s3']
             assert [s['step_id'] for s in run['preview']['evidence']['steps']]==graph.reads
             assert run['plan']['review_ready']
             events=runtime.store.events_after(run['run_id'], 0)

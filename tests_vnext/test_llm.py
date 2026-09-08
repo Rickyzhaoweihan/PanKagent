@@ -22,7 +22,7 @@ def test_provider_schema_and_local_step_cap(tmp_path):
             called.append(kwargs)
             return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda: {'input_tokens': 10, 'output_tokens': 10}),
                 content=[SimpleNamespace(type='tool_use', name='record_plan', input={
-                    'steps': [{'id': str(i), 'depends_on': []} for i in range(4)]})])
+                    'steps': [{'id': str(i), 'depends_on': []} for i in range(13)]})])
         gateway.client.messages.create = create
         try:
             plan = await gateway.plan('Which cell types express INS?', [])
@@ -68,6 +68,26 @@ def test_definitive_stream_rejection_releases_reservation(tmp_path):
                 async for _ in gateway.synthesize('Which cell types express INS?', {'s1': {'status': 'complete', 'nodes': [{'id': 'INS', 'labels': ['Gene'], 'properties': {'name': 'INS'}}]}}):
                     pass
             assert gateway.budget.snapshot()['reserved_usd'] == 0
+        finally:
+            await gateway.close()
+    asyncio.run(check())
+
+
+def test_registered_profile_uses_one_short_scope_call(tmp_path):
+    async def check():
+        gateway = ClaudeGateway(Settings(state_dir=tmp_path, anthropic_key='test-placeholder'))
+        calls = []
+        async def create(**kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda: {'input_tokens': 10, 'output_tokens': 10}),
+                content=[SimpleNamespace(type='tool_use', name='record_plan', input={'gene_name':'GLIS3'})])
+        gateway.client.messages.create = create
+        try:
+            plan = await gateway.plan('Give me a comprehensive gene profile of GLIS3.', [])
+            assert len(calls) == 1 and calls[0]['max_tokens'] == 200
+            assert len(plan['steps']) == 12
+            assert plan['steps'][9]['depends_on'] == ['s9']
+            assert gateway.budget.snapshot()['pending_calls'] == 0
         finally:
             await gateway.close()
     asyncio.run(check())

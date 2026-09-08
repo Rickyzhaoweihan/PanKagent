@@ -31,7 +31,7 @@ PLAN_SCHEMA = {
   'literature':{'type':'boolean'},'clarification':{'type':['string','null']}},
  'required':['interpreted_question','steps','literature','clarification']}
 
-PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concise plan with at most three graph steps. Most questions need one complete natural-language step, not decomposition. For a standalone question, preserve the original wording verbatim as the step question whenever possible. Never expand direct effector prioritization into extra variant, GO, pathway, regulatory or physical-interaction investigation unless explicitly requested. Never infer extra evidence categories or scientific goals. Preserve scope strictly. Combine cleanup and follow-up interpretation here. Resolve pronouns only using provided session history. Record disease/gene/tissue/cohort/property constraints explicitly. Preserve user-supplied identifiers exactly. Use PanKgraph labels Gene, disease, anatomical_structure, variants, donor, GO_term, reactome and relation types in the provided question; do not invent IDs. T1D is type 1 diabetes, MONDO_0005147. IDs use property id; gene symbols use name. Put unknown IDs in the natural-language question rather than inventing them. Constraint values are scalar strings; for IN encode a JSON array as the string. Use the release schema notes below; do not guess property names. If an entity has an explicit identifier, constrain id only, retaining its human name in the question; do not add a redundant name predicate. Do not invent ontology IDs for non-diabetic or antibody-positive cohorts. Context in a requested measurement column is not necessarily a row predicate. Every step question must include all its scientific constraints so it can be sent independently to a Cypher writer. Dependencies refer to earlier step IDs and pass their returned stable entity IDs, never broaden a failed dependency. complete=true for all/every/full/complete requests, false for explicitly limited representative examples. For unspecified sets prefer complete=true. If the user asks for more than three independent investigations or lacks a necessary entity, set clarification and no steps. Never perform retrieval or answer the question while planning.'''
+PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concise plan with at most twelve independent graph checks. Most questions need one complete natural-language step, not decomposition. For a standalone question, preserve the original wording verbatim as the step question whenever possible. Never expand direct effector prioritization into extra variant, GO, pathway, regulatory or physical-interaction investigation unless explicitly requested. Never infer extra evidence categories or scientific goals. Preserve scope strictly. Combine cleanup and follow-up interpretation here. Resolve pronouns only using provided session history. Record disease/gene/tissue/cohort/property constraints explicitly. Preserve user-supplied identifiers exactly. Use PanKgraph labels Gene, disease, anatomical_structure, variants, donor, GO_term, reactome and relation types in the provided question; do not invent IDs. T1D is type 1 diabetes, MONDO_0005147. IDs use property id; gene symbols use name. Put unknown IDs in the natural-language question rather than inventing them. Constraint values are scalar strings; for IN encode a JSON array as the string. Use the release schema notes below; do not guess property names. If an entity has an explicit identifier, constrain id only, retaining its human name in the question; do not add a redundant name predicate. Do not invent ontology IDs for non-diabetic or antibody-positive cohorts. Context in a requested measurement column is not necessarily a row predicate. Every step question must include all its scientific constraints so it can be sent independently to a Cypher writer. Dependencies refer to earlier step IDs and pass their returned stable entity IDs, never broaden a failed dependency. complete=true for all/every/full/complete requests, false for explicitly limited representative examples. For unspecified sets prefer complete=true. If the user asks for more than twelve independent investigations or lacks a necessary entity, set clarification and no steps. Never perform retrieval or answer the question while planning.'''
 
 # Schema-only reference: accepted PanKgraph 08_04 property export, not held-out answers.
 PLAN_SYSTEM += '''
@@ -72,6 +72,10 @@ PLAN_SYSTEM += "\nCompact output contract (takes precedence over display instruc
 
 SYNTHESIS_SYSTEM = (Path(__file__).parent / 'prompts' / 'answer_style.md').read_text()
 ANSWER_CONTRACT = '''Final presentation contract: return the answer summary only, without follow-up questions or suggested searches. For a simple lookup use a direct sentence, one small table with at most five columns if useful, a source line and one brief evidence caveat (aim for 80–160 words total). Preserve IDs and units exactly. Include only returned entities and supported observations. Answer the primary question first; a context step supplies a brief additional observation, not a replacement answer. Distinguish detection from enrichment and exclusive expression. Do not compare measurements across conditions, cohorts or sources as if matched. rank_in_cell_type ranks genes within one cell type; it does not rank cell types for a gene. Never infer the strongest cell type from that rank or from a query restricted to one cell type. Earlier interpretation templates do not require every listed field or extra sections. Never infer unreturned records from generation settings or invent incompleteness when explicit status is complete and sampling/truncation are false.'''
+ANSWER_CONTRACT += "\nVerified glossary: IBA means Inferred from Biological aspect of Ancestor; ISS means Inferred from Sequence or structural Similarity; IEA means Inferred from Electronic Annotation. PIP is model-based fine-mapping probability, not effect size. Colocalization supports a shared association signal, not proof of mechanism. Clinical stage descriptions are recorded metadata, not verified ADA/JDRF definitions. Never describe model-context compaction as browser display omission; actual display counts are unavailable at synthesis. Keep internal compaction diagnostics out of the answer. Missing categories mean a partial profile."
+PLAN_SYSTEM += "\nGrouped investigations: the application groups up to twelve independent checks into three readable groups. For a gene overview, produce a separate check for each requested evidence type; do not reject a concrete multi-category question merely because it needs over three checks. For generic comprehensive gene profiles cover detection, enrichment, marker, T1D differential expression, effector support, QTL, coloc, GO, pathway annotation, recorded pathway enrichment, physical and genetic interactions. Do not add mandatory GWAS/QTL joins to a request for coloc statistics or signal identities: these are already properties of SIGNAL_COLOC_WITH. QTL is variants -> Gene with tissue properties on the relationship; GWAS is variants -> disease; coloc is Gene -> disease. Pathway names must be resolved across KEGG/Reactome rather than guessed. Missing ranking contrast in fGSEA must be disclosed."
+_GLOSSARY = json.loads((Path(__file__).parent/'answer_skills/bim/evidence_glossary.json').read_text())
+ANSWER_CONTRACT += '\n'+_GLOSSARY['version']+': '+json.dumps(_GLOSSARY['terms'])
 STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT).encode()).hexdigest()[:16]
 
 
@@ -83,8 +87,14 @@ class PreparedAnswer:
 
 
 def plan_structure_issue(plan):
-    if len(plan['steps']) > 3:
+    if not isinstance(plan,dict) or not isinstance(plan.get('steps'),list):
+        return 'malformed_plan'
+    if any(not isinstance(s,dict) or not isinstance(s.get('depends_on'),list) or not s.get('id') for s in plan['steps']):
+        return 'malformed_step'
+    if len(plan['steps']) > 12:
         return 'plan_too_large'
+    if not plan.get('steps') and not plan.get('clarification'):
+        return 'empty_executable_plan'
     seen = set()
     for step in plan['steps']:
         if not step['id'] or step['id'] in seen or any(dependency not in seen for dependency in step['depends_on']):
@@ -113,29 +123,56 @@ class ClaudeGateway:
             if exc.status_code in (400,401,403,404,413,422,429):
                 self.budget.settle(rid,{})
             raise
-    async def plan(self,question,history):
+    async def plan(self,question,history, _repair=False):
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         from .semantic_registry import planner_guidance
+        from .investigations import generic_profile_gene, expand_registered_profile
+        profile_gene=generic_profile_gene(question) if not history else None
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
-        rid=self._reserve('plan',PLAN_SYSTEM,user,1600)
-        reply=await self._create(rid,model=self.settings.model,max_tokens=1600,
-          system=[{'type':'text','text':PLAN_SYSTEM,'cache_control':{'type':'ephemeral'}}],
+        system_text=PLAN_SYSTEM
+        schema=PLAN_SCHEMA
+        if profile_gene:
+            system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'
+            schema={'type':'object','additionalProperties':False,'properties':{'gene_name':{'type':'string'}},'required':['gene_name']}
+        from .investigations import required_categories
+        # Twelve complete checks need more structured output than a one-step lookup.
+        # Keep the existing wall-clock deadline and persistent reservation cap.
+        output_limit=200 if profile_gene else 2400 if len(required_categories(question))==12 else 1600
+        rid=self._reserve('plan',system_text,user,output_limit)
+        reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
+          system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
           messages=[{'role':'user','content':user}],
-          tools=[{'name':'record_plan','description':'Record the proposed plan for user review','input_schema':PLAN_SCHEMA,'strict':True}],
+          tools=[{'name':'record_plan','description':'Record the proposed plan for user review','input_schema':schema,'strict':True}],
           tool_choice={'type':'tool','name':'record_plan'},**self._options())
         self.budget.settle(rid,reply.usage.model_dump())
         for block in reply.content:
             if block.type=='tool_use' and block.name=='record_plan':
                 plan=block.input
+                if profile_gene:
+                    if plan.get('gene_name') != profile_gene: raise ValueError('profile_scope_mismatch')
+                    plan=expand_registered_profile(question,profile_gene)
                 self.last_success=time.time()
                 issue = plan_structure_issue(plan)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
+                if issue and issue != 'plan_too_large' and not _repair:
+                    return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True)
                 if issue:
                     return {**plan, 'steps': [], 'proposal_issue': issue,
-                        'clarification': ('This investigation needs more than three graph checks. Please narrow it to the evidence you want to prioritize.' if issue == 'plan_too_large' else 'The proposed checks could not be linked safely. Please specify which evidence to check first; your question and revision instruction have been retained.')}
-                plan=expand_compact_plan(plan)
-                plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
-                return independent_measurement_steps(plan)
+                        'clarification': ('This investigation needs more than twelve graph checks. Please narrow it to the evidence you want to prioritize.' if issue == 'plan_too_large' else 'The proposed checks could not be linked safely. Please specify which evidence to check first; your question and revision instruction have been retained.')}
+                try:
+                    plan=expand_compact_plan(plan)
+                    plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
+                    plan=independent_measurement_steps(plan)
+                    from .investigations import category_issue
+                    issue=category_issue(question, plan)
+                    if issue: raise ValueError(issue)
+                    return plan
+                except (ValueError, KeyError, TypeError) as exc:
+                    if not _repair:
+                        return await self.plan(question, history + [{'role':'system','content':'The last structured plan failed '+str(exc)+'. Supply valid independent checks preserving every requested category and the original scope.'}], _repair=True)
+                    raise ValueError('planning_repair_exhausted')
+        if not _repair:
+            return await self.plan(question, history, _repair=True)
         raise ValueError('missing_structured_plan')
     def prepare_answer(self,question,evidence):
         # Inspect full bounded evidence before sampling; this does not call a model.
@@ -143,6 +180,10 @@ class ClaudeGateway:
         compact=compact_evidence(evidence)
         profile={**routed.profile,'style_version':STYLE_VERSION}
         profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
+        profile['model_context']={'sampled':profile['context_sampled'], 'steps':[
+            {'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
+             'omitted':item.get('context_dropped',{})} for item in compact],
+            'scope':'synthesis_input_only', 'display_counts_known':False}
         body=json.dumps({'question':question,'evidence':compact,
             'verified_search_scope': SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s requested scope; do not infer unqueried entities from a small returned graph.'},ensure_ascii=False,default=str)
         if len(body.encode())>100000: raise ValueError('evidence_context_too_large')
