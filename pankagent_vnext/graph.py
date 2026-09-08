@@ -537,6 +537,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         bindings, _ = _pattern_bindings(part)
         from .semantic_registry import validation_errors
         errors.extend(validation_errors(part, step, parameters, bindings, paths, _predicate_present, choices))
+        from .donor_query_guard import sample_path_errors
+        errors.extend(sample_path_errors(bindings, paths))
         for source, target, kinds in paths:
             correct = lambda a, b: 'Gene' in bindings.get(a, set()) and 'anatomical_structure' in bindings.get(b, set())
             undirected = (target, source, kinds) in paths

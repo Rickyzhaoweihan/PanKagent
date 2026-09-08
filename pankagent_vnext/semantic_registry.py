@@ -5,7 +5,7 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-semantics-v3'
+VERSION = 'pankgraph-semantics-v3-count1'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -130,7 +130,8 @@ def resolve(step, vocabulary, release):
             out['semantic_summary'] = 'Match recorded '+', '.join(recorded)+' assay metadata; indexed samples do not verify file availability or measured functional outcomes.'
             for match in out['resolved_constraints']:
                 if match.get('requested') == 'RNA/ATAC assay intent': match['requested'] = 'recorded assay intent'
-    return out
+    from .donor_query_guard import normalize_diagnosis
+    return normalize_diagnosis(out)
 
 
 def generation_guidance(step):

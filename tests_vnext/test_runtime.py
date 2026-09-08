@@ -455,3 +455,19 @@ def test_stale_inference_is_distinct_from_fresh_access_probe(tmp_path):
             assert health["components"]["claude"]["recent_inference"]["state"] == "unknown"
             assert health["components"]["claude"]["recent_inference"]["stale"] is True
     asyncio.run(scenario())
+
+
+def test_empty_primary_answer_never_starts_literature(tmp_path):
+    class EmptyGraph(Graph):
+        async def execute(self, step, previous, emit):
+            evidence = await super().execute(step, previous, emit)
+            return {**evidence, 'status':'empty', 'nodes':[], 'edges':[], 'rows':[]}
+    async def scenario():
+        async with service(tmp_path, graph=EmptyGraph()) as (client, runtime, gateway, graph, literature):
+            created = await new_plan(client)
+            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            run = await wait_state(client, created['run_id'], {'completed','partial'})
+            assert literature.calls == 0
+            assert run['literature']['status'] == 'not_requested'
+            assert run['literature']['reason'] == 'no_usable_graph_evidence'
+    asyncio.run(scenario())

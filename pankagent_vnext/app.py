@@ -680,9 +680,6 @@ class Runtime:
                         self.health.record_inference("hirn", False, error["category"])
                         return {"status": "unavailable", "perspectives": list(literature_perspectives), "error": error}
 
-                if run["plan"].get("literature"):
-                    self.store.event(run_id, "progress", {"stage": "searching_literature", "parallel": True})
-                    literature_task = asyncio.create_task(retrieve_literature())
                 try:
                     _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run), 160 if len(run["plan"]["steps"]) > 2 else self.settings.run_timeout)
                 except asyncio.CancelledError:
@@ -696,6 +693,13 @@ class Runtime:
                     self.store.update(run_id, graph_answer=answer, evidence=evidence, error=error)
                     await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
                     graph_ok = False
+                from .literature_gate import literature_gate, VERSION as LITERATURE_GATE_VERSION
+                current = self.store.get(run_id)
+                allowed, gate_reason = literature_gate(run["plan"], current.get("evidence") or {}, current.get("graph_answer"))
+                self.store.event(run_id, "literature_gate", {"allowed": allowed, "reason": gate_reason, "version": LITERATURE_GATE_VERSION})
+                if allowed and graph_ok:
+                    self.store.event(run_id, "progress", {"stage": "searching_literature", "parallel": False})
+                    literature_task = asyncio.create_task(retrieve_literature())
                 graph_visible = True
                 self.metrics.observe("graph_answer", time.monotonic() - started)
                 if literature_perspectives:
@@ -711,7 +715,7 @@ class Runtime:
                     await self.emit(run_id, "literature_complete", literature_answer)
                     literature_ok = literature_answer.get("status") not in {"failed", "unavailable", "timeout", "partial"}
                 else:
-                    literature_answer = {"status": "not_requested", "perspectives": []}
+                    literature_answer = {"status": "not_requested", "perspectives": [], "reason": gate_reason if graph_ok else "graph_answer_failed", "policy_version": LITERATURE_GATE_VERSION}
                     self.store.update(run_id, literature=literature_answer)
                     literature_ok = True
                 self.metrics.observe("run_complete", time.monotonic() - started)
