@@ -1,15 +1,21 @@
 {
-  "version": "evidence-glossary-v1",
+  "version": "evidence-glossary-v2",
   "terms": {
     "IBA": "Inferred from Biological aspect of Ancestor: a phylogenetically inferred GO annotation, not biological aggregation.",
     "ISS": "Inferred from Sequence or structural Similarity.",
     "IEA": "Inferred from Electronic Annotation.",
     "PIP": "Posterior inclusion probability under the recorded fine-mapping model; not effect size or proof that a variant is causal.",
     "PP.H4": "Posterior support for a shared association signal under the recorded colocalization model; not proof of a biological mechanism.",
-    "NES": "Normalized enrichment score for the recorded ranked analysis. Direction requires its ranking contrast; it does not establish activation of every pathway gene."
+    "NES": "Normalized enrichment score for the recorded ranked analysis. Direction requires its ranking contrast; it does not establish activation of every pathway gene.",
+    "log2err": "Estimated uncertainty in the log2 p-value calculation in fgsea; not an error bar for ES or NES.",
+    "PP.H3": "Posterior support for distinct association signals in the two datasets under the recorded coloc model.",
+    "coloc record multiplicity": "Multiple records may share a GWAS or QTL signal. Do not describe them as statistically independent without explicit evidence.",
+    "TAS": "Traceable Author Statement; not classified as direct experimental evidence."
   },
   "sources": {
     "GO": "https://geneontology.org/docs/guide-go-evidence-codes/",
-    "interpretation": "Pinned BIM bundle; actual recorded measurements and context take precedence."
+    "interpretation": "Pinned BIM bundle; actual recorded measurements and context take precedence.",
+    "fgsea": "https://www.bioconductor.org/packages/release/bioc/manuals/fgsea/man/fgsea.pdf",
+    "coloc": "https://chr1swallace.github.io/coloc/articles/a04_sensitivity.html"
   }
 }

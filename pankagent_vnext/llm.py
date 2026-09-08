@@ -8,7 +8,7 @@ from pathlib import Path
 import anthropic
 from .answer_router import AnswerSkillRouter
 from .budget import Budget
-from .evidence_context import compact_evidence
+from .evidence_context import compact_evidence, scientific_excerpt
 from .plan_constraints import repair_step_constraints
 from .scope_guard import ScopeTextFilter, broad_cell_search, NOTE as SCOPE_NOTE
 from .audit import provider_event
@@ -76,6 +76,8 @@ ANSWER_CONTRACT += "\nVerified glossary: IBA means Inferred from Biological aspe
 PLAN_SYSTEM += "\nGrouped investigations: the application groups up to twelve independent checks into three readable groups. For a gene overview, produce a separate check for each requested evidence type; do not reject a concrete multi-category question merely because it needs over three checks. For generic comprehensive gene profiles cover detection, enrichment, marker, T1D differential expression, effector support, QTL, coloc, GO, pathway annotation, recorded pathway enrichment, physical and genetic interactions. Do not add mandatory GWAS/QTL joins to a request for coloc statistics or signal identities: these are already properties of SIGNAL_COLOC_WITH. QTL is variants -> Gene with tissue properties on the relationship; GWAS is variants -> disease; coloc is Gene -> disease. Pathway names must be resolved across KEGG/Reactome rather than guessed. Missing ranking contrast in fGSEA must be disclosed."
 _GLOSSARY = json.loads((Path(__file__).parent/'answer_skills/bim/evidence_glossary.json').read_text())
 ANSWER_CONTRACT += '\n'+_GLOSSARY['version']+': '+json.dumps(_GLOSSARY['terms'])
+ANSWER_CONTRACT += '\nFor multi-category answers, give a short direct conclusion and at most three compact groups. Cover every checked category with one or two sentences, reporting empty or blocked categories distinctly; avoid exhaustive partner, cell or leading-edge lists. Aim for 450 words or fewer so all caveats fit. Do not infer statistical independence from multiple records, sources, QTL types or different lead variants. For coloc, retain signal identities and avoid assigning trait 1/2 meanings to H1/H2 unless the dataset ordering is explicitly recorded. For fGSEA, say explicitly when the ranked contrast is unavailable; log2err describes p-value estimation uncertainty, never uncertainty of NES/ES. For gene measurements, state the recorded condition (for example ND) beside the result and briefly explain log-CPM, percent expressing or log2 fold change when used. For cohorts, lead with total unique donors and samples, explain the threshold and file-availability limit, and avoid internal field names or unsupported graph-display counts.'
+ANSWER_CONTRACT += '\nCounting and interpretation rules: evidence_totals distinguishes relationship records, unique endpoints and node labels; never count the focal gene as a cell type or interaction partner. Never infer a per-donor distribution (most, typical, range, or exactly one each) from aggregate donor/sample totals or selected examples. Say only that some donors have multiple samples when samples exceed donors; omit unverified distribution claims. Selected example rows are not statistically representative. Do not invent ranges or ellipsis rows for unlisted donors. Multiple GO or effector annotations are separate records, not independent evidence. TAS means Traceable Author Statement, not direct experimental evidence. A generic PART_OF_QTL_SIGNAL edge does not establish eQTL subtype, expression units, or which molecular phenotype increases; use molecular trait unless a recorded subtype identifies it. When the fGSEA contrast is missing, explicitly state that the ranking contrast was not provided and biological direction cannot be assigned. Do not describe presymptomatic recorded stage and a no-clinical-diabetes field as conflicting merely because their labels differ. Do not print donor_summary, context-stub, or other internal field names; say retrieved cohort totals or selected examples. For grouped profiles, combine categories under exactly three sections: expression, genetic evidence, and function/interactions; at most four illustrative table rows in the entire profile.'
 STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT).encode()).hexdigest()[:16]
 
 
@@ -184,7 +186,7 @@ class ClaudeGateway:
             {'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
              'omitted':item.get('context_dropped',{})} for item in compact],
             'scope':'synthesis_input_only', 'display_counts_known':False}
-        body=json.dumps({'question':question,'evidence':compact,
+        body=json.dumps({'question':question,'evidence':scientific_excerpt(compact),
             'verified_search_scope': SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s requested scope; do not infer unqueried entities from a small returned graph.'},ensure_ascii=False,default=str)
         if len(body.encode())>100000: raise ValueError('evidence_context_too_large')
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]

@@ -190,6 +190,15 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
 
     for key, values in (("nodes", nodes), ("edges", edges), ("rows", rows)):
         entry[key + "_count"] = len(values)
+    entry["evidence_totals"] = {
+        "distinct_nodes_by_label": {label: len({str(n["id"]) for n in nodes if label in (n.get("labels") or [])})
+            for label in sorted({label for n in nodes for label in (n.get("labels") or [])})},
+        "relationships": {kind: {
+            "records": sum(e.get("type") == kind for e in edges),
+            "unique_start_entities": len({str(e["start_id"]) for e in edges if e.get("type") == kind}),
+            "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
+            for kind in sorted({e.get("type") or "unknown" for e in edges})},
+    }
     entry["context_counts"] = {
         "full_nodes_selected": len(sampled_nodes), "endpoint_stubs": stubs,
         "edges_selected": len(sampled_edges), "rows_selected": len(entry["rows"]),
@@ -240,4 +249,26 @@ def compact_evidence(evidence: Mapping | list) -> list[dict]:
         result, size = build(_REDUCED)
     if size > MAX_BYTES:
         raise ValueError("evidence_context_too_large")
+    return result
+
+
+def scientific_excerpt(compact):
+    """Keep trace diagnostics in application metadata, outside scientific prose.
+
+    Explicit excerpt scope remains, so selected records cannot imply complete
+    tabular coverage. This does not change full evidence or graph display data.
+    """
+    def clean(value):
+        if isinstance(value, dict):
+            return {k:clean(v) for k,v in value.items() if not k.startswith('context_')}
+        if isinstance(value,list): return [clean(v) for v in value]
+        return value
+    result=[]
+    for item in compact:
+        entry=clean(item)
+        entry['answer_evidence_scope']={
+            'individual_records_are_selected_examples':bool(item.get('context_sampled')),
+            'authoritative_totals':'Use the recorded full counts and donor_summary totals.',
+            'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}
+        result.append(entry)
     return result

@@ -192,3 +192,27 @@ class EvidenceContextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_scientific_excerpt_preserves_scope_without_operational_diagnostics():
+    from pankagent_vnext.evidence_context import scientific_excerpt
+    source=[{'context_sampled':True,'context_compaction':'reduced','context_dropped':{'nodes':40},
+             'nodes_count':126,'donor_summary':{'unique_donors':126,'unique_samples':190},
+             'nodes':[{'id':'x','context_stub':True,'properties':{'name':'Example'}}]}]
+    result=scientific_excerpt(source)
+    assert result[0]['donor_summary']['unique_donors']==126
+    assert result[0]['answer_evidence_scope']['individual_records_are_selected_examples']
+    assert 'context_compaction' not in str(result) and 'context_stub' not in str(result)
+    assert source[0]['context_sampled'] is True
+
+
+def test_totals_distinguish_focal_gene_cells_and_annotation_records():
+    nodes=[{'id':'g','labels':['GENE'],'properties':{}},
+           {'id':'c1','labels':['CellType'],'properties':{}},
+           {'id':'c2','labels':['CellType'],'properties':{}}]
+    edges=[{'start_id':'g','end_id':target,'type':'DETECTED_IN','properties':{}}
+           for target in ('c1','c1','c2')]
+    result=compact_evidence({'s1':{'nodes':nodes,'edges':edges,'rows':[]}})[0]
+    assert result['evidence_totals']['distinct_nodes_by_label']=={'CellType':2,'GENE':1}
+    assert result['evidence_totals']['relationships']['DETECTED_IN']=={
+        'records':3,'unique_start_entities':1,'unique_end_entities':2}

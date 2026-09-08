@@ -206,13 +206,14 @@ def test_preparation_routes_full_schema_before_bounded_context(monkeypatch, tmp_
             assert prepared.profile["matched_schema"]["edges"] == ["GENE_DETECTED_IN", "PHYSICAL_INTERACTION"]
             assert prepared.profile["clinical_fields"] == ["t1d_stage"]
             assert prepared.profile["context_sampled"] is True
-            assert compact["context_sampled"] is True
+            assert compact["answer_evidence_scope"]["individual_records_are_selected_examples"] is True
+            assert "context_sampled" not in compact
             assert compact["truncated"] is False
             assert compact["status"] == "complete"
             assert "synthetic-gene-64" not in {node["id"] for node in compact["nodes"]}
             rare = [edge for edge in compact["edges"] if edge["type"] == "PHYSICAL_INTERACTION"]
             assert rare == [original["s1"]["edges"][-1]]
-            assert compact["context_dropped"]["edges_by_type"]["GENE_DETECTED_IN"] > 0
+            assert prepared.profile["model_context"]["steps"][0]["omitted"]["edges_by_type"]["GENE_DETECTED_IN"] > 0
             assert evidence == original
             assert fake.stream_calls == fake.create_calls == []
         finally:
