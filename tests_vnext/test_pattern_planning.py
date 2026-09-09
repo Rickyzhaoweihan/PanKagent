@@ -15,8 +15,13 @@ def grounded(question, extra=None):
     return asyncio.run(ground_question(graph, question))
 
 
-def test_three_signal_roles_compile_without_mandatory_join_or_lead_assumption():
-    question = 'For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?'
+@pytest.mark.parametrize('question', [
+    'For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?',
+    'For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?',
+    'Show coloc evidence for ADCY3 and the T1D GWAS signal rs13393590.',
+    'Show colocalisation evidence for ADCY3 and the T1D GWAS signal rs13393590.',
+])
+def test_three_signal_roles_compile_without_mandatory_join_or_lead_assumption(question):
     data = grounded(question)
     original = deepcopy(data)
     plan = compile_signal_plan(question, data)
