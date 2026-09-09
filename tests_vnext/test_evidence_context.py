@@ -216,3 +216,86 @@ def test_totals_distinguish_focal_gene_cells_and_annotation_records():
     assert result['evidence_totals']['distinct_nodes_by_label']=={'CellType':2,'GENE':1}
     assert result['evidence_totals']['relationships']['DETECTED_IN']=={
         'records':3,'unique_start_entities':1,'unique_end_entities':2}
+
+
+def interaction_evidence():
+    from pankagent_vnext.evidence_coverage import build_evidence_coverage
+    nodes = [node('focal')] + [node('p' + str(index)) for index in range(26)]
+    edges = [edge('p' + str(index), 'focal', 'PHYSICAL_INTERACTION') for index in range(18)]
+    edges += [edge('focal', 'p' + str(index), 'PHYSICAL_INTERACTION') for index in range(18, 26)]
+    edges += [edge('p' + str(index), 'focal', 'PHYSICAL_INTERACTION', experiment='repeat') for index in range(5)]
+    constraint = {'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'focal'}
+    query = 'MATCH (g:Gene)-[r:PHYSICAL_INTERACTION]-(p:Gene) WHERE g.id=$gene RETURN g,r,p'
+    item = evidence(nodes, edges, graph_version='PanKgraph_08_04',
+                    requested_scope={'constraints': [constraint], 'relation_types': ['PHYSICAL_INTERACTION'], 'complete': True},
+                    queries=[{'cypher': query, 'parameters': {'gene': 'focal'}}])
+    item['evidence_coverage'] = build_evidence_coverage(item['requested_scope'], item,
+        graph_version=item['graph_version'], query=query, parameters={'gene': 'focal'}, validation_verified=True)
+    return item
+
+
+def test_interaction_partner_union_is_computed_before_reduced_excerpt(monkeypatch):
+    import pankagent_vnext.evidence_context as module
+    source = interaction_evidence(); before = copy.deepcopy(source)
+    monkeypatch.setattr(module, 'TARGET_BYTES', 1)
+    result = module.scientific_excerpt(compact_evidence([source]))[0]
+    total = result['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+    assert source == before
+    assert total['records'] == 31
+    assert total['unique_end_entities'] == 9  # Includes the focal gene, not a partner total.
+    assert total['unique_partner_genes'] == 26
+    assert total['focal_interaction_records'] == 31
+    assert total['complete_for_requested_scope'] is True
+    assert len(result['edges']) == 15  # Selected examples cannot redefine the full total.
+    assert result['answer_evidence_scope']['individual_records_are_selected_examples']
+    assert 'unique_partner_genes' in result['answer_evidence_scope']['authoritative_totals']
+
+
+def test_interaction_focal_name_requires_unique_verified_release_resolution():
+    source = interaction_evidence()
+    c = source['requested_scope']['constraints'][0]
+    c.update(property='name', value='FocalAlias')
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+    source['resolved_entities'] = [{'constraint_index': 0, 'state': 'resolved', 'entity_type': 'Gene',
+        'graph_version': source['graph_version'], 'id': 'focal', 'requested': copy.deepcopy(c)}]
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] == 26
+    source['resolved_entities'][0]['graph_version'] = 'old'
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+
+
+def test_interaction_multiple_focal_genes_or_missing_scope_cannot_invent_partner_total():
+    source = interaction_evidence()
+    source['requested_scope']['constraints'].append({'entity_type': 'Gene', 'property': 'id', 'value': 'p1'})
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+    source.pop('requested_scope')
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+
+
+def test_interaction_self_records_and_both_directions_do_not_double_count_partner_genes():
+    source = interaction_evidence()
+    source['edges'].extend([edge('focal', 'focal', 'PHYSICAL_INTERACTION'), edge('focal', 'p0', 'PHYSICAL_INTERACTION')])
+    total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+    assert total['records'] == 33 and total['unique_partner_genes'] == 26
+    assert total['self_interaction_records'] == 1
+    assert total['complete_for_requested_scope'] is False  # Existing coverage describes the earlier rows.
+
+
+def test_interaction_partial_retrieval_totals_never_claim_complete_scope():
+    for mutation in ('truncated', 'failed', 'missing_coverage', 'unrelated_edge'):
+        source = interaction_evidence()
+        if mutation == 'truncated': source['truncated'] = True
+        elif mutation == 'failed': source['status'] = 'failed'
+        elif mutation == 'missing_coverage': source.pop('evidence_coverage')
+        else: source['edges'].append(edge('p0', 'p1', 'PHYSICAL_INTERACTION'))
+        total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+        assert total['unique_partner_genes'] == 26
+        assert total['complete_for_requested_scope'] is False
+        assert total['count_scope'] == 'all_retrieved_records_before_excerpt_selection'
+
+
+def test_interaction_unverified_partner_node_types_do_not_claim_gene_counts():
+    source = interaction_evidence(); source['nodes'][-1]['labels'] = ['unknown']
+    total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+    assert total['unique_partner_genes'] is None and total['unique_partner_entities'] == 26
+    assert total['partner_count_state'] == 'partner_gene_labels_unverified'
+    assert total['complete_for_requested_scope'] is False

@@ -13,7 +13,7 @@ import re
 from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = 'grounded-requested-scope-v1'
+VERSION = 'grounded-requested-scope-v2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 _GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
 _TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
@@ -45,6 +45,34 @@ def _same(value, forms):
     return isinstance(value, str) and phrase_tokens(value) in forms
 
 
+def _replacement_spans(words, mentions):
+    """Recognize only explicit replacements between uniquely grounded peers.
+
+    These instructions authorize changing the named scope without a history
+    lookup. Incidental mentions and ambiguous alternatives never do. Only the
+    replaced occurrence is excluded; another positive occurrence is retained.
+    """
+    excluded, targets = set(), set()
+    for _, old, _, old_spans in mentions:
+        for _, new, _, new_spans in mentions:
+            if old['entity_type'] != new['entity_type'] or old['id'] == new['id']:
+                continue
+            for start, end in old_spans:
+                for new_start, new_end in new_spans:
+                    before_old = words[max(0, start - 3):start]
+                    before_new = words[max(0, new_start - 3):new_start]
+                    replace = (before_old and before_old[-1] == 'replace'
+                               and words[end:new_start] == ('with',)
+                               and not set(before_old[:-1]) & {'not', 'never'})
+                    use = (before_new and before_new[-1] == 'use'
+                           and words[new_end:start] in {('instead', 'of'), ('rather', 'than')}
+                           and not set(before_new[:-1]) & {'not', 'never'})
+                    if replace or use:
+                        excluded.add((old['id'], start, end))
+                        targets.add((new['id'], new_start, new_end))
+    return excluded, targets
+
+
 def _mentions(question, grounding):
     words = phrase_tokens(question)
     output = []
@@ -67,7 +95,11 @@ def _mentions(question, grounding):
             continue
         forms = {phrase_tokens(value) for value in (mention['requested'], candidate.get('id'), candidate.get('name')) if value}
         output.append((mention, candidate, forms, spans))
-    return words, output
+    excluded, targets = _replacement_spans(words, output)
+    output = [(mention, candidate, forms,
+               [span for span in spans if (candidate['id'], *span) not in excluded])
+              for mention, candidate, forms, spans in output]
+    return words, [item for item in output if item[3]], targets
 
 
 def _compatible(kind, relation):
@@ -128,16 +160,30 @@ def scope_issue(question, grounding, plan):
     steps = [step for step in plan.get('steps', []) if isinstance(step, dict) and step.get('purpose') != 'context']
     if not steps:
         return None  # The separate structural validator handles empty plans.
-    words, mentions = _mentions(question, grounding)
+    words, mentions, replacement_targets = _mentions(question, grounding)
     genes = {candidate['id'] for _, candidate, _, _ in mentions if candidate['entity_type'] == 'Gene'}
+    tissues = {candidate['id'] for _, candidate, _, spans in mentions
+               if candidate['entity_type'] == 'anatomical_structure' and
+               (_direct_tissue(words, spans) or any((candidate['id'], *span) in replacement_targets for span in spans))}
     for mention, candidate, forms, spans in mentions:
         kind = candidate['entity_type']
         if kind == 'anatomical_structure':
-            if not _direct_tissue(words, spans):
+            if not (_direct_tissue(words, spans) or any((candidate['id'], *span) in replacement_targets for span in spans)):
                 continue
             required = {r for step in steps for r in step.get('relation_types', []) if r in _TISSUE_PATHS}
+            gene_starts = [start for _, anchor, _, anchor_spans in mentions
+                           if anchor['entity_type'] == 'Gene' for start, _ in anchor_spans]
+            # A leading "pancreatic QTL for X and Y" scopes both genes.
+            # A tissue attached to one named gene in a longer multi-gene
+            # instruction must not be imposed on an unrelated second check.
+            shared_tissue = len(genes) <= 1 or any(
+                gene_starts and end <= min(gene_starts) and 'qtl' in words[end:end + 5]
+                for _, end in spans)
             for relation in sorted(required):
-                if not any(relation in step.get('relation_types', []) and _tissue_present(step, candidate, forms, relation) for step in steps):
+                compatible_tissues = [step for step in steps if relation in step.get('relation_types', [])]
+                direct = [step for step in compatible_tissues if not step.get('depends_on')]
+                if (len(tissues) == 1 and shared_tissue and any(not _tissue_present(step, candidate, forms, relation) for step in direct)
+                        or not any(_tissue_present(step, candidate, forms, relation) for step in compatible_tissues)):
                     return 'missing_requested_scope:tissue:' + str(mention['requested']) + ':' + relation
             continue
         compatible = [step for step in steps if any(_compatible(kind, relation)

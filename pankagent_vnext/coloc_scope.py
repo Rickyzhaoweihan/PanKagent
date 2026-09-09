@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-VERSION = 'coloc-scope-2'
+VERSION = 'coloc-scope-3'
 RELEASE = 'PanKgraph_08_04'
 RELATIONS = {'SIGNAL_COLOC_WITH', 'PART_OF_GWAS_SIGNAL', 'PART_OF_QTL_SIGNAL'}
 MAX_SUMMARY_RECORDS = 25
@@ -122,6 +122,14 @@ def normalize_plan(plan: dict, release: str, max_steps: int = 3) -> dict:
     guard to reject. Original checks and display groups remain in provenance.
     """
     result = copy.deepcopy(plan)
+    comparison = result.pop('coloc_comparison_normalization', None)
+    if comparison:
+        result['steps'] = copy.deepcopy(comparison['original_steps'])
+        result.pop('computed_operations', None)
+        if comparison.get('original_display_groups') is None:
+            result.pop('display_groups', None)
+        else:
+            result['display_groups'] = copy.deepcopy(comparison['original_display_groups'])
     old = result.pop('coloc_scope_normalization', None)
     if old:
         result['steps'] = copy.deepcopy(old['original_steps'])
@@ -351,6 +359,114 @@ def _separated_scope(plan):
             'source_kind': 'already_separated_verified_steps'}
 
 
+def _comparison_only(question, parents):
+    """Closed comparison vocabulary prevents hiding new retrieval modifiers."""
+    text = str(question or '')
+    if not text or len(text) > 3000:
+        return False
+    values = set()
+    for parent in parents:
+        values.add(parent['id'])
+        for resolved in parent.get('resolved_entities') or []:
+            values.update(value for value in (resolved.get('id'), resolved.get('name'),
+                (resolved.get('requested') or {}).get('value')) if isinstance(value, str) and value)
+            values.update(VERIFIED_IDENTITY_ALIASES.get(
+                (RELEASE, resolved.get('entity_type'), resolved.get('id')), ()))
+    for value in sorted(values, key=len, reverse=True):
+        text = re.sub(r'(?<!\w)' + re.escape(value) + r'(?!\w)', ' ENTITY ', text, flags=re.I)
+    text = re.sub(r'\b(?:PART_OF_GWAS_SIGNAL|PART_OF_QTL_SIGNAL|SIGNAL_COLOC_WITH)\b', 'signal', text, flags=re.I)
+    words = re.findall(r'[A-Za-z]+|[^\sA-Za-z(),?:.;/\-]', text.casefold())
+    allowed = set(('entity do does are is the these those their recorded retrieved reported '
+        'existing available gwas qtl coloc colocalization signal signals identifier identifiers '
+        'id ids credible set sets from for of to and or with between across in '
+        'match matches matching exactly exact compare comparison whether same '
+        'check determine establish using evidence result results step steps').split())
+    return (bool(words) and set(words) <= allowed
+            and bool(set(words) & {'match', 'matches', 'matching', 'compare', 'comparison', 'same'})
+            and bool(set(words) & {'identifier', 'identifiers', 'id', 'ids'})
+            and bool(set(words) & {'signal', 'signals'}))
+
+
+def compile_comparisons(plan: dict, release: str) -> dict:
+    """Compile proven terminal comparisons into traceable evidence operations.
+
+    Called only after entity preparation. New biological filters, unverified
+    identities, partial parent scopes and dependent retrieval remain executable.
+    The existing exact-identifier linker supplies the computed operation result.
+    """
+    result = copy.deepcopy(plan)
+    if (release != RELEASE or result.get('coloc_scope_normalization')
+            or result.get('computed_operations') or result.get('coloc_comparison_normalization')):
+        return result
+    scope = _separated_scope(result)
+    if not scope:
+        return result
+    steps = result.get('steps') or []
+    by_id = {step['id']: step for step in steps}
+    operations = []
+    for step in steps:
+        dependencies = step.get('depends_on') or []
+        if (set(step.get('relation_types') or []) != RELATIONS
+                or len(step.get('relation_types') or []) != 3 or step.get('constraints')
+                or step.get('complete') is not True or len(dependencies) != 3
+                or len(set(dependencies)) != 3 or step.get('purpose') == 'context'
+                or step.get('ranking_contract') or step.get('ranking_issue')
+                or step.get('semantic_issues') or step.get('schema_bindings')
+                or any(step['id'] in other.get('depends_on', []) for other in steps)):
+            continue
+        groups = [group for group in scope['groups'] if set(group['step_ids'].values()) == set(dependencies)]
+        if len(groups) != 1:
+            continue
+        parents = [by_id[key] for key in dependencies]
+        if any(steps.index(parent) >= steps.index(step) for parent in parents):
+            continue
+        if not _comparison_only(step.get('question'), parents):
+            continue
+        operations.append({'id': step['id'], 'operation': 'compare_coloc_signal_identifiers',
+            'depends_on': copy.deepcopy(dependencies), 'source_step_id': groups[0]['source_step_id'],
+            'step_ids': copy.deepcopy(groups[0]['step_ids']), 'original_step': copy.deepcopy(step),
+            'version': VERSION, 'digest': DIGEST, 'graph_release': release,
+            'implementation': 'summarize_linkage', 'no_new_retrieval': True})
+    if not operations:
+        return result
+    original_groups = copy.deepcopy(result.get('display_groups'))
+    removed = {operation['id'] for operation in operations}
+    replacements = {operation['id']: operation['depends_on'] for operation in operations}
+    result['steps'] = [step for step in steps if step['id'] not in removed]
+    for group in result.get('display_groups') or []:
+        key = 'step_ids' if 'step_ids' in group else 'steps' if 'steps' in group else None
+        if key and isinstance(group[key], list) and all(isinstance(x, str) for x in group[key]):
+            original_refs = group[key]
+            group[key] = list(dict.fromkeys(part for identifier in original_refs for part in replacements.get(identifier, [identifier])))
+            if removed.intersection(original_refs):
+                group['computed_operation_ids'] = [identifier for identifier in original_refs if identifier in removed]
+    result['computed_operations'] = operations
+    result['coloc_comparison_normalization'] = {'version': VERSION, 'digest': DIGEST,
+        'graph_release': release, 'original_steps': copy.deepcopy(steps), 'original_display_groups': original_groups}
+    return result
+
+
+def _computed_outcomes(plan, summary):
+    outcomes = []
+    for operation in plan.get('computed_operations') or []:
+        if operation.get('operation') != 'compare_coloc_signal_identifiers':
+            continue
+        outcome = {'id': operation.get('id'), 'operation': operation['operation'],
+            'depends_on': copy.deepcopy(operation.get('depends_on')), 'status': 'unverified',
+            'no_new_retrieval': True}
+        if operation.get('digest') == DIGEST and operation.get('graph_release') == RELEASE:
+            matches = [group for group in summary.get('groups', []) if group.get('step_ids') == operation.get('step_ids')]
+            if len(matches) == 1:
+                group = matches[0]
+                outcome.update(source_step_id=group['source_step_id'],
+                    status='complete' if group.get('status') == 'checked'
+                        and all(group.get('record_enumeration', {}).values())
+                        and all(state in {'complete', 'empty'} for state in group.get('step_outcomes', {}).values()) else 'blocked',
+                    result_reference='coloc_linkage.groups:' + group['source_step_id'])
+        outcomes.append(outcome)
+    return outcomes
+
+
 def summarize_linkage(plan: dict, previous: dict) -> dict:
     """Link complete records through exact recorded identifiers, never cooccurrence.
 
@@ -438,4 +554,6 @@ def summarize_linkage(plan: dict, previous: dict) -> dict:
         summary['status'] = 'partial'
     else:
         summary['status'] = 'checked'
+    if plan.get('computed_operations'):
+        summary['computed_operations'] = _computed_outcomes(plan, summary)
     return summary

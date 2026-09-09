@@ -18,7 +18,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
                                  stable_digest, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = "preplanning-grounding-2"
+VERSION = "preplanning-grounding-3"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -51,6 +51,15 @@ ENTITY_TYPE_TERMS = {
 }
 _GENERIC_GENE_WORDS = {"a", "an", "and", "as", "at", "by", "can", "do", "for", "has", "have", "in", "is", "it", "no", "not", "of", "on", "or", "rest", "so", "the", "to", "was", "with", "yes"}
 _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon"})
+# These are linguistic roles, not excluded gene symbols. An explicit gene
+# request always retains a recorded alias, including aliases that are words.
+_REQUEST_VERBS = {"find", "show", "list", "count", "compare", "describe", "explain", "identify", "retrieve", "search", "get", "check", "tell", "give"}
+_SCHEMA_ROLE_PATTERNS = {
+    "ontology_vocabulary": r"\b(?:GO|gene ontology)(?:\s+(?:term|annotation|evidence|biological|molecular|cellular|for|of))|\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\s+(?:GO|annotation|term)",
+    "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",
+    "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b",
+    "analysis_vocabulary": r"\b(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\s+(?:evidence|signal|association|annotation|analysis|enrichment|data|record|support|for|of|in|with|between)|\b(?:evidence|signal|association|analysis|enrichment)\s+(?:from|for|of|in)?\s*(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\b",
+}
 
 
 def phrase_tokens(text):
@@ -67,12 +76,50 @@ def _public_candidate(record, kind):
     return {key: deepcopy(record[key]) for key in ("id", "name", "entity_type", "labels")} | {"match_kind": kind}
 
 
+def _explicit_gene(words, start, end):
+    before, after = words[max(0, start - 2):start], words[end:end + 2]
+    return (bool(before) and before[-1] in {"gene", "symbol"}) or (bool(after) and after[0] == "gene")
+
+
+def _retain_context(mention, selected, role, **details):
+    """Separate an intended identity from incidental catalog homonyms."""
+    previous = mention["candidates"]
+    keys = {(item["entity_type"], item["id"]) for item in selected}
+    incidental = [item for item in previous if (item["entity_type"], item["id"]) not in keys]
+    mention.update(candidates=selected, state="resolved" if len(selected) == 1 else "ambiguous" if selected else "incidental",
+                   context_role={"kind": role, **details})
+    if incidental:
+        mention.setdefault("incidental_candidates", []).extend(incidental)
+    if not selected:
+        mention["identity_complete"] = False
+
+
+def _span(question, start, end):
+    return len(phrase_tokens(question[:start])), len(phrase_tokens(question[:end]))
+
+
+def _requested_relations(question):
+    selected = {kind for kind, pattern in RELATION_TERMS.items() if re.search(pattern, question, re.I)}
+    explicit_go = bool(re.search(r"\bGO\b|gene ontology|biological[- ]process|molecular[- ]function|cellular[- ]component", question, re.I))
+    explicit_pathway = bool(re.search(r"pathway|\bkegg\b|reactome|fgsea|gsea", question, re.I))
+    if explicit_go and not explicit_pathway:
+        selected.discard("FUNCTION_ANNOTATION")
+    if "FGSEA_ENRICHED_IN" in selected:
+        selected.discard("FUNCTION_ANNOTATION")
+        if not explicit_go:
+            selected.discard("ASSOCIATED_WITH_GO")
+    return selected
+
+
 class EntityIndex:
     def __init__(self, inventory):
         self.identity = inventory["identity"]
         self.content_digest = inventory["content_digest"]
         self.counts = inventory["counts"]
         self.sample_terminology = deepcopy(inventory.get("sample_terminology", {}))
+        self.public_categories = deepcopy(inventory.get("public_categories", {}))
+        self.category_metadata = deepcopy(inventory.get("category_metadata", {}))
+        self.source_forms = {phrase_tokens(value) for value in self.sample_terminology.get("sources", [])}
         self.first = {}
         self.max_words = 0
         for record in inventory["records"]:
@@ -154,14 +201,103 @@ class EntityIndex:
                 end = max(end, stop)
             found.append(mention)
             index = end  # Longest matching phrase wins; avoids nested PLN/organ aliases.
-        return found
+        return self.contextualize(question, found)
+
+    def contextualize(self, question, mentions):
+        """Assign linguistic roles before aliases become required plan anchors.
+
+        All rejected alternatives remain in the protected grounding payload.
+        Role matching does not turn schema vocabulary into scientific evidence.
+        """
+        words = phrase_tokens(question)
+        role_spans = [(kind, *_span(question, match.start(), match.end()))
+                      for kind, pattern in _SCHEMA_ROLE_PATTERNS.items()
+                      for match in re.finditer(pattern, question, re.I)]
+        cohort_context = bool(re.search(r"\b(?:donors?|samples?|cohort|assays?|multiome|multiomics)\b", question, re.I))
+        for mention in mentions:
+            start, end = mention["normalized_token_span"]
+            candidates = mention["candidates"]
+            if _explicit_gene(words, start, end):
+                genes = [item for item in candidates if item["entity_type"] == "Gene"]
+                if genes:
+                    _retain_context(mention, genes, "explicit_gene")
+                continue
+            term = words[start:end]
+            role = next((kind for kind, first, last in role_spans if first <= start and end <= last), None)
+            if term in self.source_forms and cohort_context:
+                role = "recorded_dataset_source"
+            elif term in self.source_forms and any(item["entity_type"] == "Gene" for item in candidates):
+                mention.update(state="ambiguous", context_role={"kind": "dataset_source_or_gene",
+                    "recorded_source": " ".join(term), "rule": "A recorded source and a gene alias share this wording; no explicit role was supplied."})
+            components = {phrase_tokens(value) for assay in self.sample_terminology.get("assay_capabilities", {}).values() for value in assay.get("components", [])}
+            if term in components and cohort_context:
+                role = "assay_vocabulary"
+            if len(term) == 1 and term[0] in _REQUEST_VERBS:
+                prefix = words[:start]
+                if not prefix or all(word in {"please", "can", "could", "would", "you", "now", "then"} for word in prefix):
+                    role = "request_verb"
+            if role and any(item["entity_type"] == "Gene" for item in candidates):
+                selected = [item for item in candidates if item["entity_type"] != "Gene"]
+                _retain_context(mention, selected, role,
+                    rule="This wording describes the requested source, assay, analysis, or action; a matching gene alias is incidental unless explicitly requested as a gene.")
+            if role == "ontology_vocabulary" and term in {("biological", "process"), ("molecular", "function"), ("cellular", "component")}:
+                domains = [value for value in self.public_categories.get("GO_term.go_domain", []) if phrase_tokens(value) == term]
+                metadata = self.category_metadata.get("GO_term.go_domain", {})
+                _retain_context(mention, [], "ontology_domain",
+                    requested_domain=" ".join(term), resolution_state="resolved" if len(domains) == 1 else "ambiguous" if domains else "metadata_unavailable" if metadata.get("state") != "checked" else "not_recorded",
+                    **({"canonical_binding": {"entity_type": "GO_term", "property": "go_domain", "value": domains[0]}} if len(domains) == 1 else {}),
+                    rule="This phrase selects an annotation domain; it does not request only the ontology root record.")
+
+        # A user's own parenthetical expansion is stronger than an unrelated
+        # homonym in another collection. Both 'long name (ABC)' and 'ABC (long
+        # name)' are supported; no acronym is invented from initial letters.
+        for match in re.finditer(r"\(([^()]+)\)", question):
+            inside = _span(question, match.start(1), match.end(1))
+            prior_end = len(phrase_tokens(question[:match.start()]))
+            prior = [m for m in mentions if m["normalized_token_span"][1] == prior_end]
+            inner = [m for m in mentions if tuple(m["normalized_token_span"]) == inside]
+            for left in prior:
+                for right in inner:
+                    common = {(c["entity_type"], c["id"]) for c in left["candidates"]} & {(c["entity_type"], c["id"]) for c in right["candidates"]}
+                    if len(common) == 1:
+                        for mention, expansion in ((left, right), (right, left)):
+                            selected = [c for c in mention["candidates"] if (c["entity_type"], c["id"]) in common]
+                            _retain_context(mention, selected, "explicit_parenthetical_expansion", paired_wording=expansion["requested"])
+
+        # Pathway collection selection follows the requested relationship's
+        # release-verified endpoint types. It cannot change a named entity ID.
+        pathway_relations = _requested_relations(question) & {"FGSEA_ENRICHED_IN", "FUNCTION_ANNOTATION", "ASSOCIATED_WITH_GO"}
+        for mention in mentions:
+            candidates = mention["candidates"]
+            if len(candidates) < 2 or not {c["entity_type"] for c in candidates} <= {"kegg", "reactome", "GO_term"} or not pathway_relations:
+                continue
+            allowed = {label for relation in pathway_relations for path in REGISTRY["relations"][relation]["paths"] for label in path["source"] + path["target"]}
+            selected = [c for c in candidates if c["entity_type"] in allowed]
+            if selected and len(selected) < len(candidates):
+                _retain_context(mention, selected, "verified_relationship_endpoints", relation_types=sorted(pathway_relations))
+                if len(selected) > 1:
+                    mention["collection_scope"] = "Keep every compatible pathway collection; these are independently recorded annotations, not an identity substitution."
+
+        # An adjective directly modifying a QTL is an explicitly scoped tissue
+        # request. The same adjective inside 'pancreatic lymph node/islet' is not.
+        if self.identity["graph_release"] == REGISTRY["release"]:
+            for match in re.finditer(r"\bpancreatic\s+(?:(?:e|s|exon)?QTL)\b", question, re.I):
+                start, end = _span(question, match.start(), match.start() + len("pancreatic"))
+                if any(m["normalized_token_span"][0] <= start < m["normalized_token_span"][1] for m in mentions):
+                    continue
+                candidates = self.first.get("pancreas", {}).get(("pancreas",), {}).values()
+                selected = [deepcopy(c) for c in candidates if c["entity_type"] == "anatomical_structure" and c["name"].casefold() == "pancreas"]
+                if len(selected) == 1:
+                    mentions.append({"requested": "pancreatic", "state": "resolved", "candidates": selected,
+                        "normalized_token_span": [start, end], "context_role": {"kind": "qtl_tissue_adjective", "canonical_tissue": "Pancreas", "rule": "The adjective directly modifies QTL; preserve this as a relationship tissue filter, not an islet or lymph-node alias."}})
+        return sorted(mentions, key=lambda mention: mention["normalized_token_span"])
 
 
 def relevant_schema(question, mentions, *, max_relations=12):
     labels = {value["entity_type"] for mention in mentions for value in mention["candidates"]}
     mentioned_types = {kind for kind, pattern in ENTITY_TYPE_TERMS.items() if re.search(pattern, question, re.I)}
     labels.update(mentioned_types)
-    selected = {kind for kind, pattern in RELATION_TERMS.items() if re.search(pattern, question, re.I)}
+    selected = _requested_relations(question)
     selected.update(kind for kind in REGISTRY["relations"] if re.search(r"\b" + re.escape(kind) + r"\b", question, re.I))
     neighbors = set()
     for kind, spec in REGISTRY["relations"].items():
@@ -256,6 +392,10 @@ class Grounder:
                            "Schema and metadata matches are not retrieved scientific evidence.",
                            "Do not silently remove a filter, invent an identity, or turn unavailable grounding into zero matches."],
                  "latency_ms": round((time.monotonic() - start) * 1000, 2)}
+        for owner_property, values in index.public_categories.items():
+            if owner_property.split(".")[0] in value["schema"]["nodes"]:
+                value["schema"]["categories"][owner_property] = deepcopy(values)
+                value.setdefault("category_metadata", {})[owner_property] = deepcopy(index.category_metadata.get(owner_property, {}))
         if vocabulary is not None:
             # Aggregated categorical values only; never donor/sample rows.
             value["sample_terminology"] = vocabulary
@@ -317,20 +457,26 @@ def grounding_guidance(payload, *, max_chars=7000, relation_types=None):
     budget = max(0, max_chars - len(prefix))
     view = deepcopy(payload)
     view.pop("latency_ms", None)
+    for mention in view.get("mentions", []):
+        incidental = mention.pop("incidental_candidates", [])
+        if incidental:
+            mention["incidental_catalog_matches"] = len(incidental)
+        role = mention.get("context_role")
+        if role:
+            role.pop("rule", None)
     schema = view.get("schema", {})
-    if relation_types is not None:
-        wanted = set(relation_types)
+    wanted = set(relation_types) if relation_types is not None else set(schema.get("selected_by_question", []))
+    if wanted:
         schema["relations"] = {kind: spec for kind, spec in schema.get("relations", {}).items() if kind in wanted}
-        schema["categories"] = {key: value for key, value in schema.get("categories", {}).items() if key.split(".")[0] in wanted}
+        labels = {label for spec in schema["relations"].values() for path in spec["paths"] for label in path["source"] + path["target"]}
+        labels.update(candidate["entity_type"] for mention in view.get("mentions", []) for candidate in mention.get("candidates", []))
+        schema["nodes"] = {label: fields for label, fields in schema.get("nodes", {}).items() if label in labels}
+        schema["categories"] = {key: value for key, value in schema.get("categories", {}).items() if key.split(".")[0] in wanted | labels}
+        schema["additional_available_relations"] = sorted(set(schema.get("additional_available_relations", [])) - wanted)
+    for spec in schema.get("relations", {}).values():
+        for path in spec["paths"]:
+            path.pop("records", None)
     compact = json.dumps(view, ensure_ascii=False, separators=(",", ":"))
-    if len(compact) > budget:
-        for spec in schema.get("relations", {}).values():
-            spec["additional_properties_in_release_registry"] = len(spec.get("properties", [])) > 20
-            spec["properties"] = spec.get("properties", [])[:20]
-        for label, fields in schema.get("nodes", {}).items():
-            schema["nodes"][label] = [field for field in fields if field in {"id", "name", "data_modality", "t1d_stage", "data_source", "go_domain"}]
-        schema["property_guidance_complete"] = False
-        compact = json.dumps(view, ensure_ascii=False, separators=(",", ":"))
     if len(compact) > budget:
         priority = ("Gene", "donor", "Sample_node", "data_modality", "disease", "anatomical_structure", "GO_term", "kegg", "reactome", "variants", "OCR_peak")
         def primary(labels):
@@ -347,15 +493,34 @@ def grounding_guidance(payload, *, max_chars=7000, relation_types=None):
                           "candidates": [{key: candidate[key] for key in ("id", "name", "entity_type", "match_kind")}
                                          for candidate in mention.get("candidates", [])],
                           **({"collection_scope": mention["collection_scope"]} if "collection_scope" in mention else {}),
-                          **({"qualification_rule": mention["qualification_rule"]} if "qualification_rule" in mention else {})} for mention in view.get("mentions", [])],
+                          **({"qualification_rule": mention["qualification_rule"]} if "qualification_rule" in mention else {}),
+                          **({"context_role": mention["context_role"]} if "context_role" in mention else {})} for mention in view.get("mentions", [])],
             "directed_paths": {kind: sorted(set(primary(path["source"]) + " -> " + primary(path["target"]) for path in spec["paths"]))
                                for kind, spec in chosen.items()},
-            "schema_properties": "See complete release registry; omitted here only to fit input budget.",
-            "rule": "Preserve unmatched wording and all original filters. Ambiguous candidates are not resolved. Metadata absence is not biological absence.",
+            "relationship_properties": {kind: spec["properties"] for kind, spec in chosen.items()},
+            "node_properties": {},
+            "categories": schema.get("categories", {}),
+            "rule": "Preserve original filters and qualified wording. Incidental catalog matches are not requested entities. Ambiguity is unresolved. Metadata is not answer evidence.",
         }
+        for spec in chosen.values():
+            for path in spec["paths"]:
+                for labels in (path["source"], path["target"]):
+                    label = primary(labels)
+                    minimal["node_properties"][label] = sorted({field for name in labels for field in schema.get("nodes", {}).get(name, [])})
+        if not wanted:
+            minimal["additional_available_relations"] = schema.get("additional_available_relations", [])
         if "sample_terminology" in view:
             minimal["sample_terminology"] = view["sample_terminology"]
         compact = json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))
+        # Tiny GPU addenda may omit property guidance because the generator's
+        # normal request already carries the owned schema. Say exactly what is
+        # omitted rather than pretending this text supplied an external registry.
+        if len(compact) > budget and relation_types is not None and max_chars < 4000:
+            minimal.pop("relationship_properties")
+            minimal.pop("node_properties")
+            minimal["property_guidance_complete"] = False
+            minimal["property_guidance_omission"] = "Property names did not fit this grounding addendum; validate against the separately supplied schema."
+            compact = json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))
     if len(compact) > budget:
         return "\nGrounding context exceeds the input budget. Keep the complete original question and validate every entity and filter; do not discard constraints."
     return prefix + compact

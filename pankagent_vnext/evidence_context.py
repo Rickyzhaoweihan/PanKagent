@@ -145,6 +145,75 @@ def _validation(checks: Any, limits: _Limits, changes: Counter) -> list:
     return [item]
 
 
+def _focal_gene(item: Mapping, node_index: dict) -> str | None:
+    """Use the requested verified gene, never a hub guessed from an excerpt."""
+    scope = item.get("requested_scope") or {}
+    constraints = scope.get("constraints") or []
+    resolved = item.get("resolved_entities") or []
+    release = item.get("graph_version")
+    identities = set()
+    for index, constraint in enumerate(constraints):
+        if constraint.get("entity_type") != "Gene" or constraint.get("property") not in {"id", "name"}:
+            continue
+        if (constraint.get("operator", "=") != "=" or constraint.get("owner_kind", "node") != "node"
+                or constraint.get("relationship_type") or not isinstance(constraint.get("value"), str)):
+            return None
+        records = [record for record in resolved if record.get("constraint_index") == index]
+        if records:
+            if len(records) != 1:
+                return None
+            record = records[0]
+            requested = record.get("requested") or {}
+            if (record.get("state") != "resolved" or record.get("graph_version") != release
+                    or record.get("entity_type") != "Gene" or not isinstance(record.get("id"), str)
+                    or any(requested.get(key) != constraint.get(key) for key in ("entity_type", "property", "value"))
+                    or requested.get("operator", "=") != constraint.get("operator", "=")):
+                return None
+            identifier = record["id"]
+            if constraint["property"] == "id" and constraint["value"] != identifier:
+                return None
+        else:
+            # An exact requested node ID also has a lossless proof in the full
+            # returned node list. A name alone needs an actual resolver record.
+            if constraint["property"] != "id":
+                return None
+            identifier = constraint["value"]
+        if "Gene" not in (node_index.get(identifier, {}).get("labels") or []):
+            return None
+        identities.add(identifier)
+    return next(iter(identities)) if len(identities) == 1 else None
+
+
+def _interaction_totals(item: Mapping, edges: list, node_index: dict, coverage: Mapping) -> dict:
+    """Counts from all retrieved physical interactions before any sampling.
+
+    Incoming and outgoing endpoints form one partner set. Repeated experiments
+    remain separate records, but neither the focal gene nor a self-interaction
+    increases the partner count. Unverified identities do not acquire a total.
+    """
+    records = [edge for edge in edges if edge.get("type") == "PHYSICAL_INTERACTION"]
+    focal = _focal_gene(item, node_index)
+    result = {"focal_gene_id": focal, "unique_partner_genes": None,
+              "count_scope": "all_retrieved_records_before_excerpt_selection",
+              "complete_for_requested_scope": False}
+    if focal is None:
+        result["partner_count_state"] = "focal_gene_not_uniquely_verified"
+        return result
+    incident = [edge for edge in records if focal in {str(edge["start_id"]), str(edge["end_id"])}]
+    partners = {str(edge[key]) for edge in incident for key in ("start_id", "end_id")} - {focal}
+    verified = all("Gene" in (node_index.get(identifier, {}).get("labels") or []) for identifier in partners)
+    complete = bool(item.get("status") in {"complete", "empty"} and item.get("truncated") is False
+                    and coverage.get("query_scope", {}).get("complete_for_requested_scope") is True
+                    and coverage.get("query_scope", {}).get("constraints") == (item.get("requested_scope") or {}).get("constraints")
+                    and len(incident) == len(records) and verified)
+    result.update(unique_partner_genes=len(partners) if verified else None,
+                  unique_partner_entities=len(partners), focal_interaction_records=len(incident),
+                  self_interaction_records=sum(str(edge["start_id"]) == str(edge["end_id"]) == focal for edge in incident),
+                  partner_count_state="verified_from_full_retrieved_records" if verified else "partner_gene_labels_unverified",
+                  complete_for_requested_scope=complete)
+    return result
+
+
 def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict) -> dict:
     changes = Counter()
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
@@ -209,6 +278,12 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
             "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
             for kind in sorted({e.get("type") or "unknown" for e in edges})},
     }
+    if "PHYSICAL_INTERACTION" in entry["evidence_totals"]["relationships"]:
+        all_nodes = {identifier: node for (release, identifier), node in node_context.items()
+                     if release == str(item.get("graph_version", ""))}
+        all_nodes.update(full_node_index)
+        entry["evidence_totals"]["relationships"]["PHYSICAL_INTERACTION"].update(
+            _interaction_totals(item, edges, all_nodes, entry["evidence_coverage"]))
     entry["context_counts"] = {
         "full_nodes_selected": len(sampled_nodes), "endpoint_stubs": stubs,
         "edges_selected": len(sampled_edges), "rows_selected": len(entry["rows"]),
@@ -278,7 +353,7 @@ def scientific_excerpt(compact):
         entry=clean(item)
         entry['answer_evidence_scope']={
             'individual_records_are_selected_examples':bool(item.get('context_sampled')),
-            'authoritative_totals':'Use the recorded full counts and donor_summary totals.',
+            'authoritative_totals':'Use evidence_totals and donor_summary. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
             'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
             'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
             'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}

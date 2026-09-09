@@ -381,3 +381,174 @@ def test_source_identity_change_cannot_fall_back_to_a_stale_catalog(changed_fiel
         assert 'private connection details' not in json.dumps(second)
         assert 'ENSG00000138031' not in json.dumps(second)
     asyncio.run(run())
+
+
+def contextual_graph():
+    graph = FakeGraph()
+    graph.rows['Gene'].extend([
+        {'id': 'ENSG00000102575', 'name': 'ACP5', 'synonyms': ['HPAP'], 'labels': ['Gene']},
+        {'id': 'ENSG00000120370', 'name': 'GORAB', 'synonyms': ['GO'], 'labels': ['Gene']},
+        {'id': 'ENSG00000170827', 'name': 'CELP', 'synonyms': ['CELL'], 'labels': ['Gene']},
+        {'id': 'ENSG00000164935', 'name': 'DCSTAMP', 'synonyms': ['FIND'], 'labels': ['Gene']},
+        {'id': 'ENSG00000198523', 'name': 'PLN', 'labels': ['Gene']},
+        {'id': 'novel-gene', 'name': 'UNSEEN', 'synonyms': ['newAlias7'], 'labels': ['Gene']},
+    ])
+    graph.rows['GO_term'] = [
+        {'id': 'GO:0008150', 'name': 'biological_process', 'go_domain': 'biological_process', 'labels': ['GO_term']},
+        {'id': 'go-pathway', 'name': 'Focal adhesion', 'go_domain': 'cellular_component', 'labels': ['GO_term']},
+    ]
+    return graph
+
+
+@pytest.mark.parametrize('question,alias,role', [
+    ('How many HPAP donors have stage-3 T1D?', 'hpap', 'recorded_dataset_source'),
+    ('Find HPAP donors with spleen standalone scRNA-seq only.', 'find', 'request_verb'),
+    ('Please find CFTR expression', 'find', 'request_verb'),
+    ('Can you find CFTR expression?', 'find', 'request_verb'),
+    ('What biological-process GO annotations are recorded for CFTR?', 'go', 'ontology_vocabulary'),
+    ('Count single-cell RNA-seq samples for HPAP.', 'single-cell', 'assay_vocabulary'),
+    ('Compare cell types where CFTR is expressed.', 'cell', 'entity_class_vocabulary'),
+])
+def test_context_words_do_not_become_gene_anchors_but_preserve_catalog_provenance(question, alias, role):
+    mentions = make_index(contextual_graph()).match(question)
+    mention = next(m for m in mentions if m['requested'] == alias)
+    assert mention['state'] == 'incidental'
+    assert mention['candidates'] == []
+    assert mention['incidental_candidates'][0]['entity_type'] == 'Gene'
+    assert mention['context_role']['kind'] == role
+
+
+@pytest.mark.parametrize('alias,id', [('HPAP', 'ENSG00000102575'), ('GO', 'ENSG00000120370'), ('FIND', 'ENSG00000164935'), ('CELL', 'ENSG00000170827'), ('PLN', 'ENSG00000198523')])
+def test_explicit_gene_roles_preserve_real_ambiguous_word_aliases(alias, id):
+    mentions = make_index(contextual_graph()).match('Show gene ' + alias + ' expression in donor samples.')
+    assert id in candidate_ids(mentions)
+    mention = next(m for m in mentions if any(c['id'] == id for c in m['candidates']))
+    assert mention['state'] == 'resolved'
+
+
+def test_new_gene_like_alias_is_not_suppressed_by_a_general_sample_question():
+    matches = make_index(contextual_graph()).match('Is newAlias7 expressed in HPAP donor samples?')
+    assert 'novel-gene' in candidate_ids(matches)
+    assert 'ENSG00000102575' not in candidate_ids(matches)
+
+
+@pytest.mark.parametrize('wording', ['pancreatic lymph node (PLN)', 'PLN (pancreatic lymph node)'])
+def test_user_parenthetical_expansion_disambiguates_tissue_from_same_named_gene(wording):
+    matches = make_index(contextual_graph()).match('How many ' + wording + ' samples have RNA?')
+    assert candidate_ids(matches) == {'UBERON_0015865'}
+    assert any(any(c['id'] == 'ENSG00000198523' for c in m.get('incidental_candidates', [])) for m in matches)
+    assert all(m['state'] == 'resolved' for m in matches)
+
+
+def test_unexpanded_cross_type_pln_stays_ambiguous():
+    mention = make_index(contextual_graph()).match('PLN')[0]
+    assert mention['state'] == 'ambiguous'
+    assert candidate_ids([mention]) == {'UBERON_0015865', 'ENSG00000198523'}
+
+
+def test_domain_phrase_is_a_property_scope_not_ontology_root_identity():
+    mentions = make_index(contextual_graph()).match('What biological-process GO annotations are recorded for CFTR?')
+    mention = next(m for m in mentions if m['requested'] == 'biological process')
+    assert mention['state'] == 'incidental'
+    assert mention['context_role']['canonical_binding'] == {'entity_type': 'GO_term', 'property': 'go_domain', 'value': 'biological_process'}
+    exact = make_index(contextual_graph()).match('Describe GO:0008150')
+    assert 'GO:0008150' in candidate_ids(exact)
+
+
+def test_fgsea_uses_only_release_supported_pathway_collections_without_discarding_provenance():
+    matches = make_index(contextual_graph()).match('What fGSEA evidence is recorded for Focal adhesion?')
+    mention = next(m for m in matches if m['requested'] == 'focal adhesion')
+    assert candidate_ids([mention]) == {'hsa_04510', 'reactome-example'}
+    assert mention['state'] == 'ambiguous'  # Both supported collections remain.
+    assert mention['incidental_candidates'][0]['id'] == 'go-pathway'
+    graph = contextual_graph()
+    graph.rows['reactome'] = []
+    mention = next(m for m in make_index(graph).match('Focal adhesion fGSEA') if m['requested'] == 'focal adhesion')
+    assert mention['state'] == 'resolved'
+    assert candidate_ids([mention]) == {'hsa_04510'}
+
+
+@pytest.mark.parametrize('question', ['What pancreatic QTL evidence links ADCY3?', 'Show pancreatic eQTL evidence for CFTR.'])
+def test_pancreatic_qtl_adjective_adds_verified_pancreas_tissue_anchor(question):
+    matches = make_index(contextual_graph()).match(question)
+    mention = next(m for m in matches if m['requested'] == 'pancreatic')
+    assert mention['state'] == 'resolved'
+    assert candidate_ids([mention]) == {'UBERON_0001264'}
+    assert mention['context_role']['kind'] == 'qtl_tissue_adjective'
+
+
+@pytest.mark.parametrize('question', ['pancreatic lymph node QTL', 'pancreatic islet QTL', 'pancreatic acinar cell QTL'])
+def test_pancreatic_adjective_cannot_override_a_more_specific_anatomy(question):
+    assert 'UBERON_0001264' not in candidate_ids(make_index(contextual_graph()).match(question))
+
+
+def test_incidental_gene_aliases_do_not_trigger_planning_scope_guard():
+    from pankagent_vnext.planning_scope import scope_issue
+    question = 'Find HPAP donors with spleen standalone scRNA-seq only.'
+    payload = asyncio.run(ground_question(contextual_graph(), question))
+    plan = {'steps': [{'id': 'one', 'relation_types': ['HAS_SAMPLE'], 'constraints': [
+        {'entity_type': 'anatomical_structure', 'property': 'id', 'value': 'UBERON_0002106'},
+        {'entity_type': 'donor', 'property': 'data_source', 'value': 'HPAP'}]}]}
+    assert scope_issue(question, payload, plan) is None
+
+
+def test_source_context_comes_from_inventory_instead_of_a_fixed_hpap_word_rule():
+    graph = contextual_graph()
+    graph.rows['Gene'].append({'id': 'new-source-alias', 'name': 'NEWGENE', 'synonyms': ['NewStudy'], 'labels': ['Gene']})
+    async def vocabulary():
+        return {'inventory_complete': True, 'sources': ['NewStudy'], 'modalities': [], 'stages': []}
+    graph.semantic_vocabulary = vocabulary
+    index = make_index(graph)
+    assert 'new-source-alias' not in candidate_ids(index.match('How many NewStudy donor samples exist?'))
+    assert 'new-source-alias' in candidate_ids(index.match('What is the expression of gene NewStudy?'))
+    ambiguous = index.match('What is NewStudy?')[0]
+    assert ambiguous['state'] == 'ambiguous'
+    assert ambiguous['context_role']['kind'] == 'dataset_source_or_gene'
+
+
+@pytest.mark.parametrize('question,relation,owner,property_name', [
+    ('What biological-process GO annotations are recorded for CFTR?', 'ASSOCIATED_WITH_GO', 'GO_term', 'go_domain'),
+    ('What pancreatic QTL evidence is recorded for ADCY3?', 'PART_OF_QTL_SIGNAL', 'Gene', 'hgnc_symbol'),
+    ('How many HPAP donors have stage-3 T1D?', 'HAS_DONOR', 'donor', 'data_source'),
+    ('How many single-cell RNA-seq samples are recorded for pancreatic lymph node (PLN)?', 'HAS_SAMPLE', 'Sample_node', 'data_modality'),
+])
+def test_planner_guidance_retains_all_selected_owned_properties_at_7000_chars(question, relation, owner, property_name):
+    from pankagent_vnext.release_schema import REGISTRY
+    payload = asyncio.run(ground_question(contextual_graph(), question))
+    text = grounding_guidance(payload, max_chars=7000)
+    assert len(text) <= 7000 and 'context exceeds' not in text
+    data = json.loads(text.split(':\n', 1)[1])
+    if 'schema' in data:
+        properties = data['schema']['relations'][relation]['properties']
+        fields = data['schema']['nodes'][owner]
+    else:
+        properties = data['relationship_properties'][relation]
+        fields = data['node_properties'][owner]
+    assert set(properties) == set(REGISTRY['relations'][relation]['properties'])
+    assert property_name in fields
+    assert 'See complete release registry' not in text
+
+
+def test_public_go_categories_are_full_scan_cached_and_grounded_to_recorded_spelling():
+    graph = contextual_graph()
+    graph.rows['GO_term'].append({'id': 'another-go', 'name': 'Test', 'go_domain': 'molecular_function', 'labels': ['GO_term']})
+    payload = asyncio.run(ground_question(graph, 'What biological-process GO annotations are recorded for CFTR?'))
+    assert payload['schema']['categories']['GO_term.go_domain'] == ['biological_process', 'cellular_component', 'molecular_function']
+    assert payload['category_metadata']['GO_term.go_domain']['state'] == 'checked'
+    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS)  # No additional query or model call.
+    assert any('n.go_domain AS go_domain' in query for query, _ in graph.calls)
+    text = grounding_guidance(payload, max_chars=7000)
+    assert 'biological_process' in text and 'molecular_function' in text
+    role = next(m['context_role'] for m in payload['mentions'] if m['requested'] == 'biological process')
+    assert role['canonical_binding']['value'] == 'biological_process'
+
+
+def test_unavailable_go_category_metadata_never_invents_a_canonical_domain():
+    graph = contextual_graph()
+    for row in graph.rows['GO_term']:
+        row.pop('go_domain')
+    payload = asyncio.run(ground_question(graph, 'What biological-process GO annotations are recorded for CFTR?'))
+    role = next(m['context_role'] for m in payload['mentions'] if m['requested'] == 'biological process')
+    assert role['resolution_state'] == 'metadata_unavailable'
+    assert 'canonical_binding' not in role
+    assert payload['schema']['categories']['GO_term.go_domain'] == []

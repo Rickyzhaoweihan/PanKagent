@@ -1097,6 +1097,8 @@ class GraphAdapter:
                 prepared['clarification'] = None
         for source in plan.get("steps") or []:
             prepared["steps"].append(await self._prepare_step(source, emit))
+        from .coloc_scope import compile_comparisons
+        prepared = compile_comparisons(prepared, self.settings.graph_version)
         if any(step.get('sample_requirements',{}).get('capability_scope_verified') and 'scRNA-seq' in group and 'snMultiomics' in group for step in prepared['steps'] for group in step.get('sample_requirements',{}).get('modality_groups',[])):
             interpretation=prepared.get('interpreted_question') or prepared['steps'][0]['question']
             note=' Include documented RNA components of HPAP multiome assays, retaining their original assay labels.'

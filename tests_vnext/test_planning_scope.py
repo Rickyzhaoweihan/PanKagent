@@ -148,3 +148,59 @@ def test_scope_guard_is_local_and_fast():
     for _ in range(100):
         assert scope_issue(QUESTION, grounding(GENE, PANCREAS), value) is None
     assert (time.monotonic() - start) / 100 < .02
+
+
+@pytest.mark.parametrize('question', ['Use islet instead of PLN.', 'Replace PLN with islet.'])
+def test_explicit_tissue_replacement_requires_new_not_old_scope(question):
+    pln = mention('PLN', 'anatomical_structure', 'UBERON_0015865')
+    islet = mention('islet', 'anatomical_structure', 'UBERON_0000006')
+    data = grounding(pln, islet)
+    wanted = plan(step(constraint('anatomical_structure', 'id', 'UBERON_0000006'), relation='HAS_SAMPLE'))
+    assert scope_issue(question, data, wanted) is None
+    old = plan(step(constraint('anatomical_structure', 'id', 'UBERON_0015865'), relation='HAS_SAMPLE'))
+    assert scope_issue(question, data, old).startswith('missing_requested_scope:tissue:islet:')
+
+
+def test_explicit_gene_replacement_keeps_other_requested_gene_and_rejects_old_only_plan():
+    nfya = mention('NFYA', 'Gene', 'ENSG00000001167')
+    gcg = mention('GCG', 'Gene', 'ENSG00000115263')
+    data = grounding(GENE, nfya, gcg)
+    question = 'Use NFYA instead of GCLC; keep GCG QTL.'
+    wanted = plan(step(constraint('Gene', 'name', 'NFYA')), step(constraint('Gene', 'name', 'GCG'), id='s2'))
+    assert scope_issue(question, data, wanted) is None
+    wanted['steps'].pop()
+    assert scope_issue(question, data, wanted).startswith('missing_requested_scope:Gene:GCG')
+
+
+def test_ambiguous_or_negated_replacement_never_suppresses_the_old_identity():
+    nfya = mention('NFYA', 'Gene', 'ENSG00000001167', state='ambiguous')
+    value = plan(step(constraint('Gene', 'name', 'NFYA')))
+    assert scope_issue('Use NFYA instead of GCLC.', grounding(GENE, nfya), value)
+    nfya['state'] = 'resolved'
+    assert scope_issue('Do not use NFYA instead of GCLC.', grounding(GENE, nfya), value)
+
+
+def test_replaced_occurrence_does_not_erase_separate_positive_scope():
+    nfya = mention('NFYA', 'Gene', 'ENSG00000001167')
+    question = 'Use NFYA instead of GCLC; separately show GCLC marker annotations.'
+    value = plan(step(constraint('Gene', 'name', 'NFYA')))
+    assert scope_issue(question, grounding(GENE, nfya), value)
+
+
+def test_one_shared_tissue_must_survive_in_each_independent_gene_check():
+    nfya = mention('NFYA', 'Gene', 'ENSG00000001167')
+    pancreatic = mention('pancreatic', 'anatomical_structure', 'UBERON_0001264', name='Pancreas')
+    question = 'Compare pancreatic QTL for GCLC and NFYA.'
+    value = plan(step(constraint('Gene', 'name', 'GCLC'), constraint(None, 'tissue_name', 'Pancreas')),
+                 step(constraint('Gene', 'name', 'NFYA'), id='nfya'))
+    assert scope_issue(question, grounding(GENE, nfya, pancreatic), value)
+    value['steps'][1]['constraints'].append(constraint(None, 'tissue_id', 'UBERON_0001264'))
+    assert scope_issue(question, grounding(GENE, nfya, pancreatic), value) is None
+
+
+def test_tissue_specific_to_one_named_gene_is_not_forced_into_other_gene():
+    nfya = mention('NFYA', 'Gene', 'ENSG00000001167')
+    question = 'Show GCLC QTL in pancreas; show NFYA QTL in any tissue separately.'
+    value = plan(step(constraint('Gene', 'name', 'GCLC'), constraint(None, 'tissue_name', 'Pancreas')),
+                 step(constraint('Gene', 'name', 'NFYA'), id='nfya'))
+    assert scope_issue(question, grounding(GENE, nfya, PANCREAS), value) is None

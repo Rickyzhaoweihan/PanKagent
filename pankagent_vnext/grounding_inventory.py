@@ -17,7 +17,7 @@ import tempfile
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST, CAPABILITIES, SOURCE
 
-VERSION = "grounding-inventory-2"
+VERSION = "grounding-inventory-3"
 PUBLIC_CATALOG_LABELS = (
     "Gene", "anatomical_structure", "disease", "GO_term", "kegg", "reactome", "data_modality",
 )
@@ -44,6 +44,8 @@ def catalog_query(label):
     fields = REGISTRY["nodes"][label]
     columns = [f"n.{field} AS {field}" if field in fields else f"null AS {field}"
                for field in ("id", "name", "synonyms", "hgnc_symbol", "hgnc_id")]
+    if label == "GO_term":
+        columns.append("n.go_domain AS go_domain")
     return f"MATCH (n:`{label}`) RETURN " + ", ".join(columns) + ", labels(n) AS labels"
 
 
@@ -85,10 +87,21 @@ async def build_inventory(graph, *, include_schema_observations=False):
         raise ValueError("grounding_registry_release_mismatch")
     identity = inventory_identity(graph)
     semaphore = asyncio.Semaphore(2)
+    public_categories = {}
+    category_metadata = {}
 
     async def one(label):
         async with semaphore:
             rows = await graph._small_query(catalog_query(label))
+        if label == "GO_term":
+            values = sorted({value for row in rows if (value := _text(row.get("go_domain")))})
+            public_categories["GO_term.go_domain"] = values
+            category_metadata["GO_term.go_domain"] = {
+                "state": "checked" if values or not rows else "metadata_unavailable",
+                "complete_scan": True, "value_count": len(values),
+                "missing_records": sum(_text(row.get("go_domain")) is None for row in rows),
+                "source": "distinct values from full public GO_term catalog scan",
+            }
         return label, [public_record(label, row) for row in rows]
 
     loaded = await asyncio.gather(*(one(label) for label in PUBLIC_CATALOG_LABELS))
@@ -126,6 +139,7 @@ async def build_inventory(graph, *, include_schema_observations=False):
              "catalog_complete": True, "catalog_labels": list(PUBLIC_CATALOG_LABELS),
              "counts": {label: len(items) for label, items in loaded}, "records": records,
              "sample_terminology": terminology,
+             "public_categories": public_categories, "category_metadata": category_metadata,
              "metadata_quality_diagnostics": {"unrecognized_donor_stage_values": invalid_stages},
              "schema_source": "reviewed_full_release_registry"}
     if include_schema_observations:
@@ -172,7 +186,8 @@ def load_inventory(path, identity):
     if (value.get("identity") != identity or not value.get("catalog_complete")
             or expected != stable_digest(body)
             or value.get("catalog_labels") != list(PUBLIC_CATALOG_LABELS)
-            or not isinstance(value.get("sample_terminology"), dict)):
+            or not isinstance(value.get("sample_terminology"), dict)
+            or not isinstance(value.get("public_categories"), dict)):
         raise ValueError("stale_or_invalid_grounding_inventory")
     return value
 

@@ -799,6 +799,13 @@ class Runtime:
                 await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
             if synthesis_started:
                 self.health.record_inference("claude", True)
+            generation = getattr(options.get('prepared'), 'generation', {})
+            if generation:
+                evidence['answer_generation'] = deepcopy(generation)
+            if generation.get('truncated'):
+                synthesis_error = {'category':'answer_output_limit',
+                                   'message':'The written answer reached its length limit before finishing. The retrieved evidence is preserved.'}
+                evidence['answer_incomplete'] = True
         except asyncio.CancelledError:
             raise
         except Exception as exc:

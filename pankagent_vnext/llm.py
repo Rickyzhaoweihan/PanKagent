@@ -2,7 +2,7 @@
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
 import anthropic
@@ -85,7 +85,7 @@ ANSWER_CONTRACT += '\nCoverage contract: evidence_coverage.query_scope records t
 
 ANSWER_CONTRACT += '\nColocalization linkage: use coloc_linkage records and their supporting_references to distinguish recorded colocalization from exact verified signal membership. A common gene or disease alone is not a shared-signal match. A requested variant can be a non-lead member of a GWAS credible set while also serving as a lead of a different molecular QTL signal; preserve those roles and signal identities. Empty or failed separately indexed GWAS/QTL checks never erase primary recorded colocalization or make it biologically absent. linked_record_count counts records with the recorded exact match rules; do not infer a match for unmatched records or claim repeated linkage summaries are independent evidence.'
 
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT).encode()).hexdigest()[:16]
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\ngrounded-synthesis-v2').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,7 @@ class PreparedAnswer:
     body: str
     system: list
     profile: dict
+    generation: dict = field(default_factory=dict)
 
 
 def plan_structure_issue(plan):
@@ -268,6 +269,13 @@ class ClaudeGateway:
         system.append({'type':'text','text':ANSWER_CONTRACT})
         if any(step.get('donor_summary',{}).get('unique_donors') for step in evidence.values()):
             system.append({'type':'text','text':'For this nonempty donor cohort, start with the number of donors matching the approved scope, including documented assay capabilities. Explain the exact assay-label distinction afterward. Do not open with No donors when the approved capability search returned matching donors. Preserve all counts, provenance and file-availability caveats.'})
+        primary_count=sum(step.get('purpose') != 'context' for step in evidence.values())
+        profile['answer_budget']={'max_output_tokens':2400 if primary_count >= 3 else 1600,
+                                 'primary_checks':primary_count}
+        if primary_count >= 3:
+            system.append({'type':'text','text':'For this multi-check answer, cover every requested category concisely under at most three short headings. Use at most FOUR illustrative table rows in the ENTIRE answer, never a row for every returned cell or partner. Prefer one or two sentences per category with its source reference; aim for 350–450 words. Use authoritative full-result evidence_totals for counts. Never infer a total unique-partner count from visible example rows or from only start/end endpoint counts. Omit a count if its correct denominator is unavailable. Leave exhaustive records to the existing graph and downloads.'})
+        if any(edge.get('type') == 'PART_OF_QTL_SIGNAL' for step in evidence.values() for edge in step.get('edges', [])):
+            system.append({'type':'text','text':'QTL terminology for these records: a source name such as GTEx or INSPIRE alone is not a molecular-phenotype definition. Use molecular QTL unless an explicit recorded class or supplied verified subtype mapping identifies expression, splicing, or exon QTL. A generic slope does not establish an expression-unit effect. Do not label a generic QTL as eQTL in the opening sentence and then disclaim the subtype later.'})
         return PreparedAnswer(body,system,profile)
 
     async def synthesize(self,question,evidence,*,prepared=None):
@@ -279,10 +287,11 @@ class ClaudeGateway:
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         prepared=prepared or self.prepare_answer(question,evidence)
         body=prepared.body
-        rid=self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,1600)
+        output_limit=prepared.profile.get('answer_budget',{}).get('max_output_tokens',1600)
+        rid=self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,output_limit)
         scope_filter = ScopeTextFilter(evidence)
         try:
-            async with self.client.messages.stream(model=self.settings.model,max_tokens=1600,
+            async with self.client.messages.stream(model=self.settings.model,max_tokens=output_limit,
                 system=prepared.system,
                 messages=[{'role':'user','content':body}],**self._options()) as stream:
                 async for text in stream.text_stream:
@@ -294,6 +303,10 @@ class ClaudeGateway:
                 self.budget.settle(rid,{})
             raise
         self.budget.settle(rid,final.usage.model_dump()); self.last_success=time.time()
+        prepared.generation.update(stop_reason=final.stop_reason,
+                                   truncated=final.stop_reason=='max_tokens',
+                                   max_output_tokens=output_limit)
+        provider_event('answer_generation', dict(prepared.generation))
         tail = scope_filter.feed('', final=True)
         if tail: yield tail
         provider_event('answer_scope_validation', {'scope': 'known_cell_search_contradictions_only', 'corrections': scope_filter.corrections})
