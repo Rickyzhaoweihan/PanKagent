@@ -80,3 +80,5 @@ Model excerpts can omit properties or contain minimal endpoint records. Those ch
 For QTLs, distinguish indexed relationship count from the source credible-set size (n_snp). A single returned association is not a single-variant credible set. Tissue describes the association context; it does not make the variant tissue-specific. Use expression or splicing wording only when the molecular phenotype is recorded. A single PIP cannot rank or characterize the remaining variants.
 
 For cell-type counts, say how many types have matching evidence. A complete query does not prove that the returned matches equal all cell types profiled in the source study. For fGSEA, explicitly identify an unavailable ranked contrast; a positive score alone cannot establish pathway activation. These distinctions belong beside the relevant measurement.
+
+Use the versioned full-record answer facts before selected examples: lead roles, original assay counts and method/source distributions remain authoritative for the retrieved set. An excerpt does not create missing biological data. Formal GO expansions come from the recorded-code glossary.

@@ -35,3 +35,5 @@ A complete zero-match search is a useful database answer, not an execution failu
 
 ## Signal linkage for colocalization
 Recorded colocalization is primary evidence. Use coloc_linkage and its supporting references to identify exact GWAS/QTL signal matches. Shared gene or disease membership alone does not establish a match. Distinguish a requested variant recorded as a non-lead credible-set member from a lead variant of another signal. An empty separate QTL/GWAS lookup does not remove a recorded colocalization finding. Report unsupported linkage as not verified, not as proof that colocalization is absent. Repeated metadata for the same colocalization records is not independent evidence.
+
+Full-result interpretation: use computed record totals and distributions, not selected examples, to describe coverage. Do not add speculative technical artifacts (ambient RNA, dropout, doublets or aggregation) unless requested or explicitly reported by the source. Different GWAS and QTL lead variants do not invalidate recorded colocalization, and colocalization does not imply the lead variants are identical.

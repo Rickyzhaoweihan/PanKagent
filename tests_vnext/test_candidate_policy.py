@@ -54,7 +54,7 @@ class CandidatePolicyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["status"] for item in attempts], ["completed", "cancelled"])
         self.assertTrue(all("elapsed_ms" in item for item in attempts))
 
-    async def test_separate_batches_share_two_permits(self):
+    async def test_separate_batches_share_four_permits(self):
         active, peak = 0, 0
         release, two_active = asyncio.Event(), asyncio.Event()
 
@@ -62,7 +62,7 @@ class CandidatePolicyTests(unittest.IsolatedAsyncioTestCase):
             nonlocal active, peak
             active += 1
             peak = max(peak, active)
-            if active == 2:
+            if active == 4:
                 two_active.set()
             try:
                 await release.wait()
@@ -76,16 +76,16 @@ class CandidatePolicyTests(unittest.IsolatedAsyncioTestCase):
 
         one, two = asyncio.create_task(consume("one")), asyncio.create_task(consume("two"))
         await asyncio.wait_for(two_active.wait(), 1)
-        self.assertEqual(active, 2)
+        self.assertEqual(active, 4)
         release.set()
         result = await asyncio.gather(one, two)
-        self.assertEqual(peak, 2)
+        self.assertEqual(peak, 4)
         self.assertEqual(len(result[0]) + len(result[1]), 4)
 
     async def test_deadline_includes_waiting_for_shared_capacity(self):
         slots = generation_slots()
-        await slots.acquire()
-        await slots.acquire()
+        for _ in range(4):
+            await slots.acquire()
         calls = []
 
         async def generate(question, n):
@@ -96,8 +96,8 @@ class CandidatePolicyTests(unittest.IsolatedAsyncioTestCase):
             async with CandidateBatch(generate, "scope", 1, timeout=.02) as batch:
                 outcomes = [outcome async for outcome in batch]
         finally:
-            slots.release()
-            slots.release()
+            for _ in range(4):
+                slots.release()
         self.assertEqual(calls, [])
         self.assertEqual(outcomes[0].attempt["status"], "timeout")
         self.assertIsInstance(outcomes[0].error, TimeoutError)

@@ -59,6 +59,8 @@ def test_ambiguous_owner_gets_one_precise_repair_and_no_false_plan():
         def invalid(_):
             raw = proposal()
             raw['steps'][0]['constraints'][2]['entity_type'] = None
+            raw['steps'][0]['constraints'][2]['property'] = 'data_version'
+            raw['steps'][0]['constraints'][2]['value'] = 'unscoped release'
             return raw
         gateway, calls = gateway_for(invalid)
         result = await gateway.plan(QUESTION, [], grounding=GROUNDING)

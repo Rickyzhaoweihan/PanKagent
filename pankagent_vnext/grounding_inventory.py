@@ -17,10 +17,13 @@ import tempfile
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST, CAPABILITIES, SOURCE
 
-VERSION = "grounding-inventory-3"
+VERSION = "grounding-inventory-4"
 PUBLIC_CATALOG_LABELS = (
     "Gene", "anatomical_structure", "disease", "GO_term", "kegg", "reactome", "data_modality",
 )
+ANNOTATION_SOURCE_QUERY = (
+    "MATCH ()-[r:`FUNCTION_ANNOTATION`]->() RETURN collect(DISTINCT r.data_source) AS values, "
+    "count(r) AS record_count, count(r.data_source) AS valued_records")
 
 
 def stable_digest(value):
@@ -104,7 +107,32 @@ async def build_inventory(graph, *, include_schema_observations=False):
             }
         return label, [public_record(label, row) for row in rows]
 
-    loaded = await asyncio.gather(*(one(label) for label in PUBLIC_CATALOG_LABELS))
+    async def annotation_sources():
+        key = "FUNCTION_ANNOTATION.data_source"
+        try:
+            async with semaphore:
+                rows = await graph._small_query(ANNOTATION_SOURCE_QUERY)
+            row = rows[0] if isinstance(rows, list) and len(rows) == 1 else {}
+            raw = row.get("values")
+            total, valued = row.get("record_count"), row.get("valued_records")
+            valid = (isinstance(raw, list) and all(_text(value) == value for value in raw)
+                     and type(total) is int and type(valued) is int and 0 <= valued <= total
+                     and (bool(raw) == bool(valued)))
+            if not valid:
+                raise ValueError("invalid_annotation_source_inventory")
+            values = sorted(set(raw))
+            public_categories[key] = values
+            category_metadata[key] = {"state": "checked", "complete_scan": True,
+                "value_count": len(values), "record_count": total, "missing_records": total - valued,
+                "source": "distinct values from full FUNCTION_ANNOTATION relationship scan"}
+        except Exception:
+            # Optional public metadata failure cannot supply invented categories.
+            public_categories[key] = []
+            category_metadata[key] = {"state": "metadata_unavailable", "complete_scan": False,
+                                      "value_count": 0}
+
+    loaded = await asyncio.gather(*(one(label) for label in PUBLIC_CATALOG_LABELS), annotation_sources())
+    loaded = loaded[:-1]
     records = [record for _, items in loaded for record in items]
     # A duplicated ID across collections remains separate for ambiguity review.
     records.sort(key=lambda record: (record["entity_type"], record["id"], record["name"]))

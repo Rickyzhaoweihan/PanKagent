@@ -75,7 +75,10 @@ def test_compact_generator_task_uses_canonical_bindings_without_query_template_o
     assert 'pp_h4_abf' in text and 'full relationship objects' in text
     assert not any(word in text for word in ('PART_OF_GWAS_SIGNAL', 'PART_OF_QTL_SIGNAL', 'GWAS_signal', 'QTL_signal', 'MATCH ', 'RETURN '))
     from pankagent_vnext.graph_contract import generation_request
-    assert generation_request(step, step['question']) == text
+    generated = generation_request(step, step['question'])
+    assert generated.startswith(text)
+    assert 'absent membership must not remove primary coloc' in generated
+    assert len(generated) <= 1500
 
 
 @pytest.mark.parametrize('change', ['extra_filter', 'other_relation', 'ranking', 'dependency', 'incomplete', 'stale', 'no_scope'])

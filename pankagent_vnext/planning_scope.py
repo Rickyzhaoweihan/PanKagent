@@ -14,7 +14,7 @@ from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES
 
-VERSION = 'grounded-requested-scope-v4'
+VERSION = 'grounded-requested-scope-v5'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 _GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
 _TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
@@ -136,8 +136,12 @@ def _direct_tissue(words, spans):
 
 
 def _tissue_present(step, candidate, forms, relation):
-    if _identity_present(step, candidate, forms):
-        return True  # The typed compiler verifies anatomy -> QTL tissue_id.
+    for constraint in step.get('constraints', []):
+        if (constraint.get('entity_type') == 'anatomical_structure'
+                and constraint.get('property') in {'id', 'name'}):
+            values = _values(constraint)
+            if values and all(_same(value, forms) for value in values):
+                return True  # Typed compiler verifies anatomy -> QTL tissue_id.
     if relation != 'PART_OF_QTL_SIGNAL':
         return False
     for constraint in step.get('constraints', []):
@@ -146,7 +150,8 @@ def _tissue_present(step, candidate, forms, relation):
         prop = constraint.get('property')
         if prop not in {'tissue', 'tissue_id', 'tissue_name'}:
             continue
-        if any(_same(value, forms) for value in _values(constraint)):
+        values = _values(constraint)
+        if values and all(_same(value, forms) for value in values):
             return True
     return False
 
@@ -167,6 +172,14 @@ def _shared_qtl_tissue(words, spans, gene_starts):
         if end > first_gene:
             continue
         if end < len(words) and re.fullmatch(qtl, words[end]):
+            return True
+        # A fronted locative owns the QTL phrase before any named gene.
+        # Independent tissue/sample clauses do not satisfy this compact form.
+        prefix = words[:start]
+        middle = words[end:first_gene]
+        if (prefix in {('in',), ('within',), ('from',), ('across',)}
+                and any(re.fullmatch(qtl, word) for word in middle)
+                and not set(middle) & {'sample', 'samples', 'pathway', 'pathways', 'donor', 'donors'}):
             return True
         prefix = " ".join(words[max(0, start - 7):start])
         if re.search(r"\b" + qtl + r"(?: (?:evidence|signals?|data|associations?|results?|records?)){0,2} (?:in|within|from|across)(?: (?:the|human)){0,2}$", prefix):

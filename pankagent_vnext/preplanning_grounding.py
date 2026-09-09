@@ -222,9 +222,17 @@ class EntityIndex:
                               and not (index <= start and end >= stop)), None)
             if qualified:
                 start, stop, term = qualified
-                mention.update(state="qualified", requested=term, identity_complete=False,
-                               unmatched_qualifier=" ".join(words[max(end, start):stop]),
-                               qualification_rule="Only part of this compound label matched. Keep the entire requested qualifier; the candidate ID is a possible broader anchor, not a full identity resolution. Use a verified full alias or preserve the qualifier as a separate sample/entity constraint.")
+                association_role = (len(matches) == 1 and matches[0]['entity_type'] == 'disease'
+                    and start == index and words[end:stop] == ('associated',)
+                    and bool(set(words[stop:stop+4]) & {'gwas', 'association', 'associations', 'signal', 'signals'}))
+                if association_role:
+                    mention.update(identity_complete=True, qualified_surface=term,
+                        context_role={'kind':'disease_association', 'qualifier':'associated',
+                            'rule':'The disease identity is complete; associated describes the requested genetic evidence relationship and remains part of the question scope.'})
+                else:
+                    mention.update(state="qualified", requested=term, identity_complete=False,
+                                   unmatched_qualifier=" ".join(words[max(end, start):stop]),
+                                   qualification_rule="Only part of this compound label matched. Keep the entire requested qualifier; the candidate ID is a possible broader anchor, not a full identity resolution. Use a verified full alias or preserve the qualifier as a separate sample/entity constraint.")
                 end = max(end, stop)
             found.append(mention)
             index = end  # Longest matching phrase wins; avoids nested PLN/organ aliases.
@@ -420,7 +428,7 @@ class Grounder:
                            "Do not silently remove a filter, invent an identity, or turn unavailable grounding into zero matches."],
                  "latency_ms": round((time.monotonic() - start) * 1000, 2)}
         for owner_property, values in index.public_categories.items():
-            if owner_property.split(".")[0] in value["schema"]["nodes"]:
+            if owner_property.split(".")[0] in set(value["schema"]["nodes"]) | set(value["schema"]["relations"]):
                 value["schema"]["categories"][owner_property] = deepcopy(values)
                 value.setdefault("category_metadata", {})[owner_property] = deepcopy(index.category_metadata.get(owner_property, {}))
         if vocabulary is not None:

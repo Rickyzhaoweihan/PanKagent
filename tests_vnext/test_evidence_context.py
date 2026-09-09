@@ -311,7 +311,7 @@ def test_scientific_excerpt_hides_presentation_markers_without_erasing_source_mi
                   {'id': 'd2', 'labels': ['donor'], 'properties': {'id': 'd2', 'recorded_measurement': 2.5}}],
         'context_sampled': True}]
     before = copy.deepcopy(source)
-    result = scientific_excerpt(source)
+    result = scientific_excerpt(source, include_donor_details=True)
     assert source == before
     assert source[0]['nodes'][0]['endpoint_stub'] is True
     assert len(source[0]['nodes']) == len(result[0]['nodes']) == 2

@@ -4,6 +4,7 @@ These checks produce repair feedback; they never rewrite a proposal or turn a
 failed search into absence. Ordinary free-form revisions remain with planning.
 """
 from collections import Counter
+from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
@@ -12,7 +13,7 @@ import re
 from .preplanning_grounding import phrase_tokens, explicit_non_go_annotation_scope
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = 'grounded-plan-requirements-v1'
+VERSION = 'grounded-plan-requirements-v2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 
@@ -297,4 +298,175 @@ def requirements_issue(question, grounding, plan, history=None):
             return issue
     if explicit_non_go_annotation_scope(question) and any('ASSOCIATED_WITH_GO' in step.get('relation_types', []) for step in steps):
         return 'unrequested_evidence_category:ASSOCIATED_WITH_GO:explicit_pathway_or_marker_annotation_scope'
+    source_issue = _pathway_source_issue(question, grounding, plan)
+    if source_issue:
+        return source_issue
     return _replacement_issue(grounding, plan, history)
+
+
+def _pathway_sources(question, grounding):
+    """Return explicit per-gene resource roles, backed by recorded categories."""
+    available = grounding.get('schema', {}).get('categories', {}).get('FUNCTION_ANNOTATION.data_source', [])
+    # Resource names must also be typed endpoints in this release. A label alone
+    # never establishes the spelling/value of a data_source property.
+    sources = {value for value in available if isinstance(value, str)
+               and value.casefold() in {'reactome', 'kegg'}
+               and any(value.casefold() in path['target'] for path in REGISTRY['relations']['FUNCTION_ANNOTATION']['paths'])}
+    words = phrase_tokens(question)
+    requested_names = set(words) & {'reactome', 'kegg'}
+    if not requested_names:
+        return {}, None
+    if not requested_names <= {value.casefold() for value in sources}:
+        return {}, 'requested_source_inventory_unavailable:FUNCTION_ANNOTATION.data_source'
+    records = _records(grounding, {})
+    gene_forms = {identifier: forms for (kind, identifier), forms in records.items() if kind == 'Gene'}
+
+    def inspect(text):
+        tokens = phrase_tokens(text)
+        genes = {identifier for identifier, forms in gene_forms.items()
+                 if any(tokens[i:i + len(form)] == form for form in forms if form
+                        for i in range(len(tokens) - len(form) + 1))}
+        named = {value for value in sources if value.casefold() in tokens}
+        evidence = bool(named or set(tokens) & {'go', 'pathway', 'pathways', 'qtl', 'eqtl', 'sqtl', 'marker', 'markers'})
+        return genes, named, evidence
+
+    def clauses(text):
+        for separator in re.finditer(r'[;.!?\n]|,|\b(?:and|while|whereas)\b', text, re.I):
+            left, right = text[:separator.start()], text[separator.end():]
+            lg, _, le = inspect(left)
+            rg, _, revidence = inspect(right)
+            if lg and le and rg and revidence:
+                return clauses(left) + clauses(right)
+        return [text]
+
+    expected = {}
+    for clause in clauses(str(question)):
+        genes, named, _ = inspect(clause)
+        if not named:
+            continue
+        if re.search(r'\b(?:not|except|excluding|without|other than)\b', clause, re.I):
+            return {}, 'ambiguous_requested_source_scope:preserve_explicit_source_exclusion'
+        if not genes:
+            continue  # Unresolved identities cannot authorize a new predicate.
+        for gene in genes:
+            if gene in expected and expected[gene] != frozenset(named):
+                return {}, 'ambiguous_requested_source_scope:separate_each_gene_source'
+            expected[gene] = frozenset(named)
+    return expected, None
+
+
+def _step_gene_ids(step, grounding):
+    records = _records(grounding, {})
+    predicates = [{identifier for value in _values(c)
+                   if (identifier := _identity(value, 'Gene', records))}
+                  for c in step.get('constraints', []) if c.get('entity_type') == 'Gene'
+                  and c.get('property') in {'id', 'name'} and c.get('operator', '=') in {'=', 'IN'}]
+    return set.intersection(*predicates) if predicates else set()
+
+
+def _source_predicates(step):
+    return [c for c in step.get('constraints', []) if c.get('property') == 'data_source'
+            and (not c.get('entity_type') and c.get('relationship_type') in {None, 'FUNCTION_ANNOTATION'}
+                 or c.get('entity_type') in {'reactome', 'kegg', 'ontology'})]
+
+
+def _pathway_source_issue(question, grounding, plan):
+    expected, issue = _pathway_sources(question, grounding)
+    if issue or not expected:
+        return issue
+    observed = {gene: set() for gene in expected}
+    for step in plan.get('steps', []):
+        if 'FUNCTION_ANNOTATION' not in step.get('relation_types', []):
+            continue
+        ids = _step_gene_ids(step, grounding) & expected.keys()
+        if not ids:
+            continue
+        predicates = _source_predicates(step)
+        positive = [set(_values(c)) for c in predicates if c.get('operator', '=') in {'=', 'IN'}]
+        actual = set.intersection(*positive) if positive else set()
+        excluded = {value for c in predicates if c.get('operator') in {'!=', '<>', 'NOT IN'} for value in _values(c)}
+        actual -= excluded
+        for gene in ids:
+            if not actual or not actual <= expected[gene]:
+                return f'missing_requested_source_scope:{step.get("id", "step")}:FUNCTION_ANNOTATION.data_source:{"|".join(sorted(expected[gene]))}'
+            observed[gene].update(actual)
+    if any(observed[gene] != wanted for gene, wanted in expected.items()):
+        return 'missing_requested_source_scope:FUNCTION_ANNOTATION.data_source'
+    return None
+
+
+def compile_requested_scope(question, grounding, plan):
+    """Fill only explicit, uniquely grounded scopes before admission.
+
+    Original predicates and exact raw wording remain in a compile audit. This
+    can remove an unrequested alternative from a positive IN predicate; it
+    never removes a negative constraint or unrelated scientific filter.
+    """
+    result = deepcopy(plan)
+    if (not isinstance(grounding, dict) or grounding.get('status') != 'ready'
+            or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']
+            or result.get('clarification')):
+        return result, None
+
+    def bind(step, predicate, existing, proof):
+        if any(c.get('operator', '=') not in {'=', 'IN'} for c in existing):
+            return 'conflicting_requested_scope:' + predicate['property']
+        if len(existing) == 1 and existing[0] == predicate:
+            return None
+        original = deepcopy(existing)
+        step['constraints'] = [c for c in step.get('constraints', []) if c not in existing] + [predicate]
+        step.setdefault('requested_scope_compilation', []).append({
+            'version': VERSION, 'graph_release': REGISTRY['release'], 'schema_digest': SCHEMA_DIGEST,
+            'raw_question': question, 'original_predicates': original,
+            'canonical_binding': deepcopy(predicate), 'proof': proof})
+        return None
+
+    sources, issue = _pathway_sources(question, grounding)
+    if issue:
+        return result, issue
+    for step in result.get('steps', []):
+        if 'FUNCTION_ANNOTATION' not in step.get('relation_types', []):
+            continue
+        ids = _step_gene_ids(step, grounding) & sources.keys()
+        if not ids:
+            continue
+        scopes = {sources[gene] for gene in ids}
+        if len(scopes) != 1 or step.get('relation_types') != ['FUNCTION_ANNOTATION']:
+            return result, 'ambiguous_requested_source_scope:separate_annotation_checks'
+        wanted = sorted(scopes.pop())
+        predicate = {'property': 'data_source', 'entity_type': None, 'relationship_type': 'FUNCTION_ANNOTATION',
+                     'owner_kind': 'relationship', 'operator': '=' if len(wanted) == 1 else 'IN',
+                     'value': wanted[0] if len(wanted) == 1 else json.dumps(wanted)}
+        issue = bind(step, predicate, _source_predicates(step),
+                     {'kind': 'explicit_recorded_pathway_source', 'gene_ids': sorted(ids), 'recorded_values': wanted})
+        if issue:
+            return result, issue
+
+    from .planning_scope import _mentions, _direct_tissue, _shared_qtl_tissue
+    words, mentions, _ = _mentions(question, grounding)
+    tissues = [(candidate, spans) for _, candidate, _, spans in mentions
+               if candidate['entity_type'] == 'anatomical_structure' and _direct_tissue(words, spans)]
+    unique = {candidate['id']: (candidate, spans) for candidate, spans in tissues}
+    gene_starts = [start for _, c, _, spans in mentions if c['entity_type'] == 'Gene' for start, _ in spans]
+    gene_ids = {c['id'] for _, c, _, _ in mentions if c['entity_type'] == 'Gene'}
+    if len(unique) != 1 or not gene_ids or not re.search(r'\b(?:e|s|exon)?qtls?\b', question, re.I):
+        return result, None
+    candidate, spans = next(iter(unique.values()))
+    if (candidate['id'] not in REGISTRY['categories'].get('PART_OF_QTL_SIGNAL.tissue_id', [])
+            or len(gene_ids) > 1 and not _shared_qtl_tissue(words, spans, gene_starts)
+            or re.search(r'\b(?:not|except|excluding|without|other than)\b', question, re.I)):
+        return result, None
+    for step in result.get('steps', []):
+        if (step.get('relation_types') != ['PART_OF_QTL_SIGNAL'] or step.get('depends_on')
+                or not _step_gene_ids(step, grounding) & gene_ids):
+            continue
+        existing = [c for c in step.get('constraints', [])
+                    if (not c.get('entity_type') and c.get('property') in {'tissue', 'tissue_id', 'tissue_name'}
+                        and c.get('relationship_type') in {None, 'PART_OF_QTL_SIGNAL'})
+                    or (c.get('entity_type') == 'anatomical_structure' and c.get('property') in {'id', 'name'})]
+        predicate = {'property': 'tissue_id', 'entity_type': None, 'relationship_type': 'PART_OF_QTL_SIGNAL',
+                     'owner_kind': 'relationship', 'operator': '=', 'value': candidate['id']}
+        issue = bind(step, predicate, existing, {'kind': 'explicit_unique_qtl_tissue', 'resolved_tissue': deepcopy(candidate)})
+        if issue:
+            return result, issue
+    return result, None

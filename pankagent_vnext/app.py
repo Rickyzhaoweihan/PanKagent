@@ -289,7 +289,11 @@ class Runtime:
                     proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run), **plan_options), self.settings.plan_timeout)
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
                     self.check_active(run_id)
-                    self.health.record_inference("claude", True)
+                    if proposed.get('planning_route', {}).get('claude_calls') == 0:
+                        self.metrics.count('planning_model_bypassed')
+                        self.store.audit_event(run_id, 'planning_model_bypassed', proposed['planning_route'])
+                    else:
+                        self.health.record_inference("claude", True)
                     claude_pending = False
                 from .plan_recovery import recover_empty_plan
                 proposed = await recover_empty_plan(self.gateway, proposed, run["question"], self.planning_history(run), self.settings.plan_timeout, grounding=grounding)
@@ -340,6 +344,22 @@ class Runtime:
                     self.metrics.count("plans_query_blocked")
                     return
                 plan = current["plan"]
+                if plan.get('planning_route', {}).get('kind') in {'verified_signal_pattern', 'verified_schema_pattern'} and hasattr(self.gateway, 'review_grounded_plan'):
+                    review_started = time.monotonic()
+                    await self.emit(run_id, 'progress', {'stage': 'verifying_plan'})
+                    claude_pending = True
+                    review = await asyncio.wait_for(self.gateway.review_grounded_plan(
+                        run['question'], plan, current['preview']), min(20, self.settings.plan_timeout))
+                    self.check_active(run_id)
+                    self.health.record_inference('claude', True)
+                    claude_pending = False
+                    self.metrics.observe('post_retrieval_plan_verification', time.monotonic() - review_started)
+                    self.store.audit_event(run_id, 'post_retrieval_plan_verification', review)
+                    if not review['approved']:
+                        reasons = ' '.join(str(item.get('reason', '')) for item in review.get('issues', [])[:2])
+                        self._terminal(run_id, 'failed', error={'category': 'plan_scope_verification_failed',
+                            'message': 'The prepared search did not pass its scope check. ' + reasons})
+                        return
                 plan["review_ready"] = True
                 self.store.update(run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation")
                 self.store.event(run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,

@@ -981,8 +981,8 @@ class GraphAdapter:
                                            'unknown_relations': []})
             step['resolution_key'] = self._resolution_signature(step)
             return step
-        from .semantic_registry import donor_intent, resolve
-        if donor_intent(step):
+        from .semantic_registry import semantic_intent, resolve
+        if semantic_intent(step):
             step=resolve(step,await self.semantic_vocabulary(),self.settings.graph_version)
         step["graph_version"] = self.settings.graph_version
         step["relation_types"] = step_relation_types(step)
@@ -1120,6 +1120,10 @@ class GraphAdapter:
             if prepared.get('clarification') == old_recovery.get('message'):
                 prepared['clarification'] = None
         for source in plan.get("steps") or []:
+            if plan.get('original_question'):
+                source = {**source, 'semantic_request': {
+                    'source': 'user_request', 'question': plan['original_question'],
+                    'revision_instruction': (plan.get('revision_trace') or {}).get('instruction', '')}}
             prepared["steps"].append(await self._prepare_step(source, emit))
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
@@ -1477,7 +1481,7 @@ class GraphAdapter:
         # only if generation is actually required; a model's input limit must
         # not prevent a fully typed template or cached query from being checked.
         question = None
-        from .candidate_policy import CandidateBatch, retryable_generation_error, initial_request_count
+        from .candidate_policy import CandidateBatch, retryable_generation_error, initial_request_count, grounded_prompt_variants
         grounded = getattr(self.settings, 'grounded_query_policy', False)
         from .planning_contract import VerifiedCache
         from .query_templates import compile_query, DIGEST as TEMPLATE_DIGEST
@@ -1541,8 +1545,15 @@ class GraphAdapter:
                 async def generate(_question, _n):
                     return await self.query_repair(step, question, failures, previous_query)
             deadline = min(30, getattr(self.settings, "cypher_timeout", 15) * (2 if n == 8 else 1)) + 1
+            prompts = grounded_prompt_variants(attempt_question, count) if grounded and route == 'gpu_initial' else None
+            if prompts is not None:
+                count = len(prompts)
             async with CandidateBatch(generate, attempt_question, n, count=count,
-                                      timeout=deadline, attempts=base["generator_attempts"]) as batch:
+                                      timeout=deadline, attempts=base["generator_attempts"],
+                                      prompts=prompts, completion_order=bool(prompts and count > 1),
+                                      capacity=getattr(self.settings, 'cypher_generation_concurrency', 4),
+                                      slots=None if route.startswith('gpu_') else asyncio.BoundedSemaphore(1),
+                                      route=route) as batch:
                 async for outcome in batch:
                     outcome.attempt["route"] = route
                     if outcome.error is not None:

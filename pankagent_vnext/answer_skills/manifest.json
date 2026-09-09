@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.7.0",
+  "bundle_version": "1.8.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -18,8 +18,8 @@
     "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
     "bim/general_interpretation.json": "717738584e7ab1cfef0538c7553ef0209b609dcf84514ce12feab5885c0fb6e1",
-    "bim/evidence_glossary.json": "1577537930ceca377cfc1ca3786e5a0cf7fd169953e94ec3786c13d5fd4d9065",
-    "bim/common_caveats.md": "99c9f5377e4ec19108363f553d35204207d6dab689b590e612c7d6ad57fd4c6d"
+    "bim/evidence_glossary.json": "5587f2e9dbb64bb312540d07da583cd5b6585a00ea4b2aede0f0e1bbed406211",
+    "bim/common_caveats.md": "d1371be9e1d8541691a89c47d1a6deec46448cb78c3688c0d7fac046c9994b6e"
   },
   "aliases": {
     "nodes": {
@@ -719,7 +719,7 @@
     }
   ],
   "application_overrides": {
-    "version": "count-stage-go-interpretation-v2",
+    "version": "full-record-facts-v1",
     "source_review": "2026-09-09",
     "rules": [
       "Aggregate cohort answers omit unrequested individual clinical data.",
@@ -727,7 +727,8 @@
       "GO evidence code expansions and category distinctions follow official GO documentation.",
       "Model-context omissions do not imply missing database metadata.",
       "Separate QTL indexed relationships from credible-set width, phenotype type and unreturned posterior probabilities.",
-      "Matched cell-type counts do not establish the total number profiled by a source study; missing fGSEA contrast is explicitly distinguished from statistical direction."
+      "Matched cell-type counts do not establish the total number profiled by a source study; missing fGSEA contrast is explicitly distinguished from statistical direction.",
+      "Full-record fact ledgers preserve source-specific signal roles, assay/method distributions and exact GO expansions without speculative artifact caveats."
     ],
     "sources": [
       "https://geneontology.org/docs/guide-go-evidence-codes/"

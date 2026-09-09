@@ -278,6 +278,11 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
             "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
             for kind in sorted({e.get("type") or "unknown" for e in edges})},
     }
+    from .answer_facts import build_answer_facts
+    answer_facts = build_answer_facts(item, coverage=entry["evidence_coverage"],
+                                      max_groups=min(30, limits.collection_items), max_records=min(20, limits.edges))
+    if answer_facts is not None:
+        entry["answer_facts"] = answer_facts
     from .signal_membership import summarize_signal_membership
     signal_membership = summarize_signal_membership(item, max_records=min(20, limits.edges))
     if signal_membership:
@@ -360,7 +365,7 @@ def compact_evidence(evidence: Mapping | list) -> list[dict]:
     return result
 
 
-def scientific_excerpt(compact):
+def scientific_excerpt(compact, *, include_donor_details=False):
     """Keep trace diagnostics in application metadata, outside scientific prose.
 
     Explicit excerpt scope remains, so selected records cannot imply complete
@@ -374,9 +379,23 @@ def scientific_excerpt(compact):
     result=[]
     for item in compact:
         entry=clean(item)
+        donor_details_hidden = False
+        if not include_donor_details and any('donor' in (node.get('labels') or []) for node in entry.get('nodes', [])):
+            # Aggregate requests need the full computed facts, not incidental
+            # clinical examples. The caller enables details for explicit lists.
+            hidden_ids = {node['id'] for node in entry.get('nodes', [])
+                          if set(node.get('labels') or []) & {'donor', 'Sample_node'}}
+            entry['nodes'] = [node for node in entry.get('nodes', []) if node['id'] not in hidden_ids]
+            entry['edges'] = [edge for edge in entry.get('edges', [])
+                              if edge.get('start_id') not in hidden_ids and edge.get('end_id') not in hidden_ids]
+            entry['rows'] = []
+            if isinstance(entry.get('donor_summary'), dict):
+                entry['donor_summary'].pop('rows', None)
+            donor_details_hidden = True
         entry['answer_evidence_scope']={
+            'individual_donor_details_hidden':donor_details_hidden,
             'individual_records_are_selected_examples':bool(item.get('context_sampled')),
-            'authoritative_totals':'Use evidence_totals and donor_summary. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
+            'authoritative_totals':'Use answer_facts for full-record source/assay/lead-role/distribution facts, and evidence_totals and donor_summary for totals. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
             'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
             'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
             'cell_type_denominator':'Use matched_cell_type_count for cell types with returned evidence. Completeness means all matching PanKgraph records were checked; it does not make this count the source-study total or change a recorded one-versus-rest comparison.',

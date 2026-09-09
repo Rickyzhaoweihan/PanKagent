@@ -2,6 +2,7 @@ import asyncio
 from copy import deepcopy
 import json
 from types import SimpleNamespace
+import pytest
 
 from pankagent_vnext.llm import ClaudeGateway, PLAN_SCHEMA
 from pankagent_vnext.plan_recovery import recover_empty_plan
@@ -88,7 +89,13 @@ def test_composed_gateway_and_outer_recovery_allow_only_two_planning_calls():
     asyncio.run(check())
 
 
-def test_grounded_tissue_omission_triggers_one_semantic_plan_repair():
+@pytest.mark.parametrize('use_model', [False, True])
+def test_grounded_tissue_omission_is_filled_without_an_extra_model_call(monkeypatch, use_model):
+    if use_model:
+        # Exercise compilation of a general planner proposal as well as the
+        # fully recognized no-inference lookup path.
+        monkeypatch.setattr('pankagent_vnext.pattern_planning.compile_signal_plan', lambda *_: None)
+        monkeypatch.setattr('pankagent_vnext.schema_drafting.compile_schema_draft', lambda *_: None)
     async def check():
         from pankagent_vnext.planning_contract import VerifiedCache
         gateway = object.__new__(ClaudeGateway)
@@ -102,20 +109,29 @@ def test_grounded_tissue_omission_triggers_one_semantic_plan_repair():
             {'requested':'pancreas', 'state':'resolved', 'candidates':[{'id':'UBERON_0001264', 'name':'pancreas', 'entity_type':'anatomical_structure', 'match_kind':'recorded_name'}]}]}
         async def create(*args, **kwargs):
             calls.append(kwargs)
-            assert len(calls) <= 2
+            assert len(calls) == 1  # Missing verified tissue needs no resampling.
             current = {'id':'s1', 'question':'', 'depends_on':[], 'complete':True, 'evidence_combination':'independent',
                        'relation_types':['PART_OF_QTL_SIGNAL'], 'constraints':[
                            {'property':'id', 'operator':'=', 'value':'ENSG00000001084', 'entity_type':'Gene'}]}
-            if len(calls) == 2:
-                current['constraints'].append({'property':'tissue', 'operator':'=', 'value':'Pancreas', 'entity_type':None})
             plan = {'interpreted_question':'Show all QTL evidence for GCLC in pancreas.', 'steps':[current], 'clarification':None}
             return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda: {}), content=[
                 SimpleNamespace(type='tool_use', name='record_plan', input=plan)])
         gateway._create = create
         plan = await gateway.plan('Show all QTL evidence for GCLC in pancreas.', [], grounding=grounding)
-        assert len(calls) == 2
-        assert 'missing_requested_scope:tissue' in calls[1]['messages'][0]['content']
-        assert plan['steps'][0]['constraints'][1]['value'] == 'Pancreas'
+        assert len(calls) == int(use_model)
+        assert not plan.get('clarification')
+        assert len(plan['steps']) == 1
+        step = plan['steps'][0]
+        assert step['complete'] is True
+        assert step['relation_types'] == ['PART_OF_QTL_SIGNAL']
+        constraints = [{key:c.get(key) for key in ('property', 'operator', 'value', 'entity_type')} for c in step['constraints']]
+        assert {'property':'id', 'operator':'=', 'value':'ENSG00000001084', 'entity_type':'Gene'} in constraints
+        assert {'property':'tissue_id', 'operator':'=', 'value':'UBERON_0001264', 'entity_type':None} in constraints
+        assert len(step['constraints']) == 2
+        if use_model:
+            assert step['requested_scope_compilation']  # Deterministic fill retains its proof.
+        from pankagent_vnext.planning_scope import scope_issue
+        assert scope_issue('Show all QTL evidence for GCLC in pancreas.', grounding, plan) is None
     asyncio.run(check())
 
 

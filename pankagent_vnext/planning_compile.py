@@ -8,11 +8,12 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
+import re
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
-from .semantic_registry import ALIASES as ASSAY_ALIASES
+from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 
-VERSION = 'preplanning-property-owners-v2'
+VERSION = 'preplanning-property-owners-v3'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 
@@ -73,6 +74,57 @@ def _sample_assay(values, grounding):
     return canonical or None
 
 
+def _grounded_anatomy_ids(values, grounding):
+    """Map complete, uniquely grounded identity spellings without guessing."""
+    identifiers = []
+    for value in values:
+        matches = set()
+        for mention in grounding.get('mentions', []):
+            if mention.get('state') != 'resolved' or mention.get('identity_complete') is False:
+                continue
+            candidates = mention.get('candidates', [])
+            if len(candidates) != 1:
+                continue
+            candidate = candidates[0]
+            if candidate.get('entity_type') != 'anatomical_structure' or not candidate.get('id'):
+                continue
+            forms = [candidate['id'], candidate.get('name'), mention.get('requested')]
+            if isinstance(value, str) and any(isinstance(form, str) and form.casefold() == value.casefold() for form in forms):
+                matches.add(candidate['id'])
+        if len(matches) != 1:
+            return None
+        identifiers.append(matches.pop())
+    return identifiers or None
+
+
+def _source_owner(constraint, question, grounding):
+    values = _values(constraint)
+    recorded = grounding.get('sample_terminology', {}).get('sources', [])
+    owners = {dataset_source_owner(question, value) for value in values if _canonical(value, recorded)}
+    if (not values or len(owners) != 1 or None in owners
+            or not all(_canonical(value, recorded) for value in values)):
+        return None
+    return owners.pop()
+
+
+def _annotation_source(constraint, question, grounding, relations):
+    if (relations != ['FUNCTION_ANNOTATION'] or not question
+            or str(constraint.get('operator', '=')).upper() not in {'=', 'IN'}):
+        return None
+    available = grounding.get('schema', {}).get('categories', {}).get('FUNCTION_ANNOTATION.data_source', [])
+    values = _values(constraint)
+    canonical = [_canonical(value, available) for value in values]
+    if not canonical or not all(canonical):
+        return None
+    # Only an explicitly named recorded pathway resource authorizes ownership.
+    # The later scope compiler still checks which gene belongs to each source.
+    resource_labels = {label.casefold() for path in REGISTRY['relations']['FUNCTION_ANNOTATION']['paths'] for label in path['target']}
+    if not all(value.casefold() in resource_labels and re.search(r'(?<!\w)' + re.escape(value) + r'(?!\w)', question, re.I)
+               for value in canonical):
+        return None
+    return (json.dumps(canonical) if isinstance(constraint.get('value'), str) else canonical) if str(constraint.get('operator', '=')).upper() == 'IN' else canonical[0]
+
+
 def _qtl_tissue(constraint, relations):
     """Resolve the generic field from the complete release category inventory."""
     if (relations != ['PART_OF_QTL_SIGNAL'] or constraint.get('property') != 'tissue'
@@ -98,7 +150,7 @@ def _qtl_tissue(constraint, relations):
     return matches[0][0], value
 
 
-def compile_property_owners(plan, grounding):
+def compile_property_owners(plan, grounding, *, question=None):
     """Return ``(compiled_copy, error_or_none)``; never mutate the input.
 
     The whole plan is rejected on ambiguous ownership. A selected relationship
@@ -134,6 +186,21 @@ def compile_property_owners(plan, grounding):
             if (entity and relation or entity and owner_kind == 'relationship'
                     or relation and owner_kind == 'node'):
                 return result, f'conflicting_property_owners:{step.get("id", "step")}:{prop}'
+            # The model's explicit owner cannot override a verified role in
+            # the raw user request. A donor-cohort source and a sample provider
+            # are different fields even when both are named data_source.
+            if prop == 'data_source' and sample_role and not relation and entity in {None, 'donor', 'Sample_node'} and question:
+                source_owner = _source_owner(constraint, question, grounding)
+                if source_owner:
+                    entity = source_owner
+                    canonical_sources = [_canonical(value, grounding['sample_terminology']['sources']) for value in _values(constraint)]
+                    constraint['value'] = ((json.dumps(canonical_sources) if isinstance(constraint.get('value'), str) else canonical_sources)
+                                           if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'} else canonical_sources[0])
+            if prop == 'data_source' and not entity and not relation and owner_kind != 'node':
+                annotation_source = _annotation_source(constraint, question, grounding, relations)
+                if annotation_source is not None:
+                    relation = 'FUNCTION_ANNOTATION'
+                    constraint['value'] = annotation_source
             tissue = _qtl_tissue({**constraint, 'property': prop, 'entity_type': entity,
                                   'relationship_type': relation}, relations)
             if tissue:
@@ -147,10 +214,13 @@ def compile_property_owners(plan, grounding):
                     return result, f'invalid_property_owner:{step.get("id", "step")}:{relation}.{prop}'
             else:
                 values = _values(constraint)
-                if prop == 'anatomical_structure' and sample_role and owner_kind != 'relationship':
-                    entity = _grounded_kind(values, grounding, expected='anatomical_structure', exact_id=True)
-                    if entity:
+                if (prop == 'anatomical_structure' and sample_role and owner_kind != 'relationship'
+                        and str(constraint.get('operator', '=')).upper() in {'=', '!=', '<>', 'IN', 'NOT IN'}):
+                    identifiers = _grounded_anatomy_ids(values, grounding)
+                    if identifiers:
+                        entity = 'anatomical_structure'
                         prop = 'id'
+                        constraint['value'] = (json.dumps(identifiers) if isinstance(constraint.get('value'), str) else identifiers) if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'} else identifiers[0]
                 elif prop == 'data_modality' and sample_role and owner_kind != 'relationship' and (assays := _sample_assay(values, grounding)):
                     entity = 'Sample_node'
                     if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:

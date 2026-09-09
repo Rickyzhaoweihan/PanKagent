@@ -43,8 +43,9 @@ class Settings:
     graph_identity_file: str = field(default_factory=lambda: env('GRAPH_IDENTITY_FILE','var/vnext/graph-identity.json'))
     graph_timeout: float = 10.0
     cypher_timeout: float = 15.0
-    cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '1')))
-    cypher_initial_scope: str = field(default_factory=lambda: env('CYPHER_INITIAL_SCOPE', 'cohort'))
+    cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '2')))
+    cypher_initial_scope: str = field(default_factory=lambda: env('CYPHER_INITIAL_SCOPE', 'all'))
+    cypher_generation_concurrency: int = field(default_factory=lambda: int(env('CYPHER_GENERATION_CONCURRENCY', '4')))
     plan_cache_enabled: bool = field(default_factory=lambda: env('PLAN_CACHE_ENABLED','1') == '1')
     grounded_query_policy: bool = field(default_factory=lambda: env('GROUNDED_QUERY_POLICY','1') == '1')
     max_nodes: int = 2000
@@ -63,7 +64,9 @@ class Settings:
             raise ValueError('invalid preview deadline or reuse window')
         if not 0 < self.plan_timeout <= 60:
             raise ValueError('invalid planning deadline')
-        if self.cypher_initial_requests not in (1, 2):
-            raise ValueError('initial Cypher requests must be one or two')
+        if self.cypher_initial_requests not in (1, 2, 4):
+            raise ValueError('initial Cypher requests must be one, two or four')
+        if self.cypher_generation_concurrency not in (1, 2, 4):
+            raise ValueError('Cypher generation concurrency must be one, two or four')
         if self.cypher_initial_scope not in ("cohort", "all"):
             raise ValueError("initial Cypher scope must be cohort or all")

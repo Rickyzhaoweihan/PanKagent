@@ -36,7 +36,9 @@ def test_sample_only_question_does_not_acquire_a_donor_requirement():
  from pankagent_vnext.semantic_registry import donor_intent
  s={'question':'List spleen samples','constraints':[]}
  assert not donor_intent(s)
- assert 'semantic_registry' not in resolve(s,VOCAB,RELEASE)
+ result=resolve(s,VOCAB,RELEASE)
+ assert result['semantic_registry']['donor_required'] is False
+ assert not any(c.get('entity_type')=='donor' for c in result['constraints'])
 
 def test_molecular_cohort_description_does_not_force_donor_metadata_paths():
  from pankagent_vnext.semantic_registry import donor_intent

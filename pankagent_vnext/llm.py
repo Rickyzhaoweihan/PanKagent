@@ -84,8 +84,11 @@ ANSWER_CONTRACT += '\n' + _COMMON_CAVEATS
 ANSWER_CONTRACT += '\nCoverage contract: evidence_coverage.query_scope records the validated query scope before any excerpting. When complete_for_requested_scope is true, all matching records for the stated entities, evidence categories and filters were checked in that graph release; zero matches means no matching PanKgraph record in that scope. Say this directly. When cell_type_scope is all_matching, do not invent a comparison restricted to the returned cell types or suggest other types were not queried. A complete search may return only two cell types because those are the recorded matches. The source one-versus-rest analysis still compared each target type with the remaining profiled cell types. No recorded evidence does not establish biological impossibility. Unknown or incomplete coverage never supports exhaustive absence; source-analysis scope, query scope, model examples and graph display are four separate concepts.'
 
 ANSWER_CONTRACT += '\nColocalization linkage: use coloc_linkage records and their supporting_references to distinguish recorded colocalization from exact verified signal membership. A common gene or disease alone is not a shared-signal match. A requested variant can be a non-lead member of a GWAS credible set while also serving as a lead of a different molecular QTL signal; preserve those roles and signal identities. Empty or failed separately indexed GWAS/QTL checks never erase primary recorded colocalization or make it biologically absent. linked_record_count counts records with the recorded exact match rules; do not infer a match for unmatched records or claim repeated linkage summaries are independent evidence.'
+ANSWER_CONTRACT += '''
+Full-record fact contract (takes precedence over example-driven wording): each answer_facts ledger was computed before selecting example records. Use its per-assay counts, source/method/throughput distributions, formal GO code names and signal roles. Keep the opening conclusion as accurate as the tables. Colocalization can involve different lead variants; when same_complete_lead_set=false, never say the GWAS and QTL share a lead. Membership does not establish lead status: use Recorded variant as the column heading unless lead_role explicitly establishes lead/nonlead. Never add an unrecorded source qualifier such as GTEx-style. Do not describe all interactions as one method or throughput class unless the full distribution verifies it. Omit unsolicited assay generalizations and speculative technical explanations such as ambient RNA, dropout, aggregation artifacts or doublets unless the user requests hypotheses or source records explicitly report them. Select only relevant supported common caveats; a caveat section is optional, never an invitation to invent uncertainty. Computed donor/sample distributions are available even if individual examples are omitted. Do not say a complete search is limited or source data unavailable because only selected records are shown to you. For an aggregate question, report aggregates and omit individual donor examples unless asked.'''
 
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\ngrounded-synthesis-v2').encode()).hexdigest()[:16]
+from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\ngrounded-synthesis-v3').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -147,24 +150,46 @@ class ClaudeGateway:
         from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION, DIGEST as PLANNING_DIGEST
         from .planning_scope import scope_issue, DIGEST as PLANNING_SCOPE_DIGEST
         from .planning_compile import compile_property_owners, DIGEST as COMPILER_DIGEST
-        from .planning_requirements import requirements_issue, DIGEST as REQUIREMENTS_DIGEST
+        from .planning_requirements import requirements_issue, compile_requested_scope, DIGEST as REQUIREMENTS_DIGEST
+        from .pattern_planning import compile_signal_plan, DIGEST as PATTERN_PLAN_DIGEST
+        from .schema_drafting import compile_schema_draft, DIGEST as SCHEMA_DRAFT_DIGEST
+        def compile_scopes(proposal):
+            proposal, issue = compile_property_owners(proposal, grounding, question=question)
+            if issue is None:
+                proposal, issue = compile_requested_scope(question, grounding, proposal)
+            return proposal, issue
         cache_key = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:
                     cache_issue=plan_structure_issue(cached)
                     if cache_issue is None:
-                        cached, cache_issue=compile_property_owners(cached,grounding)
+                        cached, cache_issue=compile_scopes(cached)
                     cache_issue=cache_issue or scope_issue(question,grounding,cached) or requirements_issue(question,grounding,cached,history)
                     if cache_issue is None:
                         provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
                         return cached
                     provider_event('planning_cache_rejected', {'key':cache_key,'category':cache_issue})
+            if not _repair:
+                matched = compile_signal_plan(question, grounding, history) or compile_schema_draft(question, grounding, history)
+                if matched is not None:
+                    matched, pattern_issue = compile_scopes(matched)
+                    pattern_issue = (pattern_issue or plan_structure_issue(matched)
+                                     or scope_issue(question, grounding, matched)
+                                     or requirements_issue(question, grounding, matched, history))
+                    provider_event('planning_pattern', {'matched': True, 'valid': pattern_issue is None,
+                                   'category': pattern_issue, 'route': matched.get('planning_route')})
+                    if pattern_issue is None:
+                        matched = expand_compact_plan(matched)
+                        matched['retrieval_policy'] = 'partial_independent_v1'
+                        if cache_key:
+                            self.plan_cache.put(cache_key, matched)
+                        return matched
         provider_event('planning_cache', {'hit':False,'key':cache_key,'version':PLANNING_VERSION})
         if profile_gene:
             system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'
@@ -196,7 +221,7 @@ class ClaudeGateway:
                 self.last_success=time.time()
                 issue = plan_structure_issue(plan)
                 if issue is None and grounding and grounding.get('status') == 'ready':
-                    plan, issue = compile_property_owners(plan, grounding)
+                    plan, issue = compile_scopes(plan)
                     provider_event('planning_constraint_compilation', {'valid':issue is None, 'category':issue,
                         'changes':[{'step_id':s.get('id'),'bindings':s['constraint_compilation']}
                                    for s in plan.get('steps',[]) if s.get('constraint_compilation')]})
@@ -249,6 +274,25 @@ class ClaudeGateway:
                 return [value] if isinstance(value,str) and value.strip() else []
         return []
 
+    async def review_grounded_plan(self, question, plan, preview):
+        """A bounded verification after script-compiled queries; no plan writing."""
+        from .plan_verification import SYSTEM, SCHEMA, VERSION, review_input
+        body = json.dumps(review_input(question, plan, preview), ensure_ascii=False, default=str)
+        rid = self._reserve('plan_verification', SYSTEM, body, 400)
+        reply = await self._create(rid, model=self.settings.model, max_tokens=400,
+            system=[{'type': 'text', 'text': SYSTEM}], messages=[{'role': 'user', 'content': body}],
+            tools=[{'name': 'verify_plan', 'description': 'Verify the executed scope', 'input_schema': SCHEMA, 'strict': True}],
+            tool_choice={'type': 'tool', 'name': 'verify_plan'}, **self._options())
+        self.budget.settle(rid, reply.usage.model_dump())
+        for block in reply.content:
+            if block.type == 'tool_use' and block.name == 'verify_plan':
+                value = block.input
+                if (isinstance(value, dict) and isinstance(value.get('approved'), bool)
+                        and isinstance(value.get('issues'), list) and reply.stop_reason != 'max_tokens'):
+                    # Contradictory approval is not a pass.
+                    return {**value, 'approved': value['approved'] and not value['issues'], 'version': VERSION}
+        raise ValueError('invalid_plan_verification')
+
     def prepare_answer(self,question,evidence):
         # Inspect full bounded evidence before sampling; this does not call a model.
         routed=self.answer_router.select(evidence)
@@ -259,8 +303,10 @@ class ClaudeGateway:
             {'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
              'omitted':item.get('context_dropped',{})} for item in compact],
             'scope':'synthesis_input_only', 'display_counts_known':False}
-        excerpt=scientific_excerpt(compact)
         import re
+        requested_details = bool(re.search(r'\b(?:donor|sample)[- ]?(?:IDs?|identifiers?|details?)\b|\bwhich\s+(?:donors?|samples?)\b|\b(?:list|identify|find)\b[^.?!]{0,160}\b(?:donors?|samples?)\b', question, re.I))
+        excerpt=scientific_excerpt(compact, include_donor_details=requested_details)
+        profile['model_context']['individual_donor_details_requested'] = requested_details
         if not re.search(r'\brank(?:s|ed|ing)?\b', question, re.I):
             # Gene rank within a cell is irrelevant to a cross-cell effect-size
             # comparison. Full evidence/hover/download records remain intact.

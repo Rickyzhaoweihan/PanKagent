@@ -23,6 +23,7 @@ class FakeGraph:
         self.maximum = 0
         self.identity_checks = 0
         self.rows = {label: [] for label in PUBLIC_CATALOG_LABELS}
+        self.annotation_sources = [{"values": ["KEGG", "Reactome"], "record_count": 8, "valued_records": 8}]
         self.rows["Gene"] = [
             {"id": "ENSG00000138031", "name": "ADCY3", "labels": ["Gene"], "synonyms": ["AC3"]},
             {"id": "ENSG00000001626", "name": "CFTR", "labels": ["Gene"]},
@@ -56,6 +57,8 @@ class FakeGraph:
                 return [{"label": "Gene", "properties": ["id", "name"]}]
             if query.startswith("MATCH (a)-[r]->(b)"):
                 return [{"source": ["Gene"], "relation": "SIGNAL_COLOC_WITH", "target": ["disease"], "properties": ["pp_h4_abf"]}]
+            if query.startswith("MATCH ()-[r:`FUNCTION_ANNOTATION`]"):
+                return deepcopy(self.annotation_sources)
             label = query.split("`")[1]
             return deepcopy(self.rows[label])
         finally:
@@ -82,7 +85,7 @@ def test_full_catalog_build_is_read_only_and_has_two_read_cap():
     assert inventory["catalog_complete"] is True
     assert inventory["counts"]["Gene"] == 5
     assert graph.maximum == 2
-    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS)
+    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS) + 1
     assert all(" LIMIT " not in query and "SKIP" not in query for query, _ in graph.calls)
     assert "password" not in json.dumps(inventory)
     assert "donor" not in inventory["counts"] and "Sample_node" not in inventory["counts"]
@@ -235,7 +238,7 @@ def test_parallel_first_queries_share_one_catalog_scan():
         return await asyncio.gather(grounder.resolve("CFTR"), grounder.resolve("ADCY3"))
     results = asyncio.run(run())
     assert all(result["status"] == "ready" for result in results)
-    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS)
+    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS) + 1
 
 
 def test_inventory_and_plan_guidance_digest_ignore_collection_time():
@@ -535,7 +538,7 @@ def test_public_go_categories_are_full_scan_cached_and_grounded_to_recorded_spel
     payload = asyncio.run(ground_question(graph, 'What biological-process GO annotations are recorded for CFTR?'))
     assert payload['schema']['categories']['GO_term.go_domain'] == ['biological_process', 'cellular_component', 'molecular_function']
     assert payload['category_metadata']['GO_term.go_domain']['state'] == 'checked'
-    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS)  # No additional query or model call.
+    assert len(graph.calls) == len(PUBLIC_CATALOG_LABELS) + 1  # GO values use their existing catalog scan; source categories use one public aggregate read.
     assert any('n.go_domain AS go_domain' in query for query, _ in graph.calls)
     text = grounding_guidance(payload, max_chars=7000)
     assert 'biological_process' in text and 'molecular_function' in text
@@ -552,3 +555,40 @@ def test_unavailable_go_category_metadata_never_invents_a_canonical_domain():
     assert role['resolution_state'] == 'metadata_unavailable'
     assert 'canonical_binding' not in role
     assert payload['schema']['categories']['GO_term.go_domain'] == []
+
+
+def test_annotation_source_inventory_is_complete_and_given_only_for_selected_relation():
+    graph=FakeGraph()
+    payload=asyncio.run(ground_question(graph,'What Reactome pathways contain CFTR?'))
+    assert payload['schema']['categories']['FUNCTION_ANNOTATION.data_source']==['KEGG','Reactome']
+    assert payload['category_metadata']['FUNCTION_ANNOTATION.data_source']['complete_scan'] is True
+    assert 'Reactome' in grounding_guidance(payload,max_chars=7000)
+    assert len([query for query,_ in graph.calls if 'collect(DISTINCT r.data_source)' in query])==1
+    unrelated=asyncio.run(ground_question(graph,'Count HPAP donors.'))
+    assert 'FUNCTION_ANNOTATION.data_source' not in unrelated['schema']['categories']
+
+
+@pytest.mark.parametrize('rows',[[],[{'values':['Reactome'], 'record_count':8}],
+    [{'values':['Reactome',None], 'record_count':8,'valued_records':8}]])
+def test_unavailable_annotation_source_inventory_never_invents_recorded_values(rows):
+    graph=FakeGraph();graph.annotation_sources=rows
+    payload=asyncio.run(ground_question(graph,'What Reactome pathways contain CFTR?'))
+    assert payload['status']=='ready'
+    assert payload['schema']['categories']['FUNCTION_ANNOTATION.data_source']==[]
+    assert payload['category_metadata']['FUNCTION_ANNOTATION.data_source']['state']=='metadata_unavailable'
+
+
+@pytest.mark.parametrize('disease',['T1D','T2D'])
+def test_disease_associated_genetic_evidence_is_a_relationship_role_not_new_disease_identity(disease):
+    payload=asyncio.run(ground_question(FakeGraph(),f'Does the {disease}-associated GWAS signal rs13393590 coloc with ADCY3 QTL?'))
+    mention=next(m for m in payload['mentions'] if any(c['entity_type']=='disease' for c in m['candidates']))
+    assert mention['state']=='resolved' and mention['identity_complete'] is True
+    assert mention['context_role']['kind']=='disease_association'
+    assert mention['qualified_surface']==disease+'-associated'
+
+
+@pytest.mark.parametrize('question',['T1D-stage GWAS evidence','T1D-associated cells','T1D-associated phenotype'])
+def test_other_disease_qualifiers_are_not_promoted_to_complete_identity(question):
+    payload=asyncio.run(ground_question(FakeGraph(),question))
+    mention=next(m for m in payload['mentions'] if any(c['entity_type']=='disease' for c in m['candidates']))
+    assert mention.get('identity_complete') is False
