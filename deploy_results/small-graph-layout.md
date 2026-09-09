@@ -20,4 +20,27 @@ Validation on 2026-09-09: 22 tests passed in an isolated jieliu3 environment,
 including the ADCY3 three-node/four-edge multigraph, deterministic nonoverlapping
 node positions, 1/9/10-node routing boundaries, and existing larger-graph/list
 regressions. This does not constitute browser visual acceptance. Live service
-8795 has not been restarted or modified for this change.
+8795 was subsequently activated at the user's explicit deployment request.
+
+## Deployment
+
+The two layout modules from `ff98066` are active on isolated results 8795.
+The actual deployed worker returned `engine=pygraphviz`, three nodes and four
+edges for the synthetic coloc triangle. Both 8794 and 8795 readiness checks and
+five Mac page/asset/health checks passed. No inference was invoked.
+
+Dedicated results Python:
+`/var/local/serviceuser/.local/state/pankgraph-results/small-layout-runtime/bin/python`
+
+For future owned-manager restarts, pass this path with `--python` and prepend
+`/var/local/serviceuser/.local/state/pankgraph-results/pygraphviz-test-env/bin`
+to PATH so the worker can find `dot`. The agent Python environment was unchanged.
+
+Protected deployment/rollback artifacts are under
+`/var/local/serviceuser/.local/state/pankgraph-results/small-layout-deploy/`.
+The first startup exposed an old results-local copy of agent settings rejecting
+ceilings above $10. Its validation maximum was aligned with the current agent's
+$30 supported maximum; this does not change the configured budget ceiling or
+ledger. The original file is `results-config.before.py`. The confirmed-dead PID
+record was archived before restarting. This startup failure is retained, not
+counted as successful activation. Only 8795 restarted; 8794 remained running.
