@@ -13,7 +13,7 @@ from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY
 from .pattern_planning import _identity
 
-VERSION = 'schema-purpose-drafts-v1'
+VERSION = 'schema-purpose-drafts-v2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _COMMON = set('''a an the for of in from to with and or does do is are has have
  show find list get what which whether recorded evidence records data available
@@ -34,7 +34,31 @@ _GENE = set('''cell cells type types detected detection expressed expression
 '''.split())
 
 
-def _parse(question, grounding, vocabulary):
+def _separate_assay_counts(question):
+    """Recognize an explicit independent-count instruction, not donor overlap."""
+    directive = re.search(
+        r'\b(?:count\s+donors|(?:report|show)\s+donor\s+counts)\s+separately\s+for\s+each\s+assay\b',
+        question, re.I)
+    if not directive:
+        return None
+    suffix = question[directive.end():]
+    if not re.fullmatch(r'[\s.;,]*(?:do\s+not\s+require\s+both\s+assays?[\s.;,]*)?', suffix, re.I):
+        return None
+    request = question[:directive.start()]
+    if (not re.search(r'\b(?:compare|count|number|counts)\b', request, re.I)
+            or re.search(r'\b(?:not|no|only|exclude|excluding|without|except|both|same|'
+                         r'paired|joint|include|including|components?)\b', request, re.I)):
+        return None
+    return [directive.group(), suffix.strip(' .;,\n\t')]
+
+
+def _literal_present(question, value):
+    tokens, phrase = phrase_tokens(question), phrase_tokens(value)
+    return bool(phrase) and any(tuple(tokens[start:start + len(phrase)]) == tuple(phrase)
+                               for start in range(len(tokens) - len(phrase) + 1))
+
+
+def _parse(question, grounding, vocabulary, recorded_literals=()):
     words = list(phrase_tokens(question))
     remaining = list(words)
     found = {}
@@ -53,6 +77,15 @@ def _parse(question, grounding, vocabulary):
         if not span or len(span) != 2:
             return None
         remaining[span[0]:span[1]] = [''] * (span[1] - span[0])
+    # Admit complete recorded assay/source phrases, not an expanded bag of
+    # component words which could accidentally recognize an unknown assay.
+    for literal in recorded_literals:
+        tokens = phrase_tokens(literal)
+        if not tokens:
+            continue
+        for start in range(len(words) - len(tokens) + 1):
+            if tuple(words[start:start + len(tokens)]) == tuple(tokens):
+                remaining[start:start + len(tokens)] = [''] * len(tokens)
     # Stage numbers are authorized only by an explicit stage-number phrase.
     for index, word in enumerate(words[:-1]):
         if word == 'stage' and re.fullmatch(r'\d+|i|ii|iii', words[index + 1]):
@@ -71,15 +104,35 @@ def compile_schema_draft(question, grounding, history=None):
             or re.search(r'[<>!=]|\b(?:instead|replace|except|most|top|first|before|after|between|paired|joint)\b', question, re.I)):
         return None
     samples = bool(re.search(r'\bdonors?\b|\bsamples?\b', question, re.I))
-    entities = _parse(question, grounding, _SAMPLE if samples else _GENE)
+    separate_counts = _separate_assay_counts(question) if samples else None
+    vocabulary = grounding.get('sample_terminology') if samples else None
+    literals = []
+    if samples:
+        if not vocabulary or not vocabulary.get('inventory_complete'):
+            return None
+        from .semantic_registry import ALIASES
+        recorded = vocabulary.get('modalities', [])
+        literals = list(recorded) + list(vocabulary.get('sources', []))
+        literals += [alias for alias, canonical in ALIASES.items() if canonical in recorded]
+        if separate_counts:
+            literals += separate_counts
+    words = _SAMPLE | {'compare', 'against', 'counts'} if separate_counts else _SAMPLE if samples else _GENE
+    entities = _parse(question, grounding, words, literals)
     if not entities:
         return None
     genes, tissues, diseases = (entities.get(kind, []) for kind in ('Gene', 'anatomical_structure', 'disease'))
     if samples:
         if genes or len(tissues) > 1 or len(diseases) > 1:
             return None
-        vocabulary = grounding.get('sample_terminology')
-        if not vocabulary or not vocabulary.get('inventory_complete'):
+        sources = [value for value in vocabulary.get('sources', []) if _literal_present(question, value)]
+        if len(sources) > 1:
+            # Independent cohorts cannot be collapsed into one overwritten
+            # scalar source predicate by the single-scope draft.
+            return None
+        if re.search(r'\b(?:exclude|excluding|without)\s+(?:all\s+|any\s+)?donors?\b'
+                     r'|\bdonors?\s+(?:who\s+)?(?:without|with\s+no|do\s+not\s+have)\b'
+                     r'|\b(?:who|that)\b[^.;!?]{0,50}\b(?:without|no|never|not)\b', question, re.I):
+            # A donor anti-existence request cannot become a per-sample !=.
             return None
         if (re.search(r'\b(?:including|include)\b.*\b(?:components?|multiome)\b', question, re.I)
                 and re.search(r'\bHPAP\b', question, re.I)
@@ -88,7 +141,23 @@ def compile_schema_draft(question, grounding, history=None):
             # restriction on every standalone assay; let the general planner
             # separate these roles instead of narrowing the whole cohort.
             return None
+        from .semantic_registry import _mentioned_assays, _without_negated_assays
         has_samples = bool(re.search(r'\bsamples?\b|\bassays?\b', question, re.I))
+        named_assays = _mentioned_assays(question, vocabulary.get('modalities', []))
+        if separate_counts:
+            if len(named_assays) != 2 or len(tissues) != 1 or len(sources) != 1:
+                return None
+            has_samples = True
+        if not has_samples and named_assays:
+            positive = _mentioned_assays(_without_negated_assays(question, vocabulary['modalities']),
+                                         vocabulary['modalities'])
+            if (len(positive) != 1
+                    or re.search(r'\bonly\b', question, re.I) and not re.search(r'\bstandalone\b', question, re.I)):
+                # Multiple assay roles and donor-only exclusivity need a plan
+                # with explicit ownership. A single recorded positive assay
+                # supplies a concrete sample witness, even without that noun.
+                return None
+            has_samples = True
         kinds = ['HAS_SAMPLE'] if has_samples else ['HAS_DONOR']
         step = {'id': 'samples' if has_samples else 'donors', 'question': question,
                 'relation_types': kinds, 'constraints': [_identity(item) for item in tissues + diseases],
@@ -99,6 +168,29 @@ def compile_schema_draft(question, grounding, history=None):
         if step.get('semantic_issues') or step.get('recovery'):
             return None
         steps = [step]
+        if separate_counts:
+            # The explicit independence instruction permits replacing only the
+            # multi-assay binding with one exact label per check. Every other
+            # verified scalar constraint, including stage and cohort, survives.
+            shared = [deepcopy(c) for c in step['constraints'] if c.get('property') != 'data_modality']
+            steps = []
+            for index, assay in enumerate(named_assays, 1):
+                exact = {'entity_type': 'Sample_node', 'property': 'data_modality',
+                         'operator': '=', 'value': assay}
+                check = {'id': 'assay' + str(index),
+                    'question': f'Count donors with samples labeled with the {assay} assay.',
+                    'relation_types': ['HAS_SAMPLE'], 'constraints': deepcopy(shared) + [exact],
+                    'depends_on': [], 'complete': True, 'evidence_combination': 'independent',
+                    'semantic_request': {'source': 'user_request', 'question': question, 'revision_instruction': ''},
+                    'schema_draft_compilation': {'operation': 'independent_exact_assay_count',
+                        'requested': question, 'shared_constraints': deepcopy(shared),
+                        'assay_constraint': deepcopy(exact), 'instruction': separate_counts[0]}}
+                check = resolve(check, vocabulary, REGISTRY['release'])
+                if (check.get('semantic_issues') or check.get('recovery')
+                        or check.get('sample_requirements', {}).get('modality_groups') != [[assay]]
+                        or check.get('sample_requirements', {}).get('separate_bindings')):
+                    return None
+                steps.append(check)
     else:
         # Single anchored gene with independent evidence categories. Per-gene
         # mixed category roles and relational partner discovery remain general.

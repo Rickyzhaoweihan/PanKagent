@@ -14,7 +14,7 @@ from pathlib import Path
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
 
-VERSION = 'typed-relation-templates-v1'
+VERSION = 'typed-relation-templates-v2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
@@ -92,7 +92,28 @@ def compile_query(step):
     paths = REGISTRY['relations'][kind]['paths']
     if not paths:
         return None
+    selected_paths = paths
     left, right = (_common_endpoint(paths, side) for side in ('source', 'target'))
+    if kind == 'HAS_SAMPLE':
+        requirements = step.get('sample_requirements', {})
+        if (step.get('semantic_registry', {}).get('donor_required') is not False
+                or requirements.get('paired') or requirements.get('separate_bindings')):
+            return None
+        # HAS_SAMPLE has several source types. A positively resolved tissue
+        # identity proves which source path the request means; retain every
+        # registered path compatible with that identity, never an arbitrary one.
+        try:
+            anchors = [_resolved_entity(step, index, c)
+                       for index, c in enumerate(step.get('constraints', []))]
+        except (ValueError, TypeError):
+            return None
+        tissue_anchors = [a for a in anchors if a and a['entity_type'] == 'anatomical_structure']
+        if len(tissue_anchors) != 1:
+            return None
+        selected_paths = [p for p in paths if 'anatomical_structure' in p['source']]
+        if not selected_paths:
+            return None
+        left, right = (_common_endpoint(selected_paths, side) for side in ('source', 'target'))
     if not left or not right or left == right:
         return None
     filters, params, resolved_count = [], {}, 0
@@ -148,4 +169,8 @@ def compile_query(step):
     return {'cypher': query, 'parameters': params, 'template_id': 'directed_relation_records',
             'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
             'endpoint_coverage': {'source': left, 'target': right,
-                                  'registered_path_count': len(paths), 'all_paths_covered': True}}
+                                  'registered_path_count': len(paths),
+                                  'compatible_path_count': len(selected_paths),
+                                  'all_paths_covered': selected_paths == paths,
+                                  'all_requested_paths_covered': True,
+                                  'scope_basis': 'resolved_tissue_identity' if selected_paths != paths else 'shared_registered_endpoint'}}

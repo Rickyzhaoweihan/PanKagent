@@ -166,3 +166,41 @@ def test_alphabetic_observed_identifier_cannot_leak_through_field_paths():
         guard.check({'PrivatePerson': {'age': 54}}, operation='plan')
     assert 'PrivatePerson' not in json.dumps(guard.events)
     assert all(len(x) == 64 for x in guard.events[-1]['field_path_sha256'])
+
+
+def test_full_result_numeric_coverage_is_not_an_iterable_graph_collection():
+    guard = privacy.OutboundPrivacyGuard()
+    body = {'step_id': 's1', 'nodes': [{'id': 'CFTR', 'labels': ['Gene']}],
+            'donor_summary': {'unique_donors': 0, 'rows': []},
+            'rows': [{'id': 'rs13393590', 'pip': .03}],
+            'evidence_coverage': {'result': {'nodes': 2, 'edges': 2, 'rows': 1}}}
+    guard.observe_evidence(body)
+    assert not guard.cohort_step_ids
+    assert guard.check(payload({'evidence': [body]}), operation='stream')['allowed']
+
+
+def test_empty_or_zero_generic_donor_summary_does_not_reclassify_public_molecular_step():
+    guard = privacy.OutboundPrivacyGuard()
+    for summary in ({}, {'unique_donors': 0}, {'unique_donors': 0, 'rows': []}):
+        source = {'step_id': 's1', 'donor_summary': summary, 'nodes': [], 'rows': [{'variant': 'rs13393590'}]}
+        guard.observe_evidence(source)
+        assert 's1' not in guard.cohort_step_ids
+        assert guard.check(payload(source), operation='stream')['allowed']
+
+
+def test_step_scope_is_reset_for_each_unrelated_operation():
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence({'step_id': 's1', 'requested_scope': {'constraints': [{'entity_type': 'donor'}]}})
+    assert 's1' in guard.cohort_step_ids
+    guard.reset_evidence_state()
+    assert not guard.cohort_step_ids
+    assert guard.check(payload({'step_id': 's1', 'rows': [{'variant': 'rs13393590'}]}), operation='stream')['allowed']
+
+
+def test_cohort_coverage_row_count_is_metadata_not_an_individual_projection():
+    value = {'step_id': 'cohort1', 'requested_scope': {'constraints': [{'entity_type': 'Sample_node'}]},
+             'evidence_coverage': {'result': {'nodes': 12, 'edges': 10, 'rows': 2}},
+             'rows': [{'sample_count': 823}]}
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence(value)
+    assert guard.check(payload(value), operation='stream')['allowed']

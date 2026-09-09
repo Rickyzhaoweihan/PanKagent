@@ -152,6 +152,16 @@ def _mentioned_assays(question, available):
     return values
 
 
+def _explicit_modality_label(question, available):
+    """Recognize a recorded field value, not a general RNA capability request."""
+    for match in re.finditer(r'\bdata[ _]modality\s*(?:(?:=|is|of|:)\s*)?[\"\x27]?', question, re.I):
+        words = re.findall(r'[A-Za-z0-9]+', question[match.end():])[:7]
+        for end in range(1, len(words) + 1):
+            if _canonical_assay(' '.join(words[:end]), available) in available:
+                return True
+    return False
+
+
 def _without_negated_assays(question, available, *, return_values=False):
     """Mask directly negated verified assay names for capability detection only.
 
@@ -332,7 +342,7 @@ def resolve(step, vocabulary, release):
     # A step explicitly naming an assay label is an exact label lookup. A
     # separate capability step may include multiome; this one cannot broaden
     # merely because scRNA-seq contains the letters RNA.
-    label_lookup = bool(re.search(r'\b(?:samples?|records?)\s+(?:explicitly\s+)?label(?:ed|led)\b|\b(?:assay|modality)\s+(?:label|value)\s*(?:=|is|of|:)\s*', q, re.I))
+    label_lookup = bool(re.search(r'\b(?:samples?|records?)\s+(?:explicitly\s+)?label(?:ed|led)\b|\b(?:assay|modality)\s+(?:label|value)\s*(?:=|is|of|:)\s*', q, re.I)) or _explicit_modality_label(positive_q, available)
     named_assays = _mentioned_assays(positive_q, available)
     if label_lookup and named_assays:
         exact = True

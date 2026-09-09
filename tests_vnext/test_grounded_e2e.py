@@ -102,6 +102,30 @@ def test_cost_includes_initial_plan_of_revision_journey_and_failed_cost():
     assert result['attributed_actual_usd'] == .09
 
 
+def test_preparation_error_fallback_is_not_an_answer_cost_denominator():
+    state = audit.answer_runtime_outcome({'status': 'partial', 'graph_answer': 'Evidence could not be prepared.',
+                'evidence': {'answer_preparation_error': {'category': 'answer_preparation'},
+                             'synthesis_error': {'category': 'answer_preparation'}}})
+    assert state == {'answer_runtime_eligible': False, 'answer_failure_categories': ['answer_preparation']}
+    row = {'attempt': 'R01-r1-v1', 'status': 'partial', 'answer_nonempty': True, 'actual_usd': .01, **state}
+    result = audit.costs([row], [{'actual_usd': .01, 'reserved_usd': .1}])
+    assert result['answer_count'] == 0 and result['failed_count'] == 1
+    assert result['mean_failed_journey_usd'] == .01
+    assert audit.answer_runtime_outcome({'status': 'completed', 'graph_answer': 'No matching records.', 'evidence': {}})['answer_runtime_eligible']
+
+
+def test_public_export_removes_individual_counts_preserving_aggregate_checks_and_private_input():
+    source = {'count_checks': [{'expected': 44, 'matched': True, 'scalar_candidates': [
+        {'field': 'donor_summary/unique_donors', 'value': 44},
+        {'field': 'donor_summary/rows/0/sample_count', 'value': 2},
+        {'field': 'rows/0/donor_count', 'value': 44}]}]}
+    result = audit.aggregate_only_export(source)
+    assert result['count_checks'][0]['expected'] == 44
+    assert result['count_checks'][0]['matched'] is True
+    assert len(result['count_checks'][0]['scalar_candidates']) == 2
+    assert len(source['count_checks'][0]['scalar_candidates']) == 3
+
+
 def test_unknown_timing_remains_unknown():
     result = audit.timing([{'type': 'progress', 'elapsed_ms': 0}])
     assert result['first_progress_s'] == 0

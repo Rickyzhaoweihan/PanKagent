@@ -13,7 +13,7 @@ import re
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 
-VERSION = 'preplanning-property-owners-v3'
+VERSION = 'preplanning-property-owners-v4'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 
@@ -95,6 +95,58 @@ def _grounded_anatomy_ids(values, grounding):
             return None
         identifiers.append(matches.pop())
     return identifiers or None
+
+
+def _sample_tissue_identity(constraint, question, grounding):
+    """Distinguish a requested tissue identity from a raw sample metadata value.
+
+    Sample_node.anatomical_structure is a real metadata property, so schema
+    ownership alone cannot repair a generated ontology-ID predicate on it.
+    Only complete grounding plus the original request's sample-tissue role
+    authorizes using the anatomical_structure endpoint instead.
+    """
+    if (not question or constraint.get('entity_type') != 'Sample_node'
+            or constraint.get('property') != 'anatomical_structure'
+            or str(constraint.get('operator', '=')).upper() not in {'=', '!=', '<>', 'IN', 'NOT IN'}):
+        return None
+    # An explicitly requested storage field remains a storage-field predicate,
+    # even when its literal happens to resemble a verified ontology identifier.
+    if (re.search(r'\bSample_node\s*\.\s*anatomical_structure\b', question, re.I)
+            or re.search(r'\b(?:raw|metadata|property|field|column)\b[^.!?;\n]{0,60}\banatomical_structure\b', question, re.I)
+            or re.search(r'\banatomical_structure\b[^.!?;\n]{0,35}\b(?:raw|metadata|property|field|column)\b', question, re.I)):
+        return None
+    identifiers = _grounded_anatomy_ids(_values(constraint), grounding)
+    if not identifiers:
+        return None
+    for identifier in identifiers:
+        role_verified = False
+        for mention in grounding.get('mentions', []):
+            if mention.get('state') != 'resolved' or mention.get('identity_complete') is False:
+                continue
+            candidates = mention.get('candidates', [])
+            if len(candidates) != 1 or candidates[0].get('id') != identifier:
+                continue
+            candidate = candidates[0]
+            if candidate.get('entity_type') != 'anatomical_structure':
+                continue
+            forms = [mention.get('requested'), candidate.get('name'), identifier]
+            for clause in re.split(r'[.!?;\n]', question):
+                if not any(isinstance(form, str) and form and re.search(
+                        r'(?<!\w)' + re.escape(form) + r'(?!\w)', clause, re.I) for form in forms):
+                    continue
+                sample_word = re.search(r'\b(?:samples?|specimens?|biops(?:y|ies))\b', clause, re.I)
+                donor_assay = (re.search(r'\bdonors?\b', clause, re.I)
+                               and re.search(r'\b(?:[A-Za-z0-9]+[- ]?seq|multiome|multiomics|RNA|ATAC)\b', clause, re.I))
+                if sample_word or donor_assay:
+                    role_verified = True
+                    break
+            if role_verified:
+                break
+        if not role_verified:
+            return None
+    if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:
+        return json.dumps(identifiers) if isinstance(constraint.get('value'), str) else identifiers
+    return identifiers[0]
 
 
 def _source_owner(constraint, question, grounding):
@@ -186,6 +238,12 @@ def compile_property_owners(plan, grounding, *, question=None):
             if (entity and relation or entity and owner_kind == 'relationship'
                     or relation and owner_kind == 'node'):
                 return result, f'conflicting_property_owners:{step.get("id", "step")}:{prop}'
+            if sample_role and not relation and owner_kind != 'relationship':
+                sample_tissue = _sample_tissue_identity(
+                    {**constraint, 'entity_type': entity, 'property': prop}, question, grounding)
+                if sample_tissue is not None:
+                    entity, prop = 'anatomical_structure', 'id'
+                    constraint['value'] = sample_tissue
             # The model's explicit owner cannot override a verified role in
             # the raw user request. A donor-cohort source and a sample provider
             # are different fields even when both are named data_source.
