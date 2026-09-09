@@ -1,11 +1,12 @@
 """Literature enriches a usable new graph answer; it never replaces one."""
-VERSION = 'grounded-literature-v1'
+VERSION = 'grounded-literature-v2'
 
 
 def literature_gate(plan, evidence, answer):
     if not plan.get('literature'):
         return False, 'not_requested'
-    if not plan.get('steps') or plan.get('answer_mode') in {'skills', 'skill_only', 'explanation'}:
+    from .definition_intent import definition_only_plan
+    if not plan.get('steps') or plan.get('answer_mode') in {'skills', 'skill_only', 'explanation'} or definition_only_plan(plan):
         return False, 'no_new_graph_requested'
     if not isinstance(answer, str) or not answer.strip():
         return False, 'no_graph_answer'

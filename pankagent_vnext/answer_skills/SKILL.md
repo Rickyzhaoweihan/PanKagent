@@ -59,3 +59,9 @@ outside quoted strings, validate every rule reference, and recalculate all six
 SHA-256 values. Check alias ambiguity and modern/legacy OCR separation. Run
 router tests for unrelated evidence, multi-label nodes, composite predicates,
 exact functional fields, clinical safeguards, and deterministic deduplication.
+
+## Investigator-facing caveats
+
+Maintain [common_caveats.md](bim/common_caveats.md) for evidence-conditioned caveat wording and one-versus-rest semantics. It is loaded once into the synthesis contract; no extra model call is made. After editing it or normalized schema guidance, bump bundle_version and update the corresponding SHA-256 in manifest.json. Keep upstream/ unchanged. Source-analysis comparison scope must not be confused with query scope or model-context sampling.
+
+The backend stamps evidence_coverage after successful validated execution. Keep query scope, source-analysis comparator, model context and graph display separate. Interpret complete zero-match scopes as no matching PanKgraph records in that release; unknown legacy and partial/failed results never become exhaustive absence. Source one-versus-rest semantics must remain correct even for a restricted query. See the coverage and streaming scope-guard regression tests when updating this contract.

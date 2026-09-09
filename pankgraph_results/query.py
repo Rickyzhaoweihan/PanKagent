@@ -42,6 +42,9 @@ LEAD_SCOPE_NOTE = ("The graph shows the selected credible-set lead variant. Stat
 
 
 def parameters_for(template_id, supplied):
+    if template_id == "functional_traces":
+        from .functional import parameters
+        return parameters(supplied, trace=True)
     if template_id not in TEMPLATES or not isinstance(supplied, dict):
         raise ValueError("unknown_template")
     if set(supplied) - PARAMETERS:
@@ -325,7 +328,7 @@ class QueryService:
             if template_id.startswith("qtl_"):
                 query = query.rsplit(" RETURN ", 1)[0] + " RETURN v.id AS snp,g.id AS gene,g.name AS gene_name,properties(r) AS properties ORDER BY r.pip DESC,r.credible_set,v.id LIMIT 201"
             elif template_id == "gwas_by_variant":
-                query = query.rsplit(" RETURN ", 1)[0] + " RETURN v.id AS snp,properties(r) AS properties ORDER BY r.pip DESC,r.credible_set_id,v.id LIMIT 201"
+                query = query.rsplit(" RETURN ", 1)[0] + " RETURN v.id AS snp,d.id AS disease,d.name AS disease_name,properties(r) AS properties ORDER BY r.pip DESC,r.credible_set_id,v.id LIMIT 201"
             else:
                 return {"items": [], "status": "ready", "coverage": {"source": "configured_graph", "complete": True}}
             rows = await self.graph._small_query(query, params)

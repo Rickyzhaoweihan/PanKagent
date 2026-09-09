@@ -10,8 +10,11 @@ import json
 import math
 from collections import Counter, defaultdict
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
+
+from .evidence_coverage import coverage_for_answer
 
 
 TARGET_BYTES = 75_000
@@ -147,6 +150,13 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
     entry["evidence_id"] = "G" + str(index + 1)
     entry["validation"] = _validation(item.get("validation"), limits, changes)
+    # Record full query/source scope before sampling. Never clip scope filters or
+    # turn excerpt omissions into a retrieval limit. The total-size gate remains.
+    entry["evidence_coverage"] = coverage_for_answer(item)
+    if isinstance(item.get("coloc_linkage"), Mapping):
+        # The linkage helper already bounds record/reference examples and keeps
+        # authoritative full counts. Do not reclip away role or signal identity.
+        entry["coloc_linkage"] = deepcopy(item["coloc_linkage"])
     nodes, edges, rows = (item.get(key) or [] for key in ("nodes", "edges", "rows"))
     if not all(isinstance(values, list) for values in (nodes, edges, rows)):
         raise ValueError("invalid_evidence_collections")
@@ -269,6 +279,8 @@ def scientific_excerpt(compact):
         entry['answer_evidence_scope']={
             'individual_records_are_selected_examples':bool(item.get('context_sampled')),
             'authoritative_totals':'Use the recorded full counts and donor_summary totals.',
+            'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
+            'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
             'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}
         result.append(entry)
     return result

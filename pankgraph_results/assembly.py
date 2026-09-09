@@ -9,6 +9,8 @@ def assemble(source, evidence, presentation):
     notice = f"Showing {shown} of {total} retrieved nodes and {len(edges)} of {full['edge_count']} relationships."
     if shown < total or len(edges) < full["edge_count"]:
         notice += " The full retrieved evidence is retained separately from this display."
+    if presentation["combined_query_result"].get("presentation_mode")=="relationship_list":
+        notice += " Ordered relationship list; scroll or drag vertically to inspect the remaining rows. Full names and evidence are available on hover."
     if evidence.get("truncated"):
         notice += " Graph retrieval reached its safety limit and is incomplete."
     if evidence.get("scope_note"):

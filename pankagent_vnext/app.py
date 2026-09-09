@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 
 from .answer_router import followup_questions
 from .graph_contract import DIGEST as CONTRACT_DIGEST
-from .evidence_status import outcome_message, confirmation_eligible
+from .evidence_status import (outcome_message, confirmation_eligible, query_readiness,
+                              required_query_steps, checked_query_result, QUERY_READINESS_VERSION)
 from .audit import InteractionRequest, deployment_identity, recorder
 from .config import Settings
 from .health import HealthMonitor, Metrics, error_category
@@ -111,7 +112,8 @@ def normalize_plan(plan: dict) -> dict:
     plan.setdefault("literature", False)
     plan.setdefault("clarification", None)
     if not plan["steps"] and not plan["clarification"]:
-        plan["clarification"] = "Please provide a concrete entity or graph question."
+        from .plan_recovery import mark_failure
+        plan = mark_failure(plan)
     from .investigations import group_plan
     return group_plan(plan)
 
@@ -149,6 +151,7 @@ class Runtime:
         self.store = Store(settings.state_dir)
         self.audit_identity = deployment_identity(settings)
         self.tasks: dict[str, asyncio.Task] = {}
+        self.started_graph_checks: dict[str, set[str]] = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
         self.active = 0
         self.metrics = Metrics()
@@ -220,6 +223,9 @@ class Runtime:
                 "parent_plan": parent_plan,
                 "preview_summary": preview_summary,
                 "instruction": metadata.get("revision_instruction") or run["question"],
+                **({"retry_of_run_id": metadata["retry_of_run_id"],
+                    "previous_revision_instruction": metadata.get("retry_prior_revision_instruction")}
+                   if metadata.get("retry_of_run_id") else {}),
                 "preview_status": (parent.get("preview") or {}).get("status"),
                 "rule": "Revise this existing investigation. Preserve all unrelated entities, filters, completeness and explicit preferences. Return a standalone revised biological question and executable steps."}})
         return history
@@ -253,6 +259,8 @@ class Runtime:
                     self.check_active(run_id)
                     self.health.record_inference("claude", True)
                     claude_pending = False
+                from .plan_recovery import recover_empty_plan
+                proposed = await recover_empty_plan(self.gateway, proposed, run["question"], self.planning_history(run), self.settings.plan_timeout)
                 plan = normalize_plan(proposed)
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
@@ -271,7 +279,7 @@ class Runtime:
                 self.store.update(run_id, plan=plan)
                 preview_started = time.monotonic()
                 try:
-                    await asyncio.wait_for(self.preflight(run_id, plan), self.settings.preview_timeout)
+                    await asyncio.wait_for(self.preflight(run_id, plan), self.settings.grouped_preview_timeout)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -284,16 +292,28 @@ class Runtime:
                     current = self.store.get(run_id)
                     plan = current["plan"]
                     previous = {step["step_id"]: step for step in (current["preview"] or {}).get("evidence", {}).get("steps", [])}
-                    for step in [s for s in plan["steps"] if not s.get("depends_on")][:2]:
+                    for step in plan["steps"]:
                         previous.setdefault(step["id"], self.failed_step(step, error))
+                    previous = {step["id"]: previous[step["id"]] for step in plan["steps"]}
                     cache = current["preview_cache"] or {"identity": None, "step_completed_epochs": {}}
-                    self.save_preview(run_id, previous, cache, error=error)
+                    self.save_preview(run_id, previous, cache, error=error, preparation_complete=True)
                 finally:
                     self.metrics.observe("preview", time.monotonic() - preview_started)
                 self.check_active(run_id)
                 current = self.store.get(run_id)
-                self.store.update(run_id, status="awaiting_confirmation", stage="awaiting_confirmation")
-                self.store.event(run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": current["plan"], "preview": current["preview"]})
+                if not confirmation_eligible(current["plan"], current.get("preview")):
+                    recovery = self.preview_recovery(current)
+                    self._terminal(run_id, "failed", error={"category": recovery["category"],
+                        "message": recovery["message"], "recovery": recovery})
+                    self.metrics.count("plans_query_blocked")
+                    return
+                plan = current["plan"]
+                plan["review_ready"] = True
+                self.store.update(run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation")
+                self.store.event(run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,
+                    "validation_scope": "required graph queries executed successfully; zero matches are valid checked outcomes",
+                    "query_readiness": current["preview"]["query_readiness"]})
+                self.store.event(run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": plan, "preview": current["preview"]})
                 self.metrics.count("plans_ready")
                 self.metrics.observe("plan_ready", time.monotonic() - started)
         except asyncio.CancelledError:
@@ -316,7 +336,8 @@ class Runtime:
     @staticmethod
     def failed_step(step, error):
         return {"step_id": step["id"], "question": step["question"], "status": "failed", "error": error,
-                "nodes": [], "edges": [], "rows": [], "validation": [{"valid": False, "reasons": [error["category"]]}]}
+                "nodes": [], "edges": [], "rows": [], "validation": [{"valid": False, "reasons": [error["category"]]}],
+                **{key: step[key] for key in ('purpose', 'context_for', 'title') if key in step}}
 
     def preview_identity(self, plan):
         """Bind private reuse metadata to the exact approved plan and graph setup."""
@@ -328,11 +349,25 @@ class Runtime:
         # Credential changes can change accessible data. Hashes remain private;
         # credentials and the reusable-cache metadata never enter public events.
         access = [getattr(self.settings, field, "") for field in ("neo4j_user", "neo4j_password", "cypher_token")]
-        raw = json.dumps({"version": 3, "validator_contract": CONTRACT_DIGEST, "plan": plan, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
+        raw = json.dumps({"version": 4, "readiness_contract": QUERY_READINESS_VERSION, "validator_contract": CONTRACT_DIGEST,
+                          "plan": {key: value for key, value in plan.items() if key != "review_ready"}, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def save_preview(self, run_id, previous, cache, *, error=None):
+    @staticmethod
+    def annotate_plan_evidence(plan, previous):
+        from .coloc_scope import summarize_linkage
+        linkage = summarize_linkage(plan, previous)
+        for group in linkage.get('groups', []):
+            primary_id = group.get('step_ids', {}).get('primary')
+            if primary_id in previous:
+                previous[primary_id]['coloc_linkage'] = deepcopy(group)
+        return linkage
+
+    def save_preview(self, run_id, previous, cache, *, error=None, preparation_complete=False):
+        linkage = self.annotate_plan_evidence(self.store.get(run_id)['plan'] or {}, previous)
         evidence = aggregate_evidence(previous)
+        if linkage.get('groups'):
+            evidence['coloc_linkage'] = linkage
         from .investigations import coverage
         evidence["category_outcomes"] = coverage(self.store.get(run_id)["plan"] or {}, previous)
         states = [step.get("status") for step in previous.values()]
@@ -346,13 +381,27 @@ class Runtime:
         completed = list(cache.get("step_completed_epochs", {}).values())
         epoch = min(completed) if completed else time.time()
         preview = {"status": status, "evidence": evidence, "pending_step_ids": pending,
+                   "preparation_complete": preparation_complete,
                    "created_at": datetime.fromtimestamp(epoch, timezone.utc).isoformat(),
                    "reusable_until": datetime.fromtimestamp(epoch + self.settings.preview_ttl_seconds, timezone.utc).isoformat() if cache.get("identity") else None}
         if error:
             preview["error"] = error
             if states and any(state != "failed" for state in states):
                 preview["status"] = "partial"
-        preview["confirmation_eligible"] = confirmation_eligible(plan, preview)
+        from .query_recovery import retrieval_recovery
+        recovery = retrieval_recovery(preview)
+        if recovery:
+            preview["recovery"] = recovery
+        resource_overrun = (len(evidence['nodes']) > self.settings.max_nodes
+            or len(evidence['edges']) > self.settings.max_edges
+            or sum(len(item.get('rows', [])) for item in previous.values()) > getattr(self.settings, 'max_rows', 1000)
+            or sum(item.get('materialized_bytes', 0) for item in previous.values()) > self.settings.max_bytes)
+        if resource_overrun:
+            preview['error'] = {'category': 'run_graph_materialization_limit',
+                'message': 'The combined graph checks exceeded the allowed evidence size.'}
+            preview['query_resource_limit_exceeded'] = True
+        preview["query_readiness"] = query_readiness(plan, preview)
+        preview["confirmation_eligible"] = preview["query_readiness"]["ready"]
         self.store.update(run_id, preview=preview, preview_cache=cache)
         return preview
 
@@ -360,6 +409,9 @@ class Runtime:
         self.check_active(run_id)
         prior_generation = getattr(self.graph, "last_generation_success", None)
         prior_query = getattr(self.graph, "last_query_success", None)
+        tracking = self.store.get(run_id)["status"] == "running"
+        if tracking:
+            self.started_graph_checks.setdefault(run_id, set()).add(step["id"])
         try:
             async def progress(kind, payload):
                 if before_query and payload.get('stage') == 'querying_graph':
@@ -394,10 +446,13 @@ class Runtime:
             return self.failed_step(step, error)
 
     async def preflight(self, run_id, plan):
+        preflight_started = time.monotonic()
         await self.emit(run_id, "progress", {"stage": "preparing_preview"})
         if plan.get("steps") and not plan.get("clarification") and hasattr(self.graph, "prepare_plan"):
             try:
-                plan = normalize_plan(await self.graph.prepare_plan(deepcopy(plan), lambda kind, payload: self.emit(run_id, kind, payload)))
+                plan = normalize_plan(await asyncio.wait_for(
+                    self.graph.prepare_plan(deepcopy(plan), lambda kind, payload: self.emit(run_id, kind, payload)),
+                    self.settings.preview_timeout))
                 self.check_active(run_id)
             except asyncio.CancelledError:
                 raise
@@ -405,10 +460,8 @@ class Runtime:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
             self.store.update(run_id, plan=plan)
-        plan['review_ready'] = True
+        plan.pop('review_ready', None)
         self.store.update(run_id, plan=plan)
-        self.store.event(run_id, 'plan_validated', {'plan_id':self.store.get(run_id)['plan_id'], 'plan':plan,
-            'validation_scope':'plan structure, recorded constraints and entity resolution; graph queries still require validation'})
         cache = {"identity": self.preview_identity(plan), "step_completed_epochs": {}, "step_identities": {}}
         previous = {}
         if plan.get("clarification"):
@@ -416,27 +469,31 @@ class Runtime:
             parent = self.store.get(metadata.get("parent_run_id")) if plan.get('retained_previous_plan') and metadata.get('parent_run_id') else None
             if parent:
                 previous = {s['step_id']: deepcopy(s) for s in ((parent.get('preview') or {}).get('evidence') or {}).get('steps', [])}
-            self.save_preview(run_id, previous, {"identity": None, "step_completed_epochs": {}})
+            self.save_preview(run_id, previous, {"identity": None, "step_completed_epochs": {}}, preparation_complete=True)
             return
         metadata = self.store.audit_metadata(run_id) or {}
         parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
         parent_cache = (parent or {}).get("preview_cache") or {}
         parent_steps = {s["step_id"]: s for s in (((parent or {}).get("preview") or {}).get("evidence") or {}).get("steps", [])}
         reused = set()
-        preview_steps = [step for step in plan['steps'] if not step.get('depends_on') and step.get('purpose') != 'context'][:2]
-        if len(preview_steps) < 2:
-            preview_steps += [step for step in plan['steps'] if not step.get('depends_on') and step not in preview_steps][:2-len(preview_steps)]
-        done = [asyncio.Event() for _ in preview_steps]
-        indices = {step['id']: i for i, step in enumerate(preview_steps)}
+        preview_steps = plan['steps']
+        done = {step['id']: asyncio.Event() for step in preview_steps}
+        # Prioritize primary checks. Optional context never occupies a generation
+        # slot ahead of an independent primary; the adapter retains its global cap.
+        required_ids = {step['id'] for step in required_query_steps(plan)}
+        primary_tasks_done = asyncio.Event()
+        remaining_required = set(required_ids)
+        execution_slots = asyncio.Semaphore(2)
         async def worker(index, step):
-            async def wait_prior():
-                if index: await done[index-1].wait()
             for dependency in step.get('depends_on', []):
-                await done[indices[dependency]].wait()
+                await done[dependency].wait()
+            if step['id'] not in required_ids:
+                await primary_tasks_done.wait()
+            self.check_active(run_id)
             fingerprint = self.preview_identity({"steps": [step], "contract_sha256": CONTRACT_DIGEST})
             old = parent_steps.get(step["id"], {})
             epoch = parent_cache.get("step_completed_epochs", {}).get(step["id"], 0)
-            can_reuse = (old.get("status") in {"complete", "empty"}
+            can_reuse = (checked_query_result(step, old, {key: previous[key] for key in reused})
                 and parent_cache.get("step_identities", {}).get(step["id"]) == fingerprint
                 and 0 <= time.time() - epoch < self.settings.preview_ttl_seconds
                 and set(step.get("depends_on", [])) <= reused)
@@ -446,31 +503,103 @@ class Runtime:
                 self.metrics.count("revision_preview_reused")
                 await self.emit(run_id, "preview_reused", {"step_id": step["id"], "source": "parent_plan"})
             else:
-                result = await self.execute_step(run_id, step, previous, before_query=wait_prior)
+                failed_dependencies = [dependency for dependency in step.get('depends_on', [])
+                    if not checked_query_result(next(item for item in preview_steps if item['id'] == dependency),
+                        previous.get(dependency), previous)]
+                if failed_dependencies:
+                    result = self.failed_step(step, {'category': 'dependency_unavailable',
+                        'message': 'A required earlier check could not be completed.'})
+                    result['blocked_by'] = failed_dependencies
+                else:
+                    async with execution_slots:
+                        result = await self.execute_step(run_id, step, previous)
                 epoch = time.time()
-            await wait_prior()
             self.check_active(run_id)
+            result.setdefault('purpose', step.get('purpose', 'primary'))
             previous[step["id"]] = result
             cache["step_completed_epochs"][step["id"]] = epoch
             cache["step_identities"][step["id"]] = fingerprint
             preview = self.save_preview(run_id, previous, cache)
             await self.emit(run_id, "preview_step", {"step_id": step["id"], "evidence": previous[step["id"]], "preview": preview})
-            done[index].set()
+            done[step['id']].set()
+            remaining_required.discard(step['id'])
+            if not remaining_required:
+                primary_tasks_done.set()
+        if not remaining_required:
+            primary_tasks_done.set()
         tasks = [asyncio.create_task(worker(i, step)) for i, step in enumerate(preview_steps)]
+        # Resolution and retrieval share one budget. Grouping cannot add a
+        # second full deadline after preparation has already consumed time.
+        deadline = (self.settings.grouped_preview_timeout if len(required_ids) > 2
+                    else self.settings.preview_timeout)
+        remaining = max(0, deadline - (time.monotonic() - preflight_started))
         try:
-            await asyncio.gather(*tasks)
+            await asyncio.wait_for(asyncio.gather(*tasks), remaining)
         finally:
             for task in tasks:
                 if not task.done(): task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
         if self.preview_identity(plan) != cache["identity"]:
             cache["identity"] = None
-        self.save_preview(run_id, previous, cache)
+        previous = {step['id']: previous[step['id']] for step in preview_steps}
+        self.save_preview(run_id, previous, cache, preparation_complete=True)
+
+    def preview_recovery(self, run, reason=None):
+        """Return the existing popup contract without labeling an empty result failed."""
+        if reason:
+            return {'category': 'preview_revalidation_required', 'title': 'The checked plan needs refreshing',
+                'message': 'The checked evidence has expired or no longer matches this plan and graph release. '
+                           'Retry the same question to check it again before confirmation. Your filters are retained.',
+                'retryable': True, 'suggestions': [], 'evidence': {'reason': reason}}
+        plan, preview = run.get('plan') or {}, run.get('preview') or {}
+        if plan.get('recovery'):
+            return plan['recovery']
+        if plan.get('clarification'):
+            return {'category': 'scope_needs_clarification', 'title': 'A detail needs your review',
+                    'message': plan['clarification'], 'retryable': False, 'suggestions': []}
+        from .query_recovery import retrieval_recovery
+        readiness = query_readiness(plan, preview)
+        blocked = set(readiness['blocked_step_ids'])
+        relevant = deepcopy(preview)
+        relevant['status'] = 'failed'
+        relevant['preparation_complete'] = True
+        relevant['evidence'] = {**(preview.get('evidence') or {}), 'steps': [
+            {**step, 'status': 'failed', 'purpose': 'primary'}
+            for step in (preview.get('evidence') or {}).get('steps', []) if step.get('step_id') in blocked]}
+        recovery = retrieval_recovery(relevant) or {
+            'category': 'query_validation', 'title': 'The requested checks could not all finish',
+            'message': 'At least one required graph query has not been successfully checked. '
+                       'No conclusion about missing data can be drawn. Retry the same question; your filters are kept.',
+            'retryable': True, 'suggestions': []}
+        recovery.setdefault('evidence', {})['query_readiness'] = readiness
+        return recovery
+
+    def confirmation_preview_issue(self, run, *, check_freshness=True):
+        plan, preview, cache = run.get('plan') or {}, run.get('preview') or {}, run.get('preview_cache') or {}
+        if (preview.get('query_readiness') or {}).get('version') != QUERY_READINESS_VERSION:
+            return 'readiness_contract_changed'
+        if not confirmation_eligible(plan, preview):
+            return 'required_query_not_checked'
+        try:
+            if not cache.get('identity') or cache['identity'] != self.preview_identity(plan):
+                return 'plan_or_graph_identity_changed'
+        except Exception:
+            return 'graph_identity_unavailable'
+        if check_freshness:
+            for step in required_query_steps(plan):
+                age = time.time() - cache.get('step_completed_epochs', {}).get(step['id'], 0)
+                if not 0 <= age < self.settings.preview_ttl_seconds:
+                    return 'checked_evidence_expired'
+        return None
 
     def _terminal(self, run_id, status, **fields):
         run = self.store.get(run_id)
         if run["status"] in TERMINAL:
             return
+        if status in {"cancelled", "interrupted"} and run["status"] in {"queued", "running"} and (run.get("plan") or {}).get("steps"):
+            from .interrupted_evidence import complete_interrupted_evidence
+            fields["evidence"] = complete_interrupted_evidence(run["plan"], fields.get("evidence", run["evidence"]),
+                {"category": status}, self.started_graph_checks.get(run_id, set()))
         self.store.update(run_id, status=status, stage=status, **fields)
         self.store.event(run_id, "terminal", {"status": status, **({"error": fields["error"]} if fields.get("error") else {})})
         self.metrics.count(f"runs_{status}")
@@ -478,13 +607,13 @@ class Runtime:
     def _cancelled(self, run_id):
         self._terminal(run_id, "interrupted" if self.shutting_down else "cancelled")
 
-    def preview_reuse_reason(self, step, cached, cache, matching, reused, previous):
+    def preview_reuse_reason(self, step, cached, cache, matching, reused, previous, *, check_freshness=True):
         if not matching:
             return "identity_changed"
         if step["id"] not in cache.get("step_completed_epochs", {}):
             return "not_previewed"
         age = time.time() - cache.get("step_completed_epochs", {}).get(step["id"], 0)
-        if not 0 <= age < self.settings.preview_ttl_seconds:
+        if check_freshness and not 0 <= age < self.settings.preview_ttl_seconds:
             return "expired"
         if not set(step.get("depends_on", [])) <= reused:
             return "dependency_changed"
@@ -504,7 +633,13 @@ class Runtime:
         return None
 
     async def graph_answer(self, run_id: str, run: dict) -> tuple[dict, bool]:
+        issue = self.confirmation_preview_issue(run, check_freshness=False)
+        if issue:
+            recovery = self.preview_recovery(run, issue)
+            self.store.update(run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
+            raise ValueError('checked_preview_identity_changed')
         previous = {}
+        required_ids = {step['id'] for step in required_query_steps(run['plan'])}
         cache = run.get("preview_cache") or {}
         preview = run.get("preview") or {}
         cached_steps = {step["step_id"]: step for step in preview.get("evidence", {}).get("steps", [])}
@@ -522,7 +657,12 @@ class Runtime:
             except Exception:
                 matching = False
             cached = cached_steps.get(step["id"], {})
-            reason = self.preview_reuse_reason(step, cached, cache, matching, reused, previous)
+            reason = self.preview_reuse_reason(step, cached, cache, matching, reused, previous,
+                check_freshness=step['id'] not in required_ids)
+            if reason is not None and step['id'] in required_ids:
+                recovery = self.preview_recovery(run, reason)
+                self.store.update(run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
+                raise ValueError('checked_preview_identity_changed')
             if reason is None:
                 previous[step["id"]] = deepcopy(cached)
                 reused.add(step["id"])
@@ -550,15 +690,19 @@ class Runtime:
         try:
             await asyncio.wait_for(asyncio.gather(*tasks), 120 if len(tasks)>2 else self.settings.run_timeout)
         except TimeoutError:
-            for step in run['plan']['steps']:
-                previous.setdefault(step['id'], self.failed_step(step, {'category':'retrieval_timeout','message':'Retrieval deadline exceeded.'}))
+            # The shared execution handler retains evidence and records each
+            # interrupted or unattempted check without starting synthesis.
+            raise
         finally:
             for task in tasks:
                 if not task.done(): task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
         previous = {step['id']: previous[step['id']] for step in run['plan']['steps']}
 
+        linkage = self.annotate_plan_evidence(run['plan'], previous)
         evidence = aggregate_evidence(previous)
+        if linkage.get('groups'):
+            evidence['coloc_linkage'] = linkage
         evidence["preview_reuse"] = reuse_info
         from .investigations import coverage
         evidence["category_outcomes"] = coverage(run["plan"], previous)
@@ -567,7 +711,16 @@ class Runtime:
         citation_filter = CitationFilter(len(previous))
         synthesis_error = None
         synthesis_started = False
-        status_message = outcome_message(previous)
+        from .population_completeness import population_recovery
+        population_issue = population_recovery(run, previous)
+        if population_issue:
+            evidence["recovery"] = population_issue
+            evidence["population_completeness"] = population_issue["evidence"]
+            self.store.update(run_id, evidence=evidence, error={
+                "category": population_issue["category"], "message": population_issue["message"],
+                "recovery": population_issue})
+            self.store.audit_event(run_id, "population_answer_guard", population_issue["evidence"])
+        status_message = population_issue["message"] if population_issue else outcome_message(previous)
         async def tokens():
             if status_message:
                 yield status_message
@@ -638,7 +791,7 @@ class Runtime:
             evidence["synthesis_error"] = synthesis_error
         self.store.update(run_id, graph_answer=answer, evidence=evidence)
         await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
-        return evidence, synthesis_error is None and evidence["completeness"] != "partial" and not citation_filter.invalid
+        return evidence, not population_issue and synthesis_error is None and evidence["completeness"] != "partial" and not citation_filter.invalid
 
     async def execution(self, run_id: str):
         beat = asyncio.create_task(self.heartbeat(run_id))
@@ -687,8 +840,12 @@ class Runtime:
                 except Exception as exc:
                     error = safe_error(exc)
                     current = self.store.get(run_id)
+                    if (current.get('error') or {}).get('category') == 'preview_revalidation_required':
+                        error = current['error']
                     answer = current["graph_answer"] or error["message"]
-                    evidence = current["evidence"] or {"steps": [], "nodes": [], "edges": [], "completeness": "partial"}
+                    from .interrupted_evidence import complete_interrupted_evidence
+                    evidence = complete_interrupted_evidence(run["plan"], current["evidence"], error,
+                        self.started_graph_checks.get(run_id, set()))
                     evidence["error"] = error
                     self.store.update(run_id, graph_answer=answer, evidence=evidence, error=error)
                     await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
@@ -726,6 +883,7 @@ class Runtime:
         except Exception as exc:
             self._terminal(run_id, "failed", error=safe_error(exc))
         finally:
+            self.started_graph_checks.pop(run_id, None)
             if entered:
                 self.active -= 1
             for task in (beat, literature_task):
@@ -735,7 +893,7 @@ class Runtime:
 
     async def close(self):
         self.shutting_down = True
-        self.store.interrupt_active()
+        self.store.interrupt_active(self.started_graph_checks)
         for task in self.tasks.values():
             task.cancel()
         await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
@@ -798,7 +956,8 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         try:
             run = runtime.store.create(question, body.session_id, include_context=body.include_context,
                 audit={"original_question": body.question, "source": body.event_source, "versions": runtime.audit_identity,
-                       "requested_options": {"include_context": body.include_context}})
+                       "requested_options": {"include_context": body.include_context}},
+                legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None)
         except KeyError:
             raise HTTPException(404, "Session not found.") from None
         runtime.store.event(run["run_id"], "progress", {"stage": "queued"})
@@ -856,8 +1015,12 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                 raise HTTPException(409, "Revise this saved plan to validate initial evidence.")
             if run["plan"].get("clarification"):
                 raise HTTPException(409, "The plan needs clarification; submit a narrower question.")
-            if run["preview"].get("confirmation_eligible") is False:
-                raise HTTPException(409, "Initial graph retrieval is blocked. Revise the plan before confirmation.")
+            issue = runtime.confirmation_preview_issue(run)
+            if issue:
+                recovery = runtime.preview_recovery(run, issue)
+                runtime._terminal(run['run_id'], 'failed', error={'category': recovery['category'],
+                    'message': recovery['message'], 'recovery': recovery})
+                raise HTTPException(409, {'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
             runtime.check_capacity()
             if runtime.store.confirm(run["run_id"]):
                 runtime.store.event(run["run_id"], "progress", {"stage": "queued"})

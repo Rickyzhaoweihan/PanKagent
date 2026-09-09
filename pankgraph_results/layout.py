@@ -18,12 +18,13 @@ from collections import Counter, OrderedDict, deque
 from pathlib import Path
 
 from .projection import project_evidence
+from .list_layout import relationship_list
 from .vendor.graph_viewer.filtering import filter_graph
 from .vendor.graph_viewer.layout_engine.config import LayoutConfig
 
 
 UPSTREAM_COMMIT = "362025db24b1d37223c3c44ccf02a55eb2756a42"
-LAYOUT_VERSION = "pankgraph-regular-2"
+LAYOUT_VERSION = "pankgraph-regular-4"
 COORDINATE_SCALE = 1 / 3
 # A fixed iteration count makes completed layouts deterministic. The parent
 # process owns the hard wall-clock bound across optimization, routing and metrics.
@@ -322,8 +323,11 @@ class LayoutService:
             cache_hit = True
         else:
             cache_hit = False
+            ordered_list = relationship_list(graph, core)
             if not graph["nodes"]:
                 computed = {"status": "empty", "xy_json": {}, "edge_routes": {}}
+            elif ordered_list is not None:
+                computed = ordered_list
             elif self._busy:
                 computed = {"status": "fallback", "reason": "worker_busy"}
             else:
@@ -344,6 +348,9 @@ class LayoutService:
                 self._cache[key] = copy.deepcopy(computed)
                 while len(self._cache) > 8:
                     self._cache.popitem(last=False)
+        if computed.get('presentation_mode')=='relationship_list':
+            graph['presentation_mode']='relationship_list'
+            for node in graph['nodes']:node['list_label']=computed['labels'][node['~id']]
         status = computed["status"]
         fallback = status in {"fallback", "partial"}
         self._observations["state"] = "degraded" if fallback else "healthy"
@@ -358,7 +365,7 @@ class LayoutService:
                        edge_budget=400, display_complete=len(graph["nodes"]) == full["node_count"] and len(graph["edges"]) == full["edge_count"],
                        scientific_completeness=full["scientific_completeness"], evidence_unchanged=True)
         details = computed.get("details", {})
-        layout_info = {"status": status, "mode": "kg_only", "engine": "deterministic_grid" if status == "fallback" else "optimized_v1",
+        layout_info = {"status": status, "mode": "kg_only", "engine": "relationship_list" if computed.get("presentation_mode") else "deterministic_grid" if status == "fallback" else "optimized_v1",
                        "layout_version": LAYOUT_VERSION, "version": 1, "upstream_commit": UPSTREAM_COMMIT,
                        "config_fingerprint": CONFIG.fingerprint("kg_only"), "coordinate_scale": COORDINATE_SCALE,
                        "runtime_ms": round((time.monotonic() - started) * 1000, 2), "cache_hit": cache_hit,

@@ -29,7 +29,7 @@ def test_literature_only_revision_uses_no_planner_call(tmp_path):
     asyncio.run(check())
 
 
-def test_parallel_preview_keeps_order_dependencies_and_early_plan(tmp_path):
+def test_parallel_preview_checks_dependencies_before_exposing_plan(tmp_path):
     class ParallelGraph(Graph):
         def __init__(self):super().__init__();self.started=set();self.two=asyncio.Event();self.reads=[]
         async def execute(self,step,previous,emit):
@@ -46,17 +46,18 @@ def test_parallel_preview_keeps_order_dependencies_and_early_plan(tmp_path):
         async with service(tmp_path,gateway=Gateway(plan=plan),graph=graph) as (client,runtime,*_):
             created=await new_plan(client,'INS expression')
             run=runtime.store.get(created['run_id'])
-            assert graph.reads==['s1','s2']
-            assert run['preview']['pending_step_ids']==['s3']
-            assert [s['step_id'] for s in run['preview']['evidence']['steps']]==graph.reads
+            assert set(graph.reads)=={'s1','s2','s3'}
+            assert graph.reads.index('s1') < graph.reads.index('s3')
+            assert run['preview']['pending_step_ids']==[]
+            assert [s['step_id'] for s in run['preview']['evidence']['steps']]==['s1','s2','s3']
             assert run['plan']['review_ready']
             events=runtime.store.events_after(run['run_id'], 0)
             kinds=[e['type'] for e in events]
-            assert kinds.index('plan_validated')<kinds.index('preview_step')<kinds.index('plan_ready')
+            assert max(i for i, kind in enumerate(kinds) if kind == 'preview_step') < kinds.index('plan_validated') < kinds.index('plan_ready')
     asyncio.run(check())
 
 
-def test_early_plan_is_replayable_but_confirmation_waits_and_cancel_stops_preview(tmp_path):
+def test_progress_is_replayable_but_plan_waits_for_queries_and_cancel_stops_preview(tmp_path):
     class WaitingGraph(Graph):
         def __init__(self):
             super().__init__(); self.started=asyncio.Event(); self.stopped=asyncio.Event()
@@ -70,10 +71,10 @@ def test_early_plan_is_replayable_but_confirmation_waits_and_cancel_stops_previe
             created=(await client.post('/v2/plans',json={'question':'INS expression'})).json()
             await asyncio.wait_for(graph.started.wait(),1)
             run=(await client.get(created['plan_url'])).json()
-            assert run['status']=='planning' and run['plan']['review_ready']
+            assert run['status']=='planning' and not run['plan'].get('review_ready')
             assert (await client.post(f'/v2/plans/{run["plan_id"]}/confirm')).status_code==409
             events=runtime.store.events_after(run['run_id'],0)
-            assert any(e['type']=='plan_validated' for e in events)
+            assert not any(e['type'] in ('plan_validated', 'plan_ready') for e in events)
             await client.post(f'/v2/runs/{run["run_id"]}/cancel')
             await asyncio.wait_for(graph.stopped.wait(),1)
             assert not any(e['type']=='preview_step' for e in runtime.store.events_after(run['run_id'],0))

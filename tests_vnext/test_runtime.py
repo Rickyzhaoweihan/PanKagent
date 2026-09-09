@@ -80,7 +80,7 @@ class Graph:
             raise self.error
         await emit("progress", {"stage": "validating"})
         await emit("progress", {"stage": "querying_graph"})
-        return {"step_id": step["id"], "status": "complete", "nodes": [{"id": "INS", "name": "INS"}], "edges": [], "rows": [], "queries": [{"cypher": "MATCH (n:Gene {name:'INS'}) RETURN n"}], "validation": [{"valid": True}], "graph_version": "test-release", "truncated": False}
+        return {"step_id": step["id"], "status": "complete", "nodes": [{"id": "INS", "name": "INS"}], "edges": [], "rows": [], "queries": [{"cypher": "MATCH (n:Gene {name:'INS'}) RETURN n"}], "validation": [{"valid": True}], "graph_version": "test-release", "truncated": False, "retrieval_execution": {"completed": True, "cursor_exhausted": True}}
 
     async def probe(self):
         return {"state": "healthy", "identity_verified": True, "graph_version": "test-release"}
@@ -133,11 +133,11 @@ async def wait_state(client, run_id, states):
     raise AssertionError(f"Run never reached {states}: {run}")
 
 
-async def new_plan(client, question="Which cell types express INS?", **options):
+async def new_plan(client, question="Which cell types express INS?", *, expected_status="awaiting_confirmation", **options):
     response = await client.post("/v2/plans", json={"question": question, **options})
     assert response.status_code == 202
     created = response.json()
-    await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+    await wait_state(client, created["run_id"], {expected_status})
     return created
 
 
@@ -340,12 +340,12 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
         graph = Graph()
         graph.error = ConnectionError("a token is SECRET_VALUE")
         async with service(tmp_path, gateway=Gateway(plan=plan), graph=graph) as (client, runtime, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             assert response.status_code == 409
-            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            run = await wait_state(client, created["run_id"], {"failed"})
             assert run["preview"]["evidence"]["steps"][0]["status"] == "failed"
-            assert len(graph.previous) == 1  # dependent checks wait for confirmation
+            assert len(graph.previous) == 1  # a failed dependency blocks its child without an unrestricted query
             assert run["plan"]["steps"][1]["depends_on"] == ["s1"]
             assert "SECRET_VALUE" not in json.dumps(run)
     asyncio.run(scenario())
@@ -354,10 +354,10 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
 def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
     async def scenario():
         async with service(tmp_path, graph=Graph(delay=5), preview_timeout=0.03, run_timeout=0.03) as (client, runtime, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             assert response.status_code == 409
-            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            run = await wait_state(client, created["run_id"], {"failed"})
             assert run["preview"]["error"]["category"] == "timeout"
             assert run["preview"]["evidence"]["completeness"] == "partial"
     asyncio.run(scenario())
@@ -366,7 +366,7 @@ def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
 def test_clarification_cannot_be_confirmed(tmp_path):
     async def scenario():
         async with service(tmp_path, gateway=Gateway(plan={**PLAN, "steps": [], "clarification": "Which gene?"})) as (client, runtime, gateway, graph, literature):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
             assert graph.calls == 0
     asyncio.run(scenario())

@@ -136,3 +136,18 @@ def test_including_multiome_is_not_paired_only_and_exclusion_is_preserved():
     assert p['sample_requirements']['modality_groups']==[['scRNA-seq','snMultiomics']]
     p=prepared('Find HPAP stage 3 T1D donors with spleen standalone scRNAseq, exclude multiomics')
     assert p['sample_requirements']['modality_groups']==[['scRNA-seq']]
+
+def test_capability_scope_from_verified_records_without_invented_cohort():
+    v={**VOCAB,'assay_donor_sources':{'snMultiomics':['HPAP']}}
+    q='How many pancreatic lymph node (PLN) scRNA-seq samples from T1D stage 3 donors?'
+    p=resolve({'question':q,'constraints':[]},v,'PanKgraph_08_04')
+    assert not p['semantic_issues']
+    assert p['sample_requirements']['capability_scope_verified']
+    assert p['sample_requirements']['modality_groups']==[['scRNA-seq','snMultiomics']]
+    assert not any(c['property']=='data_source' for c in p['constraints'])
+    for sources in ([],['HPAP','Other'],['HPAP','<unknown>']):
+        bad=resolve({'question':q,'constraints':[]},{**v,'assay_donor_sources':{'snMultiomics':sources}},'PanKgraph_08_04')
+        assert bad['semantic_issues']
+        assert not bad['sample_requirements']['capability_scope_verified']
+    exact=resolve({'question':q+' standalone scRNA-seq only','constraints':[]},v,'PanKgraph_08_04')
+    assert exact['sample_requirements']['modality_groups']==[['scRNA-seq']]

@@ -17,7 +17,7 @@ import secrets
 import time
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,12 +52,15 @@ def suppress_driver_query_logging() -> None:
 class Token:
     kind: str
     value: str
+    start: int = field(default=0, compare=False)
+    end: int = field(default=0, compare=False)
 
 
 def tokenize(query: str) -> list[Token]:
     """Lex strings, quoted identifiers and comments before checking keywords."""
     out, i = [], 0
     while i < len(query):
+        start, count = i, len(out)
         ch = query[i]
         if ch.isspace():
             i += 1
@@ -121,6 +124,8 @@ def tokenize(query: str) -> list[Token]:
             else:
                 out.append(Token("SYMBOL", ch))
                 i += 1
+        if len(out) > count:
+            out[-1] = replace(out[-1], start=start, end=i)
     return out
 
 
@@ -185,9 +190,10 @@ def _normalized_expected(expected: Any, actual: Any, operator: str) -> Any:
     return expected
 
 
-def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None):
+def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None, graph_release=None):
     """Read mandatory node/edge pattern bindings; never infer from prose/literals."""
     nodes, patterns, edges = {}, [], []
+    inference_excluded = set()
     mandatory, i = False, 0
     while i < len(tokens):
         token = tokens[i]
@@ -228,6 +234,9 @@ def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None):
             source, target = (right[2], left[2]) if values[0] == "<" else (left[2], right[2])
             edges.append((source, target, kinds))
             if values[0] != "<" and values[-1] != ">":
+                # Either stored orientation is possible. Explicit labels still
+                # validate normally; do not guess a type for an unlabeled end.
+                inference_excluded.update((source, target))
                 edges.append((target, source, kinds))
                 if undirected_patterns is not None:
                     undirected_patterns.extend([(source,target,kinds),(target,source,kinds)])
@@ -239,6 +248,19 @@ def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None):
             edges += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(edges) if old in (a,b)]
             if undirected_patterns is not None:
                 undirected_patterns += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(undirected_patterns) if old in (a,b)]
+    # Scalar aliases must not acquire a node type from a prior use of the
+    # same variable name. Per-branch callers prevent UNION type leakage.
+    for i, token in enumerate(tokens[1:-1], 1):
+        if _word(token, "AS"):
+            old, new = tokens[i-1].value, tokens[i+1].value
+            if old not in nodes or (i >= 2 and tokens[i-2].value == '.'):
+                inference_excluded.add(new)
+            elif old in inference_excluded:
+                inference_excluded.add(new)
+    if graph_release and not any(_word(t, "UNION") for t in tokens):
+        from .endpoint_types import inferred_endpoint_types
+        for variable, label in inferred_endpoint_types(nodes, edges, graph_release, excluded=inference_excluded).items():
+            nodes[variable].add(label)
     return nodes, edges
 
 
@@ -262,6 +284,9 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
     Intentionally fail closed for predicates whose meaning needs a full parser.
     A planner must supply resolved graph properties/values, not prose filters.
     """
+    from .numeric_predicates import unit_predicate_present
+    if unit_predicate_present(tokens, constraint, parameters, allowed_variables):
+        return True
     prop = str(constraint.get("property", "")).split(".")[-1]
     expected_operator = str(constraint.get("operator", "=")).upper()
     expected = constraint.get("value")
@@ -285,6 +310,12 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
             if tokens[i - 3].value == "(" and tokens[i - 4].value.lower() in {"tolower", "toupper"}:
                 transform = tokens[i - 4].value.lower()
                 at += 1
+        # Numeric representation conversion is allowed only for explicitly
+        # registered typed numeric fields; never for numeric-looking IDs.
+        from .numeric_predicates import cast_at, float_cast_allowed
+        numeric_transform = cast_at(tokens, i) == "tofloat"
+        if numeric_transform:
+            at += 1
         if at >= len(tokens):
             continue
         operator = tokens[at].value.upper()
@@ -300,6 +331,8 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
             at += 1
         actual, end = _value(tokens, at, parameters)
         if end == at:
+            continue
+        if numeric_transform and not float_cast_allowed(tokens, i, constraint, actual):
             continue
         wanted = _normalized_expected(expected, actual, expected_operator)
         if transform and isinstance(wanted, str):
@@ -340,10 +373,10 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
     return False
 
 
-def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], parameters: dict, extra_properties=()) -> list[str]:
+def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], parameters: dict, extra_properties=(), *, graph_release=None) -> list[str]:
     """Catch invented identifier/entity restrictions on complete set queries."""
     errors = []
-    bindings, _ = _pattern_bindings(tokens)
+    bindings, _ = _pattern_bindings(tokens, graph_release=graph_release)
     for i, token in enumerate(tokens):
         if token.kind not in {"WORD", "IDENT"}:
             continue
@@ -413,8 +446,8 @@ def _constraint_choices(step: dict, index: int, constraint: dict) -> list[dict]:
     return [{**constraint, **({"_entity_type": constraint["entity_type"]} if constraint.get("entity_type") else {})}]
 
 
-def _choice_present(tokens, choice, parameters):
-    bindings, _ = _pattern_bindings(tokens)
+def _choice_present(tokens, choice, parameters, *, graph_release=None):
+    bindings, _ = _pattern_bindings(tokens, graph_release=graph_release)
     if choice.get("relationship_type"):
         from .release_schema import relationship_bindings
         variables = {v for v, kinds in relationship_bindings(tokens).items() if choice["relationship_type"] in kinds}
@@ -518,23 +551,35 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         else:
             branch.append(token)
     branches.append(branch)
+    from .ranking_contract import validation_errors as ranking_validation_errors
+    errors.extend(ranking_validation_errors(tokens, step, parameters))
+    from .coloc_query_guard import validation_errors as coloc_validation_errors
+    errors.extend(coloc_validation_errors(tokens, step, parameters))
+    from .scientific_projection import validation_errors as projection_validation_errors
+    errors.extend(projection_validation_errors(tokens, step, parameters))
     choices = [_constraint_choices(step, index, constraint) for index, constraint in enumerate(constraints)]
     for constraint, alternatives in zip(constraints, choices):
-        if not all(any(_choice_present(part, choice, parameters) for choice in alternatives) for part in branches):
+        if not all(any(_choice_present(part, choice, parameters, graph_release=step.get("graph_version")) for choice in alternatives) for part in branches):
             errors.append("missing_required_filter:" + str(constraint.get("property", "unknown")))
     relations = step_relation_types(step)
     for part in branches:
         if step.get("evidence_combination", "independent") == "independent":
-            _, bindings = _pattern_bindings(part)
+            _, bindings = _pattern_bindings(part, graph_release=step.get("graph_version"))
             measurement_paths = [path for path in bindings if path[2] & MEASUREMENTS]
             if len(measurement_paths) > 1 and len({kind for path in measurement_paths for kind in path[2] & MEASUREMENTS}) > 1:
                 errors.append("independent_measurements_require_separate_steps")
     for part in branches:
-        _, paths = _pattern_bindings(part)
+        _, paths = _pattern_bindings(part, graph_release=step.get("graph_version"))
         errors.extend(_enrichment_property_errors(part, step, parameters))
+        from .numeric_predicates import validation_errors as numeric_validation_errors
+        errors.extend(numeric_validation_errors(part, step, parameters))
+        from .measurement_properties import validation_errors as detection_validation_errors
+        errors.extend(detection_validation_errors(part, step, parameters))
         from .release_schema import structural_errors
         errors.extend(structural_errors(part, step, parameters))
-        bindings, _ = _pattern_bindings(part)
+        from .anatomy_paths import endpoint_role_errors
+        errors.extend(endpoint_role_errors(part, step, parameters))
+        bindings, _ = _pattern_bindings(part, graph_release=step.get("graph_version"))
         from .semantic_registry import validation_errors
         errors.extend(validation_errors(part, step, parameters, bindings, paths, _predicate_present, choices))
         from .donor_query_guard import sample_path_errors
@@ -552,7 +597,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
             gene, cell, relation = lookup
             gene_choices, cell_choices = choices[gene["constraint_index"]], choices[cell["constraint_index"]]
             def at(variable, alternatives):
-                bindings, _ = _pattern_bindings(part)
+                bindings, _ = _pattern_bindings(part, graph_release=step.get("graph_version"))
                 return any(choice.get("_entity_type") in bindings.get(variable, set())
                            and _predicate_present(part, choice, parameters, {variable}) for choice in alternatives)
             if not any(relation in kinds and at(source, gene_choices) and at(target, cell_choices)
@@ -567,7 +612,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
     if step.get("complete", True):
         from .semantic_registry import PROPERTIES
         extra={p for fields in PROPERTIES.values() for p in fields} if step.get('semantic_registry') else set()
-        errors.extend(_unrequested_identity_filters(tokens, [choice for group in choices for choice in group], parameters, extra))
+        for part in branches:
+            errors.extend(_unrequested_identity_filters(part, [choice for group in choices for choice in group], parameters, extra, graph_release=step.get("graph_version")))
     return list(dict.fromkeys(errors))
 
 
@@ -636,7 +682,9 @@ class GraphAdapter:
         from .anatomy_resolution import VERSION as anatomy_version
         path = Path(getattr(self.settings, "graph_identity_file", ""))
         manifest_hash = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
-        return {"anatomy_resolver": anatomy_version, "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
+        from .semantic_registry import DIGEST as semantic_digest
+        from .anatomy_scope import DIGEST as anatomy_scope_digest
+        return {"semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
                 "identity_verified": self.identity_verified,
                 **{key: getattr(self.settings, key, None) for key in (
                     "neo4j_uri", "neo4j_database", "cypher_url", "max_nodes", "max_edges", "max_rows",
@@ -768,19 +816,43 @@ class GraphAdapter:
         async with self._semantic_lock:
             cached=getattr(self,'_semantic_cache',None)
             if cached and cached[0]==key and time.monotonic()-cached[1]<300:return cached[2]
-            rows=await self._small_query("MATCH (d:donor) RETURN collect(DISTINCT d.t1d_stage) AS stages, collect(DISTINCT d.data_source) AS sources")
+            from .donor_categories import CATEGORICAL_FIELDS
+            # Fixed schema fields, not user-supplied query text. This is the same
+            # complete metadata scan as the stage/source inventory.
+            categorical_columns = ''.join(', collect(DISTINCT d.' + field + ') AS category_' + field
+                                          for field in CATEGORICAL_FIELDS)
+            rows=await self._small_query("MATCH (d:donor) RETURN collect(DISTINCT d.t1d_stage) AS stages, collect(DISTINCT d.data_source) AS sources" + categorical_columns)
             modalities=await self._small_query("MATCH (s:Sample_node) RETURN collect(DISTINCT s.data_modality) AS modalities")
             check=await self._small_query("MATCH (m:data_modality)-[:HAS_SAMPLE]->(s:Sample_node) RETURN count(CASE WHEN m.id <> s.data_modality OR s.data_modality IS NULL THEN 1 END) AS mismatches, count(*) AS links")
             tissues=await self._small_query("MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(:Sample_node) RETURN DISTINCT a.id AS id, a.name AS name LIMIT 2000")
-            value={'tissues':tissues,**(rows[0] if rows else {}),**(modalities[0] if modalities else {}), 'modality_links_verified':bool(check and check[0]['links'] and check[0]['mismatches']==0)}
+            value={'inventory_complete':True, 'tissues':tissues,**(rows[0] if rows else {}),**(modalities[0] if modalities else {}), 'modality_links_verified':bool(check and check[0]['links'] and check[0]['mismatches']==0)}
+            value['donor_categories_complete'] = bool(rows) and all(
+                isinstance(rows[0].get('category_' + field), list) for field in CATEGORICAL_FIELDS)
+            value['donor_categorical_values'] = {field: rows[0]['category_' + field] for field in CATEGORICAL_FIELDS
+                                                if rows and isinstance(rows[0].get('category_' + field), list)}
+            assay_sources=await self._small_query("MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) RETURN s.data_modality AS modality, collect(DISTINCT coalesce(d.data_source, '<unknown>')) AS sources")
+            value['assay_donor_sources']={r['modality']:r['sources'] for r in assay_sources if r.get('modality')}
             self._semantic_cache=(key,time.monotonic(),value)
             return value
 
     async def _prepare_step(self, source: dict, emit) -> dict:
         step = repair_step_constraints({key: value for key, value in source.items()
-                                        if key not in {"resolution_key", "resolved_entities", "entity_resolution"}})
+                                        if key not in {"resolution_key", "resolved_entities", "entity_resolution",
+                                            "recovery", "semantic_issues", "resolved_constraints", "semantic_registry",
+                                            "sample_requirements", "semantic_summary"}})
         from .release_schema import normalize_constraints
         step = normalize_constraints(step)
+        from .measurement_scope import measurement_scope_recovery
+        unsupported_scope = step.get("ranking_issue") or measurement_scope_recovery(step, self.settings.graph_version)
+        if unsupported_scope:
+            step.update(graph_version=self.settings.graph_version, relation_types=step_relation_types(step),
+                        resolved_entities=[], recovery=unsupported_scope,
+                        semantic_issues=[unsupported_scope['message']],
+                        entity_resolution={'state': 'needs_clarification',
+                                           'graph_version': self.settings.graph_version,
+                                           'unknown_relations': []})
+            step['resolution_key'] = self._resolution_signature(step)
+            return step
         from .semantic_registry import donor_intent, resolve
         if donor_intent(step):
             step=resolve(step,await self.semantic_vocabulary(),self.settings.graph_version)
@@ -814,10 +886,27 @@ class GraphAdapter:
         await self._ensure_identity()
         if len(plan.get("steps") or []) > 12:
             raise GraphValidationError("plan_too_large")
+        from .ranking_contract import attach_to_plan
+        plan = attach_to_plan(plan, self.settings.graph_version)
+        from .coloc_scope import normalize_plan as normalize_coloc_scope
+        plan = normalize_coloc_scope(plan, self.settings.graph_version, max_steps=12)
+        if plan.get('coloc_scope_issue'):
+            return plan
+        from .anatomy_scope import normalize_plan as normalize_anatomy_scope
+        plan = await normalize_anatomy_scope(plan, self.settings.graph_version, self._resolve_constraint, max_steps=3)
+        if plan.get('anatomy_scope_issue'):
+            return plan
         prepared = {**plan, "steps": []}
+        old_recovery = prepared.get('recovery') or {}
+        if old_recovery.get('category') in {'scope_needs_clarification', 'stage_needs_clarification',
+                                            'recorded_stage_unavailable', 'stage_inventory_unavailable',
+                                            'unsupported_expression_stratification', 'ranking_needs_clarification'}:
+            prepared.pop('recovery', None)
+            if prepared.get('clarification') == old_recovery.get('message'):
+                prepared['clarification'] = None
         for source in plan.get("steps") or []:
             prepared["steps"].append(await self._prepare_step(source, emit))
-        if any('scRNA-seq' in group and 'snMultiomics' in group for step in prepared['steps'] for group in step.get('sample_requirements',{}).get('modality_groups',[])):
+        if any(step.get('sample_requirements',{}).get('capability_scope_verified') and 'scRNA-seq' in group and 'snMultiomics' in group for step in prepared['steps'] for group in step.get('sample_requirements',{}).get('modality_groups',[])):
             interpretation=prepared.get('interpreted_question') or prepared['steps'][0]['question']
             note=' Include documented RNA components of HPAP multiome assays, retaining their original assay labels.'
             if note.strip() not in interpretation:prepared['interpreted_question']=interpretation+note
@@ -830,7 +919,9 @@ class GraphAdapter:
         prepared["entity_resolution"] = {"state": "needs_clarification" if issues else "resolved",
                                           "graph_version": self.settings.graph_version, "issues": issues}
         if issues:
-            prepared["clarification"] = "Some requested entities or relationship types could not be uniquely verified in this graph release. Review the indicated names or IDs and revise the plan."
+            from .query_recovery import plan_recovery
+            prepared["recovery"] = plan_recovery(prepared, self.settings.graph_version)
+            prepared["clarification"] = prepared["recovery"]["message"]
         return prepared
 
     async def _verify_identity(self):
@@ -1089,6 +1180,8 @@ class GraphAdapter:
         self.last_query_success = datetime.now(timezone.utc).isoformat()
         return {"nodes": list(nodes.values()), "edges": list(edges.values()), "rows": rows,
                 "truncated": truncated, "materialized_bytes": size,
+                "retrieval_execution": {"completed": True, "cursor_exhausted": not truncated,
+                                        "mode": "read_only"},
                 "status": "partial" if truncated else "complete" if nodes or rows else "empty"}
 
     async def execute(self, step: dict, previous: dict, emit) -> dict:
@@ -1126,6 +1219,7 @@ class GraphAdapter:
                 base["validation"].append({"valid": False, "reasons": ["unresolved_plan_entities"]})
                 return base
         parameters, dependency_notes, inherited_partial = {}, [], False
+        bounded_dependencies = []
         for index, dependency in enumerate(step.get("depends_on") or []):
             evidence = previous.get(dependency)
             if not evidence or evidence.get("status") not in {"complete", "partial", "empty"}:
@@ -1133,13 +1227,22 @@ class GraphAdapter:
                 return base
             ids = sorted({str(node["id"]) for node in evidence.get("nodes", []) if node.get("id") is not None})
             inherited_partial |= evidence.get("status") == "partial"
+            if (evidence.get("status") == "partial" and evidence.get("truncated") is False
+                    and ((evidence.get("requested_scope") or {}).get("complete") is False
+                         or evidence.get("bounded_dependency_step_ids"))):
+                bounded_dependencies.append(dependency)
             if not ids:
+                if evidence.get('status') != 'empty' or any(evidence.get(key) for key in ('nodes', 'edges', 'rows')):
+                    base['validation'].append({'valid': False, 'reasons': ['dependency_missing_entity_ids:' + dependency]})
+                    return base
                 base["status"] = "partial" if inherited_partial else "empty"
                 base["validation"].append({"valid": True, "reasons": ["empty_dependency:" + dependency]})
                 return base
             name = "dep_" + str(index)
             parameters[name] = ids
             dependency_notes.append(f"Preserve the entities from step {dependency}: constrain the appropriate node's id IN ${name}; this parameter contains {len(ids)} existing graph IDs.")
+        if bounded_dependencies:
+            base['bounded_dependency_step_ids'] = bounded_dependencies
         try:
             question = generation_request(step, build_generation_question(step))
         except ValueError as exc:
@@ -1150,73 +1253,86 @@ class GraphAdapter:
         if len(question) > 4000:
             base["validation"].append({"valid": False, "reasons": ["generation_question_too_long"]})
             return base
+        from .candidate_policy import CandidateBatch, retryable_generation_error, initial_request_count
         for n in (1, 8):
-            base["generator_attempts"].append({"n": n})
-            await emit("progress", {"stage": "generating_cypher", "step_id": step.get("id"), "candidates_requested": n})
-            try:
-                attempt_question = question
-                if n == 8:
-                    failures = sorted({reason for check in base["validation"] for reason in check["reasons"]})
-                    correction = "\nCorrect the previous validation failures: " + ", ".join(reason for reason in failures) + ". Preserve every required filter and dependency."
-                    if step.get("complete", True):
-                        correction += " Return all matches without LIMIT or list slices."
-                    if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
-                        correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
-                    if len(question) + len(correction) <= 4000:
-                        attempt_question += correction
-                if not hasattr(self, "_generation_slots"):
-                    self._generation_slots = asyncio.Semaphore(2)
-                async with self._generation_slots:
-                    candidates = await self._generate(attempt_question, n)
-                base["generator_attempts"][-1].update(
-                    request_sha256=hashlib.sha256(attempt_question.encode()).hexdigest(),
-                    candidate_count=len(candidates),
-                    reported_identity=getattr(candidates, "metadata", {}))
-            except GraphValidationError as exc:
-                base["validation"].append({"valid": False, "n": n, "reasons": [str(exc)]})
-                continue
-            except Exception as exc:
-                base["validation"].append({"valid": False, "n": n, "reasons": ["generation_unavailable:" + type(exc).__name__]})
-                return base
-            for query in candidates:
-                original_query = query
-                from .release_schema import canonicalize_symbols
-                query, normalizations = canonicalize_symbols(query) if getattr(self.settings, "graph_version", None) == "PanKgraph_08_04" else (query, [])
-                await emit("progress", {"stage": "validating", "step_id": step.get("id")})
-                reasons = validate_cypher(query, step, parameters)
-                if not reasons:
-                    reasons = await self._explain(query, parameters)
-                base["validation"].append({"valid": not reasons, "n": n, "candidate_cypher": query, "original_candidate_cypher": original_query, "schema_normalizations": normalizations, "failure_categories": sorted({r.split(":",1)[0] for r in reasons}), "reasons": reasons})
-                if reasons:
-                    continue
-                await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})
-                limits = {
-                    "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
-                    "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
-                    "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
-                    "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
-                    "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
-                }
-                base["queries"].append({"cypher": query, "parameters": parameters})
-                try:
-                    result = await asyncio.wait_for(self._retrieve(query, parameters, limits), timeout=self.settings.graph_timeout + 1)
-                except Exception as exc:
-                    base["validation"].append({"valid": False, "reasons": ["graph_execution_failed:" + type(exc).__name__]})
-                    return base
-                base.update(result)
-                from .semantic_registry import donor_summary
-                base['resolved_constraints']=step.get('resolved_constraints',[])
-                base['semantic_registry']=step.get('semantic_registry')
-                summary=donor_summary(base)
-                if summary:base['donor_summary']=summary
-                if inherited_partial or not step.get("complete", True):
-                    base["status"] = "partial"
-                sources = set()
-                for item in base["nodes"] + base["edges"]:
-                    for key in ("data_source", "data_source_url", "data_version", "source", "provenance", "publication_source"):
-                        val = item["properties"].get(key)
-                        if val is not None:
-                            sources.add((key, json.dumps(val, sort_keys=True)))
-                base["provenance"] = [{"property": key, "value": json.loads(val)} for key, val in sorted(sources)]
-                return base
+            count = initial_request_count(self.settings, step) if n == 1 else 1
+            await emit("progress", {"stage": "generating_cypher", "step_id": step.get("id"),
+                                    "candidates_requested": n, "parallel_requests": count})
+            attempt_question = question
+            if n == 8:
+                failures = sorted({reason for check in base["validation"] for reason in check["reasons"]})
+                correction = "\nCorrect the previous validation failures: " + ", ".join(reason for reason in failures) + ". Preserve every required filter and dependency."
+                if step.get("complete", True):
+                    correction += " Return all matches without LIMIT or list slices."
+                if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
+                    correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
+                if step.get("semantic_registry") and not any(c.get("entity_type")=="disease" for c in step.get("constraints", [])):
+                    correction += " No disease identity or diagnosed-diabetes filter was requested. Do not constrain disease.id, disease.name or donor.diabetes_type. Use only the resolved donor stage/cohort and sample/tissue constraints."
+                if len(question) + len(correction) <= 4000:
+                    attempt_question += correction
+            deadline = min(30, getattr(self.settings, "cypher_timeout", 15) * (2 if n == 8 else 1)) + 1
+            async with CandidateBatch(self._generate, attempt_question, n, count=count,
+                                      timeout=deadline, attempts=base["generator_attempts"]) as batch:
+                async for outcome in batch:
+                    if outcome.error is not None:
+                        exc = outcome.error
+                        reasons = [str(exc)] if isinstance(exc, GraphValidationError) else ["generation_unavailable:" + type(exc).__name__]
+                        base["validation"].append({"valid": False, "n": n,
+                                                   "attempt_index": outcome.attempt["attempt_index"], "reasons": reasons})
+                        if not isinstance(exc, GraphValidationError) and not retryable_generation_error(exc):
+                            return base
+                        continue
+                    for query in outcome.candidates:
+                        original_query = query
+                        from .release_schema import canonicalize_symbols
+                        query, normalizations = canonicalize_symbols(query) if getattr(self.settings, "graph_version", None) == "PanKgraph_08_04" else (query, [])
+                        await emit("progress", {"stage": "validating", "step_id": step.get("id")})
+                        from .categorical_bindings import bind_verified_categories
+                        query, candidate_parameters, normalization = bind_verified_categories(query, step, parameters)
+                        reasons = validate_cypher(query, step, candidate_parameters)
+                        if not reasons:
+                            reasons = await self._explain(query, candidate_parameters)
+                        base["validation"].append({"valid": not reasons, "n": n, "attempt_index": outcome.attempt["attempt_index"], "candidate_cypher": query, "original_candidate_cypher": original_query, "schema_normalizations": normalizations, "categorical_normalizations": normalization, "failure_categories": sorted({r.split(":",1)[0] for r in reasons}), "reasons": reasons})
+                        if reasons:
+                            continue
+                        await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})
+                        limits = {
+                            "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
+                            "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
+                            "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
+                            "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
+                            "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
+                        }
+                        base["queries"].append({"cypher": query, "parameters": candidate_parameters, "normalization": normalization})
+                        try:
+                            result = await asyncio.wait_for(self._retrieve(query, candidate_parameters, limits), timeout=self.settings.graph_timeout + 1)
+                        except Exception as exc:
+                            base["validation"].append({"valid": False, "reasons": ["graph_execution_failed:" + type(exc).__name__]})
+                            return base
+                        outcome.attempt["selected"] = True
+                        outcome.attempt["selected_query_sha256"] = hashlib.sha256(query.encode()).hexdigest()
+                        base.update(result)
+                        from .semantic_registry import donor_summary
+                        base['resolved_constraints']=step.get('resolved_constraints',[])
+                        base['semantic_registry']=step.get('semantic_registry')
+                        summary=donor_summary(base)
+                        if summary:base['donor_summary']=summary
+                        if inherited_partial or not step.get("complete", True):
+                            base["status"] = "partial"
+                        sources = set()
+                        for item in base["nodes"] + base["edges"]:
+                            for key in ("data_source", "data_source_url", "data_version", "source", "provenance", "publication_source"):
+                                val = item["properties"].get(key)
+                                if val is not None:
+                                    sources.add((key, json.dumps(val, sort_keys=True)))
+                        base["provenance"] = [{"property": key, "value": json.loads(val)} for key, val in sorted(sources)]
+                        # Record retrieval scope before either synthesis-context
+                        # reduction or graph display selection. Source-analysis
+                        # comparisons remain distinct from this database query.
+                        from .evidence_coverage import build_evidence_coverage
+                        base["evidence_coverage"] = build_evidence_coverage(
+                            step, base, graph_version=self.settings.graph_version,
+                            query=query, parameters=candidate_parameters, validation_verified=True,
+                        )
+                        return base
         return base

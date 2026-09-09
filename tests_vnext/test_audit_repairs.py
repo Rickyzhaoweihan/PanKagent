@@ -12,7 +12,7 @@ def test_failure_is_not_biological_absence_or_justified_by_context():
     assert 'retrieval failure' in outcome_message({'a': failed, 'b': context})
     assert not confirmation_eligible({}, {'evidence': {'steps': [failed, context]}})
     assert 'No matching records' in outcome_message({'a': {'status': 'empty'}})
-    assert confirmation_eligible({}, {'evidence': {'steps': [{'status': 'empty'}]}})
+    assert not confirmation_eligible({}, {'evidence': {'steps': [{'status': 'empty'}]}})  # no query/execution proof
 
 
 def test_generation_preserves_unrecognized_modifiers_and_explicit_filters():
@@ -78,9 +78,14 @@ def test_followups_only_describe_returned_measurement_types():
 
 def test_scope_guard_does_not_stream_a_known_false_query_scope():
     from pankagent_vnext.scope_guard import ScopeTextFilter, broad_cell_search
-    evidence = {'s': {'status': 'complete', 'queries': [{'cypher': 'validated'}], 'requested_scope': {
-        'complete': True, 'relation_types': ['GENE_ENRICHED_IN'],
-        'constraints': [{'entity_type': 'Gene', 'property': 'name', 'value': 'INS'}]}}}
+    from pankagent_vnext.evidence_coverage import build_evidence_coverage
+    query = 'MATCH (g:Gene)-[r:GENE_ENRICHED_IN]->(c:anatomical_structure) WHERE g.name = "INS" RETURN g,r,c'
+    scope = {'complete': True, 'relation_types': ['GENE_ENRICHED_IN'],
+             'constraints': [{'entity_type': 'Gene', 'property': 'name', 'value': 'INS'}]}
+    evidence = {'s': {'status': 'complete', 'truncated': False, 'graph_version': 'PanKgraph_08_04', 'queries': [{'cypher': query}],
+                      'requested_scope': scope}}
+    evidence['s']['evidence_coverage'] = build_evidence_coverage(scope, evidence['s'],
+        graph_version='PanKgraph_08_04', query=query, validation_verified=True)
     assert broad_cell_search(evidence)
     guard = ScopeTextFilter(evidence)
     chunks = ['Measured value 1.23 [G1].\n\n', 'No other cell types were ', 'queried here.\n\n', 'Inspect the source.']
@@ -182,7 +187,7 @@ def test_additive_scope_failure_retains_preview_and_blocks_confirmation(tmp_path
             created=await new_plan(client,'Is INS enriched in beta cells?')
             parent=runtime.store.get(created['run_id'])
             res=await client.post(f'/v2/plans/{created["plan_id"]}/revise',json={'question':'add genetics','revision_instruction':'add genetics','revision_mode':'instruction'})
-            child=await wait_state(client,res.json()['run_id'],{'awaiting_confirmation'})
+            child=await wait_state(client,res.json()['run_id'],{'failed'})
             assert child['plan']['proposal_issue']=='additive_revision_scope_loss'
             assert child['preview']['evidence']['nodes']==parent['preview']['evidence']['nodes']
             assert (await client.post(f'/v2/plans/{child["plan_id"]}/confirm',json={})).status_code==409

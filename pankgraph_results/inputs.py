@@ -30,6 +30,8 @@ def agent_snapshot(run, phase, graph_version):
     evidence = (run.get("preview") or {}).get("evidence") if phase == "preview" else run.get("evidence")
     if not isinstance(evidence, dict):
         raise ValueError("evidence_not_ready")
+    if not evidence.get("graph_version"):
+        raise ValueError("evidence_not_ready")
     if evidence.get("graph_version") != graph_version:
         raise ValueError("graph_release_mismatch")
     plan = run.get("plan") or {}
@@ -53,6 +55,17 @@ def template_snapshot(body, graph_version):
 
 
 def template_question(template_id, parameters, evidence=None):
+    if template_id == "functional_traces":
+        labels = {"ins_ieq":"insulin secretion normalized by islet equivalents", "gcg_ieq":"glucagon secretion normalized by islet equivalents", "ins_content":"insulin secretion normalized by insulin content", "gcg_content":"glucagon secretion normalized by glucagon content"}
+        cohort = []
+        if parameters.get("center"): cohort.append(parameters["center"])
+        if parameters.get("disease"): cohort.append({"T1D":"type 1 diabetes", "T2D":"type 2 diabetes", "Control":"control"}.get(parameters["disease"],parameters["disease"]))
+        for key in ("sex","race"):
+            if parameters.get(key):cohort.append(parameters[key])
+        for key,label in (("age","age in years"),("bmi","BMI")):
+            low,high=parameters.get(key+"_min"),parameters.get(key+"_max")
+            if low is not None or high is not None:cohort.append(label+": "+(str(low)+"–"+str(high) if low is not None and high is not None else "at least "+str(low) if low is not None else "at most "+str(high)))
+        return "Explain " + labels[parameters.get("trace_type","ins_ieq")] + " in the selected donor cohort" + (" ("+"; ".join(cohort)+")" if cohort else "") + "."
     names = {str(node.get("id")): (node.get("properties") or {}).get("name") or str(node.get("id"))
         for node in (evidence or {}).get("nodes", [])}
     gene = names.get(parameters.get("gene_id"), parameters.get("gene_id", "this gene"))

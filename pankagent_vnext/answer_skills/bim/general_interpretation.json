@@ -26,5 +26,10 @@
         "aab_note": "Positive AAB supports autoimmune T1D; negative or missing AAB should be flagged but does not override Stage 3 when diagnosis/hyperglycemia is present"
       }
     }
+  },
+  "recorded_metadata_guardrails": {
+    "classification_scope": "Recorded stage, diagnosis category and derived status describe different classifications. Different labels do not alone establish a contradiction.",
+    "stage_1_and_2": "Do not call Stage 1 or Stage 2 alongside Control Without Diabetes, Normal or Prediabetes a metadata conflict solely on those labels. Preserve each recorded field; do not add a diagnosed-T1D restriction to a stage-based cohort.",
+    "clinical_limit": "Report source metadata without making a new diagnosis or claiming external clinical guideline verification."
   }
 }

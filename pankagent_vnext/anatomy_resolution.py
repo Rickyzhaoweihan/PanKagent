@@ -1,8 +1,9 @@
 """Deterministic matching for the full release anatomy inventory. No inference calls."""
 import re
+from copy import deepcopy
 from difflib import SequenceMatcher
 
-VERSION = 'anatomy-resolution-1'
+VERSION = 'anatomy-resolution-3'
 RELEASE = 'PanKgraph_08_04'
 # Reviewed against current named records; an alias is active only if ID and name agree.
 ALIASES = {
@@ -49,7 +50,13 @@ def resolve_anatomy(value, records, release, prop='name'):
     id_value=re.sub(r'^(CL|UBERON):',r'\1_',str(value),flags=re.I)
     id_matches=[r for r in records if r['id'].casefold()==id_value.casefold()]
     if id_matches:return outcome(id_matches,'exact_id',value)
-    if prop=='id':return {'state':'not_found','candidates':[],'match_kind':'unresolved_id','resolver_version':VERSION}
+    if prop=='id':
+        # A planner can put an ordinary exact name in its ID field. Correct
+        # that type error only against a recorded name; never fuzz an ID.
+        if not re.search(r'\d|[:_]',str(value)):
+            exact_names=[r for r in records if r['name'].casefold()==str(value).casefold()]
+            if exact_names:return outcome(exact_names,'verified_name_in_id_field',value)
+        return {'state':'not_found','candidates':[],'match_kind':'unresolved_id','resolver_version':VERSION}
     q=normalize(value);forms=[]
     for record in records:
         forms.append((normalize(record['name']),record,'normalized_name'))
@@ -74,7 +81,7 @@ def resolve_anatomy(value, records, release, prop='name'):
             'match_kind':'suggestions_only','resolver_version':VERSION,'original_term':value}
 
 def outcome(records,kind,value):
-    unique={r['id']:r for r in records};candidates=list(unique.values())
+    unique={r['id']:deepcopy(r) for r in records};candidates=list(unique.values())
     result={'state':'resolved' if len(candidates)==1 else 'ambiguous','candidates':candidates,'match_kind':kind,
             'resolver_version':VERSION,'original_term':value}
     if len(candidates)==1:result.update(candidates[0],entity_type='anatomical_structure',unique_pattern_match=True)

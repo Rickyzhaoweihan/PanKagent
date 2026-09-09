@@ -101,9 +101,26 @@ class Store:
         self.db.execute("INSERT INTO run_audit VALUES (?, ?)", (run_id, json.dumps(metadata, ensure_ascii=False)))
         return self.get(run_id)
 
-    def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None) -> dict:
+    def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None, legacy_retry_submission: str | None = None) -> dict:
         with self.lock, self.db:
+            if legacy_retry_submission is not None and session_id and include_context:
+                self.db.execute("BEGIN IMMEDIATE")
+                from .terminal_retry import terminal_revision_retry
+                latest = self.latest_run(session_id)
+                previous = self.audit_metadata(latest['run_id']) if latest else None
+                parent = self.get((previous or {}).get('parent_run_id')) if (previous or {}).get('parent_run_id') else None
+                if parent and parent['session_id'] == session_id:
+                    binding = terminal_revision_retry(latest, previous, legacy_retry_submission, include_context=include_context)
+                    if binding:
+                        audit = {**(audit or {}), **binding, 'prior_plan_sha256': self.content_hash(latest.get('plan'))}
             return self._create_locked(question, session_id, include_context=include_context, audit=audit)
+
+    def latest_run(self, session_id: str) -> dict | None:
+        """Return the newest run, including active/cancelled ones; never skip back."""
+        with self.lock:
+            return self._decode(self.db.execute(
+                "SELECT * FROM runs WHERE session_id=? ORDER BY created_epoch DESC, rowid DESC LIMIT 1", (session_id,),
+            ).fetchone())
 
     def revise(self, plan_id: str, question: str, *, include_context: bool = True, audit: dict | None = None) -> tuple[dict, dict]:
         """Atomically invalidate an unconfirmed plan and create its replacement."""
@@ -242,12 +259,19 @@ class Store:
             result.extend([{"role": "user", "content": row[0]}, {"role": "assistant", "content": row[1][:12000]}])
         return result
 
-    def interrupt_active(self) -> list[str]:
+    def interrupt_active(self, started_graph_checks=None) -> list[str]:
         with self.lock:
             rows = self.db.execute("SELECT run_id FROM runs WHERE status IN ('planning','queued','running')").fetchall()
             ids = [row[0] for row in rows]
             for run_id in ids:
-                self.update(run_id, status="interrupted", stage="interrupted", error={"category": "service_restarted", "message": "Service restarted; submit a new plan to continue."})
+                run = self.get(run_id)
+                fields = {}
+                if run["status"] in {"queued", "running"} and (run.get("plan") or {}).get("steps"):
+                    from .interrupted_evidence import complete_interrupted_evidence
+                    started = None if started_graph_checks is None else started_graph_checks.get(run_id, set())
+                    fields["evidence"] = complete_interrupted_evidence(run["plan"], run["evidence"],
+                        {"category": "service_restarted"}, started)
+                self.update(run_id, status="interrupted", stage="interrupted", error={"category": "service_restarted", "message": "Service restarted; submit a new plan to continue."}, **fields)
                 self.event(run_id, "terminal", {"status": "interrupted"})
         return ids
 

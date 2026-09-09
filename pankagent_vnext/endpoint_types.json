@@ -1,0 +1,387 @@
+{
+  "non_specific_labels": [
+    "ontology"
+  ],
+  "relations": {
+    "ADJACENT_TO": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "ASSOCIATED_WITH_GO": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "GO_term"
+        ]
+      }
+    ],
+    "EFFECTOR_GENE_OF": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      }
+    ],
+    "FGSEA_ENRICHED_IN": [
+      {
+        "source": [
+          "ontology",
+          "kegg"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      },
+      {
+        "source": [
+          "ontology",
+          "reactome"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "FUNCTION_ANNOTATION": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "ontology",
+          "kegg"
+        ]
+      },
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "ontology",
+          "reactome"
+        ]
+      }
+    ],
+    "GENETIC_INTERACTION": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "Gene"
+        ]
+      }
+    ],
+    "GENE_ACTIVITY_SCORE_IN": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "GENE_DETECTED_IN": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "GENE_ENRICHED_IN": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "HAS_CELL_TYPE": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "HAS_DONOR": [
+      {
+        "source": [
+          "disease",
+          "ontology"
+        ],
+        "target": [
+          "donor"
+        ]
+      }
+    ],
+    "HAS_SAMPLE": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "Sample_node"
+        ]
+      },
+      {
+        "source": [
+          "data_modality"
+        ],
+        "target": [
+          "Sample_node"
+        ]
+      },
+      {
+        "source": [
+          "disease",
+          "ontology"
+        ],
+        "target": [
+          "Sample_node"
+        ]
+      },
+      {
+        "source": [
+          "donor"
+        ],
+        "target": [
+          "Sample_node"
+        ]
+      }
+    ],
+    "HAS_STATE": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "LYMPH_FLOWS_TO": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "MARKER_GENE_OF": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "OCR_PEAK_IN": [
+      {
+        "source": [
+          "regulatory_elements",
+          "OCR_peak"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "PART_OF": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "PART_OF_GWAS_SIGNAL": [
+      {
+        "source": [
+          "sequence_variant",
+          "snv",
+          "variants"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "indel"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "insertion"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "deletion"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      }
+    ],
+    "PART_OF_QTL_SIGNAL": [
+      {
+        "source": [
+          "sequence_variant",
+          "snv",
+          "variants"
+        ],
+        "target": [
+          "Gene"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "insertion"
+        ],
+        "target": [
+          "Gene"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "indel"
+        ],
+        "target": [
+          "Gene"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants"
+        ],
+        "target": [
+          "Gene"
+        ]
+      },
+      {
+        "source": [
+          "sequence_variant",
+          "variants",
+          "deletion"
+        ],
+        "target": [
+          "Gene"
+        ]
+      }
+    ],
+    "PHYSICAL_INTERACTION": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "Gene"
+        ]
+      }
+    ],
+    "REPRESENTS_COMPOSITE_LABEL": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "SIGNAL_COLOC_WITH": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "disease",
+          "ontology"
+        ]
+      }
+    ],
+    "SUBCLASS_OF": [
+      {
+        "source": [
+          "anatomical_structure"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ],
+    "T1D_DEG_IN": [
+      {
+        "source": [
+          "Gene"
+        ],
+        "target": [
+          "anatomical_structure"
+        ]
+      }
+    ]
+  },
+  "release": "PanKgraph_08_04",
+  "source_registry_sha256": "b31cff5d69bc412acb91555f1ed543281030d967bc13210b0a109c5ac00aedc8",
+  "source_registry_version": "release-schema-v1",
+  "version": "release-endpoint-types-v1"
+}

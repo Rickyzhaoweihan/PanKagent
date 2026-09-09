@@ -242,11 +242,71 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "empty")
         self.assertEqual(len(adapter.generated), 1)
 
-    async def test_upstream_failure_not_retried_as_validation_failure(self):
-        adapter = FakeAdapter([TimeoutError()])
+    async def test_transient_upstream_failure_uses_only_remaining_escalation(self):
+        adapter = FakeAdapter([TimeoutError(), [VALID]])
+        result = await adapter.execute(step(), {}, self.emit)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual([n for _, n in adapter.generated], [1, 8])
+        self.assertEqual(len(adapter.retrieved), 1)
+        self.assertEqual(result["generator_attempts"][0]["status"], "timeout")
+
+    async def test_nontransient_upstream_failure_does_not_retry(self):
+        adapter = FakeAdapter([RuntimeError("do not expose protected message")])
         result = await adapter.execute(step(), {}, self.emit)
         self.assertEqual(result["status"], "failed")
         self.assertEqual(len(adapter.generated), 1)
+        self.assertNotIn("protected message", json.dumps(result))
+
+    async def test_authentication_and_bad_requests_fail_without_escalation(self):
+        for status in (400, 401, 403, 429):
+            with self.subTest(status=status):
+                response = httpx.Response(status, request=httpx.Request("POST", "http://generator/v1/cypher"))
+                error = httpx.HTTPStatusError("protected body", request=response.request, response=response)
+                adapter = FakeAdapter([error])
+                result = await adapter.execute(step(), {}, self.emit)
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(len(adapter.generated), 1)
+                self.assertNotIn("protected body", json.dumps(result))
+
+    async def test_gateway_transport_failure_can_recover_once(self):
+        for status in (502, 503, 504):
+            with self.subTest(status=status):
+                response = httpx.Response(status, request=httpx.Request("POST", "http://generator/v1/cypher"))
+                error = httpx.HTTPStatusError("upstream unavailable", request=response.request, response=response)
+                adapter = FakeAdapter([error, [VALID]])
+                result = await adapter.execute(step(), {}, self.emit)
+                self.assertEqual(result["status"], "complete")
+                self.assertEqual([n for _, n in adapter.generated], [1, 8])
+
+    async def test_parallel_initial_candidate_can_recover_without_escalation(self):
+        adapter = FakeAdapter([[VALID + " LIMIT 10"], [VALID]])
+        adapter.settings.cypher_initial_requests = 2
+        adapter.settings.cypher_initial_scope = "all"
+        result = await adapter.execute(step(), {}, self.emit)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual([n for _, n in adapter.generated], [1, 1])
+        self.assertEqual(adapter.retrieved, [(VALID, {})])
+        self.assertEqual([item["attempt_index"] for item in result["generator_attempts"]], [0, 1])
+        self.assertEqual([check["valid"] for check in result["validation"]], [False, True])
+
+    async def test_parallel_failures_still_get_only_one_eight_candidate_escalation(self):
+        adapter = FakeAdapter([[VALID + " LIMIT 10"], [VALID + " LIMIT 20"], [VALID]])
+        adapter.settings.cypher_initial_requests = 2
+        adapter.settings.cypher_initial_scope = "all"
+        result = await adapter.execute(step(), {}, self.emit)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual([n for _, n in adapter.generated], [1, 1, 8])
+        self.assertEqual(len(adapter.retrieved), 1)
+
+    async def test_parallel_valid_empty_primary_is_final_and_never_size_ranked(self):
+        adapter = FakeAdapter([[VALID], [VALID.replace("RETURN", "RETURN DISTINCT")]])
+        adapter.settings.cypher_initial_requests = 2
+        adapter.settings.cypher_initial_scope = "all"
+        adapter.answer.update(nodes=[], status="empty")
+        result = await adapter.execute(step(), {}, self.emit)
+        self.assertEqual(result["status"], "empty")
+        self.assertEqual(adapter.retrieved, [(VALID, {})])
+        self.assertEqual([n for _, n in adapter.generated], [1, 1])
 
     async def test_cancellation_propagates(self):
         adapter = FakeAdapter([asyncio.CancelledError()])

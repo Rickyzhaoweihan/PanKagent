@@ -46,6 +46,7 @@ def detection_evidence():
             "rows": [],
             "queries": [{"cypher": "PRIVATE_QUERY_SENTINEL", "parameters": {"private": "PRIVATE_PARAMETER_SENTINEL"}}],
             "validation": [{"valid": True, "n": 1}],
+            "retrieval_execution": {"completed": True, "cursor_exhausted": True},
         },
     }
 
@@ -246,7 +247,7 @@ def test_matched_functional_clinical_guidance_keeps_evidence_priority(monkeypatc
                 "Preserve ng versus pg, rate versus AUC, SI versus II",
                 "Never assign T1D or Stage 3 from hyperglycemia alone",
                 "override a recorded T2D classification",
-                "context_sampled or context_content_omissions",
+                "model-context sampling and graph display omissions do not",
             ):
                 assert requirement in style
             assert "[functional.feature:INS-basal (ng/100 IEQs/min)]" in prepared.system[1]["text"]
@@ -273,7 +274,7 @@ def test_empty_and_failed_steps_remain_visible_without_unmatched_bim_guidance(mo
             assert sum("cache_control" in block for block in prepared.system) == 1
             assert "cache_control" not in prepared.system[-1]
             assert "answer summary only, without follow-up questions" in prepared.system[-1]["text"]
-            assert "Empty results mean no matching evidence was retrieved, not biological absence" in prepared.system[0]["text"]
+            assert "A validated, complete query with zero matches means PanKgraph has no matching record" in prepared.system[0]["text"]
             assert "Failed validation or queries cannot support a biological conclusion" in prepared.system[0]["text"]
         finally:
             await gateway.close()
@@ -491,8 +492,10 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
     class MultiStepGateway(RuntimeGateway):
         async def plan(self, question, history):
             plan = await super().plan(question, history)
-            plan["steps"] = [{"id": f"s{index}", "question": question, "depends_on": [], "constraints": [], "complete": True}
-                             for index in range(1, len(statuses) + 1)]
+            plan["steps"] = [{"id": f"s{index}", "question": question, "depends_on": [], "constraints": [],
+                              "complete": status != "partial",
+                              "purpose": "context" if status == "failed" and any(s != "failed" for s in statuses) else "primary"}
+                             for index, status in enumerate(statuses, 1)]
             return plan
 
     class MultiStepGraph(RuntimeGraph):
@@ -514,7 +517,7 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 response = await client.post("/v2/plans", json={"question": QUESTION})
                 assert response.status_code == 202
                 created = response.json()
-                await await_state(client, created["run_id"], {"awaiting_confirmation"})
+                await await_state(client, created["run_id"], {"failed" if all(status == "failed" for status in statuses) else "awaiting_confirmation"})
                 response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
                 if all(status == "failed" for status in statuses):
                     assert response.status_code == 409

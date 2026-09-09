@@ -14,10 +14,11 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from pankagent_vnext.app import CitationFilter, safe_error
 from pankagent_vnext.audit import InteractionRequest, recorder
 from pankagent_vnext.config import Settings
-from pankagent_vnext.llm import ClaudeGateway
+from pankagent_vnext.llm import ClaudeGateway, STYLE_VERSION
 from pankagent_vnext.evidence_status import outcome_message
 from pankagent_vnext.transport import JSONResponseLimitMiddleware
 
+from . import functional
 from .assembly import assemble
 from .auth import DemoAuthentication
 from .config import ResultsSettings
@@ -85,7 +86,7 @@ class ResultsRuntime:
         else:
             source = template_snapshot(body, self.vnext.graph_version)
         identity = {"source": source, "result_version": RESULT_VERSION, "layout_version": LAYOUT_VERSION,
-            "registry_version": REGISTRY_VERSION, "display_nodes": self.settings.display_nodes}
+            "registry_version": REGISTRY_VERSION, "display_nodes": self.settings.display_nodes, "answer_style": STYLE_VERSION, "functional_version": functional.VERSION}
         async with self.admission:
             result = await asyncio.to_thread(self.store.by_identity, identity)
             if result:
@@ -107,7 +108,13 @@ class ResultsRuntime:
     async def resolve_resources(self, rid, evidence):
         started = time.monotonic()
         try:
-            resources = await asyncio.wait_for(self.resources.resolve(evidence), 30)
+            if evidence.get("functional_filters"):
+                raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", evidence["functional_filters"])
+                if not raw.startswith(b"\x89PNG\r\n\x1a\n"): raise ValueError("invalid_functional_plot")
+                asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps(evidence["functional_filters"],sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
+                resources = {"status":"available", "resources_tabs":{"empirical_evidence":{"title":"Selected cohort functional response", "description":"Recorded hormone-response measurements for the selected filters.","status":"available","image_url":asset["url"],"download_url":asset["url"],"link":asset["url"],"link_text":"Download plot","legend":"View"}}}
+            else:
+                resources = await asyncio.wait_for(self.resources.resolve(evidence), 30)
             await self.update(rid, resources_tabs=resources["resources_tabs"], resources=resources,
                 component_status={"resources": resources["status"]})
             self.health.record("resources", "healthy" if resources["status"] == "available" else "unknown" if resources["status"] == "not_applicable" else "degraded" if resources["status"] == "partial" else "unavailable", time.monotonic() - started,
@@ -138,7 +145,14 @@ class ResultsRuntime:
             question = source["question"] + ("\nEvidence scope: " + evidence["scope_note"] if evidence.get("scope_note") else "")
             steps = {step.get("step_id", str(index)): step for index, step in enumerate(evidence.get("steps", []), 1)}
             async with asyncio.timeout(25):
-                async for chunk in self.gateway.synthesize(question, steps):
+                prepared = None
+                if source.get("template_id") == "functional_traces":
+                    prepared = self.gateway.prepare_answer(question, steps)
+                    from dataclasses import replace
+                    prepared = replace(prepared, body=functional.synthesis_body(question, steps), profile={**prepared.profile, "context_sampled":False, "functional_full_trace":True})
+                    rules = self.gateway.answer_router.files["functional"]
+                    prepared.system.append({"type":"text", "text":"Interpret only the supplied functional measurements. Do not infer individual donor variability from cohort means. Verified functional context: " + json.dumps([step.get("functional_metadata",{}) for step in steps.values()]) + ". Apply these measurement definitions: " + json.dumps({k:rules[k] for k in ("core_rules","global_terms")})})
+                async for chunk in self.gateway.synthesize(question, steps, **({"prepared":prepared} if prepared else {})):
                     text += citations.feed(chunk)
                     await self.update(rid, answer=text)
             text += citations.feed("", final=True)
@@ -168,7 +182,7 @@ class ResultsRuntime:
         async with self.semaphore:
             self.active += 1
             try:
-                evidence = source["evidence"] if source["kind"] == "agent" else await self.query.execute(source["template_id"], source["parameters"], source["question"])
+                evidence = source["evidence"] if source["kind"] == "agent" else await functional.evidence(self.http, source["parameters"], source["question"], self.vnext.graph_version) if source.get("template_id") == "functional_traces" else await self.query.execute(source["template_id"], source["parameters"], source["question"])
                 if source["kind"] != "agent":
                     failed_steps = [step for step in evidence.get("steps", []) if step.get("status") == "failed"]
                     self.health.record("query_adapter", "degraded" if failed_steps else "healthy", time.monotonic() - started,
@@ -298,6 +312,20 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
         if value is None:
             raise HTTPException(404, "Result not found.")
         return JSONResponse(value, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/functional/{path:path}")
+    async def functional_proxy(path: str, request: Request):
+        from starlette.responses import Response
+        started = time.monotonic()
+        try:
+            content, media = await functional.fetch(runtime.http, path, dict(request.query_params))
+            runtime.health.record("functional_api", "healthy", time.monotonic()-started, details={"source":functional.BASE,"adapter":functional.VERSION})
+            return Response(content, media_type=media, headers={"Cache-Control":"private, max-age=30"})
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except Exception:
+            runtime.health.record("functional_api", "unavailable", time.monotonic()-started, "upstream_unavailable")
+            raise HTTPException(502, "Functional data is temporarily unavailable.") from None
 
     @app.get("/api/search")
     async def search(request: Request, kind: str, term: str = "", template_id: str = ""):

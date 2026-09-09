@@ -33,6 +33,14 @@ class AnswerRouterTests(unittest.TestCase):
     def setUp(self):
         self.router = AnswerSkillRouter()
 
+    def test_recorded_stage_and_diagnosis_categories_are_not_automatic_conflicts(self):
+        result = self.router.select([step([node('test-donor', 'donor',
+            t1d_stage='Stage 2: recorded description',
+            diabetes_type='Control Without Diabetes', derived_diabetes_status='Prediabetes')])])
+        self.assertIn('clinical.recorded_t1d_stage', selected(result))
+        self.assertIn('Different labels do not alone establish a contradiction', result.guidance)
+        self.assertIn('do not add a diagnosed-T1D restriction', result.guidance)
+
     def test_modern_rna_evidence_keeps_detection_enrichment_and_de_distinct(self):
         result = self.router.select([step(
             [node("ENSG00000129965", "Gene", name="INS"),
@@ -375,3 +383,25 @@ class AnswerRouterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CommonCaveatContractTests(unittest.TestCase):
+    def test_catalog_is_checksum_verified(self):
+        import tempfile
+        import shutil
+        from pathlib import Path
+        source=Path(__file__).resolve().parents[1]/"pankagent_vnext/answer_skills"
+        with tempfile.TemporaryDirectory() as directory:
+            target=Path(directory)/"bundle"
+            shutil.copytree(source,target)
+            with (target/"bim/common_caveats.md").open("a") as f:f.write("tampered")
+            with self.assertRaisesRegex(ValueError,"checksum"):
+                AnswerSkillRouter(bundle=target)
+
+    def test_enrichment_guidance_preserves_source_comparison(self):
+        from pathlib import Path
+        import json
+        source=Path(__file__).resolve().parents[1]/"pankagent_vnext/answer_skills"
+        schema=json.loads((source/"bim/schema_skill.json").read_text())
+        guidance=schema["edge_skill"]["gene_enriched_in"]
+        self.assertIn("remaining cell types in the source analysis",guidance)
+        self.assertIn("irrespective of which records the query returns",guidance)

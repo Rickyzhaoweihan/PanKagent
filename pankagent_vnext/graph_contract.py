@@ -7,11 +7,11 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-08-04-intent-v4'
+VERSION = 'pankgraph-08-04-intent-v7-query-readiness-coverage'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
-    'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Return recorded measurements and condition without inventing significance cutoffs.',
-    'MARKER_GENE_OF': 'Gene -> anatomical_structure; marker annotation is distinct from measured enrichment.',
+    'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Recorded measurements include median_donor_log_cpm, median_donor_cpm, median_pct_cells_expressing, total_cells, expression_call and condition. There is no generic rank or id property on this relationship; do not ORDER BY nonexistent fields or invent a ranking. Return recorded measurements without invented significance cutoffs.',
+    'MARKER_GENE_OF': 'Gene -> cell type (anatomical_structure, category cell_type), never its enclosing tissue. Marker annotation is distinct from measured enrichment. Return recorded markers without invented rank cutoffs; preserve cell types that have no recorded markers in a separate cell-type check.',
     'T1D_DEG_IN': 'Gene -> anatomical_structure; differential expression in T1D. T1D context is encoded by this relationship, not a disease endpoint or extra disease-id predicate. No GENE_ANNOTATION join exists. adjusted_p_value is distinct from enrichment padj.',
     'EFFECTOR_GENE_OF': 'Gene -> disease; effector prioritization evidence, not differential expression. Preserve the requested disease.',
     'FUNCTION_ANNOTATION': 'Gene -> kegg or reactome; pathway membership is annotation, not pathway activation.',
@@ -20,14 +20,16 @@ RELATIONS = {
     'GENETIC_INTERACTION': 'Gene interaction evidence; preserve both requested endpoints.',
     'PART_OF_QTL_SIGNAL': 'Molecular QTL evidence; tissue_id, tissue_name, nominal_p, pip. Molecular association is not disease association.',
     'PART_OF_GWAS_SIGNAL': 'Disease association/credible-set evidence; PIP is candidate support, not effect size.',
-    'SIGNAL_COLOC_WITH': 'Colocalization evidence; shared-signal support is not proof of mechanism.',
+    'SIGNAL_COLOC_WITH': 'Gene -> disease; recorded colocalization evidence. The relationship itself stores gwas_signal_id, qtl_signal_id, gwas_lead_vars, qtl_lead_vars, gwas_locus_name, qtl_locus_name and pp_h4_abf. A request to show the GWAS/QTL signal identities can be answered from these fields without an extra PART_OF_GWAS_SIGNAL or PART_OF_QTL_SIGNAL join. Retrieve primary coloc records directly; optional signal enrichment must not remove them. Shared-signal support is not proof of mechanism.',
     'GENE_ACTIVITY_SCORE_IN': 'Gene activity; cohort-specific measurements are columns, not invented condition_id predicates.',
-    'HAS_DONOR': 'Disease and donor cohort link; use actual donor diabetes_type/derived_diabetes_status fields.',
+    'HAS_DONOR': 'Disease and donor cohort link; use actual donor diabetes_type/derived_diabetes_status fields. Available donor metadata also includes aab_state, hla_status and hla_typing. Recorded autoantibody or HLA metadata lookup is supported; do not reject it as requiring new genotype inference. Preserve the recorded source and distinguish a recorded typing/status field from newly inferred genotype or clinical risk.',
     'HAS_SAMPLE': 'Sample linkage; Sample_node is the node label.',
     'OCR_PEAK_IN': 'Chromatin accessibility evidence.',
-    'FGSEA_ENRICHED_IN': 'Gene-set enrichment evidence, not direct gene expression.',
-    'PART_OF': 'Anatomical containment.', 'HAS_CELL_TYPE': 'Anatomical cell-type linkage.',
-    'SUBCLASS_OF': 'Cell-type subclass linkage.', 'HAS_STATE': 'Cell-state linkage.',
+    'FGSEA_ENRICHED_IN': 'Recorded gene-set enrichment evidence, not direct gene expression. A request for pathways enriched in a named cell type is an existing-record lookup using this relationship. Retrieve available recorded comparisons and conditions without requiring the user to choose annotation versus enrichment or supply a new contrast/ranked gene list. Explain missing analysis context in the answer. Ask for a contrast only when the user requests a new enrichment calculation, which this lookup does not perform.',
+    'PART_OF': 'Contained tissue or region -> containing tissue. Pancreatic islet and exocrine pancreas both point PART_OF toward pancreas.',
+    'HAS_CELL_TYPE': 'Cell type -> tissue (both nodes are anatomical_structure). For a requested tissue use (cell)-[:HAS_CELL_TYPE]->(tissue), never tissue -> cell. The stored direction differs from the English relationship name. Whole-organ cell profiles include contained tissues via tissue -> PART_OF -> organ and narrower cell groups via child -> SUBCLASS_OF -> parent. A direct cell-to-organ match alone misses endocrine and exocrine subclasses. Use separate validated checks or explicit fixed paths; do not invent unsupported variable-length queries.',
+    'SUBCLASS_OF': 'Child cell group -> parent cell group. Include recorded child groups when the question asks broadly for cell types, preserving source labels and grouping; major does not specify a rank cutoff.',
+    'HAS_STATE': 'Base cell type -> recorded state. State expansion is distinct from child-to-parent SUBCLASS_OF direction.',
     'REPRESENTS_COMPOSITE_LABEL': 'Composite cell-label linkage.',
     'LYMPH_FLOWS_TO': 'Anatomical lymph flow.', 'ADJACENT_TO': 'Anatomical adjacency.',
 }
@@ -37,16 +39,40 @@ LABELS = ['Gene', 'disease', 'anatomical_structure', 'GO_term', 'reactome', 'keg
           'indel', 'insertion', 'provenance']
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST
 from .release_schema import DIGEST as SCHEMA_DIGEST
-DIGEST = hashlib.sha256(json.dumps({'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+from .anatomy_paths import DIGEST as ANATOMY_PATH_DIGEST
+from .numeric_predicates import DIGEST as NUMERIC_PREDICATE_DIGEST
+from .ranking_contract import DIGEST as RANKING_CONTRACT_DIGEST
+from .endpoint_types import DIGEST as ENDPOINT_TYPE_DIGEST
+from .measurement_properties import DIGEST as DETECTION_PROPERTY_DIGEST
+from .measurement_scope import DIGEST as MEASUREMENT_SCOPE_DIGEST
+from .anatomy_scope import DIGEST as ANATOMY_SCOPE_DIGEST
+from .coloc_query_guard import DIGEST as COLOC_QUERY_DIGEST
+from .coloc_scope import DIGEST as COLOC_SCOPE_DIGEST
+from .evidence_coverage import DIGEST as EVIDENCE_COVERAGE_DIGEST
+from .scientific_projection import DIGEST as SCIENTIFIC_PROJECTION_DIGEST
+DIGEST = hashlib.sha256(json.dumps({'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
 
 
 def planner_notes():
-    return '\nVerified release contract '+VERSION+' (no other relationship names):\n' + '\n'.join(k+': '+v for k,v in RELATIONS.items())
+    return ('\nVerified release contract '+VERSION+' (no other relationship names):\n'
+            + '\n'.join(k+': '+v for k,v in RELATIONS.items())
+            + '\nGene-to-cell expression, enrichment, differential-expression and activity records are existing cell-type summaries. '
+              'They cannot be re-stratified by donor age, sex, HLA, clinical stage or other donor metadata through a HAS_DONOR/HAS_SAMPLE join. '
+              'For such a comparison, explain that donor-level expression data is required and offer the recorded cell-type summary as an explicit scope change. '
+              'Do not remove the donor restriction silently. Disease comparisons already encoded by T1D_DEG_IN and its recorded columns remain supported without adding donor-node predicates.')
 
 
 def generation_request(step, base_question):
     """Add binding guidance without removing any original biological modifier."""
+    from .coloc_query_guard import compact_generation_request
+    compact = compact_generation_request(step, base_question)
+    if compact is not None:
+        return compact
     from .release_schema import guidance
+    from .numeric_predicates import guidance as numeric_guidance
+    base_question += numeric_guidance(step)
+    from .ranking_contract import guidance as ranking_guidance
+    base_question += ranking_guidance(step)
     if any(r.get('match_kind') == 'recorded_stage_scope' for r in step.get('resolved_constraints', [])) and base_question == step.get('question'):
         # Disambiguate only the verified stage terminology in generator input.
         # The original wording and canonical stored stage remain in the plan.
@@ -78,6 +104,9 @@ def generation_request(step, base_question):
         if len(text)>4000:raise ValueError('generation_question_too_long')
         return text
     notes = [RELATIONS[r] for r in relations if r in RELATIONS]
+    if 'SIGNAL_COLOC_WITH' in relations:
+        from .coloc_query_guard import GUIDANCE
+        notes.append(GUIDANCE)
     suffix = '\nRequired relationship types: '+', '.join(relations)+'.' if relations else ''
     if bindings: suffix += '\nRequired entity/property constraints: '+'; '.join(bindings)+'.'
     if notes: suffix += '\n'+'\n'.join(notes)
@@ -101,6 +130,20 @@ def independent_measurement_steps(plan):
     mapping = {}
     for step in result.get('steps', []):
         kinds = step.get('relation_types') or []
+        annotations = (len(set(kinds)) > 1 and set(kinds) <= {'FUNCTION_ANNOTATION','ASSOCIATED_WITH_GO'}
+            and all(c.get('entity_type') == 'Gene' and c.get('property') in {'id','name'}
+                    for c in step.get('constraints', [])))
+        if annotations and step.get('evidence_combination', 'independent') == 'independent':
+            ids=[]
+            for index, kind in enumerate(dict.fromkeys(kinds),1):
+                child=deepcopy(step)
+                child['id']=step['id']+'_annotation_'+str(index)
+                child['relation_types']=[kind]
+                child['title']='Check '+('pathway annotations' if kind=='FUNCTION_ANNOTATION' else 'GO annotations')
+                child['question']=step['question']+'\nRetrieve only '+kind+' evidence in this check. The other annotation category is checked independently; do not require it to exist.'
+                ids.append(child['id']);expanded.append(child)
+            mapping[step['id']]=ids
+            continue
         if len(kinds) > 1 and set(kinds) <= MEASUREMENTS and step.get('evidence_combination', 'independent') == 'independent':
             if any(c.get('property') not in ('id', 'name') for c in step.get('constraints', [])):
                 result.update(steps=[], clarification='These measurements have different filters. Please separate the measurement checks so each keeps its intended condition and statistical criteria.')
