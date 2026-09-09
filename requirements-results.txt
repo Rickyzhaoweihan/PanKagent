@@ -1,3 +1,4 @@
 -r requirements-vnext.txt
 matplotlib>=3.8,<4
 networkx>=3.2,<4
+pygraphviz>=1.14,<2

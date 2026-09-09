@@ -137,14 +137,14 @@ class LayoutTests(unittest.IsolatedAsyncioTestCase):
             await service.close()
 
     async def test_previous_layout_keeps_positions_and_rejects_changed_release(self):
-        first = await self.service.layout(fixture(5), ["n000"])
-        second = await self.service.layout(fixture(6), ["n000"], previous_layout=first)
+        first = await self.service.layout(fixture(10), ["n000"])
+        second = await self.service.layout(fixture(11), ["n000"], previous_layout=first)
         self.assertEqual(second["layout"]["previous_layout_status"], "accepted")
         if second["layout"]["status"] == "optimized":
             for nid, point in first["xy_json"].items():
                 self.assertAlmostEqual(point["x"], second["xy_json"][nid]["x"], places=2)
                 self.assertAlmostEqual(point["y"], second["xy_json"][nid]["y"], places=2)
-        changed = fixture(6)
+        changed = fixture(11)
         changed["graph_version"] = "new-release"
         third = await self.service.layout(changed, ["n000"], previous_layout=first)
         self.assertEqual(third["layout"]["previous_layout_status"], "graph_version_mismatch")

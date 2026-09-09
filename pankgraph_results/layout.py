@@ -24,7 +24,7 @@ from .vendor.graph_viewer.layout_engine.config import LayoutConfig
 
 
 UPSTREAM_COMMIT = "362025db24b1d37223c3c44ccf02a55eb2756a42"
-LAYOUT_VERSION = "pankgraph-regular-4"
+LAYOUT_VERSION = "pankgraph-regular-5"
 COORDINATE_SCALE = 1 / 3
 # A fixed iteration count makes completed layouts deterministic. The parent
 # process owns the hard wall-clock bound across optimization, routing and metrics.
@@ -136,6 +136,14 @@ def _worker(payload: dict, emit=None) -> dict:
     Completed route batches are checkpointed. Remaining edges have explicit,
     deterministic fallback curves rather than pretending obstacle avoidance.
     """
+    if payload.get('engine') == 'pygraphviz':
+        from .small_graph_layout import pygraphviz_layout
+        coords = pygraphviz_layout(payload['graph'], payload['coords'])
+        return {'status': 'optimized', 'engine': 'pygraphviz',
+                'xy_json': _xy(coords), 'edge_routes': {},
+                'details': {'previous_layout_status': 'not_reused',
+                            'metrics': {'edge_routing': 'frontend_native'}}}
+
     from .vendor.graph_viewer.layout_engine.engine import _validated_previous
     from .vendor.graph_viewer.layout_engine.optimizer import optimize_node_positions
     from .vendor.graph_viewer.layout_engine.router import route_edges, _smooth_bezier, _parallel_curve_offsets
@@ -323,7 +331,8 @@ class LayoutService:
             cache_hit = True
         else:
             cache_hit = False
-            ordered_list = relationship_list(graph, core)
+            small_graph = 0 < len(graph['nodes']) < 10
+            ordered_list = None if small_graph else relationship_list(graph, core)
             if not graph["nodes"]:
                 computed = {"status": "empty", "xy_json": {}, "edge_routes": {}}
             elif ordered_list is not None:
@@ -335,7 +344,8 @@ class LayoutService:
                 try:
                     worker_graph = {"nodes": [{"~id": node["~id"]} for node in graph["nodes"]],
                                     "edges": [{key: edge[key] for key in ("~id", "~start", "~end", "~type")} for edge in graph["edges"]]}
-                    computed = await self._run_worker({"graph": worker_graph, "coords": coords, "previous_layout": previous})
+                    computed = await self._run_worker({"graph": worker_graph, "coords": coords, "previous_layout": previous,
+                                                       "engine": "pygraphviz" if small_graph else "optimized_v1"})
                 except asyncio.CancelledError:
                     raise
                 except (OSError, ValueError, TypeError):
@@ -365,7 +375,7 @@ class LayoutService:
                        edge_budget=400, display_complete=len(graph["nodes"]) == full["node_count"] and len(graph["edges"]) == full["edge_count"],
                        scientific_completeness=full["scientific_completeness"], evidence_unchanged=True)
         details = computed.get("details", {})
-        layout_info = {"status": status, "mode": "kg_only", "engine": "relationship_list" if computed.get("presentation_mode") else "deterministic_grid" if status == "fallback" else "optimized_v1",
+        layout_info = {"status": status, "mode": "kg_only", "engine": "relationship_list" if computed.get("presentation_mode") else "deterministic_grid" if status == "fallback" else computed.get('engine', 'optimized_v1'),
                        "layout_version": LAYOUT_VERSION, "version": 1, "upstream_commit": UPSTREAM_COMMIT,
                        "config_fingerprint": CONFIG.fingerprint("kg_only"), "coordinate_scale": COORDINATE_SCALE,
                        "runtime_ms": round((time.monotonic() - started) * 1000, 2), "cache_hit": cache_hit,
