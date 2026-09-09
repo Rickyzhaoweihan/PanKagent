@@ -1,4 +1,4 @@
-"""A narrow output contract for measured gene/cell and coloc evidence.
+"""Output contracts for measured evidence and exact signal membership.
 
 Validation of a MATCH does not prove that RETURN retains its measurements.
 Recognize lossless records, legitimate aggregates, and identified statistics;
@@ -10,15 +10,16 @@ from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
 
-VERSION = 'scientific-projection-v1'
+VERSION = 'scientific-projection-v2'
 SUPPORTED = frozenset({'GENE_ENRICHED_IN','GENE_DETECTED_IN','MARKER_GENE_OF',
     'T1D_DEG_IN','GENE_ACTIVITY_SCORE_IN','SIGNAL_COLOC_WITH'})
 LINKAGE_RELATIONS = frozenset({'SIGNAL_COLOC_WITH', 'PART_OF_GWAS_SIGNAL', 'PART_OF_QTL_SIGNAL'})
 
 
 def _requested(step):
-    supported = SUPPORTED | LINKAGE_RELATIONS if step.get('coloc_scope') else SUPPORTED
-    return set(step.get('relation_types') or []) & supported
+    # Membership coverage is meaningful for native separate GWAS/QTL checks too;
+    # it must not depend on whether the planner first combined their relations.
+    return set(step.get('relation_types') or []) & (SUPPORTED | LINKAGE_RELATIONS)
 # Provenance and identity fields alone do not retain the requested measurement.
 # Intersect these reviewed categories with the pinned release inventory below.
 MEASUREMENT_FIELDS = {
@@ -251,8 +252,12 @@ def projection_contract(tokens,step,parameters=None):
 
 
 def validation_errors(tokens,step,parameters):
+    # Keep the existing validation policy for ordinary GWAS/QTL projections.
+    # They now receive truthful membership coverage, but a valid scalar count
+    # or legacy table query is not forced to return an entire graph here.
+    required = SUPPORTED | LINKAGE_RELATIONS if step.get('coloc_scope') else SUPPORTED
     return ['scientific_projection_missing:'+kind+':return_the_relationship_and_endpoints_or_an_identified_statistic_or_count'
-            for kind in projection_contract(tokens,step,parameters)['missing_relations']]
+            for kind in projection_contract(tokens,step,parameters)['missing_relations'] if kind in required]
 
 
 DIGEST=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()

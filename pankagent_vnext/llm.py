@@ -102,7 +102,8 @@ def plan_structure_issue(plan):
         return 'malformed_step'
     if len(plan['steps']) > 12:
         return 'plan_too_large'
-    if not plan.get('steps') and not plan.get('clarification'):
+    from .plan_recovery import GENERIC
+    if not plan.get('steps') and (not plan.get('clarification') or str(plan.get('clarification')).strip().lower() in GENERIC):
         return 'empty_executable_plan'
     seen = set()
     for step in plan['steps']:
@@ -118,6 +119,8 @@ class ClaudeGateway:
         self.client=anthropic.AsyncAnthropic(api_key=settings.anthropic_key or 'not-configured',max_retries=0,timeout=self.settings.plan_timeout)
         self.last_success=None
         self.answer_router=AnswerSkillRouter()
+        from .planning_contract import VerifiedCache
+        self.plan_cache=VerifiedCache()
     def _options(self):
         return {'thinking':{'type':'disabled'}} if self.settings.model=='claude-sonnet-5' else {}
     def _reserve(self,purpose,system,body,max_tokens):
@@ -132,7 +135,7 @@ class ClaudeGateway:
             if exc.status_code in (400,401,403,404,413,422,429):
                 self.budget.settle(rid,{})
             raise
-    async def plan(self,question,history, _repair=False):
+    async def plan(self,question,history, _repair=False, grounding=None):
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         from .semantic_registry import planner_guidance
         from .investigations import generic_profile_gene, expand_registered_profile
@@ -140,13 +143,26 @@ class ClaudeGateway:
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         system_text=PLAN_SYSTEM
         schema=PLAN_SCHEMA
+        from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION
+        cache_key = None
+        if grounding and grounding.get('status') == 'ready':
+            from .preplanning_grounding import grounding_guidance
+            user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
+            system_text=GROUNDED_SYSTEM
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,schema,self.settings.model)
+            if not _repair and getattr(self.settings,'plan_cache_enabled',True):
+                cached=self.plan_cache.get(cache_key)
+                if cached is not None:
+                    provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
+                    return cached
+        provider_event('planning_cache', {'hit':False,'key':cache_key,'version':PLANNING_VERSION})
         if profile_gene:
             system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'
             schema={'type':'object','additionalProperties':False,'properties':{'gene_name':{'type':'string'}},'required':['gene_name']}
         from .investigations import required_categories
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
-        output_limit=200 if profile_gene else 2400 if len(required_categories(question))==12 else 1600
+        output_limit=200 if profile_gene else 2400 if _repair or len(required_categories(question))==12 else 1600
         rid=self._reserve('plan',system_text,user,output_limit)
         reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
           system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
@@ -154,20 +170,32 @@ class ClaudeGateway:
           tools=[{'name':'record_plan','description':'Record the proposed plan for user review','input_schema':schema,'strict':True}],
           tool_choice={'type':'tool','name':'record_plan'},**self._options())
         self.budget.settle(rid,reply.usage.model_dump())
+        provider_event('planning_response', {'stop_reason':getattr(reply,'stop_reason',None),'repair':_repair})
         for block in reply.content:
             if block.type=='tool_use' and block.name=='record_plan':
                 plan=block.input
+                provider_event('planning_proposal', {'plan':plan,'repair':_repair,'grounding_version':(grounding or {}).get('version')})
                 if profile_gene:
                     if plan.get('gene_name') != profile_gene: raise ValueError('profile_scope_mismatch')
                     plan=expand_registered_profile(question,profile_gene)
+                else:
+                    from .planning_output import recover_misplaced_steps
+                    plan, output_recovery = recover_misplaced_steps(plan, schema)
+                    if output_recovery:
+                        provider_event('planning_output_recovery', output_recovery)
                 self.last_success=time.time()
                 issue = plan_structure_issue(plan)
+                if issue is None and grounding and grounding.get('status') == 'ready':
+                    from .planning_scope import scope_issue
+                    issue = scope_issue(question, grounding, plan)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
                 if issue and issue != 'plan_too_large' and not _repair:
-                    return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True)
+                    return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True, grounding=grounding)
                 if issue:
-                    return {**plan, 'steps': [], 'proposal_issue': issue,
-                        'clarification': ('This investigation needs more than twelve graph checks. Please narrow it to the evidence you want to prioritize.' if issue == 'plan_too_large' else 'The proposed checks could not be linked safely. Please specify which evidence to check first; your question and revision instruction have been retained.')}
+                    if issue == 'plan_too_large':
+                        return {**plan,'steps':[],'proposal_issue':issue,'clarification':'This investigation needs more than twelve graph checks. Please narrow its scope.'}
+                    from .plan_recovery import mark_failure
+                    return mark_failure({**plan,'proposal_issue':issue})
                 try:
                     plan=expand_compact_plan(plan)
                     plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
@@ -175,14 +203,39 @@ class ClaudeGateway:
                     from .investigations import category_issue
                     issue=category_issue(question, plan)
                     if issue: raise ValueError(issue)
+                    if grounding and grounding.get('status') == 'ready':
+                        plan['retrieval_policy']='partial_independent_v1'
+                    if cache_key and plan.get('steps') and not plan.get('clarification'):
+                        self.plan_cache.put(cache_key,plan)
                     return plan
                 except (ValueError, KeyError, TypeError) as exc:
                     if not _repair:
-                        return await self.plan(question, history + [{'role':'system','content':'The last structured plan failed '+str(exc)+'. Supply valid independent checks preserving every requested category and the original scope.'}], _repair=True)
+                        return await self.plan(question, history + [{'role':'system','content':'The last structured plan failed '+str(exc)+'. Supply valid independent checks preserving every requested category and the original scope.'}], _repair=True, grounding=grounding)
                     raise ValueError('planning_repair_exhausted')
         if not _repair:
-            return await self.plan(question, history, _repair=True)
+            return await self.plan(question, history, _repair=True, grounding=grounding)
         raise ValueError('missing_structured_plan')
+    async def repair_cypher(self, step, question, failures, candidate):
+        """One grounded, budgeted fallback; the caller must revalidate and EXPLAIN."""
+        from .release_schema import REGISTRY
+        from .graph_contract import RELATIONS
+        kinds=step.get('relation_types',[])
+        schema={'type':'object','additionalProperties':False,'properties':{'cypher':{'type':'string'}},'required':['cypher']}
+        system='Repair a read-only PanKgraph Cypher query. Preserve every requested entity, filter, dependency and completeness requirement. Use only the supplied schema. Never relax filters to find data. Return actual node and relationship objects with all properties. No writes, procedures, LIMIT, list slices or invented labels/properties. Return an empty cypher string if the exact scope cannot be represented safely.'
+        body=json.dumps({'question':question,'step':step,'failed_candidate':candidate,'validation_failures':failures,
+            'schema':{k:REGISTRY['relations'].get(k) for k in kinds},'guidance':{k:RELATIONS.get(k) for k in kinds}},ensure_ascii=False)
+        rid=self._reserve('cypher_repair',system,body,1800)
+        reply=await self._create(rid,model=self.settings.model,max_tokens=1800,
+            system=[{'type':'text','text':system}],messages=[{'role':'user','content':body}],
+            tools=[{'name':'repair_query','description':'Record one repaired read-only query','input_schema':schema,'strict':True}],
+            tool_choice={'type':'tool','name':'repair_query'},**self._options())
+        self.budget.settle(rid,reply.usage.model_dump())
+        for block in reply.content:
+            if block.type=='tool_use' and block.name=='repair_query':
+                value=block.input.get('cypher')
+                return [value] if isinstance(value,str) and value.strip() else []
+        return []
+
     def prepare_answer(self,question,evidence):
         # Inspect full bounded evidence before sampling; this does not call a model.
         routed=self.answer_router.select(evidence)
@@ -193,7 +246,19 @@ class ClaudeGateway:
             {'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
              'omitted':item.get('context_dropped',{})} for item in compact],
             'scope':'synthesis_input_only', 'display_counts_known':False}
-        body=json.dumps({'question':question,'evidence':scientific_excerpt(compact),
+        excerpt=scientific_excerpt(compact)
+        import re
+        if not re.search(r'\brank(?:s|ed|ing)?\b', question, re.I):
+            # Gene rank within a cell is irrelevant to a cross-cell effect-size
+            # comparison. Full evidence/hover/download records remain intact.
+            def relevant(value):
+                if isinstance(value,dict):
+                    return {k:relevant(v) for k,v in value.items() if k != 'rank_in_cell_type'}
+                if isinstance(value,list):return [relevant(v) for v in value]
+                return value
+            excerpt=relevant(excerpt)
+            profile['model_context']['omitted_unrequested_fields']=['rank_in_cell_type']
+        body=json.dumps({'question':question,'evidence':excerpt,
             'verified_search_scope': SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.'},ensure_ascii=False,default=str)
         if len(body.encode())>100000: raise ValueError('evidence_context_too_large')
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]

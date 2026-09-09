@@ -45,6 +45,8 @@ class Settings:
     cypher_timeout: float = 15.0
     cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '1')))
     cypher_initial_scope: str = field(default_factory=lambda: env('CYPHER_INITIAL_SCOPE', 'cohort'))
+    plan_cache_enabled: bool = field(default_factory=lambda: env('PLAN_CACHE_ENABLED','1') == '1')
+    grounded_query_policy: bool = field(default_factory=lambda: env('GROUNDED_QUERY_POLICY','1') == '1')
     max_nodes: int = 2000
     max_edges: int = 5000
     max_bytes: int = 2_000_000
@@ -55,7 +57,7 @@ class Settings:
             raise ValueError('vNext development service must bind to loopback')
         if self.model not in ('claude-sonnet-5','claude-haiku-4-5-20251001'):
             raise ValueError('model must have an explicitly configured price')
-        if not 0 < self.budget_usd <= 20 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
+        if not 0 < self.budget_usd <= 30 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
             raise ValueError('invalid development budget or queue limits')
         if not 0 < self.preview_timeout <= 120 or not 0 < self.grouped_preview_timeout <= 120 or not 0 <= self.preview_ttl_seconds <= 3600:
             raise ValueError('invalid preview deadline or reuse window')

@@ -1,5 +1,30 @@
 """Deterministic outcome wording; retrieval failure is never biological absence."""
 
+def aggregate_outcome_status(steps):
+    """Only successful, untruncated checks can make an aggregate complete.
+
+    Explicit failed/blocked/unavailable outcomes are incomplete even when other
+    checks succeeded. Unknown or absent status is also incomplete, never a
+    default success. The original per-step outcomes remain unchanged.
+    """
+    steps = list(steps)
+    states = [step.get('status') if isinstance(step, dict) else None for step in steps]
+    truncated = any(bool(step.get('truncated')) for step in steps if isinstance(step, dict))
+    failed_states = {'failed', 'blocked', 'unavailable', 'cancelled', 'interrupted', 'timeout', 'timed_out', 'error'}
+    failed_checks = sum(state in failed_states or bool(step.get('error'))
+                        for state, step in zip(states, steps) if isinstance(step, dict))
+    incomplete = (not steps or truncated or failed_checks
+                  or any(state not in {'complete', 'empty'} for state in states))
+    return {
+        'completeness': 'partial' if incomplete else 'empty' if all(state == 'empty' for state in states) else 'complete',
+        'truncated': truncated,
+        'failed_checks': failed_checks,
+        'incomplete_checks': sum(not isinstance(step, dict) or state not in {'complete', 'empty'}
+                                 or bool(step.get('error')) or bool(step.get('truncated'))
+                                 for state, step in zip(states, steps)),
+    }
+
+
 def outcome_message(evidence):
     steps = list(evidence.values()) if isinstance(evidence, dict) else list(evidence)
     primary = [s for s in steps if s.get('purpose') != 'context'] or steps
@@ -22,7 +47,9 @@ def outcome_message(evidence):
 
 
 
-QUERY_READINESS_VERSION = 'query-executed-plan-v1'
+QUERY_READINESS_VERSION = 'query-executed-plan-v2-partial-independent'
+PARTIAL_INDEPENDENT_POLICY = 'partial_independent_v1'
+TERMINAL_QUERY_STATUSES = frozenset({'complete', 'empty', 'partial', 'failed', 'blocked', 'unavailable'})
 
 
 def required_query_steps(plan):
@@ -75,7 +102,31 @@ def checked_query_result(step, result, verified):
     return False
 
 
+def _nonempty_primary_result(step, result):
+    """Actual evidence from a checked primary, never an empty context wrapper.
+
+    A legitimate scalar row (including count=0) is an answer to its checked
+    question. An outcome explicitly marked empty cannot supply the positive
+    admission condition for a partially failed investigation.
+    """
+    if step.get('purpose') == 'context' or result.get('status') == 'empty':
+        return False
+    if result.get('nodes') or result.get('edges'):
+        return True
+    from .semantic_registry import meaningful_row
+    return any(meaningful_row(row) for row in result.get('rows') or [])
+
+
 def query_readiness(plan, preview):
+    """Legacy plans require every check; opted-in plans can disclose partial work.
+
+    Partial readiness only opens after all required outcomes are terminal, at
+    least one primary result is verified and meaningful, and the normal scope
+    and resource guards pass. Failed/truncated steps remain blocked, including
+    every dependent check whose inputs were not verified. Callers must retain
+    the exact checked snapshot, label missing categories and never rerun failed
+    checks implicitly after confirmation.
+    """
     required = required_query_steps(plan)
     outcomes = {step.get('step_id'): step for step in ((preview or {}).get('evidence') or {}).get('steps', [])}
     verified = {}
@@ -84,10 +135,30 @@ def query_readiness(plan, preview):
         if checked_query_result(step, result, verified):
             verified[step['id']] = result
     required_ids = [step['id'] for step in required]
-    ready = (bool(required_ids) and not plan.get('clarification')
-             and (preview or {}).get('preparation_complete') is True
-             and not (preview or {}).get('query_resource_limit_exceeded') and len(verified) == len(required))
-    return {'version': QUERY_READINESS_VERSION, 'ready': ready,
+    common_guard = (bool(required_ids) and not plan.get('clarification')
+                    and (preview or {}).get('preparation_complete') is True
+                    and not (preview or {}).get('query_resource_limit_exceeded'))
+    full_coverage = bool(common_guard and len(verified) == len(required))
+    all_finished = bool(required_ids) and all(
+        isinstance(outcomes.get(step_id), dict)
+        and outcomes[step_id].get('status') in TERMINAL_QUERY_STATUSES
+        for step_id in required_ids)
+    nonempty_primary_ids = [step['id'] for step in required
+                            if step['id'] in verified and _nonempty_primary_result(step, verified[step['id']])]
+    retained_failure_ids = [step_id for step_id in required_ids if step_id not in verified
+                            and (outcomes.get(step_id) or {}).get('status') in {'failed', 'blocked', 'unavailable'}]
+    # Only explicit failed outcomes can be retained unchanged. A nominally
+    # successful but unverified/truncated result must not enter synthesis under
+    # the partial policy; it needs an explicit failure result or a fresh check.
+    blocked_are_failures = len(retained_failure_ids) == len(required_ids) - len(verified)
+    partial_ready = bool(not full_coverage and common_guard and all_finished and nonempty_primary_ids
+                         and blocked_are_failures
+                         and plan.get('retrieval_policy') == PARTIAL_INDEPENDENT_POLICY)
+    return {'version': QUERY_READINESS_VERSION, 'ready': full_coverage or partial_ready,
+            'partial_ready': partial_ready, 'full_coverage': full_coverage,
+            'all_required_finished': all_finished,
+            'nonempty_primary_step_ids': nonempty_primary_ids,
+            'retained_failed_step_ids': retained_failure_ids if partial_ready else [],
             'required_step_ids': required_ids, 'verified_step_ids': list(verified),
             'blocked_step_ids': [step_id for step_id in required_ids if step_id not in verified],
             'no_match_step_ids': [step_id for step_id, result in verified.items() if result.get('status') == 'empty'],

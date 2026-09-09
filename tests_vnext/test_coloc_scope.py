@@ -310,3 +310,130 @@ def test_summary_bound_is_separate_from_retrieved_evidence_and_complete_counts()
     assert actual['primary_record_count'] == actual['linked_record_count'] == 30
     assert len(actual['records']) == 25 and actual['summary_omitted_record_count'] == 5
     assert len(prior['s1']['edges']) == 30
+
+
+def separated_plan():
+    """Equivalent to a fresh planner choosing three checks itself."""
+    value = normalize_plan(plan(), RELEASE)
+    value.pop('coloc_scope_normalization')
+    for step in value['steps']:
+        step.pop('coloc_scope', None)
+        step['resolved_entities'] = [
+            {'constraint_index': index, 'state': 'resolved', 'graph_version': RELEASE,
+             'entity_type': item['entity_type'], 'id': item['value'], 'requested': copy.deepcopy(item)}
+            for index, item in enumerate(step['constraints'])]
+    return value
+
+
+def test_already_separated_verified_checks_annotate_same_exact_signal_links_without_mutation():
+    source, prior = separated_plan(), evidence()
+    before = copy.deepcopy((source, prior))
+    actual = summarize_linkage(source, prior)
+    assert (source, prior) == before
+    assert actual['source_kind'] == 'already_separated_verified_steps'
+    assert actual['status'] == 'checked'
+    expected = summary()
+    assert actual['groups'][0] == expected
+
+
+def test_already_separated_canonical_names_use_verified_identity_not_raw_spelling():
+    source = separated_plan()
+    for step in source['steps']:
+        for constraint, resolved in zip(step['constraints'], step['resolved_entities']):
+            if constraint['entity_type'] == 'Gene':
+                constraint.update(property='name', value='ADCY3')
+            elif constraint['entity_type'] == 'disease':
+                constraint.update(property='name', value='type 1 diabetes')
+            resolved['requested'] = copy.deepcopy(constraint)
+    assert summarize_linkage(source, evidence())['groups'][0]['linked_record_count'] == 2
+
+
+@pytest.mark.parametrize('mutation', ['unresolved', 'missing_release', 'wrong_release', 'missing_requested',
+    'wrong_requested', 'wrong_id', 'wrong_owner', 'duplicate_resolution', 'missing_resolution', 'extra_filter',
+    'ranking', 'dependency', 'incomplete', 'multiple_relations', 'duplicate_step_id', 'stale_metadata'])
+def test_already_separated_unsafe_or_filtered_shapes_remain_untouched_and_unannotated(mutation):
+    source = separated_plan(); step = source['steps'][0]; resolution = step['resolved_entities'][0]
+    if mutation == 'unresolved': resolution['state'] = 'ambiguous'
+    elif mutation == 'missing_release': resolution.pop('graph_version')
+    elif mutation == 'wrong_release': step['graph_version'] = 'other'
+    elif mutation == 'missing_requested': resolution.pop('requested')
+    elif mutation == 'wrong_requested': resolution['requested']['value'] = 'another'
+    elif mutation == 'wrong_id': resolution['id'] = 'wrong'
+    elif mutation == 'wrong_owner': step['constraints'][0]['owner_kind'] = 'relationship'
+    elif mutation == 'duplicate_resolution': step['resolved_entities'].append(copy.deepcopy(resolution))
+    elif mutation == 'missing_resolution': step['resolved_entities'] = []
+    elif mutation == 'extra_filter': step['constraints'].append({'property': 'pp_h4_abf', 'operator': '>', 'value': .99})
+    elif mutation == 'ranking': step['ranking_contract'] = {'top_n': 1}
+    elif mutation == 'dependency': step['depends_on'] = ['another']
+    elif mutation == 'incomplete': step['complete'] = False
+    elif mutation == 'multiple_relations': step['relation_types'].append('PART_OF_GWAS_SIGNAL')
+    elif mutation == 'duplicate_step_id': source['steps'][1]['id'] = step['id']
+    elif mutation == 'stale_metadata': source['coloc_scope_normalization'] = {'digest': 'stale', 'graph_release': RELEASE}
+    before = copy.deepcopy(source)
+    actual = summarize_linkage(source, evidence())
+    assert source == before
+    assert actual['status'] == 'not_applicable_or_stale' and actual['groups'] == []
+
+
+@pytest.mark.parametrize('role,kind,value', [('s1_gwas', 'variants', 'rs1'), ('s1_qtl', 'Gene', 'ENSGOTHER'),
+                                          ('s1_gwas', 'disease', 'MONDO_OTHER')])
+def test_separated_checks_need_all_three_matching_identities(role, kind, value):
+    source = separated_plan()
+    step = next(step for step in source['steps'] if step['id'] == role)
+    for constraint, resolved in zip(step['constraints'], step['resolved_entities']):
+        if constraint['entity_type'] == kind:
+            constraint['value'] = value; resolved['id'] = value; resolved['requested'] = copy.deepcopy(constraint)
+    assert summarize_linkage(source, evidence())['groups'] == []
+
+
+@pytest.mark.parametrize('index', [0, 1, 2])
+def test_duplicate_equivalent_checks_do_not_choose_arbitrary_linkage_container(index):
+    source = separated_plan(); extra = copy.deepcopy(source['steps'][index]); extra['id'] += '_duplicate'
+    source['steps'].append(extra)
+    assert summarize_linkage(source, evidence())['groups'] == []
+
+
+def test_separated_failed_context_preserves_primary_and_exact_gwas_linkage():
+    source, prior = separated_plan(), evidence()
+    prior['s1_qtl'] = {'status': 'failed', 'graph_version': RELEASE, 'edges': []}
+    actual = summarize_linkage(source, prior)
+    assert actual['status'] == 'partial'
+    assert actual['groups'][0]['primary_record_count'] == actual['groups'][0]['linked_record_count'] == 2
+    assert all('verified_qtl_credible_set_member' not in item['match_kinds'] for item in actual['groups'][0]['records'])
+
+
+def test_separated_common_entities_never_substitute_for_exact_recorded_signal_ids():
+    source, prior = separated_plan(), evidence()
+    for record in prior['s1']['edges']:
+        record['properties'].update(gwas_signal_id='another', qtl_signal_id='another', qtl_lead_vars='rs1')
+    actual = summarize_linkage(source, prior)
+    assert actual['groups'][0]['primary_record_count'] == 2 and actual['groups'][0]['linked_record_count'] == 0
+
+
+def test_native_separated_live_coverage_contract_feeds_exact_linkage():
+    from pankagent_vnext.evidence_coverage import build_evidence_coverage
+    source, prior = separated_plan(), evidence()
+    for step in source['steps']:
+        kind = step['relation_types'][0]
+        start, end = {'SIGNAL_COLOC_WITH': ('Gene', 'disease'),
+                      'PART_OF_GWAS_SIGNAL': ('variants', 'disease'),
+                      'PART_OF_QTL_SIGNAL': ('variants', 'Gene')}[kind]
+        query = f'MATCH (a:{start})-[r:{kind}]->(b:{end}) RETURN a,r,b'
+        result = prior[step['id']]
+        result['evidence_coverage'] = build_evidence_coverage(step, result, graph_version=RELEASE,
+                                                           query=query, validation_verified=True)
+    actual = summarize_linkage(source, prior)
+    assert actual['status'] == 'checked'
+    assert actual['groups'][0]['linked_record_count'] == 2
+    assert len(actual['groups'][0]['records'][0]['supporting_references']) == 2
+
+
+def test_multiple_requested_variants_do_not_overwrite_single_primary_annotation_slot():
+    source = separated_plan()
+    for step in copy.deepcopy(source['steps'][1:]):
+        step['id'] += '_second_variant'
+        for constraint, resolved in zip(step['constraints'], step['resolved_entities']):
+            if constraint['entity_type'] == 'variants':
+                constraint['value'] = 'rs2'; resolved['id'] = 'rs2'; resolved['requested'] = copy.deepcopy(constraint)
+        source['steps'].append(step)
+    assert summarize_linkage(source, evidence())['groups'] == []

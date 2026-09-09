@@ -42,6 +42,7 @@ class RevisionRequest(BaseModel):
 
 
 class PlanRequest(RevisionRequest):
+    auto_proceed_seconds: int | None = Field(default=None, ge=5, le=120)
     session_id: str | None = Field(default=None, max_length=100)
 
 
@@ -136,11 +137,13 @@ def aggregate_evidence(previous: dict) -> dict:
         provenance = step.get("provenance", [])
         result["provenance"].extend(provenance if isinstance(provenance, list) else [provenance])
         result["graph_version"] = result["graph_version"] or step.get("graph_version")
-    states = [step.get("status", "complete") for step in steps]
-    result["completeness"] = "partial" if any(state in {"failed", "partial"} for state in states) else "empty" if states and all(state == "empty" for state in states) else "complete"
-    result["truncated"] = any(step.get("truncated") for step in steps)
+    from .evidence_status import aggregate_outcome_status
+    status_summary = aggregate_outcome_status(steps)
+    result["completeness"] = status_summary["completeness"]
+    result["truncated"] = status_summary["truncated"]
     result["retrieval"] = {"completeness": result["completeness"], "truncated": result["truncated"],
-                           "checks": len(steps), "failed_checks": states.count("failed"),
+                           "checks": len(steps), "failed_checks": status_summary["failed_checks"],
+                           "incomplete_checks": status_summary["incomplete_checks"],
                            "node_count": len(result["nodes"]), "edge_count": len(result["edges"])}
     return result
 
@@ -148,6 +151,8 @@ def aggregate_evidence(previous: dict) -> dict:
 class Runtime:
     def __init__(self, settings, gateway, graph, literature):
         self.settings, self.gateway, self.graph, self.literature = settings, gateway, graph, literature
+        if hasattr(gateway, "repair_cypher"):
+            self.graph.query_repair = gateway.repair_cypher
         self.store = Store(settings.state_dir)
         self.audit_identity = deployment_identity(settings)
         self.tasks: dict[str, asyncio.Task] = {}
@@ -157,6 +162,23 @@ class Runtime:
         self.metrics = Metrics()
         self.health = HealthMonitor(settings, gateway, graph, literature, self.store, self.queue_snapshot)
         self.shutting_down = False
+        self.auto_proceed_tasks = set()
+
+    def schedule_auto_proceed(self, run_id, seconds):
+        """Only an explicit request option authorizes the checked-plan timer."""
+        async def later():
+            await asyncio.sleep(seconds)
+            run = self.store.get(run_id)
+            if self.shutting_down or not run or run['status'] != 'awaiting_confirmation':
+                return
+            try:
+                await self.confirm_plan(run['plan_id'])
+                self.store.audit_event(run_id, 'auto_proceeded', {'delay_seconds':seconds,'authorization':'request_option'})
+            except HTTPException as exc:
+                self.store.audit_event(run_id, 'auto_proceed_skipped', {'http_status':exc.status_code})
+        task=asyncio.create_task(later())
+        self.auto_proceed_tasks.add(task)
+        task.add_done_callback(self.auto_proceed_tasks.discard)
 
     def queue_snapshot(self):
         return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped}
@@ -246,6 +268,7 @@ class Runtime:
                 metadata = self.store.audit_metadata(run_id) or {}
                 parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
                 instruction = metadata.get('revision_instruction') or run['question']
+                grounding = None
                 fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
                 if fast:
                     proposed = deepcopy(parent['plan'])
@@ -253,14 +276,23 @@ class Runtime:
                     self.store.audit_event(run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'})
                 else:
                     claude_pending = True
+                    plan_options = {}
+                    if hasattr(self.graph, 'ground_question'):
+                        grounding_started = time.monotonic()
+                        grounding = await self.graph.ground_question(run['question'])
+                        self.store.audit_event(run_id, 'preplanning_grounding', grounding)
+                        self.metrics.observe('preplanning_grounding', time.monotonic() - grounding_started)
+                        import inspect
+                        if 'grounding' in inspect.signature(self.gateway.plan).parameters:
+                            plan_options['grounding'] = grounding
                     model_started = time.monotonic()
-                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run)), self.settings.plan_timeout)
+                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run), **plan_options), self.settings.plan_timeout)
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
                     self.check_active(run_id)
                     self.health.record_inference("claude", True)
                     claude_pending = False
                 from .plan_recovery import recover_empty_plan
-                proposed = await recover_empty_plan(self.gateway, proposed, run["question"], self.planning_history(run), self.settings.plan_timeout)
+                proposed = await recover_empty_plan(self.gateway, proposed, run["question"], self.planning_history(run), self.settings.plan_timeout, grounding=grounding)
                 plan = normalize_plan(proposed)
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
@@ -311,9 +343,13 @@ class Runtime:
                 plan["review_ready"] = True
                 self.store.update(run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation")
                 self.store.event(run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,
-                    "validation_scope": "required graph queries executed successfully; zero matches are valid checked outcomes",
+                    "validation_scope": "Only the verified checks succeeded; remaining checks are unavailable." if current["preview"]["query_readiness"].get("partial_ready") else "required graph queries executed successfully; zero matches are valid checked outcomes",
                     "query_readiness": current["preview"]["query_readiness"]})
                 self.store.event(run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": plan, "preview": current["preview"]})
+                delay = (self.store.audit_metadata(run_id) or {}).get('requested_options',{}).get('auto_proceed_seconds')
+                if delay and not current['preview']['query_readiness']['blocked_step_ids']:
+                    self.store.event(run_id, 'auto_proceed_scheduled', {'delay_seconds':delay,'plan_id':run['plan_id']})
+                    self.schedule_auto_proceed(run_id, delay)
                 self.metrics.count("plans_ready")
                 self.metrics.observe("plan_ready", time.monotonic() - started)
         except asyncio.CancelledError:
@@ -659,11 +695,17 @@ class Runtime:
             cached = cached_steps.get(step["id"], {})
             reason = self.preview_reuse_reason(step, cached, cache, matching, reused, previous,
                 check_freshness=step['id'] not in required_ids)
-            if reason is not None and step['id'] in required_ids:
+            accepted_failed = (matching and preview.get('query_readiness',{}).get('partial_ready')
+                and step['id'] in preview['query_readiness']['blocked_step_ids']
+                and cached.get('status') in {'failed','blocked','unavailable'})
+            if reason is not None and step['id'] in required_ids and not accepted_failed:
                 recovery = self.preview_recovery(run, reason)
                 self.store.update(run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
                 raise ValueError('checked_preview_identity_changed')
-            if reason is None:
+            if accepted_failed:
+                previous[step["id"]] = deepcopy(cached)
+                reuse_info["unreused_reasons"][step["id"]] = "retained_failed_check"
+            elif reason is None:
                 previous[step["id"]] = deepcopy(cached)
                 reused.add(step["id"])
                 reuse_info["reused_step_ids"].append(step["id"])
@@ -722,6 +764,10 @@ class Runtime:
             self.store.audit_event(run_id, "population_answer_guard", population_issue["evidence"])
         status_message = population_issue["message"] if population_issue else outcome_message(previous)
         async def tokens():
+            missing = [step for step in previous.values() if step.get('purpose') != 'context' and step.get('status') in {'failed','blocked','unavailable'}]
+            if preview.get('query_readiness',{}).get('partial_ready') and missing:
+                total = len(required_ids)
+                yield f"Partial answer: {total-len(missing)} of {total} requested checks completed. The remaining checks could not finish; their failure does not establish that evidence is absent.\n\n"
             if status_message:
                 yield status_message
             else:
@@ -897,6 +943,9 @@ class Runtime:
         for task in self.tasks.values():
             task.cancel()
         await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
+        for task in self.auto_proceed_tasks:
+            task.cancel()
+        await asyncio.gather(*self.auto_proceed_tasks, return_exceptions=True)
         await self.health.stop()
         await asyncio.gather(*(adapter.close() for adapter in (self.gateway, self.graph, self.literature)), return_exceptions=True)
         self.store.close()
@@ -919,8 +968,25 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
     async def lifespan(app):
         runtime.store.interrupt_active()
         runtime.health.start()
-        yield
-        await runtime.close()
+        warm_task = None
+        if hasattr(runtime.graph, 'ground_question'):
+            from .preplanning_grounding import warm_grounding
+            async def warm():
+                try:
+                    await warm_grounding(runtime.graph)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    runtime.metrics.count('grounding_warmup_failed')
+            warm_task = asyncio.create_task(warm())
+        try:
+            yield
+        finally:
+            if warm_task is not None and not warm_task.done():
+                warm_task.cancel()
+            if warm_task is not None:
+                await asyncio.gather(warm_task, return_exceptions=True)
+            await runtime.close()
 
     app = FastAPI(title="PanKagent vNext", version="2.0.0", lifespan=lifespan)
     app.add_middleware(JSONResponseLimitMiddleware)
@@ -956,7 +1022,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         try:
             run = runtime.store.create(question, body.session_id, include_context=body.include_context,
                 audit={"original_question": body.question, "source": body.event_source, "versions": runtime.audit_identity,
-                       "requested_options": {"include_context": body.include_context}},
+                       "requested_options": {"include_context": body.include_context, "auto_proceed_seconds":body.auto_proceed_seconds}},
                 legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None)
         except KeyError:
             raise HTTPException(404, "Session not found.") from None
@@ -1031,6 +1097,8 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         if current["status"] in {"cancelled", "interrupted", "failed", "superseded"}:
             raise HTTPException(409, "This run has ended; create a new plan.")
         return {"run_id": run["run_id"], "status": current["status"], "events_url": f'/v2/runs/{run["run_id"]}/events'}
+
+    runtime.confirm_plan = confirm
 
     @app.get("/v2/runs/{run_id}")
     async def run_state(run_id: str):

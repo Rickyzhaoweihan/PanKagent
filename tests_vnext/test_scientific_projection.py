@@ -137,3 +137,27 @@ def test_normalized_signal_linkage_checks_require_records_not_just_counts(relati
     ordinary = {**spec}
     ordinary.pop('coloc_scope')
     assert validation_errors(tokenize(match+' RETURN count(r) AS total'), ordinary, {}) == []
+
+
+@pytest.mark.parametrize('relation,target', [('PART_OF_GWAS_SIGNAL', 'disease'), ('PART_OF_QTL_SIGNAL', 'Gene')])
+def test_native_separate_membership_query_gets_full_record_coverage_without_normalization(relation, target):
+    spec = {'graph_version': 'PanKgraph_08_04', 'relation_types': [relation], 'constraints': []}
+    query = f'MATCH (v:variants)-[r:{relation}]->(target:{target}) RETURN v,r,target'
+    actual = projection_contract(tokenize(query), spec)
+    assert actual['representation'] == 'full_records'
+    assert actual['record_membership_enumerated'] is True
+    assert actual['missing_relations'] == []
+    assert validation_errors(tokenize(query), spec, {}) == []
+    # Native count questions still work, but cannot be presented as enumerated
+    # signal membership or used as exact variant-signal linkage evidence.
+    count = query.replace('RETURN v,r,target', 'RETURN count(r) AS total')
+    aggregate = projection_contract(tokenize(count), spec)
+    assert aggregate['representation'] == 'aggregate_result'
+    assert aggregate['record_membership_enumerated'] is False
+    assert validation_errors(tokenize(count), spec, {}) == []
+    # Existing ordinary-table validation remains compatible; missing complete
+    # record identity prevents linkage proof even if a statistic is returned.
+    scalar = query.replace('RETURN v,r,target', 'RETURN r.pip AS pip')
+    assert projection_contract(tokenize(scalar), spec)['record_membership_enumerated'] is False
+    assert validation_errors(tokenize(scalar), spec, {}) == []
+    assert validation_errors(tokenize(scalar), {**spec, 'coloc_scope': {'role': 'qtl'}}, {})

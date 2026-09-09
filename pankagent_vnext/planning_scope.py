@@ -1,0 +1,164 @@
+"""Conservative raw-grounding to structured-plan scope checks.
+
+This is not a second language model, entity resolver, or proof that every natural
+language modifier has been compiled. It catches loss of uniquely verified named
+anchors and direct tissue scopes. It never adds a filter or changes the question.
+Novel/ambiguous wording remains with the planner and the existing scope guards.
+"""
+import hashlib
+import json
+from pathlib import Path
+import re
+
+from .preplanning_grounding import phrase_tokens
+from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
+
+VERSION = 'grounded-requested-scope-v1'
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
+_GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
+_TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
+_INCIDENTAL = {'example', 'examples', 'previous', 'previously', 'unrelated'}
+
+
+def _kind(value):
+    aliases = {'cell_type': 'anatomical_structure', 'tissue': 'anatomical_structure', 'cell': 'anatomical_structure'}
+    if value in aliases:
+        return aliases[value]
+    matches = [label for label in REGISTRY['nodes'] if isinstance(value, str) and label.casefold() == value.casefold()]
+    return matches[0] if len(matches) == 1 else value
+
+
+def _values(constraint):
+    operator = str(constraint.get('operator', '=')).upper()
+    value = constraint.get('value')
+    if operator == 'IN':
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return []
+        return value if isinstance(value, list) else []
+    return [value] if operator == '=' else []
+
+
+def _same(value, forms):
+    return isinstance(value, str) and phrase_tokens(value) in forms
+
+
+def _mentions(question, grounding):
+    words = phrase_tokens(question)
+    output = []
+    for mention in grounding.get('mentions', []):
+        candidates = mention.get('candidates', [])
+        if mention.get('state') != 'resolved' or mention.get('identity_complete') is False or len(candidates) != 1:
+            continue
+        candidate = candidates[0]
+        if candidate.get('entity_type') not in {'Gene', 'variants', 'disease', 'anatomical_structure'} or not candidate.get('id'):
+            continue
+        requested = phrase_tokens(mention.get('requested', ''))
+        if not requested:
+            continue
+        spans = [(i, i + len(requested)) for i in range(len(words) - len(requested) + 1)
+                 if words[i:i + len(requested)] == requested]
+        # Grounding from history or a different request cannot authorize a
+        # new constraint. Only mentions actually present in this raw input count.
+        spans = [(start, end) for start, end in spans if not set(words[max(0, start - 4):start]) & _INCIDENTAL]
+        if not spans:
+            continue
+        forms = {phrase_tokens(value) for value in (mention['requested'], candidate.get('id'), candidate.get('name')) if value}
+        output.append((mention, candidate, forms, spans))
+    return words, output
+
+
+def _compatible(kind, relation):
+    if kind == 'variants' and relation == 'SIGNAL_COLOC_WITH':
+        # Pre-compilation coloc plans can carry variant identity before the
+        # existing role-aware normalizer splits three independent checks.
+        return True
+    return any(kind in path['source'] + path['target'] for path in REGISTRY['relations'].get(relation, {}).get('paths', []))
+
+
+def _identity_present(step, candidate, forms):
+    kind = candidate['entity_type']
+    for constraint in step.get('constraints', []):
+        prop = str(constraint.get('property', '')).split('.')[-1]
+        if prop in {'id', 'name'} and _kind(constraint.get('entity_type')) == kind:
+            if any(_same(value, forms) for value in _values(constraint)):
+                return True
+    return False
+
+
+def _direct_tissue(words, spans):
+    for start, end in spans:
+        before = list(words[max(0, start - 4):start])
+        while before and before[-1] in {'the', 'human', 'a', 'an'}:
+            before.pop()
+        if before and before[-1] in {'in', 'within', 'from', 'across'}:
+            return True
+        after = words[end:end + 5]
+        if after and (after[0] in {'qtl', 'eqtl', 'sqtl', 'sample', 'samples'}
+                      or set(after) & {'sample', 'samples'}):
+            return True
+    return False
+
+
+def _tissue_present(step, candidate, forms, relation):
+    if _identity_present(step, candidate, forms):
+        return True  # The typed compiler verifies anatomy -> QTL tissue_id.
+    if relation != 'PART_OF_QTL_SIGNAL':
+        return False
+    for constraint in step.get('constraints', []):
+        if constraint.get('entity_type') or constraint.get('relationship_type') not in (None, relation):
+            continue
+        prop = constraint.get('property')
+        if prop not in {'tissue', 'tissue_id', 'tissue_name'}:
+            continue
+        if any(_same(value, forms) for value in _values(constraint)):
+            return True
+    return False
+
+
+def scope_issue(question, grounding, plan):
+    """Return one precise missing-scope reason for the existing bounded repair."""
+    if not isinstance(grounding, dict) or grounding.get('status') != 'ready' or not isinstance(plan, dict):
+        return None
+    release = grounding.get('identity', {}).get('graph_release') or grounding.get('schema', {}).get('graph_release')
+    if release != REGISTRY['release'] or plan.get('clarification') or plan.get('answer_mode'):
+        return None
+    steps = [step for step in plan.get('steps', []) if isinstance(step, dict) and step.get('purpose') != 'context']
+    if not steps:
+        return None  # The separate structural validator handles empty plans.
+    words, mentions = _mentions(question, grounding)
+    genes = {candidate['id'] for _, candidate, _, _ in mentions if candidate['entity_type'] == 'Gene'}
+    for mention, candidate, forms, spans in mentions:
+        kind = candidate['entity_type']
+        if kind == 'anatomical_structure':
+            if not _direct_tissue(words, spans):
+                continue
+            required = {r for step in steps for r in step.get('relation_types', []) if r in _TISSUE_PATHS}
+            for relation in sorted(required):
+                if not any(relation in step.get('relation_types', []) and _tissue_present(step, candidate, forms, relation) for step in steps):
+                    return 'missing_requested_scope:tissue:' + str(mention['requested']) + ':' + relation
+            continue
+        compatible = [step for step in steps if any(_compatible(kind, relation)
+                      and not (kind == 'disease' and relation in {'HAS_DONOR', 'HAS_SAMPLE'})
+                      for relation in step.get('relation_types', []))]
+        # T1D differential-expression context is encoded by the edge category,
+        # not a disease-node predicate. Donor cohorts have their own stage and
+        # clinical-status guards; do not require a disease node for those paths.
+        if kind == 'disease' and not compatible:
+            continue
+        if kind == 'Gene' and len(genes) == 1:
+            direct = [step for step in compatible if not step.get('depends_on')]
+            for step in direct:
+                if not _identity_present(step, candidate, forms):
+                    return 'missing_requested_scope:Gene:' + str(mention['requested']) + ':' + str(step.get('id', 'step'))
+            if compatible and not any(_identity_present(step, candidate, forms) for step in compatible):
+                return 'missing_requested_scope:Gene:' + str(mention['requested'])
+        elif compatible and not any(_identity_present(step, candidate, forms) for step in compatible):
+            return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
+        # Gene/variant questions must not be replaced by a different family
+        # merely because an unrelated independently planned step is executable.
+        if kind in {'Gene', 'variants'} and not compatible:
+            return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
+    return None

@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-VERSION = 'coloc-scope-1'
+VERSION = 'coloc-scope-2'
 RELEASE = 'PanKgraph_08_04'
 RELATIONS = {'SIGNAL_COLOC_WITH', 'PART_OF_GWAS_SIGNAL', 'PART_OF_QTL_SIGNAL'}
 MAX_SUMMARY_RECORDS = 25
@@ -265,14 +265,104 @@ def _edges(outcome, kind, start, end):
             and edge.get('start_id') == start and edge.get('end_id') == end]
 
 
+def _verified_pair(step, kinds):
+    """Admit already separated, identity-only checks without changing their scope.
+
+    Names and IDs both need a unique release-matched resolver record. Additional
+    filters or dependencies remain on the original checks and are not treated
+    as an unrestricted signal inventory by this annotation-only path.
+    """
+    constraints = step.get('constraints') or []
+    if (step.get('graph_version') != RELEASE or step.get('complete') is not True
+            or step.get('depends_on') or step.get('evidence_combination') != 'independent'
+            or step.get('ranking_contract') or step.get('ranking_issue') or len(constraints) != 2):
+        return None
+    found = {}
+    for index, constraint in enumerate(constraints):
+        kind = constraint.get('entity_type')
+        if (kind not in kinds or kind in found or constraint.get('operator', '=') != '='
+                or constraint.get('property') not in {'id', 'name'}
+                or constraint.get('owner_kind', 'node') != 'node' or constraint.get('relationship_type')
+                or not isinstance(constraint.get('value'), str) or not constraint['value']):
+            return None
+        resolved = [record for record in step.get('resolved_entities') or []
+                    if record.get('constraint_index') == index]
+        if len(resolved) != 1:
+            return None
+        record = resolved[0]
+        if (record.get('state') != 'resolved' or record.get('graph_version') != RELEASE
+                or record.get('entity_type') != kind or not isinstance(record.get('id'), str)
+                or not record['id']):
+            return None
+        requested = record.get('requested') or {}
+        if any(requested.get(key) != constraint.get(key) for key in ('entity_type', 'property', 'value')):
+            return None
+        if requested.get('operator', '=') != constraint.get('operator', '='):
+            return None
+        if constraint['property'] == 'id' and constraint['value'] != record['id']:
+            return None
+        found[kind] = record['id']
+    return tuple(found[kind] for kind in kinds) if set(found) == set(kinds) else None
+
+
+def _separated_scope(plan):
+    """Discover exact compatible checks; never join signals by gene proximity.
+
+    These groups only associate the existing evidence containers. Actual signal
+    linkage still requires the recorded IDs/source/tissue checks below. Ambiguous
+    duplicate containers are intentionally left unannotated.
+    """
+    steps = plan.get('steps') or []
+    identifiers = [step.get('id') for step in steps]
+    if (any(not isinstance(identifier, str) or not identifier for identifier in identifiers)
+            or len(identifiers) != len(set(identifiers))):
+        return None
+    roles = {
+        'primary': ('SIGNAL_COLOC_WITH', ('Gene', 'disease')),
+        'gwas': ('PART_OF_GWAS_SIGNAL', ('variants', 'disease')),
+        'qtl': ('PART_OF_QTL_SIGNAL', ('variants', 'Gene')),
+    }
+    indexed = {role: {} for role in roles}
+    for step in steps:
+        for role, (relation, kinds) in roles.items():
+            if step.get('relation_types') != [relation]:
+                continue
+            pair = _verified_pair(step, kinds)
+            if pair:
+                indexed[role].setdefault(pair, []).append(step['id'])
+    groups = []
+    for (gene, disease), primary_ids in indexed['primary'].items():
+        if len(primary_ids) != 1:
+            continue
+        matching = []
+        for (variant, gwas_disease), gwas_ids in indexed['gwas'].items():
+            qtl_ids = indexed['qtl'].get((variant, gene), [])
+            if gwas_disease != disease or len(gwas_ids) != 1 or len(qtl_ids) != 1:
+                continue
+            matching.append({'source_step_id': primary_ids[0],
+                'step_ids': {'primary': primary_ids[0], 'gwas': gwas_ids[0], 'qtl': qtl_ids[0]}})
+        # The existing per-primary evidence slot represents one requested
+        # variant. Do not overwrite it with an arbitrary one of several.
+        if len(matching) == 1:
+            groups.extend(matching)
+    if not groups:
+        return None
+    return {'version': VERSION, 'digest': DIGEST, 'graph_release': RELEASE, 'groups': groups,
+            'source_kind': 'already_separated_verified_steps'}
+
+
 def summarize_linkage(plan: dict, previous: dict) -> dict:
     """Link complete records through exact recorded identifiers, never cooccurrence.
 
     The original primary graph is untouched even if context is missing. A linked
     result records why the requested variant relates to each coloc record.
     """
-    meta = plan.get('coloc_scope_normalization') or {}
+    # Do not bypass an explicitly present stale normalization with fresh-looking
+    # steps. Only plans that were already separate may use identity discovery.
+    meta = (plan.get('coloc_scope_normalization') or {}) if 'coloc_scope_normalization' in plan else (_separated_scope(plan) or {})
     summary = {'version': VERSION, 'digest': DIGEST, 'graph_release': meta.get('graph_release'), 'groups': []}
+    if meta.get('source_kind'):
+        summary['source_kind'] = meta['source_kind']
     if meta.get('digest') != DIGEST or meta.get('graph_release') != RELEASE:
         summary['status'] = 'not_applicable_or_stale'
         return summary
