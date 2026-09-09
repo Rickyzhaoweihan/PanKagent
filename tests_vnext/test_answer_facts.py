@@ -112,6 +112,59 @@ class AnswerFactsTests(unittest.TestCase):
         item=evidence([node('d','donor')])
         self.assertNotIn('sample_counts',build_answer_facts(item))
 
+    def test_scalar_sample_results_never_become_zero_enumerated_samples(self):
+        from pankagent_vnext.evidence_coverage import build_evidence_coverage
+        query=('MATCH (a:anatomical_structure)-[r:HAS_SAMPLE]->(s:Sample_node) '
+               'RETURN count(DISTINCT s) AS result')
+        spec={'relation_types':['HAS_SAMPLE'],'constraints':[],'complete':True}
+        for value in (823, 0):
+            with self.subTest(value=value):
+                item=evidence(rows=[{'result':value}],requested_scope=copy.deepcopy(spec),
+                              queries=[{'cypher':query,'parameters':{}}])
+                coverage=build_evidence_coverage(spec,item,graph_version=REGISTRY['release'],
+                    query=query,parameters={},validation_verified=True)
+                # HAS_SAMPLE is outside the measurement projection classifier;
+                # row shape, not a projection label or alias, proves that no
+                # sample identities were enumerated for this count query.
+                self.assertEqual(coverage['result_representation'],'not_applicable')
+                self.assertFalse(coverage['record_membership_enumerated'])
+                self.assertTrue(coverage['query_scope']['complete_for_requested_scope'])
+                item['evidence_coverage']=coverage
+                before=copy.deepcopy(item)
+                facts=build_answer_facts(item,coverage=coverage)['sample_counts']
+                self.assertEqual(facts['enumeration_state'],'sample_identities_not_returned')
+                self.assertFalse(facts['complete_sample_enumeration_verified'])
+                self.assertNotIn('unique_retrieved_samples',facts)
+                self.assertNotIn('by_recorded_assay',facts)
+                self.assertNotIn('donor_sample_distribution',facts)
+                excerpt=scientific_excerpt(compact_evidence([item]))[0]
+                self.assertEqual(excerpt['rows'],[{'result':value}])
+                self.assertEqual(excerpt['answer_facts']['sample_counts'],facts)
+                self.assertEqual(item,before)
+
+    def test_scalar_projection_is_not_interpreted_by_alias_or_value(self):
+        for rows in ([{'sample_count':.5}], [{'unknown_alias':None}], [{'value':2},{'value':3}]):
+            with self.subTest(rows=rows):
+                item=evidence(rows=rows,requested_scope={'relation_types':['HAS_SAMPLE'],'constraints':[]})
+                facts=build_answer_facts(item)['sample_counts']
+                self.assertNotIn('unique_retrieved_samples',facts)
+                self.assertNotIn('donor_sample_distribution',facts)
+                self.assertEqual(item['rows'],rows)
+
+    def test_donor_scalar_zero_and_positive_counts_do_not_invent_samples(self):
+        for value in (0, 27):
+            item=evidence(rows=[{'donor_count':value}],
+                          requested_scope={'relation_types':['HAS_DONOR'],'constraints':[]})
+            self.assertNotIn('sample_counts',build_answer_facts(item))
+            self.assertEqual(scientific_excerpt(compact_evidence([item]))[0]['rows'],[{'donor_count':value}])
+
+    def test_empty_enumerated_sample_result_keeps_verified_zero(self):
+        item=evidence(status='empty',requested_scope={'relation_types':['HAS_SAMPLE'],'constraints':[]})
+        facts=build_answer_facts(item,coverage=proven(item))['sample_counts']
+        self.assertEqual(facts['unique_retrieved_samples'],0)
+        self.assertEqual(facts['donor_sample_distribution']['histogram'],[])
+        self.assertTrue(facts['donor_sample_distribution']['complete_for_executed_scope'])
+
     def test_tissue_sample_links_do_not_invent_donor_distribution(self):
         item=evidence([node('a','anatomical_structure'),node('s','Sample_node',data_modality='snMultiomics')],[edge('a','s','HAS_SAMPLE')])
         dist=build_answer_facts(item)['sample_counts']['donor_sample_distribution']
@@ -145,3 +198,16 @@ class AnswerFactsTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_sample_only_aggregate_excerpt_omits_individual_records():
+    item=evidence([node('t','anatomical_structure'),
+        node('sample-private-id','Sample_node',data_modality='snMultiomics',contact='private-contact')],
+        [edge('t','sample-private-id','HAS_SAMPLE')])
+    compact=compact_evidence([item])
+    excerpt=scientific_excerpt(compact)[0]
+    assert 'sample-private-id' not in json.dumps(excerpt)
+    assert 'private-contact' not in json.dumps(excerpt)
+    assert excerpt['answer_facts']['sample_counts']['unique_retrieved_samples'] == 1
+    assert scientific_excerpt(compact,include_donor_details=True)[0]['nodes'] == compact[0]['nodes']
+    assert item['nodes'][1]['id'] == 'sample-private-id'

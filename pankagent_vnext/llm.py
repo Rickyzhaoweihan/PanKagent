@@ -305,6 +305,11 @@ class ClaudeGateway:
             'scope':'synthesis_input_only', 'display_counts_known':False}
         import re
         requested_details = bool(re.search(r'\b(?:donor|sample)[- ]?(?:IDs?|identifiers?|details?)\b|\bwhich\s+(?:donors?|samples?)\b|\b(?:list|identify|find)\b[^.?!]{0,160}\b(?:donors?|samples?)\b', question, re.I))
+        aggregate_question = bool(re.search(r'\bhow many\b|\bcount(?:s|ed|ing)?\b|\bnumber of\b|\btotal(?:s)?\b', question, re.I))
+        # Functional measurement interpretation needs its actual sample values.
+        # A count-only request still uses aggregate facts, even if source records
+        # incidentally contain functional or clinical fields.
+        requested_details = requested_details or (bool(profile.get('functional_features')) and not aggregate_question)
         excerpt=scientific_excerpt(compact, include_donor_details=requested_details)
         profile['model_context']['individual_donor_details_requested'] = requested_details
         if not re.search(r'\brank(?:s|ed|ing)?\b', question, re.I):

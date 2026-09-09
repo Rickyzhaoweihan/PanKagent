@@ -556,3 +556,23 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                     assert "[unverified reference]" in run["graph_answer"]
                 assert app.state.runtime.store.get(created["run_id"])["graph_answer"] == run["graph_answer"]
     asyncio.run(scenario())
+
+
+def test_count_question_omits_incidental_functional_sample_details(monkeypatch, tmp_path):
+    async def scenario():
+        gateway, _, _ = gateway_with_mock(monkeypatch, tmp_path, [])
+        evidence = {'s1': {'step_id': 's1', 'status': 'complete', 'truncated': False, 'graph_version': 'PanKgraph_08_04',
+            'nodes': [{'id': 'private-sample-example', 'labels': ['Sample_node'],
+                       'properties': {'INS-basal (ng/100 IEQs/min)': 0.1234567,
+                                      'contact': 'private-contact'}}], 'edges': [], 'rows': []}}
+        try:
+            prepared = gateway.prepare_answer('How many samples are recorded?', evidence)
+            assert prepared.profile['functional_features']
+            assert not prepared.profile['model_context']['individual_donor_details_requested']
+            assert 'private-sample-example' not in prepared.body
+            assert 'private-contact' not in prepared.body
+            assert json.loads(prepared.body)['evidence'][0]['answer_facts']['sample_counts']['unique_retrieved_samples'] == 1
+            assert evidence['s1']['nodes'][0]['id'] == 'private-sample-example'
+        finally:
+            await gateway.close()
+    asyncio.run(scenario())

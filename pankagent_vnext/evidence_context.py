@@ -380,9 +380,9 @@ def scientific_excerpt(compact, *, include_donor_details=False):
     for item in compact:
         entry=clean(item)
         donor_details_hidden = False
-        if not include_donor_details and any('donor' in (node.get('labels') or []) for node in entry.get('nodes', [])):
+        if not include_donor_details and any(set(node.get('labels') or []) & {'donor', 'Sample_node'} for node in entry.get('nodes', [])):
             # Aggregate requests need the full computed facts, not incidental
-            # clinical examples. The caller enables details for explicit lists.
+            # clinical or sample examples, including tissue-only sample queries. The caller enables details for explicit lists.
             hidden_ids = {node['id'] for node in entry.get('nodes', [])
                           if set(node.get('labels') or []) & {'donor', 'Sample_node'}}
             entry['nodes'] = [node for node in entry.get('nodes', []) if node['id'] not in hidden_ids]

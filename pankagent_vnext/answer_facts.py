@@ -14,7 +14,7 @@ import re
 
 from .release_schema import REGISTRY
 
-VERSION = 'full-record-answer-facts-v1'
+VERSION = 'full-record-answer-facts-v2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 GO_SOURCE = 'https://geneontology.org/docs/guide-go-evidence-codes/'
 # Formal names and categories verified against the official guide, 2026-09-09.
@@ -99,6 +99,21 @@ def _sample_facts(item, nodes, edges, complete, cap):
     has_samples = 'HAS_SAMPLE' in requested or any(edge.get('type') == 'HAS_SAMPLE' for edge in edges)
     if not samples and not has_samples:
         return None
+    if not samples and item.get('rows'):
+        # COUNT, AVG and other scalar projections can successfully answer a
+        # query without returning a single sample identity. Neither a positive
+        # scalar nor scalar zero enumerates sample-to-donor links or assays.
+        # Do not guess a denominator from an alias or treat absent nodes as 0.
+        return {
+            'enumeration_state':'sample_identities_not_returned',
+            'row_results_available':True,
+            'complete_sample_enumeration_verified':False,
+            'individual_donor_examples_included':False,
+            'file_download_availability_verified':False,
+            'interpretation':'The query returned row results without typed sample identities. '
+                'Use the validated row values with their recorded query meaning, including a scalar zero. '
+                'Do not infer zero samples from the absence of sample nodes. Counts by assay, unique '
+                'linked donors and per-donor sample distributions cannot be computed from these rows.'}
     links = defaultdict(set)
     donor_link_records = 0
     for edge in edges:
@@ -117,6 +132,7 @@ def _sample_facts(item, nodes, edges, complete, cap):
     histogram = Counter(len(values) for values in links.values())
     linked_samples = set().union(*links.values()) if links else set()
     return {
+        'enumeration_state':'retrieved_sample_identities',
         'unique_retrieved_samples':len(samples),
         'by_recorded_assay':[{'assay':assays[key], 'unique_samples':len(assay_groups[key]),
             'unique_linked_donors':sum(bool(sample_ids & assay_groups[key]) for sample_ids in links.values())}
