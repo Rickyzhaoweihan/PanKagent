@@ -31,3 +31,11 @@ class FullTraceTests(unittest.TestCase):
         body=json.loads(functional.synthesis_body("Explain",{"s1":{"rows":rows}}))
         self.assertEqual(body["evidence"][0]["rows"],rows)
         self.assertEqual(body["evidence"][0]["evidence_id"],"G1")
+
+class ResultPlotTests(unittest.IsolatedAsyncioTestCase):
+    async def test_square_format_keeps_cohort_filters(self):
+        http=HTTP()
+        await functional.fetch(http,'api/charts/cohort-traces.png',{'trace_type':'ins_ieq','age_min':'3','age_max':'68','result_page':'Yes'})
+        self.assertEqual(http.call[1]['params'],{'trace_type':'ins_ieq','age_min':'3','age_max':'68','result_page':'Yes'})
+        for path, value in [('api/charts/cohort-traces','Yes'),('api/charts/cohort-traces.png','invalid')]:
+            with self.assertRaises(ValueError):await functional.fetch(http,path,{'result_page':value})

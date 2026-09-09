@@ -4,7 +4,7 @@ import time
 from urllib.parse import urlencode
 
 BASE = 'https://functional.pankgraph.org'
-VERSION = 'functional-adapter-2'
+VERSION = 'functional-adapter-3'
 FILTERS = {'disease','sex','center','race','age_min','age_max','bmi_min','bmi_max'}
 TRACES = {'ins_ieq','ins_content','gcg_ieq','gcg_content'}
 PATHS = {'health','api/data/summary','api/data/donors','api/charts/cohort-traces','api/charts/cohort-traces.png',
@@ -27,7 +27,12 @@ def parameters(values, trace=False):
 
 async def fetch(http,path,params):
     if path not in PATHS:raise ValueError('unknown_functional_endpoint')
+    params=dict(params)
+    result_page=params.pop('result_page', None)
+    if result_page is not None and (path != 'api/charts/cohort-traces.png' or result_page != 'Yes'):
+        raise ValueError('invalid_functional_plot_format')
     params=parameters(params)
+    if result_page is not None:params['result_page']=result_page
     async with http.stream('GET',BASE+'/'+path,params=params,timeout=15) as response:
         response.raise_for_status()
         content=bytearray()

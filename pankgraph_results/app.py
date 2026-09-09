@@ -109,9 +109,9 @@ class ResultsRuntime:
         started = time.monotonic()
         try:
             if evidence.get("functional_filters"):
-                raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", evidence["functional_filters"])
+                raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", {**evidence["functional_filters"], "result_page":"Yes"})
                 if not raw.startswith(b"\x89PNG\r\n\x1a\n"): raise ValueError("invalid_functional_plot")
-                asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps(evidence["functional_filters"],sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
+                asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps({**evidence["functional_filters"], "result_page":"Yes", "adapter_version":functional.VERSION},sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
                 resources = {"status":"available", "resources_tabs":{"empirical_evidence":{"title":"Selected cohort functional response", "description":"Recorded hormone-response measurements for the selected filters.","status":"available","image_url":asset["url"],"download_url":asset["url"],"link":asset["url"],"link_text":"Download plot","legend":"View"}}}
             else:
                 resources = await asyncio.wait_for(self.resources.resolve(evidence), 30)
@@ -197,7 +197,10 @@ class ResultsRuntime:
                 presentation = await self.layout.layout(evidence, source["focus_ids"], previous_layout=previous)
                 self.health.record("layout_worker", "degraded" if presentation["layout"]["status"] in {"fallback", "partial"} else "healthy", time.monotonic() - layout_started,
                     presentation["layout"].get("fallback_reason"))
-                await self.update(rid, **assemble(source, evidence, presentation))
+                assembled = assemble(source, evidence, presentation)
+                if evidence.get("functional_filters"):
+                    assembled["visual_material_kind"] = "functional_traces"
+                await self.update(rid, **assembled)
                 self.health.count("results_completed")
                 self.health.duration("graph_presentation", time.monotonic() - started)
                 optional = [asyncio.create_task(self.resolve_resources(rid, evidence)), asyncio.create_task(self.answer(rid, source, evidence))]
