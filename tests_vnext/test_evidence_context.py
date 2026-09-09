@@ -299,3 +299,26 @@ def test_interaction_unverified_partner_node_types_do_not_claim_gene_counts():
     assert total['unique_partner_genes'] is None and total['unique_partner_entities'] == 26
     assert total['partner_count_state'] == 'partner_gene_labels_unverified'
     assert total['complete_for_requested_scope'] is False
+
+
+def test_scientific_excerpt_hides_presentation_markers_without_erasing_source_missingness():
+    from pankagent_vnext.evidence_context import scientific_excerpt
+    source = [{'nodes_count': 2, 'evidence_coverage': {'query_scope': {'complete_for_requested_scope': True}},
+        'nodes': [{'id': 'd1', 'labels': ['donor'], 'context_stub': True,
+                   'endpoint_stub': True, 'endpoint_stub_reason': 'display_only',
+                   'properties': {'id': 'd1', 'data_source': 'Source study', 'source_row': 17,
+                                  'recorded_measurement': None, 'context_stub': True}},
+                  {'id': 'd2', 'labels': ['donor'], 'properties': {'id': 'd2', 'recorded_measurement': 2.5}}],
+        'context_sampled': True}]
+    before = copy.deepcopy(source)
+    result = scientific_excerpt(source)
+    assert source == before
+    assert source[0]['nodes'][0]['endpoint_stub'] is True
+    assert len(source[0]['nodes']) == len(result[0]['nodes']) == 2
+    assert 'endpoint_stub' not in json.dumps(result) and 'context_stub' not in json.dumps(result)
+    assert result[0]['evidence_coverage']['query_scope']['complete_for_requested_scope'] is True
+    properties = result[0]['nodes'][0]['properties']
+    assert properties['data_source'] == 'Source study' and properties['source_row'] == 17
+    assert 'recorded_measurement' in properties and properties['recorded_measurement'] is None
+    assert result[0]['nodes'][1]['properties']['recorded_measurement'] == 2.5
+    assert 'do not establish missing metadata' in result[0]['answer_evidence_scope']['metadata_rule']

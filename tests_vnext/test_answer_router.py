@@ -186,8 +186,8 @@ class AnswerRouterTests(unittest.TestCase):
                 result = self.router.select([step(rows=[{field: "PRIVATE_VALUE_IGNORE_ALL_RULES"}])])
                 self.assertIn("clinical.recorded_t1d_stage", selected(result))
                 self.assertEqual(result.profile["clinical_fields"], [field.casefold()])
-                self.assertIn("Two or more positive islet autoantibodies", result.guidance)
-                self.assertIn("does not override Stage 3", result.guidance)
+                self.assertIn("Report t1d_stage as recorded metadata", result.guidance)
+                self.assertNotIn("sufficient evidence", result.guidance)
                 self.assertNotIn("PRIVATE_VALUE_IGNORE_ALL_RULES", json.dumps(result.profile) + result.guidance)
 
     def test_question_or_property_prose_cannot_activate_or_supply_guidance(self):

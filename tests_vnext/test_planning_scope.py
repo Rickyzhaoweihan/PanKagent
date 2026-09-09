@@ -204,3 +204,128 @@ def test_tissue_specific_to_one_named_gene_is_not_forced_into_other_gene():
     value = plan(step(constraint('Gene', 'name', 'GCLC'), constraint(None, 'tissue_name', 'Pancreas')),
                  step(constraint('Gene', 'name', 'NFYA'), id='nfya'))
     assert scope_issue(question, grounding(GENE, nfya, PANCREAS), value) is None
+
+
+T1D_SCOPE = mention('T1D', 'disease', 'MONDO_0005147', 'type 1 diabetes')
+
+
+def disease_role_plan():
+    return plan(step(constraint('disease', 'id', 'MONDO_0005147'), relation='SIGNAL_COLOC_WITH', id='coloc', question='Check T1D coloc'),
+                step(relation='PART_OF_GWAS_SIGNAL', id='gwas', question='Check T1D GWAS'))
+
+
+def test_disease_filter_in_coloc_does_not_cover_requested_gwas_scope():
+    actual = disease_role_plan()
+    assert scope_issue('Check T1D GWAS and coloc.', grounding(T1D_SCOPE), actual) == 'missing_requested_scope:disease:T1D:gwas'
+    for prop, value in [('id', 'MONDO_0005147'), ('name', 'type 1 diabetes')]:
+        actual['steps'][1]['constraints'] = [constraint('disease', prop, value)]
+        assert scope_issue('Check T1D GWAS and coloc.', grounding(T1D_SCOPE), actual) is None
+
+
+@pytest.mark.parametrize('wrong', [constraint('Gene', 'id', 'MONDO_0005147'),
+                                  constraint(None, 'id', 'MONDO_0005147'),
+                                  constraint('disease', 'id', 'MONDO_0005148')])
+def test_disease_scope_requires_real_node_owner_and_exact_identity(wrong):
+    actual = disease_role_plan(); actual['steps'][1]['constraints'] = [wrong]
+    assert scope_issue('Check T1D GWAS and coloc.', grounding(T1D_SCOPE), actual)
+
+
+def test_explicit_unrestricted_gwas_does_not_require_t1d_filter():
+    actual = disease_role_plan()
+    actual['steps'][1]['question'] = 'Check GWAS across all diseases.'
+    question = 'Check T1D coloc; check GWAS across all diseases.'
+    assert scope_issue(question, grounding(T1D_SCOPE), actual) is None
+    # A model cannot invent an unrestricted coloc scope from a GWAS clause.
+    actual['steps'][0]['question'] = 'Check coloc across all diseases.'
+    actual['steps'][0]['constraints'] = []
+    assert scope_issue(question, grounding(T1D_SCOPE), actual) == 'missing_requested_scope:disease:T1D:coloc'
+
+
+def test_planner_invented_unrestricted_scope_does_not_relax_raw_disease_request():
+    actual = disease_role_plan(); actual['steps'][1]['question'] = 'Check GWAS across all diseases.'
+    assert scope_issue('Check T1D GWAS and coloc.', grounding(T1D_SCOPE), actual)
+    assert scope_issue('Check T1D GWAS, not across all diseases, and coloc.', grounding(T1D_SCOPE), actual)
+
+
+def test_two_explicit_diseases_are_kept_in_separate_checks():
+    t2d = mention('T2D', 'disease', 'MONDO_0005148', 'type 2 diabetes')
+    actual = plan(step(constraint('disease', 'id', 'MONDO_0005147'), relation='SIGNAL_COLOC_WITH', id='t1d'),
+                  step(constraint('disease', 'id', 'MONDO_0005148'), relation='SIGNAL_COLOC_WITH', id='t2d'))
+    assert scope_issue('Compare T1D and T2D coloc separately.', grounding(T1D_SCOPE, t2d), actual) is None
+
+
+def test_unrequested_context_and_cohort_paths_do_not_receive_disease_predicates():
+    actual = plan(step(constraint('disease', 'id', 'MONDO_0005147'), relation='SIGNAL_COLOC_WITH'),
+                  step(relation='PART_OF_GWAS_SIGNAL', id='context', purpose='context'),
+                  step(relation='HAS_DONOR', id='cohort'))
+    assert scope_issue('Show T1D evidence.', grounding(T1D_SCOPE), actual) is None
+
+
+def sample_grounding():
+    return {**grounding(), 'sample_terminology': {
+        'modalities': ['scRNA-seq', 'snMultiomics', 'scATAC-seq', 'Perifusion', 'CITE-seq Protein']}}
+
+
+def sample_step(assay=None, **extra):
+    constraints = [constraint('Sample_node', 'data_modality', assay)] if assay is not None else []
+    return step(*constraints, relation='HAS_SAMPLE', **extra)
+
+
+@pytest.mark.parametrize('extra', [{}, {'purpose': 'context'}, {'depends_on': ['s1']}])
+def test_exact_standalone_exclusion_cannot_add_positive_multiome_context(extra):
+    value = plan(sample_step('scRNA-seq'), sample_step('snMultiomics', id='extra', **extra))
+    before = deepcopy(value)
+    issue = scope_issue('Find HPAP donors with spleen standalone scRNA-seq only. Exclude multiome.', sample_grounding(), value)
+    assert issue.startswith('unrequested_assay_scope:extra:')
+    assert 'empty result is valid' in issue
+    assert value == before
+
+
+def test_assay_record_exclusion_cannot_be_reinterpreted_as_excluding_donors():
+    value = plan(sample_step('scRNA-seq'))
+    value['interpreted_question'] = 'Find donors, excluding donors whose samples have multiome.'
+    assert scope_issue('Find standalone scRNA-seq only. Exclude multiome.', sample_grounding(), value).startswith('changed_requested_scope:assay_exclusion_is_not_donor_exclusion:')
+
+
+@pytest.mark.parametrize('question', [
+    'Compare standalone scRNA-seq with multiome samples.',
+    'Find RNA samples including multiome from HPAP only.',
+    'Find samples; do not exclude multiome.',
+    'Find scRNA-seq samples. Exclude donors who have any multiome sample.',
+])
+def test_explicit_other_assay_comparison_and_donor_antijoin_not_reinterpreted(question):
+    value = plan(sample_step('scRNA-seq'), sample_step('snMultiomics', id='other'))
+    assert scope_issue(question, sample_grounding(), value) is None
+
+
+@pytest.mark.parametrize('assay,question', [
+    ('CITE-seq Protein', 'Find samples without CITE-seq Protein.'),
+    ('Perifusion', 'Find samples excluding Perifusion.'),
+    ('snMultiomics', 'Find RNA samples but do not include multiome.'),
+])
+def test_exclusion_checks_any_verified_assay_not_only_multiome(assay, question):
+    assert scope_issue(question, sample_grounding(), plan(sample_step(assay))).startswith('unrequested_assay_scope:')
+
+
+def test_positive_in_constraint_cannot_smuggle_excluded_assay():
+    value = plan(step(constraint('Sample_node', 'data_modality', '["scRNA-seq", "snMultiomics"]', operator='IN'), relation='HAS_SAMPLE'))
+    assert scope_issue('Find scRNA-seq only; exclude multiome.', sample_grounding(), value).startswith('unrequested_assay_scope:')
+
+
+def test_exact_query_requires_owned_positive_modality_but_accepts_registered_alias():
+    question = 'Find standalone scRNAseq samples.'
+    assert scope_issue(question, sample_grounding(), plan(sample_step('scRNA-seq'))) is None
+    assert scope_issue(question, sample_grounding(), plan(sample_step())).startswith('missing_requested_scope:exact_assay:')
+    wrong = plan(step(constraint('Gene', 'data_modality', 'scRNA-seq'), relation='HAS_SAMPLE'))
+    assert scope_issue(question, sample_grounding(), wrong).startswith('missing_requested_scope:exact_assay:')
+
+
+def test_negative_assay_predicate_is_not_positive_excluded_evidence():
+    value = plan(step(constraint('Sample_node', 'data_modality', 'snMultiomics', operator='!='), relation='HAS_SAMPLE'))
+    assert scope_issue('Find samples excluding multiome.', sample_grounding(), value) is None
+
+
+def test_unknown_assay_or_missing_vocabulary_is_not_guessed():
+    value = plan(sample_step('something new'))
+    assert scope_issue('Find exactly novelseq samples.', sample_grounding(), value) is None
+    assert scope_issue('Find standalone scRNA-seq only.', grounding(), value) is None

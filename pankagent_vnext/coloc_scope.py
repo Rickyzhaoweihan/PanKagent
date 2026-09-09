@@ -463,6 +463,19 @@ def _computed_outcomes(plan, summary):
                         and all(group.get('record_enumeration', {}).values())
                         and all(state in {'complete', 'empty'} for state in group.get('step_outcomes', {}).values()) else 'blocked',
                     result_reference='coloc_linkage.groups:' + group['source_step_id'])
+                outcome['record_comparisons'] = [{
+                    'primary_reference': copy.deepcopy(record.get('primary_reference')),
+                    'gwas_signal_id': record.get('gwas_signal_id'),
+                    'qtl_signal_id': record.get('qtl_signal_id'),
+                    'gwas_membership_verified': 'verified_gwas_credible_set_member' in record.get('match_kinds', []),
+                    'qtl_membership_verified': 'verified_qtl_credible_set_member' in record.get('match_kinds', []),
+                    'both_memberships_verified': all(kind in record.get('match_kinds', []) for kind in
+                        ('verified_gwas_credible_set_member', 'verified_qtl_credible_set_member')),
+                    'unverified_does_not_establish_absence': True,
+                } for record in group.get('records', [])]
+                outcome['summary_omitted_record_count'] = group.get('summary_omitted_record_count', 0)
+                # Step-level linkage is the context passed to the answer model.
+                group.setdefault('computed_operations', []).append(copy.deepcopy(outcome))
         outcomes.append(outcome)
     return outcomes
 
@@ -538,6 +551,23 @@ def summarize_linkage(plan: dict, previous: dict) -> dict:
                 'linked_to_requested_variant': bool(reasons), 'match_kinds': reasons,
                 'supporting_references': support[:MAX_SUPPORTING_REFERENCES],
                 'omitted_supporting_reference_count': max(0, len(support) - MAX_SUPPORTING_REFERENCES)}
+            gwas_member = 'verified_gwas_credible_set_member' in reasons
+            qtl_member = 'verified_qtl_credible_set_member' in reasons
+            record.update(gwas_membership_verified=gwas_member, qtl_membership_verified=qtl_member,
+                          both_memberships_verified=gwas_member and qtl_member,
+                          unverified_does_not_establish_absence=True)
+            if gwas_member and qtl_member:
+                record['membership_interpretation'] = ('The requested variant belongs to both the recorded GWAS '
+                    'credible set and the corresponding QTL credible set. Keep these two signal identifiers distinct.')
+            elif gwas_member:
+                record['membership_interpretation'] = ('The requested variant belongs to the recorded GWAS credible set. '
+                    'Membership in this record’s QTL credible set is not verified. This does not remove the verified GWAS link.')
+            elif qtl_member:
+                record['membership_interpretation'] = ('The requested variant belongs to the recorded QTL credible set. '
+                    'Membership in this record’s GWAS credible set is not verified. This does not remove the verified QTL link.')
+            else:
+                record['membership_interpretation'] = ('Neither corresponding credible-set membership has been verified. '
+                    'Any recorded lead-variant roles remain separate evidence; unverified membership does not establish absence.')
             if len(item['records']) < MAX_SUMMARY_RECORDS:
                 item['records'].append(record)
             item['linked_record_count'] += bool(reasons)

@@ -278,6 +278,10 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
             "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
             for kind in sorted({e.get("type") or "unknown" for e in edges})},
     }
+    from .signal_membership import summarize_signal_membership
+    signal_membership = summarize_signal_membership(item, max_records=min(20, limits.edges))
+    if signal_membership:
+        entry["signal_membership_summary"] = signal_membership
     if "PHYSICAL_INTERACTION" in entry["evidence_totals"]["relationships"]:
         all_nodes = {identifier: node for (release, identifier), node in node_context.items()
                      if release == str(item.get("graph_version", ""))}
@@ -345,7 +349,7 @@ def scientific_excerpt(compact):
     """
     def clean(value):
         if isinstance(value, dict):
-            return {k:clean(v) for k,v in value.items() if not k.startswith('context_')}
+            return {k:clean(v) for k,v in value.items() if not k.startswith('context_') and k not in {'endpoint_stub', 'endpoint_stub_reason'}}
         if isinstance(value,list): return [clean(v) for v in value]
         return value
     result=[]
@@ -356,6 +360,7 @@ def scientific_excerpt(compact):
             'authoritative_totals':'Use evidence_totals and donor_summary. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
             'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
             'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
+            'metadata_rule':'Unshown fields and identity-only node examples do not establish missing metadata in Neo4j. Do not describe excerpt omissions or placeholders as incomplete database records. Only explicit source-backed missing values can support a missing-metadata statement.',
             'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}
         result.append(entry)
     return result

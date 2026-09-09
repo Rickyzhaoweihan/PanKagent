@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.5.0",
+  "bundle_version": "1.6.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -13,12 +13,12 @@
   },
   "sha256": {
     "upstream/schema_skill.json": "f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3",
-    "bim/schema_skill.json": "ef95ef5cfa5134a77039ca2ae937bd268c5e2fc450f08d59803add710f558c9a",
+    "bim/schema_skill.json": "b1dadb46a20920f9780ab79c94586765d6c455a34ef908add0629ef8bcdc7532",
     "upstream/functional_data_interpretation_skill.json": "d5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80",
     "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
-    "bim/general_interpretation.json": "33a0a6b999e70183eda984a35067f7b5f6445e8ecd34824c80444710b1f0586d",
-    "bim/evidence_glossary.json": "dd69eea865c505cec1a3cd00c88060f3073bcc56a9237d03a3729f8f5e55b32a",
+    "bim/general_interpretation.json": "717738584e7ab1cfef0538c7553ef0209b609dcf84514ce12feab5885c0fb6e1",
+    "bim/evidence_glossary.json": "1577537930ceca377cfc1ca3786e5a0cf7fd169953e94ec3786c13d5fd4d9065",
     "bim/common_caveats.md": "99c9f5377e4ec19108363f553d35204207d6dab689b590e612c7d6ad57fd4c6d"
   },
   "aliases": {
@@ -717,5 +717,19 @@
       ],
       "question": "Does the molecular QTL evidence establish a disease effect for {subject}?"
     }
-  ]
+  ],
+  "application_overrides": {
+    "version": "count-stage-go-interpretation-v1",
+    "source_review": "2026-09-09",
+    "rules": [
+      "Aggregate cohort answers omit unrequested individual clinical data.",
+      "Clinical stage is recorded metadata; original definitions are preserved in upstream, not supplied as active clinical criteria.",
+      "GO evidence code expansions and category distinctions follow official GO documentation.",
+      "Model-context omissions do not imply missing database metadata.",
+      "Separate QTL indexed relationships from credible-set width, phenotype type and unreturned posterior probabilities."
+    ],
+    "sources": [
+      "https://geneontology.org/docs/guide-go-evidence-codes/"
+    ]
+  }
 }

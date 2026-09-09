@@ -144,18 +144,22 @@ class ClaudeGateway:
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         system_text=PLAN_SYSTEM
         schema=PLAN_SCHEMA
-        from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION
+        from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION, DIGEST as PLANNING_DIGEST
+        from .planning_scope import scope_issue, DIGEST as PLANNING_SCOPE_DIGEST
         cache_key = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:
-                    provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
-                    return cached
+                    cache_issue=plan_structure_issue(cached) or scope_issue(question,grounding,cached)
+                    if cache_issue is None:
+                        provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
+                        return cached
+                    provider_event('planning_cache_rejected', {'key':cache_key,'category':cache_issue})
         provider_event('planning_cache', {'hit':False,'key':cache_key,'version':PLANNING_VERSION})
         if profile_gene:
             system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'
@@ -187,7 +191,6 @@ class ClaudeGateway:
                 self.last_success=time.time()
                 issue = plan_structure_issue(plan)
                 if issue is None and grounding and grounding.get('status') == 'ready':
-                    from .planning_scope import scope_issue
                     issue = scope_issue(question, grounding, plan)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
                 if issue and issue != 'plan_too_large' and not _repair:

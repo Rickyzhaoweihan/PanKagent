@@ -245,8 +245,9 @@ def test_matched_functional_clinical_guidance_keeps_evidence_priority(monkeypatc
                 "none alone proves causality",
                 "Co-occurring types anywhere in a result are not a joined mechanism",
                 "Preserve ng versus pg, rate versus AUC, SI versus II",
-                "Never assign T1D or Stage 3 from hyperglycemia alone",
-                "override a recorded T2D classification",
+                "Clinical stage is recorded metadata",
+                "without deriving a clinical criterion or diagnosing/reclassifying a donor",
+                "Different metadata classifications do not alone establish a contradiction",
                 "model-context sampling and graph display omissions do not",
             ):
                 assert requirement in style

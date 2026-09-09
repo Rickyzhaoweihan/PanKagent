@@ -91,3 +91,44 @@ def test_computed_outcomes_do_not_claim_complete_for_unverified_evidence(mutatio
         value['computed_operations'][0]['digest'] = 'old'
     actual = summarize_linkage(value, prior)
     assert actual['computed_operations'][0]['status'] != 'complete'
+
+
+def test_both_signal_memberships_are_distinct_from_gwas_only_and_reach_step_context():
+    value = compile_comparisons(source_plan(), RELEASE)
+    prior = evidence()
+    original = deepcopy(prior)
+    actual = summarize_linkage(value, prior)
+    comparison = actual['computed_operations'][0]
+    exon, expression = comparison['record_comparisons']
+    assert exon['gwas_membership_verified'] is True
+    assert exon['qtl_membership_verified'] is True
+    assert exon['both_memberships_verified'] is True
+    assert expression['gwas_membership_verified'] is True
+    assert expression['qtl_membership_verified'] is False
+    assert expression['both_memberships_verified'] is False
+    assert expression['unverified_does_not_establish_absence'] is True
+    assert actual['groups'][0]['computed_operations'][0] == comparison
+    assert prior == original
+
+
+@pytest.mark.parametrize('state', ['failed', 'unknown', 'not_attempted'])
+def test_missing_qtl_check_is_not_evidence_against_shared_signal_membership(state):
+    value = compile_comparisons(source_plan(), RELEASE)
+    prior = evidence()
+    prior['s1_qtl']['status'] = state
+    actual = summarize_linkage(value, prior)
+    operation = actual['groups'][0]['computed_operations'][0]
+    assert operation['status'] == 'blocked'
+    assert all(record['both_memberships_verified'] is False for record in operation['record_comparisons'])
+    assert all(record['unverified_does_not_establish_absence'] for record in operation['record_comparisons'])
+
+
+def test_linkage_without_extra_comparison_step_explains_gwas_only_link():
+    value = source_plan(); value['steps'].pop()
+    actual = summarize_linkage(value, evidence())
+    exon, expression = actual['groups'][0]['records']
+    assert exon['both_memberships_verified'] is True
+    assert expression['gwas_membership_verified'] is True
+    assert expression['qtl_membership_verified'] is False
+    assert 'does not remove the verified GWAS link' in expression['membership_interpretation']
+    assert expression['unverified_does_not_establish_absence'] is True
