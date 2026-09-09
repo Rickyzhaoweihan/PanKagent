@@ -5,8 +5,10 @@ from copy import deepcopy
 import pytest
 
 from pankagent_vnext.graph import validate_cypher
+from pankagent_vnext.preplanning_grounding import ground_question
 from pankagent_vnext.schema_drafting import compile_schema_draft
 from test_pattern_planning import grounded
+from test_preplanning_grounding import FakeGraph
 from test_planning_compiler_gateway import gateway_for
 from test_sample_scope_recovery import VOCAB
 
@@ -19,6 +21,19 @@ def sample_grounding(question):
 
 def compile_question(question):
     return compile_schema_draft(question, sample_grounding(question))
+
+
+def typed_sample_grounding(question):
+    graph = FakeGraph()
+    graph.rows['data_modality'] = [{'id': name, 'name': name, 'labels': ['data_modality']}
+                                    for name in VOCAB['modalities']]
+    # Real catalog aliases that the grounder deliberately marks incidental.
+    graph.rows['Gene'] += [
+        {'id': 'test-request-verb', 'name': 'VERBGENE', 'labels': ['Gene'], 'synonyms': ['find']},
+        {'id': 'test-source-alias', 'name': 'SOURCEGENE', 'labels': ['Gene'], 'synonyms': ['HPAP']}]
+    value = asyncio.run(ground_question(graph, question))
+    value['sample_terminology'] = dict(deepcopy(VOCAB), inventory_complete=True)
+    return value
 
 
 def fields(step, prop):
@@ -83,6 +98,50 @@ def test_unverified_assay_and_incomplete_inventory_do_not_compile():
         else:
             data['sample_terminology']['modalities'].remove(missing)
         assert compile_schema_draft(question, data) is None
+
+
+@pytest.mark.parametrize('question,assays', [
+    ('Find HPAP donors with spleen standalone scRNA-seq only. Exclude multiome.', ['scRNA-seq']),
+    ('For HPAP donors with recorded stage-3 T1D and spleen samples, compare the number with BCR-seq against the number with TCR-seq. Count donors separately for each assay; do not require both assays.', ['BCR-seq', 'TCR-seq']),
+    ('Find StudyA donors with pancreas TCR-seq.', ['TCR-seq']),
+])
+def test_live_shaped_typed_assay_grounding_preserves_exact_sample_roles(question, assays):
+    data = typed_sample_grounding(question)
+    typed = [m for m in data['mentions'] if m.get('candidates')
+             and m['candidates'][0].get('entity_type') == 'data_modality']
+    assert {m['candidates'][0]['name'] for m in typed} == set(assays)
+    before = deepcopy(data)
+    plan = compile_schema_draft(question, data)
+    assert plan and data == before and len(plan['steps']) == len(assays)
+    for step, assay in zip(plan['steps'], assays):
+        assert step['sample_requirements']['modality_groups'] == [[assay]]
+        assert step['relation_types'] == ['HAS_SAMPLE'] and not step['depends_on']
+        assert any(c['entity_type'] == 'donor' and c['property'] == 'data_source' for c in step['constraints'])
+    async def check():
+        gateway, calls = gateway_for(lambda _: {})
+        result = await gateway.plan(question, [], grounding=data)
+        assert not calls and not result.get('proposal_issue')
+        assert len(result['steps']) == len(assays)
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('mutation', ['unknown_type', 'unrecorded', 'contradictory_identity',
+    'missing_typed_label', 'incomplete', 'ambiguous', 'wrong_release', 'unmatched_surface'])
+def test_typed_assay_admission_requires_matching_verified_identity_and_vocabulary(mutation):
+    question = 'Find HPAP donors with spleen standalone scRNA-seq only. Exclude multiome.'
+    data = typed_sample_grounding(question)
+    mention = next(m for m in data['mentions'] if m.get('candidates')
+                   and m['candidates'][0].get('entity_type') == 'data_modality')
+    candidate = mention['candidates'][0]
+    if mutation == 'unknown_type': candidate['entity_type'] = 'unreviewed_assay'
+    elif mutation == 'unrecorded': data['sample_terminology']['modalities'].remove('scRNA-seq')
+    elif mutation == 'contradictory_identity': candidate['name'] = 'TCR-seq'
+    elif mutation == 'missing_typed_label': candidate['labels'] = ['unreviewed']
+    elif mutation == 'incomplete': mention['identity_complete'] = False
+    elif mutation == 'ambiguous': mention['state'] = 'ambiguous'
+    elif mutation == 'wrong_release': data['identity']['graph_release'] = 'different-release'
+    elif mutation == 'unmatched_surface': mention['requested'] = 'unregistered special assay'
+    assert compile_schema_draft(question, data) is None
 
 
 @pytest.mark.parametrize('assays', ['BCR-seq and TCR-seq', 'BCR-seq or TCR-seq',

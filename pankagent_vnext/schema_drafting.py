@@ -13,7 +13,7 @@ from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY
 from .pattern_planning import _identity
 
-VERSION = 'schema-purpose-drafts-v3'
+VERSION = 'schema-purpose-drafts-v4'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _COMMON = set('''a an the for of in from to with and or does do is are has have
  show find list get what which whether recorded evidence records data available
@@ -58,7 +58,7 @@ def _literal_present(question, value):
                                for start in range(len(tokens) - len(phrase) + 1))
 
 
-def _parse(question, grounding, vocabulary, recorded_literals=()):
+def _parse(question, grounding, vocabulary, recorded_literals=(), *, recorded_modalities=()):
     words = list(phrase_tokens(question))
     remaining = list(words)
     found = {}
@@ -70,7 +70,22 @@ def _parse(question, grounding, vocabulary, recorded_literals=()):
         candidate = mention['candidates'][0]
         if mention.get('identity_complete') is False:
             return None
-        if candidate.get('entity_type') not in {'Gene', 'anatomical_structure', 'disease'}:
+        if candidate.get('entity_type') == 'data_modality':
+            # Live grounding includes the assay vocabulary as real graph
+            # entities. Admit this role only when both the typed identity and
+            # the requested surface agree with one recorded assay value. The
+            # semantic compiler below still owns exact/capability/exclusion
+            # meaning; this parser does not silently discard an unknown type.
+            from .semantic_registry import _canonical_assay, _mentioned_assays
+            if (not recorded_modalities or 'data_modality' not in candidate.get('labels', [])
+                    or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']):
+                return None
+            mapped = {_canonical_assay(candidate[key], recorded_modalities) for key in ('id', 'name')
+                      if isinstance(candidate.get(key), str)} & set(recorded_modalities)
+            mentioned = set(_mentioned_assays(str(mention.get('requested', '')), recorded_modalities))
+            if len(mapped) != 1 or mentioned != mapped:
+                return None
+        elif candidate.get('entity_type') not in {'Gene', 'anatomical_structure', 'disease'}:
             return None
         found.setdefault(candidate['entity_type'], {})[candidate['id']] = candidate
         span = mention.get('normalized_token_span')
@@ -117,7 +132,8 @@ def compile_schema_draft(question, grounding, history=None):
         if separate_counts:
             literals += separate_counts
     words = _SAMPLE | {'compare', 'against', 'counts'} if separate_counts else _SAMPLE if samples else _GENE
-    entities = _parse(question, grounding, words, literals)
+    entities = _parse(question, grounding, words, literals,
+                      recorded_modalities=vocabulary.get('modalities', []) if samples else ())
     if not entities:
         return None
     genes, tissues, diseases = (entities.get(kind, []) for kind in ('Gene', 'anatomical_structure', 'disease'))

@@ -86,3 +86,28 @@ def test_complex_or_unproved_sample_scopes_keep_general_query_route(mutation):
     if mutation == 'wrong_owner': s['constraints'][0]['entity_type'] = 'Sample_node'
     if mutation == 'extra_donor': s['constraints'].append({'entity_type': 'donor', 'property': 'data_source', 'operator': '=', 'value': 'HPAP'})
     assert compile_query(s) is None
+
+
+@pytest.mark.parametrize('assay', ['scRNA-seq', 'snMultiomics', 'BCR-seq', 'TCR-seq'])
+def test_donor_and_tissue_template_uses_one_filtered_sample(assay):
+    s = sample_step(assay=assay)
+    s['semantic_registry']['donor_required'] = True
+    s['constraints'].extend([
+        {'entity_type': 'donor', 'property': 'data_source', 'operator': '=', 'value': 'HPAP'},
+        {'entity_type': 'donor', 'property': 't1d_stage', 'operator': '=', 'value': 'Stage 3: presence of clinical symptoms'},
+        {'entity_type': 'Sample_node', 'property': 'data_modality', 'operator': '!=', 'value': 'CITE-seq Protein'}])
+    out = compile_query(s)
+    assert out and out['template_id'] == 'donor_tissue_same_sample_records'
+    assert validate_cypher(out['cypher'], s, out['parameters']) == []
+    assert 'disease' not in out['cypher'] and 'LIMIT' not in out['cypher']
+    assert out['parameters']['template_1'] == assay
+    assert 's.`data_modality` != $template_4' in out['cypher']
+    bad = deepcopy(s)
+    bad['constraints'].append({'entity_type': 'disease', 'property': 'id', 'operator': '=', 'value': 'MONDO_0005147'})
+    assert compile_query(bad) is None
+    bad = deepcopy(s)
+    bad['sample_requirements']['separate_bindings'] = True
+    assert compile_query(bad) is None
+    bad = deepcopy(s)
+    bad['constraints'].append({'relationship_type': 'HAS_SAMPLE', 'owner_kind': 'relationship', 'property': 'data_source', 'operator': '=', 'value': 'HPAP'})
+    assert compile_query(bad) is None

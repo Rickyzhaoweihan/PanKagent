@@ -202,6 +202,8 @@ def test_negative_only_without_tissue_still_requires_sample_join():
     p = excluded_sample_step(question='Count HPAP stage3 samples excluding multiome.')
     p['constraints'] = [c for c in p['constraints'] if c['entity_type'] != 'anatomical_structure']
     q = exclusion_query(p).replace(' AND t.name = "spleen"', '')
+    assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in validate_cypher(q, p)
+    q = q.replace('<-[ts:HAS_SAMPLE]-(t:anatomical_structure)', '').replace('RETURN d,s,t,ds,ts', 'RETURN d,s,ds')
     assert validate_cypher(q, p) == []
     from pankagent_vnext.semantic_registry import generation_guidance
     assert 'DONOR-ONLY lookup' not in generation_guidance(p)

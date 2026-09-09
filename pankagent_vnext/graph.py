@@ -702,6 +702,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         errors.extend(validation_errors(part, step, parameters, bindings, paths, _predicate_present, choices))
         from .donor_query_guard import sample_path_errors
         errors.extend(sample_path_errors(bindings, paths))
+        from .cohort_scope import validation_errors as cohort_scope_errors
+        errors.extend(cohort_scope_errors(part, step, parameters, choices))
         for source, target, kinds in paths:
             correct = lambda a, b: 'Gene' in bindings.get(a, set()) and 'anatomical_structure' in bindings.get(b, set())
             undirected = (target, source, kinds) in paths

@@ -3,7 +3,8 @@
 Templates contain no gene, variant, disease, or answer examples. Parameters and
 property ownership come from the prepared request. Every result still passes the
 normal semantic validator and EXPLAIN before a database read. Shared endpoint
-labels must cover every registered path, never just the first compatible path.
+labels cover all registered paths compatible with the explicitly bound roles,
+never just the first compatible path. Sample witnesses share one sample node.
 """
 from copy import deepcopy
 import hashlib
@@ -14,7 +15,7 @@ from pathlib import Path
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
 
-VERSION = 'typed-relation-templates-v2'
+VERSION = 'typed-relation-templates-v3'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
@@ -80,6 +81,53 @@ def _resolved_entity(step, index, constraint):
     return entity
 
 
+def _sample_witness(step, paths):
+    """One requested donor and tissue joined to the same filtered sample."""
+    if step.get('semantic_registry', {}).get('donor_required') is not True:
+        return None
+    requirements = step.get('sample_requirements', {})
+    if requirements.get('paired') or requirements.get('separate_bindings'):
+        return None
+    for source in ('donor', 'anatomical_structure'):
+        compatible = [p for p in paths if source in p['source']]
+        if not compatible or _common_endpoint(compatible, 'target') != 'Sample_node':
+            return None
+    variables = {'donor': 'd', 'anatomical_structure': 't', 'Sample_node': 's'}
+    filters, params, tissue_anchors, donor_predicates = [], {}, 0, 0
+    try:
+        for index, c in enumerate(step.get('constraints', [])):
+            owner, prop, op, value = c.get('entity_type'), c.get('property'), c.get('operator', '='), c.get('value')
+            if c.get('owner_kind') not in (None, 'node') or c.get('relationship_type'):
+                return None  # An edge predicate needs a specific path owner.
+            resolved = _resolved_entity(step, index, c)
+            if resolved:
+                if owner not in (None, resolved['entity_type']):
+                    return None
+                owner, prop, value = resolved['entity_type'], 'id', resolved['id']
+                tissue_anchors += owner == 'anatomical_structure'
+            if owner not in variables or prop not in REGISTRY['nodes'][owner] or op not in _OPERATORS:
+                return None
+            if op in {'>', '>=', '<', '<='} or owner == 'donor' and prop == 'age':
+                return None  # Mixed-unit ages and unverified numeric storage.
+            donor_predicates += owner == 'donor'
+            parameter = 'template_' + str(index)
+            params[parameter] = _value(value, op)
+            filters.append(f'{variables[owner]}.`{prop}` {op} ${parameter}')
+    except (ValueError, TypeError, OverflowError):
+        return None
+    if tissue_anchors != 1 or not donor_predicates:
+        return None
+    query = ('MATCH (d:`donor`)-[rd:`HAS_SAMPLE`]->(s:`Sample_node`)<-[rt:`HAS_SAMPLE`]-(t:`anatomical_structure`)\n'
+             'WHERE ' + ' AND '.join(filters) + '\n'
+             'RETURN collect(DISTINCT d) + collect(DISTINCT t) + collect(DISTINCT s) AS nodes, '
+             'collect(DISTINCT rd) + collect(DISTINCT rt) AS edges')
+    return {'cypher': query, 'parameters': params, 'template_id': 'donor_tissue_same_sample_records',
+            'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
+            'endpoint_coverage': {'sources': ['donor', 'anatomical_structure'], 'target': 'Sample_node',
+                'registered_path_count': len(paths), 'all_paths_covered': False,
+                'all_requested_paths_covered': True, 'scope_basis': 'typed_donor_and_resolved_tissue_same_sample'}}
+
+
 def compile_query(step):
     if step.get('graph_version') != REGISTRY['release'] or not step.get('complete', True):
         return None
@@ -92,6 +140,8 @@ def compile_query(step):
     paths = REGISTRY['relations'][kind]['paths']
     if not paths:
         return None
+    if kind == 'HAS_SAMPLE' and step.get('semantic_registry', {}).get('donor_required') is True:
+        return _sample_witness(step, paths)
     selected_paths = paths
     left, right = (_common_endpoint(paths, side) for side in ('source', 'target'))
     if kind == 'HAS_SAMPLE':
