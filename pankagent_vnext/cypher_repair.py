@@ -13,7 +13,7 @@ import time
 
 from .release_schema import REGISTRY, DIGEST as REGISTRY_DIGEST
 
-VERSION = 'schema-candidate-repair-1'
+VERSION = 'schema-candidate-repair-2'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _IDENTIFIER = {'WORD', 'IDENT'}
 _CLAUSES = {'MATCH', 'WHERE', 'WITH', 'RETURN', 'ORDER', 'SKIP', 'LIMIT', 'UNION'}
@@ -318,6 +318,12 @@ def _projection_scope(tokens, scope):
 def _repair(tokens, edits, notes):
     depths = _depths(tokens)
     for i, token in enumerate(tokens):
+        if token.kind == 'SYMBOL' and token.value == '!=':
+            # Neo4j requires <> for inequality. Lexer offsets exclude strings,
+            # backtick identifiers and comments; this changes only equivalent
+            # comparison spelling, never values or predicate ownership.
+            _edit(edits, notes, token, '<>', 'operator_spelling',
+                  proof='equivalent_not_equal_operator', canonical='<>')
         if token.kind == 'WORD' and token.value.upper() in _UNSUPPORTED and not (
                 i and tokens[i - 1].value in ('.', ':')):
             raise _Unsupported('unsupported_scope_construct')

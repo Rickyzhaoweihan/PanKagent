@@ -101,7 +101,8 @@ def test_donor_and_tissue_template_uses_one_filtered_sample(assay):
     assert validate_cypher(out['cypher'], s, out['parameters']) == []
     assert 'disease' not in out['cypher'] and 'LIMIT' not in out['cypher']
     assert out['parameters']['template_1'] == assay
-    assert 's.`data_modality` != $template_4' in out['cypher']
+    assert 's.`data_modality` <> $template_4' in out['cypher']
+    assert '!=' not in out['cypher']
     bad = deepcopy(s)
     bad['constraints'].append({'entity_type': 'disease', 'property': 'id', 'operator': '=', 'value': 'MONDO_0005147'})
     assert compile_query(bad) is None

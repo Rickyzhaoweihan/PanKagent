@@ -112,7 +112,8 @@ def _sample_witness(step, paths):
             donor_predicates += owner == 'donor'
             parameter = 'template_' + str(index)
             params[parameter] = _value(value, op)
-            filters.append(f'{variables[owner]}.`{prop}` {op} ${parameter}')
+            cypher_op = '<>' if op == '!=' else op
+            filters.append(f'{variables[owner]}.`{prop}` {cypher_op} ${parameter}')
     except (ValueError, TypeError, OverflowError):
         return None
     if tissue_anchors != 1 or not donor_predicates:
@@ -209,7 +210,8 @@ def compile_query(step):
             value = _value(value, operator, numeric=numeric)
             param = 'template_' + str(index)
             params[param] = value
-            filters.append(f'{variable}.`{prop}` {operator} ${param}')
+            cypher_operator = '<>' if operator == '!=' else operator
+            filters.append(f'{variable}.`{prop}` {cypher_operator} ${param}')
     except (ValueError, TypeError, OverflowError):
         return None
     if not filters or not resolved_count:

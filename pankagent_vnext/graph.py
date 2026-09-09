@@ -501,7 +501,7 @@ def _unrequested_measurement_filters(tokens, constraints, parameters, *, graph_r
                 continue
             wanted_operator = str(wanted.get("operator", "=")).upper()
             expected = _normalized_expected(wanted.get("value"), actual, wanted_operator)
-            if wanted_operator == operator and _equal(actual, expected):
+            if (wanted_operator == operator or {wanted_operator, operator} <= {"!=", "<>"}) and _equal(actual, expected):
                 allowed = True
             elif wanted_operator == "=" and operator == "IN" and isinstance(actual, list) and len(actual) == 1 and _equal(actual[0], expected):
                 allowed = True

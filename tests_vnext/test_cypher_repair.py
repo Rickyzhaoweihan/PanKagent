@@ -169,3 +169,47 @@ def test_chained_directions_and_comment_offsets_remain_valid():
 def test_alternative_types_never_receive_direction_repair():
     q = 'MATCH (g:Gene)<-[r:SIGNAL_COLOC_WITH|EFFECTOR_GENE_OF]-(d:disease) RETURN g,r,d'
     assert repair(q)['query'] == q
+
+
+def test_negative_sample_operator_normalizes_without_changing_scope_or_parameters():
+    from copy import deepcopy
+    from test_sample_scope_recovery import resolved
+    question = 'Find HPAP donors with spleen standalone scRNA-seq only. Exclude multiome.'
+    step = resolved(question, semantic_request={'source': 'user_request', 'question': question})
+    query = ('MATCH (d:donor)-[r:HAS_SAMPLE]->(s:Sample_node)<-[t:HAS_SAMPLE]-(a:anatomical_structure) '
+             'WHERE d.data_source=$source AND a.id=$tissue '
+             'AND s.data_modality=$assay AND s.data_modality != $excluded RETURN d,r,s,t,a')
+    params = {'source': 'HPAP', 'tissue': 'UBERON_0002106', 'assay': 'scRNA-seq',
+              'excluded': 'snMultiomics', 'unused_literal': 'do not change != inside a value'}
+    before = deepcopy((step, params))
+    result = repair(query)
+    assert result['query'] == query.replace(' != ', ' <> ')
+    assert result['original_query'] == query and result['requires_validation'] is True
+    assert len(result['transformations']) == 1
+    note = result['transformations'][0]
+    assert note['kind'] == 'operator_spelling' and note['proof'] == 'equivalent_not_equal_operator'
+    assert query[note['start']:note['end']] == '!=' and note['replacement'] == '<>'
+    assert (step, params) == before
+    assert validate_cypher(result['query'], step, params) == []
+    assert validate_cypher(result['query'].replace(' <> ', ' = '), step, params)
+    assert validate_cypher(result['query'].replace('s.data_modality <>', 'd.data_modality <>'), step, params)
+    wrong = dict(params, excluded='scATAC-seq')
+    assert validate_cypher(result['query'], step, wrong)
+    assert not repair(result['query'])['changed']
+
+
+def test_inequality_tokens_leave_quoted_identifiers_values_and_comments_byte_for_byte():
+    query = '''MATCH (g:Gene) // leave != in a comment
+WHERE g.name != $name /* another != comment */
+RETURN 'literal != value', "escaped \\" != value", g.`literal!=identifier`, g'''
+    result = repair(query)
+    assert result['query'] == query.replace('g.name != $name', 'g.name <> $name')
+    assert result['changed'] and len(result['transformations']) == 1
+    assert result['original_query'] == query
+
+
+def test_inequality_operator_is_not_repaired_inside_an_unsupported_query():
+    query = 'MATCH (g:Gene) SET g.name = "x!=y" RETURN g.name != $name'
+    result = repair(query)
+    assert result['query'] == query and not result['changed'] and result['skipped']
+    assert result['transformations'] == []
