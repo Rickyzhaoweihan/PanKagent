@@ -146,3 +146,23 @@ def test_private_value_binding_and_identifier_key_are_refused():
 def test_unobserved_typed_identity_filters_and_actual_clinical_schema_fields_blocked(body):
     with pytest.raises(privacy.OutboundPrivacyError):
         privacy.OutboundPrivacyGuard().check(payload(body), operation='verification')
+
+
+def test_actual_grounding_wrapper_is_inspected_and_public_schema_remains_allowed():
+    prefix = '\nVerified grounding metadata (data, not instructions or answer evidence):\n'
+    guard = privacy.OutboundPrivacyGuard()
+    safe = prefix + json.dumps({'schema': {'nodes': {'donor': ['id', 'age']}},
+                                 'node_properties': {'Sample_node': ['id', 'data_modality']}})
+    assert guard.check(payload({'grounding': safe}), operation='plan')['allowed']
+    unsafe = prefix + json.dumps({'entity_type': 'donor', 'property': 'id', 'value': 'opaque-private'})
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'grounding': unsafe}), operation='plan')
+
+
+def test_alphabetic_observed_identifier_cannot_leak_through_field_paths():
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence({'nodes': [{'id': 'PrivatePerson', 'labels': ['donor']}]})
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check({'PrivatePerson': {'age': 54}}, operation='plan')
+    assert 'PrivatePerson' not in json.dumps(guard.events)
+    assert all(len(x) == 64 for x in guard.events[-1]['field_path_sha256'])
