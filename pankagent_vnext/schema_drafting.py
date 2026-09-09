@@ -13,7 +13,7 @@ from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY
 from .pattern_planning import _identity
 
-VERSION = 'schema-purpose-drafts-v2'
+VERSION = 'schema-purpose-drafts-v3'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _COMMON = set('''a an the for of in from to with and or does do is are has have
  show find list get what which whether recorded evidence records data available
@@ -166,6 +166,15 @@ def compile_schema_draft(question, grounding, history=None):
         from .semantic_registry import resolve
         step = resolve(step, vocabulary, REGISTRY['release'])
         if step.get('semantic_issues') or step.get('recovery'):
+            return None
+        positive_assays = _mentioned_assays(_without_negated_assays(question, vocabulary['modalities']),
+                                           vocabulary['modalities'])
+        if (not separate_counts and step.get('semantic_registry', {}).get('donor_required')
+                and (len(positive_assays) > 1 or step.get('sample_requirements', {}).get('separate_bindings'))):
+            # For donor questions, two assay names may mean a union, two
+            # independent counts or an intersection on the same donor. Even
+            # an explicit OR remains on the general path until its clause
+            # ownership is separately proved; never choose a union here.
             return None
         steps = [step]
         if separate_counts:

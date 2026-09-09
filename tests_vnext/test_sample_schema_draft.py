@@ -85,6 +85,25 @@ def test_unverified_assay_and_incomplete_inventory_do_not_compile():
         assert compile_schema_draft(question, data) is None
 
 
+@pytest.mark.parametrize('assays', ['BCR-seq and TCR-seq', 'BCR-seq or TCR-seq',
+    'standalone scRNA-seq and multiome', 'RNA and ATAC'])
+def test_donor_sample_noun_does_not_turn_multiple_assays_into_implicit_union(assays):
+    question = f'Find HPAP donors with spleen {assays} samples.'
+    assert compile_question(question) is None
+
+
+def test_multi_assay_or_question_reaches_general_planner_instead_of_typed_union_draft():
+    question = 'Find HPAP donors with spleen BCR-seq or TCR-seq samples.'
+    data = sample_grounding(question)
+    async def check():
+        gateway, calls = gateway_for(lambda _: {})
+        result = await gateway.plan(question, [], grounding=data)
+        assert calls and result.get('proposal_issue')
+        assert result.get('planning_route', {}).get('kind') != 'verified_schema_pattern'
+        assert not result.get('steps')
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize('source,tissue,assays', [
     ('HPAP', 'spleen', ('BCR-seq', 'TCR-seq')),
     ('StudyA', 'pancreas', ('scRNA-seq', 'snRNA-seq')),

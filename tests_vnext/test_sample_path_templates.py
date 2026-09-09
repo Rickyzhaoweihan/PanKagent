@@ -27,6 +27,26 @@ def test_explicit_field_lookup_stays_separate_from_capability_check(wording):
     assert resolve(broad, VOCAB, RELEASE)['sample_requirements']['modality_groups'] == [['scRNA-seq', 'snMultiomics']]
 
 
+def test_explicit_capability_inclusion_survives_field_label_wording():
+    q = 'Count spleen samples with data modality scRNA-seq, including documented RNA components of HPAP multiome assays.'
+    s = {'question': q, 'relation_types': ['HAS_SAMPLE'], 'constraints': [
+        {'entity_type': 'Sample_node', 'property': 'data_modality', 'operator': '=', 'value': 'scRNA-seq'}]}
+    result = resolve(s, VOCAB, RELEASE)
+    assert result['sample_requirements']['modality_groups'] == [['scRNA-seq', 'snMultiomics']]
+    assert not result['semantic_issues']
+
+
+@pytest.mark.parametrize('operator', ['!=', '<>', 'is not'])
+def test_negative_field_label_never_becomes_positive_assay_requirement(operator):
+    q = 'Count spleen samples with data_modality ' + operator + ' "scRNA-seq".'
+    s = {'question': q, 'relation_types': ['HAS_SAMPLE'], 'constraints': [
+        {'entity_type': 'Sample_node', 'property': 'data_modality', 'operator': '!=', 'value': 'scRNA-seq'}]}
+    result = resolve(s, VOCAB, RELEASE)
+    assert result['sample_requirements']['modality_groups'] == []
+    assert result['sample_requirements']['excluded_modality_constraints'][0]['value'] == 'scRNA-seq'
+    assert not result['semantic_issues']
+
+
 def sample_step(tissue='UBERON_0015865', assay='scRNA-seq', operator='='):
     c = {'entity_type': 'anatomical_structure', 'property': 'id', 'operator': '=', 'value': tissue}
     return {'id': 's1', 'question': 'Count matching tissue samples', 'complete': True,

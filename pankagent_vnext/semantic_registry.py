@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-VERSION = 'pankgraph-semantics-v6-sample-scope'
+VERSION = 'pankgraph-semantics-v7-explicit-assay-scope'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -154,8 +154,11 @@ def _mentioned_assays(question, available):
 
 def _explicit_modality_label(question, available):
     """Recognize a recorded field value, not a general RNA capability request."""
-    for match in re.finditer(r'\bdata[ _]modality\s*(?:(?:=|is|of|:)\s*)?[\"\x27]?', question, re.I):
-        words = re.findall(r'[A-Za-z0-9]+', question[match.end():])[:7]
+    for match in re.finditer(r'\bdata[ _]modality\b', question, re.I):
+        suffix = re.match(r'\s*(?:(?:=|is|of|:)\s*)?[\"\x27]?([A-Za-z0-9].*)', question[match.end():])
+        if not suffix:
+            continue
+        words = re.findall(r'[A-Za-z0-9]+', suffix.group(1))[:7]
         for end in range(1, len(words) + 1):
             if _canonical_assay(' '.join(words[:end]), available) in available:
                 return True
@@ -182,6 +185,9 @@ def _without_negated_assays(question, available, *, return_values=False):
         prefix = words[max(0, start - 3):start]
         excluded = bool(prefix and (prefix[-1] in {'exclude', 'excluding', 'without', 'except', 'no'}
                         or prefix[-2:] in [['do', 'not'], ['not', 'include']]))
+        excluded = excluded or bool(re.search(
+            r'\bdata[ _]modality\s*(?:!=|<>|is\s+not)\s*[\"\x27]?$',
+            question[:tokens[start].start()], re.I))
         if excluded and prefix[-1] in {'exclude', 'excluding'} and prefix[-3:-1] == ['do', 'not']:
             excluded = False
         if excluded:
@@ -344,7 +350,8 @@ def resolve(step, vocabulary, release):
     # merely because scRNA-seq contains the letters RNA.
     label_lookup = bool(re.search(r'\b(?:samples?|records?)\s+(?:explicitly\s+)?label(?:ed|led)\b|\b(?:assay|modality)\s+(?:label|value)\s*(?:=|is|of|:)\s*', q, re.I)) or _explicit_modality_label(positive_q, available)
     named_assays = _mentioned_assays(positive_q, available)
-    if label_lookup and named_assays:
+    capability_inclusion = bool(re.search(r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}\b(?:multiom\w*|(?:RNA|ATAC)\s+components?)', positive_q, re.I))
+    if label_lookup and named_assays and not capability_inclusion:
         exact = True
     paired = paired and not exact and not bool(re.search(r'\b(?:include|including|also|or)\b.{0,60}multiom',q,re.I))
     if not unsupported_assay and (old_assay or named_assays or rna or atac or paired):
