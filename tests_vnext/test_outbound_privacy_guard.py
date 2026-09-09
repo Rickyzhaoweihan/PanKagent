@@ -134,3 +134,15 @@ def test_private_value_binding_and_identifier_key_are_refused():
     for body in ({'field': 'donor.age', 'value': 55}, {'HPAP-999': {'count': 1}}):
         with pytest.raises(privacy.OutboundPrivacyError):
             guard.check(payload(body), operation='repair')
+
+
+@pytest.mark.parametrize('body', [
+    {'entity_type': 'donor', 'property': 'id', 'value': 'opaque-record-abc123'},
+    {'entity_type': 'Sample_node', 'property': 'name', 'value': 'opaque-record-abc123'},
+    {'owner_label': 'Sample_node', 'property': 'id', 'values': [923342]},
+    {'field': 'donor.id', 'value': 'unknown-private-id'},
+    {'hba1c_percentage': 6.3}, {'c_peptide_ng_ml': .1},
+])
+def test_unobserved_typed_identity_filters_and_actual_clinical_schema_fields_blocked(body):
+    with pytest.raises(privacy.OutboundPrivacyError):
+        privacy.OutboundPrivacyGuard().check(payload(body), operation='verification')
