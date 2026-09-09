@@ -282,6 +282,25 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     signal_membership = summarize_signal_membership(item, max_records=min(20, limits.edges))
     if signal_membership:
         entry["signal_membership_summary"] = signal_membership
+    from .evidence_coverage import CELL_MEASUREMENTS
+    cell_kinds = CELL_MEASUREMENTS.intersection(entry['evidence_totals']['relationships'])
+    if cell_kinds:
+        all_nodes = {identifier: node for (release, identifier), node in node_context.items()
+                     if release == str(item.get('graph_version', ''))}
+        all_nodes.update(full_node_index)
+        for kind in sorted(cell_kinds):
+            targets = {str(edge['end_id']) for edge in edges if edge.get('type') == kind}
+            verified = all('anatomical_structure' in (all_nodes.get(identifier, {}).get('labels') or [])
+                           for identifier in targets)
+            entry['evidence_totals']['relationships'][kind].update(
+                matched_cell_type_count=len(targets) if verified else None,
+                matched_cell_type_count_state='verified_from_returned_endpoints' if verified else 'endpoint_types_unverified',
+                matched_cell_type_count_scope='all_returned_records_before_excerpt_selection',
+                source_study_total_cell_types=None,
+                source_study_denominator_state='not_established_by_this_query',
+                denominator_rule='Count cell types with matching recorded evidence. A complete PanKgraph search does not by itself '
+                    'establish the total number of cell types profiled in the source study. Do not describe the returned count as '
+                    'all profiled cell types or compute a fraction of the source study without a separately verified denominator.')
     if "PHYSICAL_INTERACTION" in entry["evidence_totals"]["relationships"]:
         all_nodes = {identifier: node for (release, identifier), node in node_context.items()
                      if release == str(item.get("graph_version", ""))}
@@ -360,6 +379,7 @@ def scientific_excerpt(compact):
             'authoritative_totals':'Use evidence_totals and donor_summary. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
             'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
             'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
+            'cell_type_denominator':'Use matched_cell_type_count for cell types with returned evidence. Completeness means all matching PanKgraph records were checked; it does not make this count the source-study total or change a recorded one-versus-rest comparison.',
             'metadata_rule':'Unshown fields and identity-only node examples do not establish missing metadata in Neo4j. Do not describe excerpt omissions or placeholders as incomplete database records. Only explicit source-backed missing values can support a missing-metadata statement.',
             'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}
         result.append(entry)

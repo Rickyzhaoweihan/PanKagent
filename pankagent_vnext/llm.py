@@ -25,7 +25,7 @@ PLAN_SCHEMA = {
     'relation_types':{'type':'array','items':{'type':'string'}},
     'depends_on':{'type':'array','items':{'type':'string'}},
     'constraints':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{
-     'property':{'type':'string'},'operator':{'type':'string','enum':['=','IN','CONTAINS','STARTS WITH','ENDS WITH','>','>=','<','<=']},
+     'property':{'type':'string'},'operator':{'type':'string','enum':['=','!=','<>','IN','CONTAINS','STARTS WITH','ENDS WITH','>','>=','<','<=']},
      'entity_type':{'type':['string','null']},
      'value':{'type':'string'}},'required':['property','operator','value','entity_type']}},
     'complete':{'type':'boolean'}},'required':['id','question','title','rationale','relation_types','depends_on','constraints','complete']}},
@@ -146,16 +146,21 @@ class ClaudeGateway:
         schema=PLAN_SCHEMA
         from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION, DIGEST as PLANNING_DIGEST
         from .planning_scope import scope_issue, DIGEST as PLANNING_SCOPE_DIGEST
+        from .planning_compile import compile_property_owners, DIGEST as COMPILER_DIGEST
+        from .planning_requirements import requirements_issue, DIGEST as REQUIREMENTS_DIGEST
         cache_key = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:
-                    cache_issue=plan_structure_issue(cached) or scope_issue(question,grounding,cached)
+                    cache_issue=plan_structure_issue(cached)
+                    if cache_issue is None:
+                        cached, cache_issue=compile_property_owners(cached,grounding)
+                    cache_issue=cache_issue or scope_issue(question,grounding,cached) or requirements_issue(question,grounding,cached,history)
                     if cache_issue is None:
                         provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
                         return cached
@@ -191,7 +196,11 @@ class ClaudeGateway:
                 self.last_success=time.time()
                 issue = plan_structure_issue(plan)
                 if issue is None and grounding and grounding.get('status') == 'ready':
-                    issue = scope_issue(question, grounding, plan)
+                    plan, issue = compile_property_owners(plan, grounding)
+                    provider_event('planning_constraint_compilation', {'valid':issue is None, 'category':issue,
+                        'changes':[{'step_id':s.get('id'),'bindings':s['constraint_compilation']}
+                                   for s in plan.get('steps',[]) if s.get('constraint_compilation')]})
+                    issue = issue or scope_issue(question, grounding, plan) or requirements_issue(question, grounding, plan, history)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
                 if issue and issue != 'plan_too_large' and not _repair:
                     return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True, grounding=grounding)

@@ -260,19 +260,28 @@ def _assay_scope_issue(question, grounding, plan):
     for step in plan.get('steps', []):
         if not isinstance(step, dict) or 'HAS_SAMPLE' not in step.get('relation_types', []):
             continue
-        values = set()
+        values, excluded_values = set(), set()
         for constraint in step.get('constraints', []):
             owner, prop = _kind(constraint.get('entity_type')), str(constraint.get('property', '')).split('.')[-1]
             if not (owner == 'Sample_node' and prop == 'data_modality'
                     or owner == 'data_modality' and prop in {'id', 'name'}):
                 continue
             values.update(aliases.get(key(value), str(value)) for value in _values(constraint))
+            operator = str(constraint.get('operator', '=')).upper()
+            if operator in {'!=', '<>', 'NOT IN'}:
+                equivalent = {**constraint, 'operator': 'IN' if operator == 'NOT IN' else '='}
+                excluded_values.update(aliases.get(key(value), str(value)) for value in _values(equivalent))
         forbidden = values & excluded
         if forbidden or (exact and allowed and values - allowed):
             return ('unrequested_assay_scope:' + str(step.get('id', 'step')) + ': '
                     'Preserve the original exact assay and exclusions in every sample check, including context checks. '
                     'Do not query excluded or additional assay capabilities to obtain positive evidence. '
                     'An exact empty result is valid; exclude assay records, not donors who also have other assays.')
+        if excluded and not values and not excluded <= excluded_values:
+            return ('missing_requested_scope:excluded_assay:' + str(step.get('id', 'step')) + ': '
+                    'Preserve every explicitly excluded assay as an owned negative modality predicate, '
+                    'or use a positive exact modality set containing none of the excluded assays. '
+                    'An unrestricted sample query cannot satisfy an assay exclusion.')
         if exact and allowed and not values:
             return ('missing_requested_scope:exact_assay:' + str(step.get('id', 'step')) + ': '
                     'Bind the exact requested recorded assay on this sample check; do not leave its modality unrestricted.')

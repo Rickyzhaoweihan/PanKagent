@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.6.0",
+  "bundle_version": "1.7.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -13,7 +13,7 @@
   },
   "sha256": {
     "upstream/schema_skill.json": "f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3",
-    "bim/schema_skill.json": "b1dadb46a20920f9780ab79c94586765d6c455a34ef908add0629ef8bcdc7532",
+    "bim/schema_skill.json": "63056c3638d1f127210f599f69ebd4fccbf882f247c480fb8ed512a950c52e31",
     "upstream/functional_data_interpretation_skill.json": "d5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80",
     "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
@@ -719,14 +719,15 @@
     }
   ],
   "application_overrides": {
-    "version": "count-stage-go-interpretation-v1",
+    "version": "count-stage-go-interpretation-v2",
     "source_review": "2026-09-09",
     "rules": [
       "Aggregate cohort answers omit unrequested individual clinical data.",
       "Clinical stage is recorded metadata; original definitions are preserved in upstream, not supplied as active clinical criteria.",
       "GO evidence code expansions and category distinctions follow official GO documentation.",
       "Model-context omissions do not imply missing database metadata.",
-      "Separate QTL indexed relationships from credible-set width, phenotype type and unreturned posterior probabilities."
+      "Separate QTL indexed relationships from credible-set width, phenotype type and unreturned posterior probabilities.",
+      "Matched cell-type counts do not establish the total number profiled by a source study; missing fGSEA contrast is explicitly distinguished from statistical direction."
     ],
     "sources": [
       "https://geneontology.org/docs/guide-go-evidence-codes/"

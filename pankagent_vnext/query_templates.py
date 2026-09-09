@@ -18,7 +18,7 @@ VERSION = 'typed-relation-templates-v1'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
-_OPERATORS = {'=', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
+_OPERATORS = {'=', '!=', '<>', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
 # Reuse the reviewed measurement inventory. Expression_call is categorical.
 _NUMERIC_FIELDS = {kind: set(fields) - {'expression_call'}
                    for kind, fields in MEASUREMENT_FIELDS.items()}
@@ -45,7 +45,7 @@ def _value(value, operator, *, numeric=False):
         if numeric:
             return [_value(member, '=', numeric=True) for member in value]
         return deepcopy(value)
-    if operator in {'>', '>=', '<', '<='} or numeric and operator == '=':
+    if operator in {'>', '>=', '<', '<='} or numeric and operator in {'=', '!=', '<>'}:
         # JSON decoding preserves integers beyond 2**53, unlike a float cast.
         if isinstance(value, str):
             value = json.loads(value)

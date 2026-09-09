@@ -405,3 +405,11 @@ class CommonCaveatContractTests(unittest.TestCase):
         guidance=schema["edge_skill"]["gene_enriched_in"]
         self.assertIn("remaining cell types in the source analysis",guidance)
         self.assertIn("irrespective of which records the query returns",guidance)
+
+    def test_matched_population_and_missing_rank_contrast_guidance_is_routed(self):
+        router = AnswerSkillRouter()
+        matched = router.select([{'nodes': [], 'edges': [edge('GENE_DETECTED_IN')]}])
+        self.assertIn('all cell types profiled in the source study', matched.guidance)
+        contrast = router.select([{'nodes': [], 'edges': [edge('FGSEA_ENRICHED_IN')]}])
+        self.assertIn('underlying comparison is not recorded', contrast.guidance)
+        self.assertIn('not uncertainty in NES or ES', contrast.guidance)

@@ -400,7 +400,7 @@ def failure_categories(errors):
             category = 'direction_or_endpoints'
         elif any(x in reason for x in ('unknown_label', 'unknown_node_label', 'unrecognized_label')):
             category = 'label'
-        elif any(x in reason for x in ('property', 'unknown_identifier')):
+        elif any(x in reason for x in ('property', 'unknown_identifier', 'dependency_owner_mismatch')):
             category = 'property_or_binding'
         elif any(x in reason for x in ('constraint', 'filter', 'cohort', 'predicate', 'unrequested', 'overspecified')):
             category = 'filter_or_scope'

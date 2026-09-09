@@ -329,3 +329,25 @@ def test_unknown_assay_or_missing_vocabulary_is_not_guessed():
     value = plan(sample_step('something new'))
     assert scope_issue('Find exactly novelseq samples.', sample_grounding(), value) is None
     assert scope_issue('Find standalone scRNA-seq only.', grounding(), value) is None
+
+
+@pytest.mark.parametrize('owner,field,operator,value', [
+    ('Sample_node', 'data_modality', '!=', 'snMultiomics'),
+    ('Sample_node', 'data_modality', '<>', 'snMultiomics'),
+    ('Sample_node', 'data_modality', 'NOT IN', '["snMultiomics"]'),
+    ('data_modality', 'id', 'NOT IN', ['multiome']),
+])
+def test_negative_only_assay_requires_and_accepts_owned_exclusion(owner, field, operator, value):
+    raw = 'Count HPAP stage 3 spleen samples excluding multiome.'
+    assert scope_issue(raw, sample_grounding(), plan(sample_step())).startswith('missing_requested_scope:excluded_assay:')
+    bound = plan(step(constraint(owner, field, value, operator=operator), relation='HAS_SAMPLE'))
+    assert scope_issue(raw, sample_grounding(), bound) is None
+
+
+def test_negative_only_assay_positive_set_must_exclude_every_forbidden_value():
+    raw = 'Count samples excluding multiome.'
+    assert scope_issue(raw, sample_grounding(), plan(sample_step('scRNA-seq'))) is None
+    wrong = plan(step(constraint('Gene', 'data_modality', 'snMultiomics', operator='!='), relation='HAS_SAMPLE'))
+    assert scope_issue(raw, sample_grounding(), wrong).startswith('missing_requested_scope:excluded_assay:')
+    broad = plan(step(constraint('Sample_node', 'data_modality', ['scRNA-seq', 'snMultiomics'], operator='IN'), relation='HAS_SAMPLE'))
+    assert scope_issue(raw, sample_grounding(), broad).startswith('unrequested_assay_scope:')

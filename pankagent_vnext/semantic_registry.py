@@ -3,9 +3,10 @@ from copy import deepcopy
 from difflib import get_close_matches
 import hashlib
 import json
+from pathlib import Path
 import re
 
-VERSION = 'pankgraph-semantics-v4-stability3'
+VERSION = 'pankgraph-semantics-v5-assay-operators'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -24,7 +25,7 @@ ALIASES = {'scrnaseq':'scRNA-seq', 'singlecellrnaseq':'scRNA-seq', 'snmultiomics
  'singlecellatacseq':'scATAC-seq', 'snatacseq':'snATAC-seq', 'citeseqprotein':'CITE-seq Protein'}
 CAPABILITIES = {'scRNA-seq':['RNA'], 'scATAC-seq':['ATAC'], 'snMultiomics':['RNA','ATAC'], 'CITE-seq Protein':['protein']}
 from .donor_categories import DIGEST as DONOR_CATEGORIES_DIGEST
-DIGEST = hashlib.sha256(json.dumps([VERSION, RELEASE, PROPERTIES, ALIASES, CAPABILITIES, SOURCE, DONOR_CATEGORIES_DIGEST],sort_keys=True).encode()).hexdigest()
+DIGEST = hashlib.sha256(json.dumps([VERSION, RELEASE, PROPERTIES, ALIASES, CAPABILITIES, SOURCE, DONOR_CATEGORIES_DIGEST],sort_keys=True).encode() + Path(__file__).read_bytes() + Path(__file__).with_name('tissue_aliases.py').read_bytes()).hexdigest()
 
 
 def donor_intent(step):
@@ -46,6 +47,54 @@ def planner_guidance(question):
             'Sample_node.data_modality is the assay; tissue uses anatomical_structure -HAS_SAMPLE-> Sample_node. '
             'RNA can be a documented component of multiome; retain exact-only or paired requirements. '
             'Always connect each sample directly to its donor; do not add samples to a donor-only lookup.')
+
+
+def _assay_values(constraint):
+    operator = str(constraint.get('operator', '=')).upper()
+    raw = constraint.get('value')
+    if operator in {'IN', 'NOT IN'}:
+        try:
+            values = json.loads(raw) if isinstance(raw, str) else raw
+        except (TypeError, ValueError):
+            return None
+        return values if isinstance(values, list) and values and all(isinstance(v, str) for v in values) else None
+    return [raw] if isinstance(raw, str) else None
+
+
+def _canonical_assay(value, available):
+    alias = ALIASES.get(re.sub(r'[^a-z0-9]', '', str(value).lower()), value)
+    matches = [v for v in available if isinstance(v, str) and v.casefold() == str(alias).casefold()]
+    return matches[0] if len(matches) == 1 else value
+
+
+def _without_negated_assays(question, available):
+    """Mask directly negated verified assay names for capability detection only.
+
+    The original wording and typed constraints remain unchanged. Missing or
+    ambiguous modality names are not silently assigned a positive capability.
+    """
+    tokens = list(re.finditer(r'[A-Za-z0-9]+', question))
+    words = [token.group().casefold() for token in tokens]
+    aliases = {re.sub(r'[^a-z0-9]', '', value.lower()): value for value in available if isinstance(value, str)}
+    aliases.update(ALIASES)
+    spans = []
+    for start in range(len(tokens)):
+        candidates = [end for end in range(start + 1, min(len(tokens), start + 7) + 1)
+                      if ''.join(words[start:end]) in aliases]
+        if not candidates:
+            continue
+        end = max(candidates)
+        prefix = words[max(0, start - 3):start]
+        excluded = bool(prefix and (prefix[-1] in {'exclude', 'excluding', 'without', 'except', 'no'}
+                        or prefix[-2:] in [['do', 'not'], ['not', 'include']]))
+        if excluded and prefix[-1] in {'exclude', 'excluding'} and prefix[-3:-1] == ['do', 'not']:
+            excluded = False
+        if excluded:
+            spans.append((tokens[start].start(), tokens[end - 1].end()))
+    chars = list(question)
+    for start, end in spans:
+        chars[start:end] = ' ' * (end - start)
+    return ''.join(chars)
 
 
 def resolve(step, vocabulary, release):
@@ -101,34 +150,71 @@ def resolve(step, vocabulary, release):
         constraints=[c for c in constraints if not (c.get('entity_type')=='disease' and c.get('property') in ('name','id'))]
         bind('id','disease','MONDO_0005147' if number=='1' else 'MONDO_0005148',requested=disease.group(0))
     from .tissue_aliases import matched_tissues
-    tissues=matched_tissues(q, vocabulary.get('tissues',[]))
+    tissues=matched_tissues(q, vocabulary.get('tissues',[]), constraints=constraints)
     if len(tissues)==1:
         constraints=[c for c in constraints if not (c.get('entity_type')=='anatomical_structure' and c.get('property') in ('id','name'))]
         bind('id','anatomical_structure',tissues[0]['id'],kind=tissues[0].get('match_kind','exact'),requested=tissues[0].get('requested_alias',tissues[0]['name']))
     elif len(tissues)>1:
         issues.append('Multiple sample tissues were named. Separate the tissue checks so each sample remains attached to its intended tissue.')
     old_assay=[c for c in constraints if c.get('property')=='data_modality' or c.get('entity_type')=='data_modality']
-    assay_text=' '.join([q]+[str(c.get('value','')) for c in old_assay])
+    available = vocabulary.get('modalities', [])
+    negative_assay, positive_assay, unsupported_assay = [], [], []
+    for original in old_assay:
+        c = deepcopy(original)
+        owner = c.get('entity_type')
+        operator = str(c.get('operator', '=')).upper()
+        values = _assay_values(c)
+        if owner not in (None, 'Sample_node', 'data_modality') or c.get('owner_kind') == 'relationship':
+            unsupported_assay.append(c)
+            issues.append('Unsupported assay property owner; bind data_modality to the linked Sample_node.')
+            continue
+        if operator not in {'=', 'IN', '!=', '<>', 'NOT IN'} or values is None:
+            unsupported_assay.append(c)
+            issues.append('Unsupported assay operator or value; preserve its original meaning instead of converting it to a positive assay match.')
+            continue
+        mapped = [_canonical_assay(value, available) for value in values]
+        c.update(entity_type='Sample_node', property='data_modality')
+        c.pop('relationship_type', None)
+        c.pop('owner_kind', None)
+        c['value'] = (json.dumps(mapped) if isinstance(original.get('value'), str) else mapped) if operator in {'IN', 'NOT IN'} else mapped[0]
+        matches.append({'requested': deepcopy(original), 'canonical_binding': deepcopy(c), 'match_kind': 'verified_assay_alias',
+                        'registry_version': VERSION, 'source': 'verified graph categorical values'})
+        if any(value not in available for value in mapped):
+            issues.append('Unresolved assay value; no fuzzy substitution or operator change was applied.')
+        (negative_assay if operator in {'!=', '<>', 'NOT IN'} else positive_assay).append(c)
+        if operator == 'NOT IN':
+            issues.append('NOT IN assay predicates are unsupported by the current typed query contract; keep this exclusion explicit rather than substituting positive evidence.')
+    constraints = [c for c in constraints if c not in old_assay] + negative_assay + unsupported_assay
+    old_assay = positive_assay
+    positive_q = _without_negated_assays(q, available)
+    assay_text=' '.join([positive_q]+[str(c.get('value','')) for c in old_assay])
     rna=bool(re.search(r'(?<![a-z])(?:sc|sn)?RNA[\s-]*(?:seq)?|transcriptom',assay_text,re.I))
     atac=bool(re.search(r'ATAC|chromatin accessibility',assay_text,re.I))
-    paired=bool(re.search(r'multiom|paired|joint',q,re.I))
+    paired=bool(re.search(r'multiom|paired|joint',positive_q,re.I))
     exact=bool(re.search(r'\bstandalone\b|\bexact(?:ly)?\b.{0,20}(?:RNA|ATAC)|(?:RNA[\s-]*seq|ATAC[\s-]*seq)\s+only\b|\bonly\s+(?:sc|sn)?(?:RNA|ATAC)|exclude\s+multiom',q,re.I))
     paired = paired and not exact and not bool(re.search(r'\b(?:include|including|also|or)\b.{0,60}multiom',q,re.I))
-    if old_assay or rna or atac or paired:
-        available=vocabulary.get('modalities',[])
-        constraints=[c for c in constraints if c not in old_assay]
+    if not unsupported_assay and (old_assay or rna or atac or paired):
         if paired:
             groups=[['snMultiomics']]
         elif exact:
-            raw=str(old_assay[0]['value']) if old_assay else ('scATAC-seq' if atac and not rna else 'scRNA-seq')
-            canonical=ALIASES.get(re.sub(r'[^a-z0-9]','',raw.lower()),raw)
-            groups=[[canonical]]
+            exact_sets = [_assay_values(c) for c in old_assay] if old_assay else [['scATAC-seq' if atac and not rna else 'scRNA-seq']]
+            groups = [[_canonical_assay(value, available) for value in values] for values in exact_sets]
         else:
             if rna:groups.append(['scRNA-seq','snMultiomics'])
             if atac:groups.append(['scATAC-seq','snMultiomics'])
             if not groups and old_assay:
-                raw=str(old_assay[0]['value']);canonical=ALIASES.get(re.sub(r'[^a-z0-9]','',raw.lower()),raw)
-                groups=[[canonical]]
+                groups = [[_canonical_assay(value, available) for value in _assay_values(c)] for c in old_assay]
+        covered = {value for group in groups for value in group}
+        for c in old_assay:
+            extra = [value for value in _assay_values(c) if value not in covered]
+            if extra:
+                groups.append(extra)
+                covered.update(extra)
+        excluded_values = {value for c in negative_assay for value in (_assay_values(c) or [])}
+        groups = [[value for value in group if value not in excluded_values] for group in groups]
+        if any(not group for group in groups):
+            issues.append('The requested positive assay and assay exclusion conflict; do not replace this with an unrestricted sample query.')
+            groups = [group for group in groups if group]
         for values in groups:
             for i, value in enumerate(values):
                 candidates=[m for m in available if m.casefold()==value.casefold()]
@@ -139,8 +225,12 @@ def resolve(step, vocabulary, release):
                 issues.append('Unresolved assay '+unknown[0]+'. Suggestions: '+', '.join(suggestions)+'. No fuzzy substitution was applied.')
             c={'property':'data_modality','entity_type':'Sample_node','operator':'IN' if len(values)>1 else '=','value':json.dumps(values) if len(values)>1 else values[0]}
             constraints.append(c)
-            matches.append({'requested':'RNA/ATAC assay intent','canonical_binding':c,'match_kind':'capability' if len(values)>1 or paired else 'alias','registry_version':VERSION,'source':SOURCE})
-    expanded = bool(groups and any(len(group)>1 or paired for group in groups))
+            matches.append({'requested':'RNA/ATAC assay intent','canonical_binding':c,'match_kind':'capability' if not exact and (rna or atac or paired) and (len(values)>1 or paired) else 'alias','registry_version':VERSION,'source':SOURCE})
+    if unsupported_assay:
+        constraints.extend(positive_assay)
+    if positive_q != q and not negative_assay and not groups:
+        issues.append('An assay exclusion was requested without a typed negative modality predicate; do not execute an unrestricted sample query.')
+    expanded = bool(not exact and (rna or atac or paired) and groups and any(len(group)>1 or paired for group in groups))
     assay_sources = vocabulary.get('assay_donor_sources', {}).get('snMultiomics', [])
     verified_scope = bool(assay_sources) and set(assay_sources) == {'HPAP'}
     if expanded and verified_scope:
@@ -155,8 +245,13 @@ def resolve(step, vocabulary, release):
     out['semantic_registry']={'version':VERSION,'sha256':DIGEST,'graph_release':release,'modality_links_verified':vocabulary.get('modality_links_verified',False)}
     out['semantic_issues']=issues
     out['sample_requirements']={'modality_groups':groups,'paired':paired,'separate_bindings':len(groups)>1,
-        'source':SOURCE,'file_availability':'not_verified','capability_scope_verified': bool(expanded and (verified_scope or re.search(r'\bHPAP\b',q,re.I)))}
-    if groups:out['semantic_summary']='Include documented RNA/ATAC components of the recorded assays; show the original assay labels and distinguish indexed samples from downloadable files.' if not exact else 'Match only the explicitly requested assay label; do not include related multiome assays.'
+        'source':SOURCE,'file_availability':'not_verified','excluded_modality_constraints':deepcopy(negative_assay),'capability_scope_verified': bool(expanded and (verified_scope or re.search(r'\bHPAP\b',q,re.I)))}
+    if negative_assay and not groups:
+        out['semantic_summary'] = 'Match indexed samples with the requested assay exclusions; keep the original operators and donor/tissue filters. Assay exclusions do not exclude donors who also have other assays.'
+    if groups:
+        out['semantic_summary'] = ('Match only the explicitly requested assay label; do not include related multiome assays.' if exact else
+            'Include documented RNA/ATAC components of the recorded assays; show the original assay labels and distinguish indexed samples from downloadable files.' if expanded else
+            'Match the recorded assay labels with the requested filters; indexed samples do not verify downloadable files.')
     if groups:
         recorded = [v for group in groups for v in group]
         capability = any(v in ('scRNA-seq','scATAC-seq','snMultiomics') for v in recorded)
@@ -172,9 +267,11 @@ def generation_guidance(step):
     if not step.get('semantic_registry'):return ''
     notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. A recorded T1D stage does not imply a second disease diagnosis filter: apply only the resolved disease constraint, if present. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. For stage-only questions do not add disease.id or donor.diabetes_type filters, including for stages 1 and 2; those are not necessarily recorded as diagnosed diabetes. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
     notes+=' Do not filter sample.anatomical_structure: this is descriptive text, not a tissue identifier; constrain the linked anatomy node instead.'
-    if not step.get('sample_requirements',{}).get('modality_groups') and not any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])):
+    if not step.get('sample_requirements',{}).get('modality_groups') and not step.get('sample_requirements',{}).get('excluded_modality_constraints') and not any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])):
         notes+=' DONOR-ONLY lookup: do not MATCH Sample_node, data_modality, anatomical_structure or HAS_SAMPLE. Return all matching donors and their disease link, without any assay restriction.'
     if step.get('sample_requirements',{}).get('separate_bindings'):notes+=' For RNA AND ATAC bind two sample variables linked to the SAME donor and requested tissue; each must satisfy its corresponding modality group. The two variables may identify the same multiome sample.'
+    if step.get('sample_requirements',{}).get('excluded_modality_constraints'):
+        notes += ' Apply every negative modality predicate to the same sample linked to the returned donor and requested tissue. Never turn an excluded assay into a positive capability lookup or exclude an entire donor unless explicitly requested.'
     return notes
 
 
@@ -214,16 +311,24 @@ def validation_errors(tokens, step, parameters, bindings, paths, predicate, choi
     if not donors:errors.append('missing_required_donor_cohort_path')
     requirement=step.get('sample_requirements',{})
     groups=requirement.get('modality_groups',[])
+    exclusions=requirement.get('excluded_modality_constraints',[])
     tissue_required=any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
     anatomy={v for v,labels in bindings.items() if 'anatomical_structure' in labels and constraints_at(v,'anatomical_structure')}
-    if not groups and not tissue_required and any('HAS_SAMPLE' in kinds for a,b,kinds in paths):
+    if not groups and not exclusions and not tissue_required and any('HAS_SAMPLE' in kinds for a,b,kinds in paths):
         errors.append('unrequested_sample_join_for_donor_only_lookup')
-    if groups or tissue_required:
+    if groups or exclusions or tissue_required:
         candidates=[]
         for group in groups or [None]:
             valid=set()
             for sample,labels in bindings.items():
                 if 'Sample_node' not in labels:continue
+                def excluded_here(c):
+                    if predicate(tokens, c, parameters, {sample}):
+                        return True
+                    return bool(step.get('semantic_registry',{}).get('modality_links_verified') and any(
+                        'data_modality' in bindings.get(a,set()) and b==sample and 'HAS_SAMPLE' in kinds
+                        and predicate(tokens,{**c,'property':'id'},parameters,{a}) for a,b,kinds in paths))
+                if exclusions and not all(excluded_here(c) for c in exclusions):continue
                 if group:
                     c={'property':'data_modality','operator':'IN' if len(group)>1 else '=','value':group if len(group)>1 else group[0]}
                     match=predicate(tokens,c,parameters,{sample})

@@ -18,7 +18,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
                                  stable_digest, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = "preplanning-grounding-3"
+VERSION = "preplanning-grounding-4"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -98,12 +98,39 @@ def _span(question, start, end):
     return len(phrase_tokens(question[:start])), len(phrase_tokens(question[:end]))
 
 
+def explicit_non_go_annotation_scope(question):
+    """Every annotation phrase is explicitly a pathway/marker request.
+
+    This does not treat a generic annotation or comprehensive profile request
+    as pathway-only merely because a pathway appears elsewhere in the text.
+    """
+    if re.search(r"\bGO\b|gene ontology|biological[- ]process|molecular[- ]function|cellular[- ]component|comprehensive|overview|profile|all .*evidence", question, re.I):
+        return False
+    explicit = bool(re.search(r"pathway|\bkegg\b|reactome|\bmarker", question, re.I))
+    if not explicit:
+        return False
+    annotations = list(re.finditer(r"\bannotations?\b", question, re.I))
+    if not annotations:
+        return not bool(re.search(r"\bfunctions?\b|functional evidence", question, re.I))
+    qualifier = r"(?:pathways?|(?:kegg|reactome)(?:\s+pathways?)?|marker(?:[- ](?:cell|gene|cell[- ]type))?)\s*$"
+    for match in annotations:
+        prefix = question[max(0, match.start() - 55):match.start()]
+        suffix = question[match.end():match.end() + 55]
+        if not (re.search(qualifier, prefix, re.I) or re.match(r"\s+(?:to|in|from)\s+(?:the\s+)?(?:KEGG|Reactome|pathways?)\b", suffix, re.I)):
+            return False
+    return True
+
+
 def _requested_relations(question):
     selected = {kind for kind, pattern in RELATION_TERMS.items() if re.search(pattern, question, re.I)}
     explicit_go = bool(re.search(r"\bGO\b|gene ontology|biological[- ]process|molecular[- ]function|cellular[- ]component", question, re.I))
     explicit_pathway = bool(re.search(r"pathway|\bkegg\b|reactome|fgsea|gsea", question, re.I))
     if explicit_go and not explicit_pathway:
         selected.discard("FUNCTION_ANNOTATION")
+    if explicit_non_go_annotation_scope(question):
+        selected.discard("ASSOCIATED_WITH_GO")
+        if not explicit_pathway:
+            selected.discard("FUNCTION_ANNOTATION")
     if "FGSEA_ENRICHED_IN" in selected:
         selected.discard("FUNCTION_ANNOTATION")
         if not explicit_go:

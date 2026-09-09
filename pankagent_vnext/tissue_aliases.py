@@ -5,7 +5,7 @@ PLN_ID = 'UBERON_0015865'
 PLN_NAME = 'pancreaticosplenic lymph node (proxy for "pancreatic LN")'
 PLN_ALIASES = ('PLN', 'pancreatic lymph node', 'pancreatic lymph nodes', 'pancreatic LN')
 
-def matched_tissues(question, vocabulary):
+def matched_tissues(question, vocabulary, *, constraints=()):
     mentions = []
     def add(name, record):
         for match in re.finditer(r'(?<!\w)' + re.escape(name) + r'(?!\w)', question, re.I):
@@ -13,6 +13,23 @@ def matched_tissues(question, vocabulary):
     for tissue in vocabulary:
         if isinstance(tissue.get('name'), str):
             add(tissue['name'], tissue)
+    # A generated explanation may abbreviate a record's metadata qualifier:
+    # "X tissue (proxy for Y)" -> "X tissue, ID". Once its exact ID is typed
+    # and verified, this display description must not invent a second generic
+    # tissue inside X. This does not introduce a new public alias or suppress
+    # separately requested tissues elsewhere in the sentence.
+    typed_ids = {c.get('value') for c in constraints
+                 if c.get('entity_type') == 'anatomical_structure' and c.get('property') == 'id'
+                 and c.get('operator', '=') == '=' and isinstance(c.get('value'), str)}
+    for tissue in vocabulary:
+        name = tissue.get('name')
+        if tissue.get('id') not in typed_ids or not isinstance(name, str):
+            continue
+        add(tissue['id'], {**tissue, 'match_kind': 'verified_typed_id'})
+        base = re.split(r'\s*\(', name, maxsplit=1)[0].strip()
+        if base and base != name:
+            add(base, {**tissue, 'requested_alias': base, 'match_kind': 'typed_canonical_description',
+                       'explanation': 'The description belongs to the already verified exact tissue ID; it is not a second tissue request.'})
     # Reuse the same verified alias registry as entity resolution, including islet.
     from .anatomy_resolution import ALIASES
     for tissue in vocabulary:

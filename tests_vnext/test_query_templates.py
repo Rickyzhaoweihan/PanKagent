@@ -155,3 +155,33 @@ def test_numeric_looking_identifiers_stay_strings():
     s = step()
     s['constraints'].append({'entity_type': 'Gene', 'property': 'alt_id_entrez', 'operator': '=', 'value': '12345'})
     assert compile_query(s)['parameters']['template_1'] == '12345'
+
+
+@pytest.mark.parametrize('operator', ['!=', '<>'])
+def test_scalar_inequality_keeps_typed_owner_value_and_operator(operator):
+    s = step()
+    s['constraints'].append({'entity_type': 'anatomical_structure', 'property': 'id', 'operator': operator, 'value': 'CL_0000171'})
+    result = compile_query(s)
+    assert result and ('b.`id` ' + operator + ' $template_1') in result['cypher']
+    assert result['parameters']['template_1'] == 'CL_0000171'
+    assert validate_cypher(result['cypher'], s, result['parameters']) == []
+    assert validate_cypher(result['cypher'].replace('b.`id` ' + operator, 'b.`id` ='), s, result['parameters'])
+    wrong = deepcopy(s)
+    wrong['constraints'][-1]['entity_type'] = 'Gene'
+    assert validate_cypher(result['cypher'], wrong, result['parameters'])
+
+
+def test_scalar_inequality_numeric_values_remain_numbers_not_strings():
+    s = step()
+    s['constraints'].append({'owner_kind': 'relationship', 'relationship_type': 'GENE_ENRICHED_IN', 'property': 'padj', 'operator': '!=', 'value': '0.0'})
+    result = compile_query(s)
+    assert result['parameters']['template_1'] == 0.0
+    assert isinstance(result['parameters']['template_1'], float)
+    assert validate_cypher(result['cypher'], s, result['parameters']) == []
+
+
+def test_general_not_and_not_in_remain_unsupported():
+    s = step()
+    s['constraints'].append({'entity_type': 'anatomical_structure', 'property': 'id', 'operator': 'NOT IN', 'value': '["CL_0000171"]'})
+    assert compile_query(s) is None
+    assert validate_cypher('MATCH (a:Gene)-[r:GENE_ENRICHED_IN]->(b:anatomical_structure) WHERE a.name="CFTR" AND NOT b.id IN ["CL_0000171"] RETURN r', s)

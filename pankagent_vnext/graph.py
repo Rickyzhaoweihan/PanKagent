@@ -290,7 +290,7 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
     prop = str(constraint.get("property", "")).split(".")[-1]
     expected_operator = str(constraint.get("operator", "=")).upper()
     expected = constraint.get("value")
-    if not prop or expected_operator not in {"=", "IN", "CONTAINS", "STARTS WITH", "ENDS WITH", ">", ">=", "<", "<="}:
+    if not prop or expected_operator not in {"=", "!=", "<>", "IN", "CONTAINS", "STARTS WITH", "ENDS WITH", ">", ">=", "<", "<="}:
         return False
     distributed_values = _normalized_expected(expected, [], expected_operator)
     distributed: dict[str, set[str]] = {}
@@ -337,7 +337,7 @@ def _predicate_present(tokens: list[Token], constraint: dict, parameters: dict,
         wanted = _normalized_expected(expected, actual, expected_operator)
         if transform and isinstance(wanted, str):
             wanted = wanted.lower() if transform == "tolower" else wanted.upper()
-        if operator == expected_operator and _equal(actual, wanted):
+        if (operator == expected_operator or {operator, expected_operator} <= {"!=", "<>"}) and _equal(actual, wanted):
             return True
         if expected_operator == "=" and operator == "IN" and isinstance(actual, list) and len(actual) == 1 and _equal(actual[0], wanted):
             return True
@@ -397,7 +397,7 @@ def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], 
         if operator in {"STARTS", "ENDS"} and at < len(tokens) and _word(tokens[at], "WITH"):
             operator += " WITH"
             at += 1
-        if operator not in {"=", "IN", "CONTAINS", "STARTS WITH", "ENDS WITH"}:
+        if operator not in {"=", "!=", "<>", "IN", "CONTAINS", "STARTS WITH", "ENDS WITH"}:
             continue
         actual, end = _value(tokens, at, parameters)
         if end == at:
@@ -415,7 +415,7 @@ def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], 
             expected = _normalized_expected(wanted.get("value"), actual, wanted_operator)
             if transform and isinstance(expected, str):
                 expected = expected.lower() if transform == "tolower" else expected.upper()
-            if wanted_operator == operator and _equal(actual, expected):
+            if (wanted_operator == operator or {operator, wanted_operator} <= {"!=", "<>"}) and _equal(actual, expected):
                 allowed = True
             elif wanted_operator == "=" and operator == "IN" and isinstance(actual, list) and len(actual) == 1 and _equal(actual[0], expected):
                 allowed = True
@@ -584,7 +584,28 @@ def _enrichment_property_errors(tokens: list[Token], step: dict, parameters: dic
     return errors
 
 
-def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> list[str]:
+def _dependency_owner_errors(tokens, name, values, metadata, graph_release):
+    """Reject an ID dependency on a provably incompatible node type.
+
+    Metadata is derived from the actual parent nodes, never from ID prefixes or
+    the model's intended answer. Overlapping types remain legitimate even when
+    their IDs have no intersection: that is a real zero, not a query defect.
+    """
+    if (not graph_release or not metadata or metadata.get('graph_version') != graph_release
+            or not isinstance(values, list) or not all(isinstance(value, str) for value in values)):
+        return []
+    by_id = metadata.get('id_labels') or {}
+    if set(by_id) != set(values) or any(not labels for labels in by_id.values()):
+        return []
+    labels = set().union(*(set(kinds) for kinds in by_id.values()))
+    bindings, _ = _pattern_bindings(tokens, graph_release=graph_release)
+    wanted = {'property': 'id', 'operator': 'IN', 'value': values}
+    return ['dependency_owner_mismatch:' + name + ':' + variable + ':expected_any_of:' + ','.join(sorted(labels))
+            for variable, kinds in bindings.items() if kinds and not kinds.intersection(labels)
+            and _predicate_present(tokens, wanted, {name: values}, {variable})]
+
+
+def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, dependency_bindings=None) -> list[str]:
     parameters = parameters or {}
     if not isinstance(query, str) or not query.strip() or len(query) > 24000:
         return ["missing_or_oversized_cypher"]
@@ -706,6 +727,9 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None) -> l
         wanted = {"property": "id", "operator": "IN", "value": parameters[name]}
         if not all(_predicate_present(part, wanted, parameters) for part in branches):
             errors.append("missing_dependency:" + name)
+        for part in branches:
+            errors.extend(_dependency_owner_errors(part, name, parameters[name],
+                (dependency_bindings or {}).get(name), step.get('graph_version')))
     if step.get("complete", True):
         from .semantic_registry import PROPERTIES
         extra={p for fields in PROPERTIES.values() for p in fields} if step.get('semantic_registry') else set()
@@ -1099,6 +1123,10 @@ class GraphAdapter:
             prepared["steps"].append(await self._prepare_step(source, emit))
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
+        rewritten = set((prepared.get('coloc_comparison_normalization') or {}).get('rewritten_step_ids') or [])
+        if rewritten:
+            prepared['steps'] = [await self._prepare_step(step, emit) if step['id'] in rewritten else step
+                                 for step in prepared['steps']]
         if any(step.get('sample_requirements',{}).get('capability_scope_verified') and 'scRNA-seq' in group and 'snMultiomics' in group for step in prepared['steps'] for group in step.get('sample_requirements',{}).get('modality_groups',[])):
             interpretation=prepared.get('interpreted_question') or prepared['steps'][0]['question']
             note=' Include documented RNA components of HPAP multiome assays, retaining their original assay labels.'
@@ -1412,6 +1440,7 @@ class GraphAdapter:
                 base["validation"].append({"valid": False, "reasons": ["unresolved_plan_entities"]})
                 return base
         parameters, dependency_notes, inherited_partial = {}, [], False
+        dependency_bindings = {}
         bounded_dependencies = []
         for index, dependency in enumerate(step.get("depends_on") or []):
             evidence = previous.get(dependency)
@@ -1433,6 +1462,14 @@ class GraphAdapter:
                 return base
             name = "dep_" + str(index)
             parameters[name] = ids
+            labels_by_id = {}
+            for node in evidence.get('nodes', []):
+                identifier, labels = node.get('id'), node.get('labels')
+                if identifier is not None and isinstance(labels, list) and all(isinstance(label, str) and label for label in labels):
+                    labels_by_id.setdefault(str(identifier), set()).update(labels)
+            if evidence.get('graph_version') and evidence['graph_version'] == step.get('graph_version'):
+                dependency_bindings[name] = {'graph_version': evidence['graph_version'],
+                    'id_labels': {identifier: sorted(labels) for identifier, labels in labels_by_id.items()}}
             dependency_notes.append(f"Preserve the entities from step {dependency}: constrain the appropriate node's id IN ${name}; this parameter contains {len(ids)} existing graph IDs.")
         if bounded_dependencies:
             base['bounded_dependency_step_ids'] = bounded_dependencies
@@ -1529,7 +1566,7 @@ class GraphAdapter:
                             from .cypher_repair import repair_candidate
                             repaired = repair_candidate(query, graph_release=step.get("graph_version"))
                             query, repairs = repaired["query"], repaired["transformations"]
-                        reasons = validate_cypher(query, step, candidate_parameters)
+                        reasons = validate_cypher(query, step, candidate_parameters, dependency_bindings=dependency_bindings)
                         if not reasons:
                             reasons = await self._explain(query, candidate_parameters)
                         from .cypher_repair import failure_categories

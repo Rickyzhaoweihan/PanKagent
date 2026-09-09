@@ -107,3 +107,22 @@ def test_unknown_timing_remains_unknown():
     assert result['first_progress_s'] == 0
     assert result['checked_plan_s'] is None
     assert result['graph_answer_s'] is None
+
+
+def test_frozen_reference_hash_checks_properties_multiplicity_and_ignores_order():
+    rows = [{'source': 'public', 'n_snp': 22}, {'source': 'public', 'n_snp': 4}]
+    ref = {'id': 'qtl', 'kind': 'edges', 'frozen_count': 2,
+           'frozen_rows_sha256': audit.reference_rows_digest(rows)}
+    audit.validate_reference(ref, list(reversed(rows)), 'S02')
+    with pytest.raises(RuntimeError, match='property drift'):
+        audit.validate_reference(ref, [{'source': 'public', 'n_snp': 1}, rows[1]], 'S02')
+    with pytest.raises(RuntimeError, match='snapshot drift'):
+        audit.validate_reference(ref, rows + [rows[0]], 'S02')
+    assert audit.reference_rows_digest(rows) != audit.reference_rows_digest([rows[0], rows[0]])
+
+
+def test_supplement_is_separately_frozen_and_has_full_reference_signatures():
+    value = audit.load_manifest(HARNESS.with_name('manifest.supplement.frozen.json'))
+    assert value['sampling']['unique_tasks'] == 3
+    assert {case['id'] for case in value['cases']} == {'S01', 'S02', 'S03'}
+    assert all(ref['frozen_rows_sha256'] for case in value['cases'] for ref in case['references'])
