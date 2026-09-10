@@ -18,7 +18,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
                                  stable_digest, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = "preplanning-grounding-4"
+VERSION = "preplanning-grounding-5"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -78,7 +78,13 @@ def _public_candidate(record, kind):
 
 def _explicit_gene(words, start, end):
     before, after = words[max(0, start - 2):start], words[end:end + 2]
-    return (bool(before) and before[-1] in {"gene", "symbol"}) or (bool(after) and after[0] == "gene")
+    # "marker gene in cells" / "gene of interest" are grammatical phrases,
+    # not explicit requests for gene aliases IN / OF. Uppercase symbols are
+    # independently retained by match(), and "symbol in" remains explicit.
+    connector = words[start:end] in {(word,) for word in
+        ("in", "of", "for", "with", "from", "to", "on", "at", "by", "and", "or")}
+    return (bool(before) and (before[-1] == "symbol" or
+            (before[-1] == "gene" and not connector))) or (bool(after) and after[0] == "gene")
 
 
 def _retain_context(mention, selected, role, **details):

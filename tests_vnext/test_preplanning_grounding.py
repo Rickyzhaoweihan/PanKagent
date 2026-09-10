@@ -592,3 +592,12 @@ def test_other_disease_qualifiers_are_not_promoted_to_complete_identity(question
     payload=asyncio.run(ground_question(FakeGraph(),question))
     mention=next(m for m in payload['mentions'] if any(c['entity_type']=='disease' for c in m['candidates']))
     assert mention.get('identity_complete') is False
+
+
+def test_gene_context_does_not_promote_grammatical_connectors():
+    from pankagent_vnext.preplanning_grounding import _explicit_gene, phrase_tokens
+    for word in ("in", "of", "for", "with", "from", "to", "and", "or"):
+        words = phrase_tokens("marker gene " + word + " pancreatic cells")
+        assert not _explicit_gene(words, 2, 3)
+    assert _explicit_gene(phrase_tokens("gene was expressed"), 1, 2)
+    assert _explicit_gene(phrase_tokens("symbol in"), 1, 2)
