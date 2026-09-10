@@ -52,12 +52,13 @@ class ListTests(unittest.TestCase):
             self.assertEqual(result['details']['groups'], [
                 {'labels':['kegg'],'side':'left','count':54},
                 {'labels':['reactome'],'side':'right','count':15}])
-            self.assertEqual(len(result['edge_routes']),69)
+            self.assertEqual(result['edge_routes'], {})
+            for members in (range(54), range(54,69)):
+                ys=[result['xy_json'][str(i)]['y'] for i in members]
+                self.assertEqual(min(ys)+max(ys), 0)
             for i in range(69):
                 point=result['xy_json'][str(i)]
                 self.assertEqual(point['x'] < 0, i<54)
-                route=result['edge_routes']['e'+str(i)]
-                self.assertEqual(route['list_leaf_endpoint'],'source' if reverse else 'target')
             graph['nodes'].reverse();graph['edges'].reverse()
             self.assertEqual(result,relationship_list(graph))
             self.assertEqual(before['edges'][0]['~type'],graph['edges'][-1]['~type'])
@@ -96,7 +97,7 @@ class ListServiceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result["layout"]["engine"],"relationship_list")
                 self.assertEqual(result["combined_query_result"]["presentation_mode"],"relationship_list")
                 self.assertEqual(result["full_evidence"]["node_count"],55)
-                self.assertEqual(len(result["edge_routes"]),54)
+                self.assertEqual(result["edge_routes"], {})
             self.assertTrue(result["layout"]["cache_hit"])
             self.assertEqual(evidence,before)
         finally: await service.close()

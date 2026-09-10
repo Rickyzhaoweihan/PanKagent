@@ -80,16 +80,14 @@ def relationship_list(graph, focus=()):
                 put(nid, x, (heights[side]+index)*30)
                 sides[nid] = sign
             heights[side] += len(members)+1
+    # Each arm is centered independently around the hub, including unequal
+    # source collections. Only XY changes; the viewer keeps native edges.
+    for side in (-1, 1):
+        members = [nid for nid in ordered if sides[nid] == side]
+        if not members:
+            continue
+        center = (min(coords[n]['y'] for n in members) + max(coords[n]['y'] for n in members)) / 2
+        for nid in members:
+            put(nid, coords[nid]['x'], coords[nid]['y'] - center)
     routes = {}
-    for edge in edges:
-        leaf = edge['~end'] if direction else edge['~start']
-        p = coords[leaf]
-        sign = sides[leaf]
-        boundary = hw if sign == 1 else 0
-        start = [boundary, 0]
-        end = [p['x'] - sign*p['width'] / 2, p['y']]
-        points = [[boundary + sign*20, 0], [boundary + sign*20, p['y']]]
-        if not direction:
-            start, end, points = (end, start, list(reversed(points)))
-        routes[edge['~id']] = {'source_port': start, 'target_port': end, 'waypoints': points, 'route_type': 'polyline', 'list_leaf_endpoint': 'target' if direction else 'source', 'route_status': 'ordered', 'label_visible': True, 'label_anchor': [boundary + sign*55, p['y']]}
     return {'status': 'optimized', 'xy_json': coords, 'edge_routes': routes, 'presentation_mode': 'relationship_list', 'labels': labels, 'details': {'metrics': {'node_overlap_count': 0}, 'row_count': len(ordered), 'hub_id': hub, 'common_labels': sorted(common), 'groups': group_rows}}

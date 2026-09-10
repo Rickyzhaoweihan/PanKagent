@@ -24,7 +24,7 @@ from .vendor.graph_viewer.layout_engine.config import LayoutConfig
 
 
 UPSTREAM_COMMIT = "362025db24b1d37223c3c44ccf02a55eb2756a42"
-LAYOUT_VERSION = "pankgraph-regular-5"
+LAYOUT_VERSION = "pankgraph-regular-6"
 COORDINATE_SCALE = 1 / 3
 # A fixed iteration count makes completed layouts deterministic. The parent
 # process owns the hard wall-clock bound across optimization, routing and metrics.
