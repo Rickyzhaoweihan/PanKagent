@@ -601,3 +601,11 @@ def test_gene_context_does_not_promote_grammatical_connectors():
         assert not _explicit_gene(words, 2, 3)
     assert _explicit_gene(phrase_tokens("gene was expressed"), 1, 2)
     assert _explicit_gene(phrase_tokens("symbol in"), 1, 2)
+
+
+def test_common_alias_after_marker_gene_is_not_an_anchor():
+    index = make_index()
+    index.first.setdefault("in", {})[("in",)] = {("Gene", "cd44"): {
+        "id": "cd44", "name": "CD44", "entity_type": "Gene", "labels": ["Gene"], "match_kind": "recorded_alias"}}
+    assert "cd44" not in candidate_ids(index.match("Is PLEKHM1 a marker gene in pancreatic cells?"))
+    assert "cd44" in candidate_ids(index.match("Is IN expressed?"))

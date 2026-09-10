@@ -208,7 +208,7 @@ class EntityIndex:
                                   or value["match_kind"] in {"recorded_id", "recorded_name"}]
                     if end == index + 1:
                         candidates = [value for value in candidates if value["entity_type"] != "Gene" or term not in _GENERIC_GENE_WORDS
-                                      or re.search(r"\bgene\s+" + re.escape(term) + r"\b|\b" + re.escape(term) + r"\s+gene\b", question, re.I)
+                                      or _explicit_gene(words, index, end)
                                       or re.search(r"\b" + re.escape(term.upper()) + r"\b", question)]
                     if candidates:
                         matches = candidates
