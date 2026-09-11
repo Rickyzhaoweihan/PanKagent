@@ -65,6 +65,7 @@ class ResultsRuntime:
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
         self.admission = asyncio.Lock()
         self.tasks = {}
+        self.plot_refresh_tasks = {}
         self.active = 0
         self.health = ResultsHealth(self)
 
@@ -105,6 +106,29 @@ class ResultsRuntime:
     async def update(self, rid, **changes):
         return await asyncio.to_thread(self.store.update, rid, **changes)
 
+    async def refresh_saved_functional_plot(self, rid, value):
+        """Migrate presentation assets only; never rerun retrieval or paid answers."""
+        if value.get("status") != "ready":
+            return value
+        source = await asyncio.to_thread(self.store.source, rid)
+        if not source or source.get("template_id") != "functional_traces":
+            return value
+        if value.get("functional_plot_version") == functional.VERSION:
+            return value
+        # Failed upstream requests retain the existing image and have a cooldown.
+        task = self.plot_refresh_tasks.get(rid)
+        if task is None and time.time() - value.get("functional_plot_attempt_at", 0) < 60:
+            return value
+        if task is None:
+            async def refresh():
+                await self.update(rid, functional_plot_attempt_at=time.time())
+                await self.resolve_resources(rid, {"functional_filters": source["parameters"]})
+            task = asyncio.create_task(refresh())
+            self.plot_refresh_tasks[rid] = task
+            task.add_done_callback(lambda _: self.plot_refresh_tasks.pop(rid, None))
+        await asyncio.shield(task)
+        return await asyncio.to_thread(self.store.get, rid)
+
     async def resolve_resources(self, rid, evidence):
         started = time.monotonic()
         try:
@@ -117,6 +141,8 @@ class ResultsRuntime:
                 resources = await asyncio.wait_for(self.resources.resolve(evidence), 30)
             await self.update(rid, resources_tabs=resources["resources_tabs"], resources=resources,
                 component_status={"resources": resources["status"]})
+            if evidence.get("functional_filters"):
+                await self.update(rid, functional_plot_version=functional.VERSION, visual_material_kind="functional_traces")
             self.health.record("resources", "healthy" if resources["status"] == "available" else "unknown" if resources["status"] == "not_applicable" else "degraded" if resources["status"] == "partial" else "unavailable", time.monotonic() - started,
                 details={"coverage": resources.get("coverage", {}), "status": resources["status"]})
             self.health.count("resources_completed")
@@ -261,7 +287,7 @@ class ResultsRuntime:
 
     async def close(self):
         await self.health.close()
-        tasks = list(self.tasks.values())
+        tasks = list(self.tasks.values()) + list(self.plot_refresh_tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -314,6 +340,7 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
         value = await asyncio.to_thread(runtime.store.get, str(result_id))
         if value is None:
             raise HTTPException(404, "Result not found.")
+        value = await runtime.refresh_saved_functional_plot(str(result_id), value)
         return JSONResponse(value, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/functional/{path:path}")
