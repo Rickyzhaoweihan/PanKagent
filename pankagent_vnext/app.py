@@ -26,6 +26,8 @@ from .evidence_status import (outcome_message, confirmation_eligible, query_read
                               required_query_steps, checked_query_result, QUERY_READINESS_VERSION)
 from .audit import InteractionRequest, deployment_identity, recorder
 from .config import Settings
+from .persistence import SerializedPersistence, PersistenceBusy, AdmissionContinuations
+from .ownership import OwnershipError
 from .health import HealthMonitor, Metrics, error_category
 from .literature_policy import apply_literature_policy, preserve_revision_preference
 from .plan_constraints import repair_step_constraints
@@ -154,44 +156,74 @@ class Runtime:
         if hasattr(gateway, "repair_cypher"):
             self.graph.query_repair = gateway.repair_cypher
         self.store = Store(settings.state_dir)
+        self.io = SerializedPersistence("pank-agent-storage")
+        self.owner_task = None
+        self.admission = AdmissionContinuations()
         self.audit_identity = deployment_identity(settings)
         self.tasks: dict[str, asyncio.Task] = {}
         self.started_graph_checks: dict[str, set[str]] = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
         self.active = 0
         self.metrics = Metrics()
-        self.health = HealthMonitor(settings, gateway, graph, literature, self.store, self.queue_snapshot)
+        self.health = HealthMonitor(settings, gateway, graph, literature, self.store, self.queue_snapshot, io=self.io)
         self.shutting_down = False
         self.auto_proceed_tasks = set()
+
+    async def start(self):
+        await self.io.call(self.store.acquire_owner)
+        await self.io.call(self.store.interrupt_active, recovery=True)
+        await self.health.refresh_persistence()
+        self.owner_task = asyncio.create_task(self.maintain_owner())
+        self.health.start()
+
+    async def maintain_owner(self):
+        try:
+            while True:
+                await asyncio.sleep(10)
+                await self.io.call(self.store.renew_owner)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.shutting_down = True
+            if self.store.owner:
+                self.store.owner.state = "lost"
+            # The successor will mark expired-owner work interrupted. We must
+            # never write past the fence or restart uncertain provider requests.
+            for task in list(self.tasks.values()):
+                task.cancel()
 
     def schedule_auto_proceed(self, run_id, seconds):
         """Only an explicit request option authorizes the checked-plan timer."""
         async def later():
             await asyncio.sleep(seconds)
-            run = self.store.get(run_id)
+            run = (await self.io.call(self.store.get, run_id))
             if self.shutting_down or not run or run['status'] != 'awaiting_confirmation':
                 return
             try:
                 await self.confirm_plan(run['plan_id'])
-                self.store.audit_event(run_id, 'auto_proceeded', {'delay_seconds':seconds,'authorization':'request_option'})
+                (await self.io.call(self.store.audit_event, run_id, 'auto_proceeded', {'delay_seconds':seconds,'authorization':'request_option'}))
             except HTTPException as exc:
-                self.store.audit_event(run_id, 'auto_proceed_skipped', {'http_status':exc.status_code})
+                (await self.io.call(self.store.audit_event, run_id, 'auto_proceed_skipped', {'http_status':exc.status_code}))
         task=asyncio.create_task(later())
         self.auto_proceed_tasks.add(task)
         task.add_done_callback(self.auto_proceed_tasks.discard)
 
     def queue_snapshot(self):
-        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped}
+        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped, "owner_state": self.store.owner.snapshot()["state"] if self.store.owner else "unclaimed", "owner_epoch": self.store.owner.epoch if self.store.owner else None, "persistence_queue_depth": self.io.pending}
 
     def check_capacity(self, replacing=None):
+        if self.store.owner and self.store.owner.snapshot()["state"] != "active":
+            raise HTTPException(503, "The service no longer owns its execution lease.")
         queued = len(self.tasks) - int(replacing in self.tasks)
         if self.shutting_down or queued >= self.settings.max_concurrent + getattr(self.settings, "max_queue", 8):
             raise HTTPException(429, "The development queue is full; retry shortly.", headers={"Retry-After": "2"})
-        budget = self.health.budget_snapshot()
+        budget = self.gateway.budget.snapshot()
         if not budget or budget.get("remaining_usd", 0) <= 0:
             raise HTTPException(503, "The development evaluation budget is unavailable or exhausted.")
 
     def check_active(self, run_id: str):
+        if self.shutting_down or (self.store.owner and self.store.owner.snapshot()["state"] != "active"):
+            raise asyncio.CancelledError
         # Some upstream clients suppress task cancellation while cleaning up.
         # A terminal durable state remains authoritative even if they return.
         if self.store.get(run_id)["status"] in TERMINAL:
@@ -199,7 +231,7 @@ class Runtime:
 
     def launch(self, run_id: str, coroutine):
         async def audited():
-            token = recorder.set(lambda kind, payload: self.store.audit_event(run_id, kind, payload))
+            token = recorder.set(lambda kind, payload: self.io.record(self.store.audit_event, run_id, kind, payload, on_drop=self.store.audit_drop))
             try:
                 return await coroutine
             finally:
@@ -217,21 +249,21 @@ class Runtime:
         task.add_done_callback(finished)
 
     async def emit(self, run_id: str, event_type: str, payload: dict):
-        run = self.store.get(run_id)
+        run = (await self.io.call(self.store.get, run_id))
         if run["status"] in TERMINAL:
             return
         stage = payload.get("stage") if event_type == "progress" else None
         if stage in {"planning", "resolving_entities", "preparing_preview", "preparing_execution", "reusing_preview", "generating_cypher", "validating", "querying_graph", "writing_answer", "searching_literature", "queued"}:
-            self.store.update(run_id, stage=stage)
-        self.store.event(run_id, event_type, payload)
+            (await self.io.call(self.store.update_if_active, run_id, stage=stage))
+        (await self.io.call(self.store.event_if_active, run_id, event_type, payload))
 
     async def heartbeat(self, run_id: str):
         while True:
             await asyncio.sleep(self.settings.heartbeat_seconds)
-            run = self.store.get(run_id)
+            run = (await self.io.call(self.store.get, run_id))
             if run is None or run["status"] not in ACTIVE:
                 return
-            self.store.event(run_id, "heartbeat", {"activity": run["stage"]})
+            (await self.io.call(self.store.event_if_active, run_id, "heartbeat", {"activity": run["stage"]}))
 
     def planning_history(self, run):
         from .revision_context import parent_context
@@ -259,44 +291,54 @@ class Runtime:
         claude_pending = False
         try:
             async with self.semaphore:
-                self.check_active(run_id)
+                (await self.io.call(self.check_active, run_id))
                 self.active += 1
                 entered = True
-                run = self.store.get(run_id)
+                run = (await self.io.call(self.store.get, run_id))
                 await self.emit(run_id, "progress", {"stage": "planning"})
+                from .metadata_guard import recovery as metadata_recovery
+                unsupported_metadata = metadata_recovery(
+                    {"question": run["question"]}, self.settings.graph_version)
+                if unsupported_metadata:
+                    (await self.io.call(self._terminal, run_id, "failed", error={
+                        "category": unsupported_metadata["category"],
+                        "message": unsupported_metadata["message"],
+                        "recovery": unsupported_metadata}))
+                    self.metrics.count("plans_metadata_blocked")
+                    return
                 from .planning_fastpath import literature_only_revision, enable_literature
-                metadata = self.store.audit_metadata(run_id) or {}
-                parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
+                metadata = (await self.io.call(self.store.audit_metadata, run_id)) or {}
+                parent = (await self.io.call(self.store.get, metadata.get("parent_run_id"))) if metadata.get("parent_run_id") else None
                 instruction = metadata.get('revision_instruction') or run['question']
                 grounding = None
                 fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
                 if fast:
                     proposed = deepcopy(parent['plan'])
                     self.metrics.count('planning_model_bypassed')
-                    self.store.audit_event(run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'})
+                    (await self.io.call(self.store.audit_event, run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'}))
                 else:
                     claude_pending = True
                     plan_options = {}
                     if hasattr(self.graph, 'ground_question'):
                         grounding_started = time.monotonic()
                         grounding = await self.graph.ground_question(run['question'])
-                        self.store.audit_event(run_id, 'preplanning_grounding', grounding)
+                        (await self.io.call(self.store.audit_event, run_id, 'preplanning_grounding', grounding))
                         self.metrics.observe('preplanning_grounding', time.monotonic() - grounding_started)
                         import inspect
                         if 'grounding' in inspect.signature(self.gateway.plan).parameters:
                             plan_options['grounding'] = grounding
                     model_started = time.monotonic()
-                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], self.planning_history(run), **plan_options), self.settings.plan_timeout)
+                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
-                    self.check_active(run_id)
+                    (await self.io.call(self.check_active, run_id))
                     if proposed.get('planning_route', {}).get('claude_calls') == 0:
                         self.metrics.count('planning_model_bypassed')
-                        self.store.audit_event(run_id, 'planning_model_bypassed', proposed['planning_route'])
+                        (await self.io.call(self.store.audit_event, run_id, 'planning_model_bypassed', proposed['planning_route']))
                     else:
                         self.health.record_inference("claude", True)
                     claude_pending = False
                 from .plan_recovery import recover_empty_plan
-                proposed = await recover_empty_plan(self.gateway, proposed, run["question"], self.planning_history(run), self.settings.plan_timeout, grounding=grounding)
+                proposed = await recover_empty_plan(self.gateway, proposed, run["question"], (await self.io.call(self.planning_history, run)), self.settings.plan_timeout, grounding=grounding)
                 plan = normalize_plan(proposed)
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
@@ -312,35 +354,35 @@ class Runtime:
                 plan["contract_sha256"] = CONTRACT_DIGEST
                 plan["original_question"] = metadata.get("original_question", run["question"])
                 plan["include_context"] = run["include_context"]
-                self.store.update(run_id, plan=plan)
+                (await self.io.call(self.store.update_if_active, run_id, plan=plan))
                 preview_started = time.monotonic()
                 try:
                     await asyncio.wait_for(self.preflight(run_id, plan), self.settings.grouped_preview_timeout)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    self.check_active(run_id)
+                    (await self.io.call(self.check_active, run_id))
                     error = safe_error(exc)
                     if isinstance(exc, TimeoutError):
-                        component = "cypher" if self.store.get(run_id)["stage"] == "generating_cypher" else "neo4j"
+                        component = "cypher" if (await self.io.call(self.store.get, run_id))["stage"] == "generating_cypher" else "neo4j"
                         self.health.record_inference(component, False, "timeout")
                     self.metrics.count("preview_preparation_errors")
-                    current = self.store.get(run_id)
+                    current = (await self.io.call(self.store.get, run_id))
                     plan = current["plan"]
                     previous = {step["step_id"]: step for step in (current["preview"] or {}).get("evidence", {}).get("steps", [])}
                     for step in plan["steps"]:
                         previous.setdefault(step["id"], self.failed_step(step, error))
                     previous = {step["id"]: previous[step["id"]] for step in plan["steps"]}
                     cache = current["preview_cache"] or {"identity": None, "step_completed_epochs": {}}
-                    self.save_preview(run_id, previous, cache, error=error, preparation_complete=True)
+                    (await self.io.call(self.save_preview, run_id, deepcopy(previous), deepcopy(cache), error=error, preparation_complete=True))
                 finally:
                     self.metrics.observe("preview", time.monotonic() - preview_started)
-                self.check_active(run_id)
-                current = self.store.get(run_id)
+                (await self.io.call(self.check_active, run_id))
+                current = (await self.io.call(self.store.get, run_id))
                 if not confirmation_eligible(current["plan"], current.get("preview")):
                     recovery = self.preview_recovery(current)
-                    self._terminal(run_id, "failed", error={"category": recovery["category"],
-                        "message": recovery["message"], "recovery": recovery})
+                    (await self.io.call(self._terminal, run_id, "failed", error={"category": recovery["category"],
+                        "message": recovery["message"], "recovery": recovery}))
                     self.metrics.count("plans_query_blocked")
                     return
                 plan = current["plan"]
@@ -350,30 +392,30 @@ class Runtime:
                     claude_pending = True
                     review = await asyncio.wait_for(self.gateway.review_grounded_plan(
                         run['question'], plan, current['preview']), min(20, self.settings.plan_timeout))
-                    self.check_active(run_id)
+                    (await self.io.call(self.check_active, run_id))
                     self.health.record_inference('claude', True)
                     claude_pending = False
                     self.metrics.observe('post_retrieval_plan_verification', time.monotonic() - review_started)
-                    self.store.audit_event(run_id, 'post_retrieval_plan_verification', review)
+                    (await self.io.call(self.store.audit_event, run_id, 'post_retrieval_plan_verification', review))
                     if not review['approved']:
                         reasons = ' '.join(str(item.get('reason', '')) for item in review.get('issues', [])[:2])
-                        self._terminal(run_id, 'failed', error={'category': 'plan_scope_verification_failed',
-                            'message': 'The prepared search did not pass its scope check. ' + reasons})
+                        (await self.io.call(self._terminal, run_id, 'failed', error={'category': 'plan_scope_verification_failed',
+                            'message': 'The prepared search did not pass its scope check. ' + reasons}))
                         return
                 plan["review_ready"] = True
-                self.store.update(run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation")
-                self.store.event(run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,
+                (await self.io.call(self.store.update_if_active, run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation"))
+                (await self.io.call(self.store.event_if_active, run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,
                     "validation_scope": "Only the verified checks succeeded; remaining checks are unavailable." if current["preview"]["query_readiness"].get("partial_ready") else "required graph queries executed successfully; zero matches are valid checked outcomes",
-                    "query_readiness": current["preview"]["query_readiness"]})
-                self.store.event(run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": plan, "preview": current["preview"]})
-                delay = (self.store.audit_metadata(run_id) or {}).get('requested_options',{}).get('auto_proceed_seconds')
+                    "query_readiness": current["preview"]["query_readiness"]}))
+                (await self.io.call(self.store.event_if_active, run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": plan, "preview": current["preview"]}))
+                delay = ((await self.io.call(self.store.audit_metadata, run_id)) or {}).get('requested_options',{}).get('auto_proceed_seconds')
                 if delay and not current['preview']['query_readiness']['blocked_step_ids']:
-                    self.store.event(run_id, 'auto_proceed_scheduled', {'delay_seconds':delay,'plan_id':run['plan_id']})
+                    (await self.io.call(self.store.event_if_active, run_id, 'auto_proceed_scheduled', {'delay_seconds':delay,'plan_id':run['plan_id']}))
                     self.schedule_auto_proceed(run_id, delay)
                 self.metrics.count("plans_ready")
                 self.metrics.observe("plan_ready", time.monotonic() - started)
         except asyncio.CancelledError:
-            self._cancelled(run_id)
+            (await self.io.call(self._cancelled, run_id))
             raise
         except Exception as exc:
             error = safe_error(exc)
@@ -381,7 +423,7 @@ class Runtime:
                 self.health.record_inference("claude", False, error["category"])
             else:
                 self.metrics.count("plan_preparation_errors")
-            self._terminal(run_id, "failed", error=error)
+            (await self.io.call(self._terminal, run_id, "failed", error=error))
         finally:
             if entered:
                 self.active -= 1
@@ -420,6 +462,7 @@ class Runtime:
         return linkage
 
     def save_preview(self, run_id, previous, cache, *, error=None, preparation_complete=False):
+        self.check_active(run_id)
         linkage = self.annotate_plan_evidence(self.store.get(run_id)['plan'] or {}, previous)
         evidence = aggregate_evidence(previous)
         if linkage.get('groups'):
@@ -462,20 +505,20 @@ class Runtime:
         return preview
 
     async def execute_step(self, run_id, step, previous, before_query=None):
-        self.check_active(run_id)
+        (await self.io.call(self.check_active, run_id))
         prior_generation = getattr(self.graph, "last_generation_success", None)
         prior_query = getattr(self.graph, "last_query_success", None)
-        tracking = self.store.get(run_id)["status"] == "running"
+        tracking = (await self.io.call(self.store.get, run_id))["status"] == "running"
         if tracking:
             self.started_graph_checks.setdefault(run_id, set()).add(step["id"])
         try:
             async def progress(kind, payload):
                 if before_query and payload.get('stage') == 'querying_graph':
                     await before_query()
-                    self.check_active(run_id)
+                    (await self.io.call(self.check_active, run_id))
                 await self.emit(run_id, kind, payload)
             result = await self.graph.execute(step, previous, progress)
-            self.check_active(run_id)
+            (await self.io.call(self.check_active, run_id))
             result.setdefault("step_id", step["id"])
             result.setdefault("question", step["question"])
             if result.get("status") != "failed":
@@ -497,7 +540,7 @@ class Runtime:
             raise
         except Exception as exc:
             error = safe_error(exc)
-            component = "cypher" if self.store.get(run_id)["stage"] == "generating_cypher" else "neo4j"
+            component = "cypher" if (await self.io.call(self.store.get, run_id))["stage"] == "generating_cypher" else "neo4j"
             self.health.record_inference(component, False, error["category"])
             return self.failed_step(step, error)
 
@@ -509,26 +552,26 @@ class Runtime:
                 plan = normalize_plan(await asyncio.wait_for(
                     self.graph.prepare_plan(deepcopy(plan), lambda kind, payload: self.emit(run_id, kind, payload)),
                     self.settings.preview_timeout))
-                self.check_active(run_id)
+                (await self.io.call(self.check_active, run_id))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
-            self.store.update(run_id, plan=plan)
+            (await self.io.call(self.store.update_if_active, run_id, plan=plan))
         plan.pop('review_ready', None)
-        self.store.update(run_id, plan=plan)
+        (await self.io.call(self.store.update_if_active, run_id, plan=plan))
         cache = {"identity": self.preview_identity(plan), "step_completed_epochs": {}, "step_identities": {}}
         previous = {}
         if plan.get("clarification"):
-            metadata = self.store.audit_metadata(run_id) or {}
-            parent = self.store.get(metadata.get("parent_run_id")) if plan.get('retained_previous_plan') and metadata.get('parent_run_id') else None
+            metadata = (await self.io.call(self.store.audit_metadata, run_id)) or {}
+            parent = (await self.io.call(self.store.get, metadata.get("parent_run_id"))) if plan.get('retained_previous_plan') and metadata.get('parent_run_id') else None
             if parent:
                 previous = {s['step_id']: deepcopy(s) for s in ((parent.get('preview') or {}).get('evidence') or {}).get('steps', [])}
-            self.save_preview(run_id, previous, {"identity": None, "step_completed_epochs": {}}, preparation_complete=True)
+            (await self.io.call(self.save_preview, run_id, previous, {"identity": None, "step_completed_epochs": {}}, preparation_complete=True))
             return
-        metadata = self.store.audit_metadata(run_id) or {}
-        parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
+        metadata = (await self.io.call(self.store.audit_metadata, run_id)) or {}
+        parent = (await self.io.call(self.store.get, metadata.get("parent_run_id"))) if metadata.get("parent_run_id") else None
         parent_cache = (parent or {}).get("preview_cache") or {}
         parent_steps = {s["step_id"]: s for s in (((parent or {}).get("preview") or {}).get("evidence") or {}).get("steps", [])}
         reused = set()
@@ -545,7 +588,7 @@ class Runtime:
                 await done[dependency].wait()
             if step['id'] not in required_ids:
                 await primary_tasks_done.wait()
-            self.check_active(run_id)
+            (await self.io.call(self.check_active, run_id))
             fingerprint = self.preview_identity({"steps": [step], "contract_sha256": CONTRACT_DIGEST})
             old = parent_steps.get(step["id"], {})
             epoch = parent_cache.get("step_completed_epochs", {}).get(step["id"], 0)
@@ -570,12 +613,12 @@ class Runtime:
                     async with execution_slots:
                         result = await self.execute_step(run_id, step, previous)
                 epoch = time.time()
-            self.check_active(run_id)
+            (await self.io.call(self.check_active, run_id))
             result.setdefault('purpose', step.get('purpose', 'primary'))
             previous[step["id"]] = result
             cache["step_completed_epochs"][step["id"]] = epoch
             cache["step_identities"][step["id"]] = fingerprint
-            preview = self.save_preview(run_id, previous, cache)
+            preview = (await self.io.call(self.save_preview, run_id, deepcopy(previous), deepcopy(cache)))
             await self.emit(run_id, "preview_step", {"step_id": step["id"], "evidence": previous[step["id"]], "preview": preview})
             done[step['id']].set()
             remaining_required.discard(step['id'])
@@ -598,7 +641,7 @@ class Runtime:
         if self.preview_identity(plan) != cache["identity"]:
             cache["identity"] = None
         previous = {step['id']: previous[step['id']] for step in preview_steps}
-        self.save_preview(run_id, previous, cache, preparation_complete=True)
+        (await self.io.call(self.save_preview, run_id, deepcopy(previous), deepcopy(cache), preparation_complete=True))
 
     def preview_recovery(self, run, reason=None):
         """Return the existing popup contract without labeling an empty result failed."""
@@ -692,7 +735,7 @@ class Runtime:
         issue = self.confirmation_preview_issue(run, check_freshness=False)
         if issue:
             recovery = self.preview_recovery(run, issue)
-            self.store.update(run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
+            (await self.io.call(self.store.update_if_active, run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery}))
             raise ValueError('checked_preview_identity_changed')
         previous = {}
         required_ids = {step['id'] for step in required_query_steps(run['plan'])}
@@ -707,7 +750,7 @@ class Runtime:
                 if index: await done[run['plan']['steps'][index-1]['id']].wait()
             for dependency in step.get('depends_on', []):
                 await done[dependency].wait()
-            self.check_active(run_id)
+            (await self.io.call(self.check_active, run_id))
             try:
                 matching = bool(cache.get("identity")) and cache["identity"] == self.preview_identity(run["plan"])
             except Exception:
@@ -720,7 +763,7 @@ class Runtime:
                 and cached.get('status') in {'failed','blocked','unavailable'})
             if reason is not None and step['id'] in required_ids and not accepted_failed:
                 recovery = self.preview_recovery(run, reason)
-                self.store.update(run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
+                (await self.io.call(self.store.update_if_active, run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery}))
                 raise ValueError('checked_preview_identity_changed')
             if accepted_failed:
                 previous[step["id"]] = deepcopy(cached)
@@ -744,7 +787,7 @@ class Runtime:
                 previous[step["id"]] = result
             evidence = aggregate_evidence(previous)
             evidence["preview_reuse"] = reuse_info
-            self.store.update(run_id, evidence=evidence)
+            (await self.io.call(self.store.update_if_active, run_id, evidence=evidence))
             await self.emit(run_id, "graph_step", {"step_id": step["id"], "evidence": previous[step["id"]], "reused_preview": reason is None})
 
             done[step['id']].set()
@@ -778,10 +821,10 @@ class Runtime:
         if population_issue:
             evidence["recovery"] = population_issue
             evidence["population_completeness"] = population_issue["evidence"]
-            self.store.update(run_id, evidence=evidence, error={
+            (await self.io.call(self.store.update_if_active, run_id, evidence=evidence, error={
                 "category": population_issue["category"], "message": population_issue["message"],
-                "recovery": population_issue})
-            self.store.audit_event(run_id, "population_answer_guard", population_issue["evidence"])
+                "recovery": population_issue}))
+            (await self.io.call(self.store.audit_event, run_id, "population_answer_guard", population_issue["evidence"]))
         status_message = population_issue["message"] if population_issue else outcome_message(previous)
         async def tokens():
             missing = [step for step in previous.values() if step.get('purpose') != 'context' and step.get('status') in {'failed','blocked','unavailable'}]
@@ -799,21 +842,21 @@ class Runtime:
             if not status_message and hasattr(self.gateway, "prepare_answer"):
                 prepared = self.gateway.prepare_answer(question, previous)
                 evidence["answer_profile"] = prepared.profile
-                self.store.update(run_id, evidence=evidence)
+                (await self.io.call(self.store.update_if_active, run_id, evidence=evidence))
                 self.metrics.observe("answer_skill_selection", prepared.profile["timing_ms"]["total"] / 1000)
                 self.metrics.count("answer_skill_cache_hit" if prepared.profile["cache_hit"] else "answer_skill_cache_miss")
                 await self.emit(run_id, "answer_profile", {"profile": prepared.profile})
                 options["prepared"] = prepared
             synthesis_started = not bool(status_message)
             async for token in tokens():
-                self.check_active(run_id)
+                (await self.io.call(self.check_active, run_id))
                 visible = citation_filter.feed(token)
                 if visible:
                     answer += visible
-                    self.store.update(run_id, graph_answer=answer)
+                    (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
                     await self.emit(run_id, "graph_answer", {"text": visible, "delta": True})
             tail = citation_filter.feed("", final=True)
-            self.check_active(run_id)
+            (await self.io.call(self.check_active, run_id))
             if tail:
                 answer += tail
                 await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
@@ -856,13 +899,13 @@ class Runtime:
                 footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
                 answer += footer
                 reference_validation["application_fallback"] = True
-                self.store.update(run_id, graph_answer=answer)
+                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
                 await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
         evidence["follow_up_questions"] = [] if status_message else followup_questions(previous)
         evidence["answer_reference_validation"] = reference_validation
         if synthesis_error:
             evidence["synthesis_error"] = synthesis_error
-        self.store.update(run_id, graph_answer=answer, evidence=evidence)
+        (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer, evidence=evidence))
         await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
         return evidence, not population_issue and synthesis_error is None and evidence["completeness"] != "partial" and not citation_filter.invalid
 
@@ -876,18 +919,18 @@ class Runtime:
         started = time.monotonic()
         try:
             async with self.semaphore:
-                self.check_active(run_id)
+                (await self.io.call(self.check_active, run_id))
                 self.active += 1
                 entered = True
-                run = self.store.update(run_id, status="running", stage="preparing_execution")
+                run = (await self.io.call(self.store.update_if_active, run_id, status="running", stage="preparing_execution"))
                 await self.emit(run_id, "progress", {"stage": "preparing_execution"})
 
                 async def literature_emit(kind, payload):
-                    self.check_active(run_id)
+                    (await self.io.call(self.check_active, run_id))
                     if kind == "literature_perspective":
                         literature_perspectives.append(payload)
                         if graph_visible:
-                            self.store.update(run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)})
+                            (await self.io.call(self.store.update_if_active, run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)}))
                             await self.emit(run_id, kind, payload)
                         else:
                             literature_buffer.append((kind, payload))
@@ -896,7 +939,7 @@ class Runtime:
 
                 async def retrieve_literature():
                     try:
-                        answer = await asyncio.wait_for(self.literature.search(run["plan"].get("interpreted_question", run["question"]), self.store.history(run["session_id"]), literature_emit), self.settings.literature_timeout)
+                        answer = await asyncio.wait_for(self.literature.search(run["plan"].get("interpreted_question", run["question"]), (await self.io.call(self.store.history, run["session_id"])), literature_emit), self.settings.literature_timeout)
                         self.health.record_inference("hirn", answer.get("status") not in {"failed", "unavailable", "timeout"})
                         return answer
                     except asyncio.CancelledError:
@@ -912,7 +955,7 @@ class Runtime:
                     raise
                 except Exception as exc:
                     error = safe_error(exc)
-                    current = self.store.get(run_id)
+                    current = (await self.io.call(self.store.get, run_id))
                     if (current.get('error') or {}).get('category') == 'preview_revalidation_required':
                         error = current['error']
                     answer = current["graph_answer"] or error["message"]
@@ -920,41 +963,41 @@ class Runtime:
                     evidence = complete_interrupted_evidence(run["plan"], current["evidence"], error,
                         self.started_graph_checks.get(run_id, set()))
                     evidence["error"] = error
-                    self.store.update(run_id, graph_answer=answer, evidence=evidence, error=error)
+                    (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer, evidence=evidence, error=error))
                     await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
                     graph_ok = False
                 from .literature_gate import literature_gate, VERSION as LITERATURE_GATE_VERSION
-                current = self.store.get(run_id)
+                current = (await self.io.call(self.store.get, run_id))
                 allowed, gate_reason = literature_gate(run["plan"], current.get("evidence") or {}, current.get("graph_answer"))
-                self.store.event(run_id, "literature_gate", {"allowed": allowed, "reason": gate_reason, "version": LITERATURE_GATE_VERSION})
+                (await self.io.call(self.store.event_if_active, run_id, "literature_gate", {"allowed": allowed, "reason": gate_reason, "version": LITERATURE_GATE_VERSION}))
                 if allowed and graph_ok:
-                    self.store.event(run_id, "progress", {"stage": "searching_literature", "parallel": False})
+                    (await self.io.call(self.store.event_if_active, run_id, "progress", {"stage": "searching_literature", "parallel": False}))
                     literature_task = asyncio.create_task(retrieve_literature())
                 graph_visible = True
                 self.metrics.observe("graph_answer", time.monotonic() - started)
                 if literature_perspectives:
-                    self.store.update(run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)})
+                    (await self.io.call(self.store.update_if_active, run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)}))
                 for kind, payload in literature_buffer:
                     await self.emit(run_id, kind, payload)
                 if literature_task:
                     if not literature_task.done():
                         await self.emit(run_id, "progress", {"stage": "searching_literature"})
                     literature_answer = await literature_task
-                    self.check_active(run_id)
-                    self.store.update(run_id, literature=literature_answer)
+                    (await self.io.call(self.check_active, run_id))
+                    (await self.io.call(self.store.update_if_active, run_id, literature=literature_answer))
                     await self.emit(run_id, "literature_complete", literature_answer)
                     literature_ok = literature_answer.get("status") not in {"failed", "unavailable", "timeout", "partial"}
                 else:
                     literature_answer = {"status": "not_requested", "perspectives": [], "reason": gate_reason if graph_ok else "graph_answer_failed", "policy_version": LITERATURE_GATE_VERSION}
-                    self.store.update(run_id, literature=literature_answer)
+                    (await self.io.call(self.store.update_if_active, run_id, literature=literature_answer))
                     literature_ok = True
                 self.metrics.observe("run_complete", time.monotonic() - started)
-                self._terminal(run_id, "completed" if graph_ok and literature_ok else "partial")
+                (await self.io.call(self._terminal, run_id, "completed" if graph_ok and literature_ok else "partial"))
         except asyncio.CancelledError:
-            self._cancelled(run_id)
+            (await self.io.call(self._cancelled, run_id))
             raise
         except Exception as exc:
-            self._terminal(run_id, "failed", error=safe_error(exc))
+            (await self.io.call(self._terminal, run_id, "failed", error=safe_error(exc)))
         finally:
             self.started_graph_checks.pop(run_id, None)
             if entered:
@@ -966,7 +1009,9 @@ class Runtime:
 
     async def close(self):
         self.shutting_down = True
-        self.store.interrupt_active(self.started_graph_checks)
+        await self.admission.close()
+        if self.store.owner and self.store.owner.snapshot()["state"] == "active":
+            await self.io.call(self.store.interrupt_active, self.started_graph_checks)
         for task in self.tasks.values():
             task.cancel()
         await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
@@ -975,7 +1020,13 @@ class Runtime:
         await asyncio.gather(*self.auto_proceed_tasks, return_exceptions=True)
         await self.health.stop()
         await asyncio.gather(*(adapter.close() for adapter in (self.gateway, self.graph, self.literature)), return_exceptions=True)
-        self.store.close()
+        if self.owner_task:
+            self.owner_task.cancel()
+            await asyncio.gather(self.owner_task, return_exceptions=True)
+        if self.store.owner:
+            await self.io.call(self.store.release_owner)
+        await self.io.call(self.store.close)
+        await self.io.close()
 
 
 def create_app(settings=None, gateway=None, graph=None, literature=None) -> FastAPI:
@@ -993,8 +1044,15 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
 
     @asynccontextmanager
     async def lifespan(app):
-        runtime.store.interrupt_active()
-        runtime.health.start()
+        try:
+            await runtime.start()
+        except BaseException:
+            # A refused second owner must not run shutdown recovery/release on
+            # behalf of the existing owner.
+            await runtime.io.call(runtime.store.close)
+            await runtime.io.close()
+            await asyncio.gather(*(adapter.close() for adapter in (runtime.gateway, runtime.graph, runtime.literature)), return_exceptions=True)
+            raise
         warm_task = None
         if hasattr(runtime.graph, 'ground_question'):
             from .preplanning_grounding import warm_grounding
@@ -1019,6 +1077,11 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
     app.add_middleware(JSONResponseLimitMiddleware)
     app.state.runtime = runtime
 
+    @app.exception_handler(OwnershipError)
+    @app.exception_handler(PersistenceBusy)
+    async def persistence_unavailable(request, exc):
+        return JSONResponse({"detail": "Service persistence is temporarily unavailable."}, status_code=503, headers={"Retry-After": "2"})
+
     def get_run(run_id):
         run = runtime.store.get(run_id)
         if run is None:
@@ -1038,65 +1101,79 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                 pass
         raise HTTPException(403, "Operator access required.")
 
+    def admitted(function):
+        from functools import wraps
+        @wraps(function)
+        async def wrapped(*args, **kwargs):
+            return await runtime.admission.run(function, *args, **kwargs)
+        return wrapped
+
     @app.post("/v2/plans", status_code=202)
+    @admitted
     async def plan(body: PlanRequest, request: Request):
         if body.event_source != "user":
             operator(request)
-        runtime.check_capacity()
+        (await runtime.io.call(runtime.check_capacity))
         question = body.question.strip()
         if not question:
             raise HTTPException(422, "Question must not be blank.")
         try:
-            run = runtime.store.create(question, body.session_id, include_context=body.include_context,
+            run = (await runtime.io.call(runtime.store.create, question, body.session_id, include_context=body.include_context,
                 audit={"original_question": body.question, "source": body.event_source, "versions": runtime.audit_identity,
                        "requested_options": {"include_context": body.include_context, "auto_proceed_seconds":body.auto_proceed_seconds}},
-                legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None)
+                legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None))
         except KeyError:
             raise HTTPException(404, "Session not found.") from None
-        runtime.store.event(run["run_id"], "progress", {"stage": "queued"})
-        runtime.launch(run["run_id"], runtime.planning(run["run_id"]))
+        try:
+            await runtime.io.call(runtime.store.event_if_active, run["run_id"], "progress", {"stage": "queued"})
+        finally:
+            runtime.launch(run["run_id"], runtime.planning(run["run_id"]))
         runtime.metrics.count("plans_requested")
         return {key: run[key] for key in ("plan_id", "run_id", "session_id", "status")} | {"events_url": f'/v2/runs/{run["run_id"]}/events', "plan_url": f'/v2/plans/{run["plan_id"]}'}
 
     @app.post("/v2/plans/{plan_id}/revise", status_code=202)
+    @admitted
     async def revise(plan_id: str, body: RevisionRequest, request: Request):
         if body.event_source != "user":
             operator(request)
         question = body.question.strip()
         if not question:
             raise HTTPException(422, "Question must not be blank.")
-        old = runtime.store.by_plan(plan_id)
+        old = (await runtime.io.call(runtime.store.by_plan, plan_id))
         if old is None:
             raise HTTPException(404, "Plan not found.")
         if old["status"] not in {"planning", "awaiting_confirmation"}:
             raise HTTPException(409, "Only an unconfirmed plan can be revised; create a new plan.")
-        runtime.check_capacity(replacing=old["run_id"])
+        (await runtime.io.call(runtime.check_capacity, replacing=old["run_id"]))
         try:
-            old, run = runtime.store.revise(plan_id, question, include_context=body.include_context if "include_context" in body.model_fields_set else old["include_context"],
+            old, run = (await runtime.io.call(runtime.store.revise, plan_id, question, include_context=body.include_context if "include_context" in body.model_fields_set else old["include_context"],
                 audit={"source": body.event_source, "versions": runtime.audit_identity,
-                       "revision_instruction": body.revision_instruction, "revision_mode": body.revision_mode})
+                       "revision_instruction": body.revision_instruction, "revision_mode": body.revision_mode}))
         except ValueError:
             raise HTTPException(409, "This plan was already confirmed or ended.") from None
-        runtime.store.event(old["run_id"], "terminal", {"status": "superseded", "replacement_run_id": run["run_id"]})
         old_task = runtime.tasks.get(old["run_id"])
         if old_task:
             old_task.cancel()
-        runtime.store.event(run["run_id"], "progress", {"stage": "queued"})
-        runtime.launch(run["run_id"], runtime.planning(run["run_id"]))
+        try:
+            await runtime.io.call(runtime.store.event_if_active, old["run_id"], "terminal", {"status": "superseded", "replacement_run_id": run["run_id"]})
+            await runtime.io.call(runtime.store.event_if_active, run["run_id"], "progress", {"stage": "queued"})
+        finally:
+            runtime.launch(run["run_id"], runtime.planning(run["run_id"]))
         runtime.metrics.count("plans_revised")
         runtime.metrics.count("plans_requested")
         return {key: run[key] for key in ("plan_id", "run_id", "session_id", "status")} | {"events_url": f'/v2/runs/{run["run_id"]}/events', "plan_url": f'/v2/plans/{run["plan_id"]}'}
 
     @app.get("/v2/plans/{plan_id}")
     async def plan_state(plan_id: str):
-        run = runtime.store.by_plan(plan_id)
+        run = (await runtime.io.call(runtime.store.by_plan, plan_id))
         if run is None:
             raise HTTPException(404, "Plan not found.")
-        return public_run(runtime.store.snapshot(run["run_id"]))
+        return public_run((await runtime.io.call(runtime.store.snapshot, run["run_id"])))
 
     @app.post("/v2/plans/{plan_id}/confirm", status_code=202)
+    @admitted
     async def confirm(plan_id: str):
-        run = runtime.store.by_plan(plan_id)
+        run = (await runtime.io.call(runtime.store.by_plan, plan_id))
         if run is None:
             raise HTTPException(404, "Plan not found.")
         if run["status"] == "planning":
@@ -1111,16 +1188,18 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             issue = runtime.confirmation_preview_issue(run)
             if issue:
                 recovery = runtime.preview_recovery(run, issue)
-                runtime._terminal(run['run_id'], 'failed', error={'category': recovery['category'],
-                    'message': recovery['message'], 'recovery': recovery})
+                (await runtime.io.call(runtime._terminal, run['run_id'], 'failed', error={'category': recovery['category'],
+                    'message': recovery['message'], 'recovery': recovery}))
                 raise HTTPException(409, {'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
-            runtime.check_capacity()
-            if runtime.store.confirm(run["run_id"]):
-                runtime.store.event(run["run_id"], "progress", {"stage": "queued"})
-                runtime.launch(run["run_id"], runtime.execution(run["run_id"]))
+            (await runtime.io.call(runtime.check_capacity))
+            if (await runtime.io.call(runtime.store.confirm, run["run_id"])):
+                try:
+                    await runtime.io.call(runtime.store.event_if_active, run["run_id"], "progress", {"stage": "queued"})
+                finally:
+                    runtime.launch(run["run_id"], runtime.execution(run["run_id"]))
         elif run["status"] in {"cancelled", "interrupted", "failed", "superseded"}:
             raise HTTPException(409, "This run has ended; create a new plan.")
-        current = runtime.store.get(run["run_id"])
+        current = (await runtime.io.call(runtime.store.get, run["run_id"]))
         if current["status"] in {"cancelled", "interrupted", "failed", "superseded"}:
             raise HTTPException(409, "This run has ended; create a new plan.")
         return {"run_id": run["run_id"], "status": current["status"], "events_url": f'/v2/runs/{run["run_id"]}/events'}
@@ -1129,40 +1208,40 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
 
     @app.get("/v2/runs/{run_id}")
     async def run_state(run_id: str):
-        get_run(run_id)
-        return public_run(runtime.store.snapshot(run_id))
+        (await runtime.io.call(get_run, run_id))
+        return public_run((await runtime.io.call(runtime.store.snapshot, run_id)))
 
     @app.post("/v2/runs/{run_id}/cancel")
     async def cancel(run_id: str):
-        run = get_run(run_id)
-        runtime.store.audit_event(run_id, "cancellation_requested", {"stage": run["stage"], "status": run["status"], "upstream_completion": "unknown"})
+        run = (await runtime.io.call(get_run, run_id))
+        (await runtime.io.call(runtime.store.audit_event, run_id, "cancellation_requested", {"stage": run["stage"], "status": run["status"], "upstream_completion": "unknown"}))
         if run["status"] not in TERMINAL:
-            runtime._terminal(run_id, "cancelled")
+            (await runtime.io.call(runtime._terminal, run_id, "cancelled"))
             task = runtime.tasks.get(run_id)
             if task:
                 task.cancel()
-        return {"run_id": run_id, "status": runtime.store.get(run_id)["status"]}
+        return {"run_id": run_id, "status": (await runtime.io.call(runtime.store.get, run_id))["status"]}
 
     @app.post("/v2/runs/{run_id}/interactions")
     async def interaction(run_id: str, body: InteractionRequest, request: Request):
         operator(request)
-        get_run(run_id)
+        (await runtime.io.call(get_run, run_id))
         payload = body.model_dump(mode="json", exclude={"event_id", "kind"})
-        metadata = runtime.store.audit_metadata(run_id) or {}
+        metadata = (await runtime.io.call(runtime.store.audit_metadata, run_id)) or {}
         payload["source"] = metadata.get("source", "unknown")
-        status = runtime.store.audit_event(run_id, body.kind, payload, str(body.event_id))
+        status = (await runtime.io.call(runtime.store.audit_event, run_id, body.kind, payload, str(body.event_id)))
         runtime.metrics.count("audit_interactions_" + status)
         return JSONResponse({"version": 1, "status": status}, status_code=503 if status == "unavailable" else 200)
 
     @app.get("/v2/runs/{run_id}/audit")
     async def audit(run_id: str, request: Request):
         operator(request)
-        get_run(run_id)
-        return runtime.store.audit_snapshot(run_id)
+        (await runtime.io.call(get_run, run_id))
+        return (await runtime.io.call(runtime.store.audit_snapshot, run_id))
 
     @app.get("/v2/runs/{run_id}/events")
     async def events(run_id: str, request: Request, after: int = Query(default=0, ge=0)):
-        get_run(run_id)
+        (await runtime.io.call(get_run, run_id))
         try:
             cursor = max(after, int(request.headers.get("last-event-id", "0")))
         except ValueError:
@@ -1175,11 +1254,11 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             while True:
                 if await request.is_disconnected():
                     return
-                batch = runtime.store.events_after(run_id, cursor)
+                batch = (await runtime.io.call(runtime.store.events_after, run_id, cursor))
                 for event in batch:
                     cursor = event["sequence"]
                     yield sse_event_bytes(event)
-                if not batch and runtime.store.get(run_id)["status"] in TERMINAL:
+                if not batch and (await runtime.io.call(runtime.store.get, run_id))["status"] in TERMINAL:
                     return
                 await asyncio.sleep(0.1)
 

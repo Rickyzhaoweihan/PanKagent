@@ -76,28 +76,118 @@ def test_nested_embedded_json_and_unknown_payload_types_fail_closed():
         guard.check({'messages': [{'content': object()}]}, operation='stream')
 
 
-def test_create_stream_and_known_zero_reservations_are_guarded():
+def test_create_stream_and_known_zero_reservations_are_guarded(tmp_path):
+    from pankagent_vnext.budget import Budget
     calls = []
-    settlements = []
     async def create(**kwargs):
         calls.append(('create', kwargs)); return 'reply'
     def stream(**kwargs):
         calls.append(('stream', kwargs)); return 'manager'
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    async def reserve(purpose):
+        return await budget.areserve('claude-sonnet-5', purpose, 100, 100)
     gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=create, stream=stream)),
-        prepare_answer=lambda q, e: (q, e), _reserve=lambda *a: 'rid',
-        budget=SimpleNamespace(settle=lambda rid, usage: settlements.append((rid, usage))))
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
     guard = privacy.install(gateway)
-    gateway._reserve('synthesis')
-    with pytest.raises(privacy.OutboundPrivacyError):
-        gateway.client.messages.stream(**payload({'sample_id': 'private'}))
-    assert calls == [] and settlements == [('rid', {})]
-    gateway._reserve('plan')
-    assert asyncio.run(gateway.client.messages.create(**payload({'question': 'Show CFTR enrichment.'}))) == 'reply'
-    assert len(calls) == 1 and len(settlements) == 1
-    with pytest.raises(privacy.OutboundPrivacyError):
-        asyncio.run(gateway.client.messages.create(**payload({'age': 48})))
-    assert len(calls) == 1 and len(settlements) == 1
-    assert guard.events[-1]['operation'] == 'messages.create'
+
+    async def scenario():
+        try:
+            rid = await gateway._reserve('synthesis')
+            assert isinstance(rid, str)
+            with pytest.raises(privacy.OutboundPrivacyError):
+                gateway.client.messages.stream(**payload({'sample_id': 'private'}))
+            assert calls == []
+            # The snapshot is ordered after the synchronous factory's refund.
+            assert (await budget.asnapshot())['pending_calls'] == 0
+            with budget._db() as db:
+                assert db.execute('SELECT actual FROM usage WHERE id=?', (rid,)).fetchone() == (0,)
+
+            await gateway._reserve('plan')
+            public = payload({'question': 'Show CFTR enrichment.'})
+            before = deepcopy(public)
+            assert await gateway.client.messages.create(**public) == 'reply'
+            assert calls == [('create', before)] and public == before
+            # A later unreserved direct call cannot refund a transported call.
+            with pytest.raises(privacy.OutboundPrivacyError):
+                await gateway.client.messages.create(**payload({'age': 48}))
+            assert len(calls) == 1 and (await budget.asnapshot())['pending_calls'] == 1
+            assert guard.events[-1]['operation'] == 'messages.create'
+
+            rid = await gateway._reserve('verification')
+            with pytest.raises(privacy.OutboundPrivacyError):
+                await gateway.client.messages.create(**payload({'sample_id': 'private'}))
+            with budget._db() as db:
+                assert db.execute('SELECT actual FROM usage WHERE id=?', (rid,)).fetchone() == (0,)
+            assert len(calls) == 1 and (await budget.asnapshot())['pending_calls'] == 1
+        finally:
+            await budget.aclose()
+    asyncio.run(scenario())
+
+
+def test_awaited_reservations_remain_isolated_between_concurrent_guarded_calls(tmp_path):
+    from pankagent_vnext.budget import Budget
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    calls, reservations = [], {}
+    async def create(**kwargs):
+        calls.append(kwargs); return 'reply'
+    async def reserve(purpose):
+        return await budget.areserve('claude-sonnet-5', purpose, 100, 100)
+    gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=create, stream=lambda **kwargs: None)),
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
+    privacy.install(gateway)
+
+    async def scenario():
+        both_reserved = asyncio.Event()
+        async def operation(name, private):
+            reservations[name] = await gateway._reserve(name)
+            if len(reservations) == 2:
+                both_reserved.set()
+            await both_reserved.wait()
+            if private:
+                with pytest.raises(privacy.OutboundPrivacyError):
+                    await gateway.client.messages.create(**payload({'sample_id': 'private'}))
+            else:
+                assert await gateway.client.messages.create(**payload({'question': 'Show CFTR.'})) == 'reply'
+        try:
+            await asyncio.gather(operation('rejected', True), operation('allowed', False))
+            assert len(calls) == 1
+            with budget._db() as db:
+                values = dict(db.execute('SELECT id,actual FROM usage'))
+            assert values[reservations['rejected']] == 0
+            assert values[reservations['allowed']] is None
+        finally:
+            await budget.aclose()
+    asyncio.run(scenario())
+
+
+def test_stream_guard_still_refuses_when_refund_queue_is_full(tmp_path):
+    from pankagent_vnext.budget import Budget
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    calls = []
+    async def reserve(*args):
+        return await budget.areserve('claude-sonnet-5', 'fixture', 100, 100)
+    gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(
+        create=lambda **kwargs: None, stream=lambda **kwargs: calls.append(kwargs))),
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
+    privacy.install(gateway)
+
+    async def scenario():
+        acquired = 0
+        try:
+            await gateway._reserve('synthesis')
+            while budget.io.permits.acquire(blocking=False):
+                acquired += 1
+            with pytest.raises(privacy.OutboundPrivacyError):
+                gateway.client.messages.stream(**payload({'sample_id': 'private'}))
+            assert calls == []
+            # Failed refund admission must retain the reservation, never mark
+            # a blocked call transported or discard its financial bound.
+            assert budget.snapshot()['pending_calls'] == 1
+        finally:
+            for _ in range(acquired):
+                budget.io.permits.release()
+            await budget.aclose()
+    asyncio.run(scenario())
 
 
 def test_rejected_key_values_never_enter_guard_event_logs():

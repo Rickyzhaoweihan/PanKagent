@@ -41,6 +41,7 @@ from .semantic_registry import DIGEST as SEMANTIC_DIGEST
 from .release_schema import DIGEST as SCHEMA_DIGEST
 from .anatomy_paths import DIGEST as ANATOMY_PATH_DIGEST
 from .numeric_predicates import DIGEST as NUMERIC_PREDICATE_DIGEST
+from .metadata_guard import DIGEST as METADATA_GUARD_DIGEST
 from .ranking_contract import DIGEST as RANKING_CONTRACT_DIGEST
 from .endpoint_types import DIGEST as ENDPOINT_TYPE_DIGEST
 from .measurement_properties import DIGEST as DETECTION_PROPERTY_DIGEST
@@ -57,7 +58,7 @@ from .cypher_repair import VERSION as REPAIR_VERSION, DIGEST as REPAIR_DIGEST
 from pathlib import Path
 # Read source bytes rather than importing graph, which consumes this contract.
 VALIDATOR_DIGEST = hashlib.sha256(Path(__file__).with_name('graph.py').read_bytes()).hexdigest()
-DIGEST = hashlib.sha256(json.dumps({'patterns': PATTERN_DIGEST, 'template': TEMPLATE_DIGEST, 'repair': REPAIR_VERSION, 'repair_implementation': REPAIR_DIGEST, 'validator_implementation': VALIDATOR_DIGEST, 'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'cohort_scope': COHORT_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+DIGEST = hashlib.sha256(json.dumps({'patterns': PATTERN_DIGEST, 'template': TEMPLATE_DIGEST, 'repair': REPAIR_VERSION, 'repair_implementation': REPAIR_DIGEST, 'validator_implementation': VALIDATOR_DIGEST, 'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'cohort_scope': COHORT_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'metadata_guard': METADATA_GUARD_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
 
 
 def planner_notes():

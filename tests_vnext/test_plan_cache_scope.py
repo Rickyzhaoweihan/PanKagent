@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 """Cached plans keep the same semantic checks as fresh planning."""
 import asyncio
 from copy import deepcopy
@@ -14,8 +15,8 @@ def test_cache_revalidates_filters_and_versions_before_reusing_a_plan(monkeypatc
         import pankagent_vnext.planning_scope as scope
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
-        gateway.budget = SimpleNamespace(settle=lambda *_: None)
-        gateway._reserve = lambda *_: 'mock'
+        gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+        gateway._reserve = AsyncMock(return_value='mock')
         gateway.plan_cache = VerifiedCache()
         calls = []
         question = 'Show QTL evidence for GCLC in pancreas.'

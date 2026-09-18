@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PanKgraph Health</title><link rel="stylesheet" href="dashboard.css"><script defer src="dashboard.js"></script></head>
+<body><main><header><div class="eyebrow">PANKGRAPH · OPERATIONS</div><div class="heading"><div><h1>System health</h1><p>Frontend, APIs, agent and dependencies in one place.</p></div><div class="controls"><button id="refresh">Refresh view</button><button id="download">Download snapshot</button></div></div><p id="connection" role="status">Connecting to monitor…</p></header>
+<section id="summary" aria-label="Service overview" class="summary"></section>
+<section class="toolbar"><h2>Components</h2><label>View <select id="filter"><option value="all">All components</option><option value="attention">Needs attention</option><option value="operations">Recent operations</option></select></label></section>
+<p class="hint">Access checks and actual operation outcomes are shown separately. An idle operation can be unknown while its service is ready.</p>
+<div id="components" class="components"></div>
+<section><h2>Queues &amp; shared budget</h2><div id="capacity" class="summary"></div></section>
+<section><div class="toolbar"><h2>Observed history</h2><label>Window <select id="hours"><option value="1">1 hour</option><option value="24" selected>24 hours</option><option value="168">7 days</option></select></label></div><p id="coverage" class="hint"></p><div id="history"></div><p class="hint">Worst observed state per interval. Gaps and time before monitoring started are not counted as uptime.</p></section>
+<section><h2>Incidents</h2><p class="hint">Access-state changes are confirmed after two consecutive observations. Idle operations do not create incidents. Recovery closes an incident automatically.</p><div id="incidents"></div></section>
+<details><summary>Recorded service metrics</summary><div id="metrics"></div></details>
+<footer>Read-only monitoring · collector every 30 seconds · view every 15 seconds · 7-day bounded history<br>No model calls, scientific queries, automatic application restarts or external notifications.</footer>
+</main></body></html>

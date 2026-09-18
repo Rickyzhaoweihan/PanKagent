@@ -9,11 +9,13 @@ from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse, RedirectResponse
 
 from pankagent_vnext.app import CitationFilter, safe_error
 from pankagent_vnext.audit import InteractionRequest, recorder
 from pankagent_vnext.config import Settings
+from pankagent_vnext.persistence import SerializedPersistence, PersistenceBusy, AdmissionContinuations
+from pankagent_vnext.ownership import OwnershipError
 from pankagent_vnext.llm import ClaudeGateway, STYLE_VERSION
 from pankagent_vnext.evidence_status import outcome_message
 from pankagent_vnext.transport import JSONResponseLimitMiddleware
@@ -54,6 +56,9 @@ class ResultsRuntime:
     def __init__(self, settings, vnext, *, query=None, layout=None, resources=None, gateway=None, http=None):
         self.settings, self.vnext = settings, vnext
         self.store = ResultStore(settings.state_dir)
+        self.io = SerializedPersistence("pank-results-storage")
+        self.owner_task = None
+        self.shutting_down = False
         self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(15, read=90), follow_redirects=False)
         self.query = query or QueryService(vnext)
         self.layout = layout or LayoutService(max_nodes=settings.display_nodes, timeout_seconds=settings.layout_timeout)
@@ -63,11 +68,35 @@ class ResultsRuntime:
         # Both services open the SAME ledger with SQLite atomic reservations.
         self.gateway = gateway or ClaudeGateway(vnext)
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
-        self.admission = asyncio.Lock()
+        self.admission = AdmissionContinuations()
         self.tasks = {}
         self.plot_refresh_tasks = {}
         self.active = 0
         self.health = ResultsHealth(self)
+
+    async def start(self):
+        await self.io.call(self.store.acquire_owner)
+        await self.io.call(self.store.interrupt, recovery=True)
+        self.owner_task = asyncio.create_task(self.maintain_owner())
+        self.health.start()
+
+    async def maintain_owner(self):
+        try:
+            while True:
+                await asyncio.sleep(10)
+                await self.io.call(self.store.renew_owner)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.shutting_down = True
+            if self.store.owner:
+                self.store.owner.state = "lost"
+            for task in [*self.tasks.values(), *self.plot_refresh_tasks.values()]:
+                task.cancel()
+
+    def check_owner(self):
+        if self.shutting_down or (self.store.owner and self.store.owner.snapshot()["state"] != "active"):
+            raise HTTPException(503, "The service no longer owns its execution lease.")
 
     async def load_run(self, run_id):
         response = await self.http.get(self.settings.agent_url + "/v2/runs/" + str(run_id))
@@ -79,6 +108,7 @@ class ResultsRuntime:
         return response.json()
 
     async def create(self, body):
+        self.check_owner()
         if body.run_id:
             try:
                 source = agent_snapshot(await self.load_run(body.run_id), body.phase, self.vnext.graph_version)
@@ -88,29 +118,39 @@ class ResultsRuntime:
             source = template_snapshot(body, self.vnext.graph_version)
         identity = {"source": source, "result_version": RESULT_VERSION, "layout_version": LAYOUT_VERSION,
             "registry_version": REGISTRY_VERSION, "display_nodes": self.settings.display_nodes, "answer_style": STYLE_VERSION, "functional_version": functional.VERSION}
-        async with self.admission:
-            result = await asyncio.to_thread(self.store.by_identity, identity)
+        async def admitted():
+            self.check_owner()
+            result = await self.io.call(self.store.by_identity, identity)
             if result:
                 self.health.count("result_cache_hits")
                 return result
             if len(self.tasks) >= self.settings.max_queue + self.settings.max_concurrent:
                 raise HTTPException(429, "Result queue is full.")
-            result, created = await asyncio.to_thread(self.store.create, source, identity)
+            result, created = await self.io.call(self.store.create, source, identity)
             if created:
                 rid = result["result_id"]
                 task = asyncio.create_task(self.execute(rid, source))
                 self.tasks[rid] = task
                 task.add_done_callback(lambda _: self.tasks.pop(rid, None))
-        return result
+            return result
+        return await self.admission.run(admitted)
 
     async def update(self, rid, **changes):
-        return await asyncio.to_thread(self.store.update, rid, **changes)
+        return await self.io.call(self.store.update, rid, **changes)
 
     async def refresh_saved_functional_plot(self, rid, value):
         """Migrate presentation assets only; never rerun retrieval or paid answers."""
+        try:
+            self.check_owner()
+        except HTTPException:
+            return value
         if value.get("status") != "ready":
             return value
-        source = await asyncio.to_thread(self.store.source, rid)
+        source = await self.io.call(self.store.source, rid)
+        try:
+            self.check_owner()
+        except HTTPException:
+            return value
         if not source or source.get("template_id") != "functional_traces":
             return value
         if value.get("functional_plot_version") == functional.VERSION:
@@ -121,19 +161,30 @@ class ResultsRuntime:
             return value
         if task is None:
             async def refresh():
+                self.check_owner()
                 await self.update(rid, functional_plot_attempt_at=time.time())
+                self.check_owner()
                 await self.resolve_resources(rid, {"functional_filters": source["parameters"]})
             task = asyncio.create_task(refresh())
             self.plot_refresh_tasks[rid] = task
             task.add_done_callback(lambda _: self.plot_refresh_tasks.pop(rid, None))
-        await asyncio.shield(task)
-        return await asyncio.to_thread(self.store.get, rid)
+        try:
+            await asyncio.shield(task)
+        except (HTTPException, OwnershipError):
+            return value
+        except asyncio.CancelledError:
+            if self.shutting_down or (self.store.owner and self.store.owner.snapshot()["state"] != "active"):
+                return value
+            raise
+        return await self.io.call(self.store.get, rid)
 
     async def resolve_resources(self, rid, evidence):
+        self.check_owner()
         started = time.monotonic()
         try:
             if evidence.get("functional_filters"):
                 raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", {**evidence["functional_filters"], "result_page":"Yes"})
+                self.check_owner()
                 if not raw.startswith(b"\x89PNG\r\n\x1a\n"): raise ValueError("invalid_functional_plot")
                 asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps({**evidence["functional_filters"], "result_page":"Yes", "adapter_version":functional.VERSION},sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
                 resources = {"status":"available", "resources_tabs":{"empirical_evidence":{"title":"Selected cohort functional response", "description":"Recorded hormone-response measurements for the selected filters.","status":"available","image_url":asset["url"],"download_url":asset["url"],"link":asset["url"],"link_text":"Download plot","legend":"View"}}}
@@ -155,6 +206,7 @@ class ResultsRuntime:
             self.health.duration("resources", time.monotonic() - started)
 
     async def answer(self, rid, source, evidence):
+        self.check_owner()
         if source["kind"] == "agent":
             return await self.update(rid, component_status={"answer": "available" if source["answer"] else "not_requested"})
         status_message = outcome_message(evidence.get("steps") or [])
@@ -165,7 +217,7 @@ class ResultsRuntime:
         started = time.monotonic()
         text = ""
         citations = CitationFilter(len(evidence.get("steps", [])))
-        audit_token = recorder.set(lambda kind, payload: self.store.audit_event(rid, kind, payload))
+        audit_token = recorder.set(lambda kind, payload: self.io.record(self.store.audit_event, rid, kind, payload, on_drop=self.store.audit_drop))
         try:
             # Scope note is explicit in both the human question and step evidence.
             question = source["question"] + ("\nEvidence scope: " + evidence["scope_note"] if evidence.get("scope_note") else "")
@@ -208,7 +260,9 @@ class ResultsRuntime:
         async with self.semaphore:
             self.active += 1
             try:
+                self.check_owner()
                 evidence = source["evidence"] if source["kind"] == "agent" else await functional.evidence(self.http, source["parameters"], source["question"], self.vnext.graph_version) if source.get("template_id") == "functional_traces" else await self.query.execute(source["template_id"], source["parameters"], source["question"])
+                self.check_owner()
                 if source["kind"] != "agent":
                     failed_steps = [step for step in evidence.get("steps", []) if step.get("status") == "failed"]
                     self.health.record("query_adapter", "degraded" if failed_steps else "healthy", time.monotonic() - started,
@@ -218,9 +272,10 @@ class ResultsRuntime:
                         self.health.count("query_adapter_errors")
                     if not source.get("question_supplied"):
                         source = {**source, "question": template_question(source["template_id"], source["parameters"], evidence)}
-                previous = await asyncio.to_thread(self.store.previous_presentation, source["run_id"], rid) if source.get("run_id") else None
+                previous = await self.io.call(self.store.previous_presentation, source["run_id"], rid) if source.get("run_id") else None
                 layout_started = time.monotonic()
                 presentation = await self.layout.layout(evidence, source["focus_ids"], previous_layout=previous)
+                self.check_owner()
                 self.health.record("layout_worker", "degraded" if presentation["layout"]["status"] in {"fallback", "partial"} else "healthy", time.monotonic() - layout_started,
                     presentation["layout"].get("fallback_reason"))
                 assembled = assemble(source, evidence, presentation)
@@ -235,7 +290,7 @@ class ResultsRuntime:
                 for task in optional:
                     task.cancel()
                 await asyncio.gather(*optional, return_exceptions=True)
-                current = await asyncio.to_thread(self.store.get, rid)
+                current = await self.io.call(self.store.get, rid)
                 pending = {key: "cancelled" for key, status in current["component_status"].items() if status == "pending"}
                 await self.update(rid, status="cancelled" if current["status"] == "preparing" else current["status"], component_status=pending)
                 raise
@@ -286,20 +341,30 @@ class ResultsRuntime:
         return result
 
     async def close(self):
+        self.shutting_down = True
+        await self.admission.close()
         await self.health.close()
         tasks = list(self.tasks.values()) + list(self.plot_refresh_tasks.values())
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if self.store.owner and self.store.owner.snapshot()["state"] == "active":
+            await self.io.call(self.store.interrupt)
         await asyncio.gather(self.query.close(), self.layout.close(), self.resources.close(), self.gateway.close(), self.http.aclose())
+        if self.owner_task:
+            self.owner_task.cancel()
+            await asyncio.gather(self.owner_task, return_exceptions=True)
+        if self.store.owner:
+            await self.io.call(self.store.release_owner)
+        await self.io.close()
 
     async def cancel_run_presentations(self, run_id):
         for rid, task in list(self.tasks.items()):
-            source = await asyncio.to_thread(self.store.source, rid)
+            source = await self.io.call(self.store.source, rid)
             if source.get("run_id") == run_id:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-                current = await asyncio.to_thread(self.store.get, rid)
+                current = await self.io.call(self.store.get, rid)
                 await self.update(rid, status="cancelled" if current["status"] == "preparing" else current["status"],
                     component_status={key: "cancelled" for key, value in current["component_status"].items() if value == "pending"})
 
@@ -310,8 +375,12 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
 
     @asynccontextmanager
     async def lifespan(app):
-        await asyncio.to_thread(runtime.store.interrupt)
-        runtime.health.start()
+        try:
+            await runtime.start()
+        except BaseException:
+            await asyncio.gather(runtime.query.close(), runtime.layout.close(), runtime.resources.close(), runtime.gateway.close(), runtime.http.aclose(), return_exceptions=True)
+            await runtime.io.close()
+            raise
         yield
         await runtime.close()
 
@@ -321,6 +390,21 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)
 
+    @app.get("/access")
+    async def access(request: Request, return_to: str = "/agent-vnext"):
+        # A top-level navigation establishes the browser's existing Basic realm.
+        # Keep the destination fixed and root-relative; no caller controls a host,
+        # query or fragment. The dev frontend restores its own pending local route.
+        if return_to != "/agent-vnext" or any(key != "return_to" for key in request.query_params) or len(request.query_params.getlist("return_to")) > 1:
+            raise HTTPException(400, "Unsupported return destination.")
+        return RedirectResponse(return_to, status_code=303, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/access")
+    async def access_status():
+        # DemoAuthentication has already verified ordinary application access.
+        # This route does not read saved data or submit any scientific work.
+        return JSONResponse({"authenticated": True}, headers={"Cache-Control": "no-store"})
+
     @app.post("/api/results", status_code=202)
     async def create_result(body: ResultRequest):
         return await runtime.create(body)
@@ -328,16 +412,16 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     @app.post("/api/results/{result_id}/interactions")
     async def result_interaction(result_id: UUID, body: InteractionRequest):
         rid = str(result_id)
-        if runtime.store.get(rid) is None:
+        if await runtime.io.call(runtime.store.get, rid) is None:
             raise HTTPException(404, "Result not found.")
-        status = await asyncio.to_thread(runtime.store.audit_event, rid, body.kind,
+        status = await runtime.io.call(runtime.store.audit_event, rid, body.kind,
             body.model_dump(mode="json", exclude={"event_id", "kind"}), str(body.event_id))
         runtime.health.count("audit_interactions_" + status)
         return JSONResponse({"version": 1, "status": status}, status_code=503 if status == "unavailable" else 200)
 
     @app.get("/api/results/{result_id}")
     async def result(result_id: UUID):
-        value = await asyncio.to_thread(runtime.store.get, str(result_id))
+        value = await runtime.io.call(runtime.store.get, str(result_id))
         if value is None:
             raise HTTPException(404, "Result not found.")
         value = await runtime.refresh_saved_functional_plot(str(result_id), value)
@@ -370,6 +454,7 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
 
     @app.get("/api/resources/download")
     async def download(source: str, credible_set: str):
+        runtime.check_owner()
         try:
             path, media, name = await runtime.resources.download(source, credible_set)
             return FileResponse(path, media_type=media, filename=name)
@@ -444,6 +529,39 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
         operator(request)
         return PlainTextResponse(runtime.health.metrics(), media_type="text/plain; version=0.0.4")
 
+    @app.get("/pankgraph/health")
+    @app.get("/pankgraph/health/{path:path}")
+    @app.get("/health-dashboard")
+    @app.get("/health-dashboard/{path:path}")
+    async def health_dashboard(request: Request, path: str = ""):
+        if request.url.path.endswith('/health') or request.url.path.endswith('/health-dashboard'):
+            destination = settings.public_path + '/health-dashboard/' if request.url.path.endswith('/health-dashboard') else '/pankgraph/health/'
+            return RedirectResponse(destination)
+        # Fixed monitor origin/path, GET only. Authentication remains server-side
+        # and the browser can never choose an upstream host or HTTP method.
+        if path not in {"", "dashboard.js", "dashboard.css", "api/snapshot", "api/history", "api/incidents", "api/metrics"}:
+            raise HTTPException(404, "Unknown dashboard route.")
+        params = dict(request.query_params)
+        if set(params) - {"hours", "limit"} or any(not re.fullmatch(r"[0-9]{1,4}", value) for value in params.values()):
+            raise HTTPException(422, "Unknown dashboard query.")
+        headers = {"authorization": request.headers["authorization"]} if "authorization" in request.headers else {}
+        outgoing = runtime.http.build_request("GET", "http://127.0.0.1:8796/pankgraph/health/" + path, params=params, headers=headers, timeout=10)
+        for name in ("cookie", "x-api-key", "x-operator-token"):
+            outgoing.headers.pop(name, None)
+        if "authorization" not in headers:
+            outgoing.headers.pop("authorization", None)
+        upstream = await runtime.http.send(outgoing)
+        from starlette.responses import Response
+        response_headers = {key: upstream.headers[key] for key in (
+            "www-authenticate", "content-security-policy", "x-content-type-options", "referrer-policy") if key in upstream.headers}
+        response_headers["Cache-Control"] = "no-store"
+        return Response(upstream.content, status_code=upstream.status_code, media_type=upstream.headers.get("content-type", "application/json"), headers=response_headers)
+
+    @app.exception_handler(OwnershipError)
+    @app.exception_handler(PersistenceBusy)
+    async def persistence_unavailable(request, exc):
+        return JSONResponse({"detail": "Service persistence is temporarily unavailable."}, status_code=503, headers={"Retry-After": "2"})
+
     @app.exception_handler(Exception)
     async def failed(request, exc):
         runtime.health.count("http_errors")
@@ -451,7 +569,7 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
 
     @app.get("/{path:path}")
     async def frontend(path: str):
-        if path.startswith(("api/", "health/")) or path == "metrics":
+        if path.startswith(("api/", "health/", "health-dashboard", "pankgraph/health")) or path == "metrics":
             raise HTTPException(404)
         root = settings.frontend_dir.resolve()
         target = (root / (path or "index.html")).resolve()

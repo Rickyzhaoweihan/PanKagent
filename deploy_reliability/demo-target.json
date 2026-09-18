@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "service_scope": "isolated-jieliu3-demo",
+  "ports": {"agent": 8794, "results": 8795, "health": 8796},
+  "workers_per_application": 1,
+  "expected_graph_version": "PanKgraph_08_04",
+  "observed_graph_identity_verified": true,
+  "observed_database_role_enforced": false,
+  "observed_database_auth_enabled": false,
+  "observed_read_only_enforcement": "application_guard_and_read_transactions",
+  "agent_config_sha256_before_activation": "9c1184a87a06812ad6ce2ed1e91d0156df07624fdf81ed06f8b506637ea389ec",
+  "runtime_archive_sha256": "7c8335ddf8f58543f43253042f82d320de3fbb30d1e5ac5a56718dc1134e0971",
+  "activation_requires": ["both readiness contracts", "same graph identity", "active owner leases", "frontend artifact hashes", "restoration drill", "health browser acceptance"],
+  "shared_services_changed": false
+}

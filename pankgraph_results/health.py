@@ -47,12 +47,12 @@ class ResultsHealth:
             return r.json()
         await asyncio.gather(one("neo4j", self.runtime.query.probe), one("agent", agent))
         try:
-            await asyncio.to_thread(self.runtime.store.probe)
+            await self.runtime.io.call(self.runtime.store.probe)
             self.record("result_storage", "healthy")
         except Exception as exc:
             self.record("result_storage", "unavailable", error=type(exc).__name__)
         try:
-            self.budget = await asyncio.to_thread(self.runtime.gateway.budget.snapshot)
+            self.budget = await self.runtime.io.call(self.runtime.gateway.budget.snapshot)
             self.record("budget", "healthy" if self.budget.get("remaining_usd", 0) > 0 else "unavailable",
                 error=None if self.budget.get("remaining_usd", 0) > 0 else "budget_exhausted")
         except Exception as exc:
@@ -82,9 +82,12 @@ class ResultsHealth:
             observations[name] = value
         for name in ("agent", "neo4j", "result_storage", "layout_worker", "query_adapter", "resources", "synthesis", "budget"):
             observations.setdefault(name, {"state": "unknown", "checked_at": None, "age_seconds": None, "last_success": None, "error_category": None})
+        owner = self.runtime.store.owner.snapshot() if getattr(getattr(self.runtime, "store", None), "owner", None) else {"state": "unclaimed"}
+        if owner["state"] in {"lost", "released"}:
+            observations["result_storage"].update(state="unavailable", error_category="service_ownership")
         ready = all(observations[name]["state"] == "healthy" for name in ("neo4j", "result_storage"))
         optional_ok = all(observations.get(name, {}).get("state") == "healthy" for name in ("agent", "budget"))
-        return {"version": 1, "service": "pankgraph-results", "ready": ready, "state": "healthy" if ready and optional_ok else "degraded" if ready else "unavailable", "components": observations, "layout": self.runtime.layout.snapshot(), "resources": self.runtime.resources.snapshot(), "queue": {"active": self.runtime.active, "depth": max(0, len(self.runtime.tasks) - self.runtime.active), "capacity": self.runtime.settings.max_queue}, "budget": self.budget}
+        return {"version": 1, "service": "pankgraph-results", "ready": ready, "state": "healthy" if ready and optional_ok else "degraded" if ready else "unavailable", "components": observations, "ownership": owner, "layout": self.runtime.layout.snapshot(), "resources": self.runtime.resources.snapshot(), "queue": {"active": self.runtime.active, "depth": max(0, len(self.runtime.tasks) - self.runtime.active), "capacity": self.runtime.settings.max_queue}, "budget": self.budget}
 
     def metrics(self):
         lines = []

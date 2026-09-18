@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import asyncio
 from copy import deepcopy
 import json
@@ -48,8 +49,8 @@ def test_recovered_output_uses_one_call_and_still_runs_dependency_guard():
     async def check():
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
-        gateway.budget = SimpleNamespace(settle=lambda *_: None)
-        gateway._reserve = lambda *_: 'mock'
+        gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+        gateway._reserve = AsyncMock(return_value='mock')
         calls = []
         async def create(*args, **kwargs):
             calls.append(kwargs)
@@ -70,8 +71,8 @@ def test_composed_gateway_and_outer_recovery_allow_only_two_planning_calls():
     async def check():
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
-        gateway.budget = SimpleNamespace(settle=lambda *_: None)
-        gateway._reserve = lambda *_: 'mock'
+        gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+        gateway._reserve = AsyncMock(return_value='mock')
         calls = []
         async def create(*args, **kwargs):
             calls.append(kwargs)
@@ -100,8 +101,8 @@ def test_grounded_tissue_omission_is_filled_without_an_extra_model_call(monkeypa
         from pankagent_vnext.planning_contract import VerifiedCache
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
-        gateway.budget = SimpleNamespace(settle=lambda *_: None)
-        gateway._reserve = lambda *_: 'mock'
+        gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+        gateway._reserve = AsyncMock(return_value='mock')
         gateway.plan_cache = VerifiedCache()
         calls = []
         grounding = {'status':'ready', 'identity':{'graph_release':'PanKgraph_08_04'}, 'mentions':[

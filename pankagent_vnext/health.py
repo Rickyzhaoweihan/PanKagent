@@ -14,18 +14,18 @@ ERRORS = {
     "authentication", "authorization", "rate_limited", "billing", "budget_exhausted",
     "timeout", "connection", "invalid_response", "query_validation", "graph_identity",
     "dependency_unavailable", "internal_error", "cancelled", "service_restarted",
-    "not_configured",
+    "not_configured", "service_ownership",
     "queue_full",
 }
 HARD_INFERENCE_ERRORS = {"authentication", "authorization", "billing", "budget_exhausted", "not_configured", "graph_identity"}
 SAFE_DETAIL_KEYS = {
-    "audit_dropped", "model", "prompt_version", "replicas", "healthy_replicas", "total_replicas",
+    "owner_state", "owner_epoch", "persistence_queue_depth", "audit_dropped", "model", "prompt_version", "replicas", "healthy_replicas", "total_replicas",
     "reachable", "authenticated", "auth_ok", "model_access", "generation_health",
     "graph_version", "graph_identity", "identity_verified", "read_access", "read_only",
     "database", "corpus_version", "source_policy", "service_version", "upstream_state",
     "storage", "durable", "remaining_usd", "spent_usd", "reserved_usd", "limit_usd",
     "budget_usd", "queue_depth", "active_queries", "capacity", "canaries_enabled",
-    "replica_count", "prompt", "adapter_version", "provider_indicator", "required",
+    "replica_count", "prompt", "adapter_version", "provider_indicator", "api_component_status", "provider_component_id", "required",
     "database_role_enforced", "application_guard_and_read_transactions", "inference_verified",
     "database_auth_enabled", "read_only_enforcement", "identity_strength", "backends_up",
     "recent_generation_success", "recent_query_success", "last_inference_success", "result_cache_enabled",
@@ -106,10 +106,13 @@ class Metrics:
 
 
 class HealthMonitor:
-    def __init__(self, settings, gateway, graph, literature, store, runtime_snapshot):
+    def __init__(self, settings, gateway, graph, literature, store, runtime_snapshot, io=None):
         self.settings = settings
         self.gateway, self.graph, self.literature, self.store = gateway, graph, literature, store
         self.runtime_snapshot = runtime_snapshot
+        self.io = io
+        self._budget = {}
+        self._storage = {"state": "unknown"}
         self.observations = {name: self._unknown() for name in ("cypher", "neo4j", "claude", "claude_provider", "hirn", "runtime")}
         self.inference: dict[str, dict] = {}
         self.tasks: list[asyncio.Task] = []
@@ -160,32 +163,48 @@ class HealthMonitor:
             self._record(name, result, time.monotonic() - started)
 
     def budget_snapshot(self) -> dict:
-        try:
-            snapshot = self.gateway.budget.snapshot()
-            if "remaining_usd" not in snapshot and "remaining" in snapshot:
-                snapshot = {**snapshot, "remaining_usd": snapshot["remaining"]}
-            return snapshot
-        except Exception:
-            return {}
+        return dict(self._budget)
 
-    def refresh_runtime(self) -> None:
+    def _read_persistence(self):
+        storage = self.store.probe()
+        budget = self.gateway.budget.snapshot()
+        if "remaining_usd" not in budget and "remaining" in budget:
+            budget = {**budget, "remaining_usd": budget["remaining"]}
+        return storage, budget
+
+    async def refresh_persistence(self):
         started = time.monotonic()
         try:
-            result = self.store.probe()
-            budget = self.budget_snapshot()
-            result.update(self.runtime_snapshot())
-            result.update({key: value for key, value in budget.items() if key in SAFE_DETAIL_KEYS})
-            result["canaries_enabled"] = False
-            result["result_cache_enabled"] = False
-            if not budget:
-                result.update(state="unknown", error_category="internal_error")
-            elif budget.get("remaining_usd", 0) <= 0:
-                result.update(state="unavailable", error_category="budget_exhausted")
-            elif result.get("queue_depth", 0) >= getattr(self.settings, "max_queue", 8):
-                result.update(state="unavailable", error_category="queue_full")
+            if self.io is not None:
+                self._storage, self._budget = await self.io.call(self._read_persistence)
+            else:
+                self._storage, self._budget = await asyncio.to_thread(self._read_persistence)
         except Exception:
-            result = {"state": "unavailable", "error_category": "internal_error"}
-        self._record("runtime", result, time.monotonic() - started)
+            self._storage, self._budget = {"state": "unavailable", "error_category": "internal_error"}, {}
+        self._record("runtime", self._runtime_value(), time.monotonic() - started)
+
+    def _runtime_value(self):
+        result = {**self._storage, **self.runtime_snapshot()}
+        result.update({key: value for key, value in self._budget.items() if key in SAFE_DETAIL_KEYS})
+        result.update(canaries_enabled=False, result_cache_enabled=False)
+        if result.get("owner_state") in {"lost", "released"}:
+            result.update(state="unavailable", error_category="service_ownership")
+        elif not self._budget:
+            result.update(state="unknown", error_category="internal_error")
+        elif self._budget.get("remaining_usd", 0) <= 0:
+            result.update(state="unavailable", error_category="budget_exhausted")
+        elif result.get("queue_depth", 0) >= getattr(self.settings, "max_queue", 8):
+            result.update(state="unavailable", error_category="queue_full")
+        return result
+
+    def refresh_runtime(self):
+        # Live queue/lease state is cheap; preserve the time of the actual disk
+        # observation. Reading health cannot make stale storage look fresh.
+        value = self._runtime_value()
+        old = self.observations["runtime"]
+        self._record("runtime", value, (old.get("latency_ms") or 0) / 1000)
+        self.observations["runtime"]["checked_epoch"] = old["checked_epoch"]
+        self.observations["runtime"]["last_success_epoch"] = old["last_success_epoch"]
 
     async def _provider(self) -> dict:
         url = getattr(self.settings, "provider_status_url", "")
@@ -195,11 +214,22 @@ class HealthMonitor:
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get(url)
             response.raise_for_status()
-            indicator = response.json().get("status", {}).get("indicator", "unknown")
-        return {"state": {"none": "healthy", "minor": "degraded", "major": "degraded", "critical": "unavailable"}.get(indicator, "unknown"), "provider_indicator": indicator}
+            payload = response.json()
+        # Pin the official API component, never infer API health from other products.
+        components = payload.get("components", []) if isinstance(payload, dict) else []
+        matches = [item for item in components if isinstance(item, dict)
+                   and item.get("id") == "k8w3r06qmzrp"] if isinstance(components, list) else []
+        status = matches[0].get("status") if len(matches) == 1 else None
+        mapping = {"operational": "healthy", "degraded_performance": "degraded",
+                   "partial_outage": "degraded", "major_outage": "unavailable",
+                   "under_maintenance": "degraded"}
+        if not isinstance(status, str) or status not in mapping:
+            return {"state": "unknown"}
+        return {"state": mapping[status], "api_component_status": status,
+                "provider_component_id": "k8w3r06qmzrp"}
 
     async def refresh(self, online: bool = False) -> None:
-        self.refresh_runtime()
+        await self.refresh_persistence()
         graph_probes = [self._probe("neo4j", self.graph.probe), self._probe("cypher", self.graph.probe_cypher)] if hasattr(self.graph, "probe_cypher") else [self._probe("graph", self.graph.probe)]
         probes = [*graph_probes, self._probe("hirn", self.literature.probe)]
         if online:

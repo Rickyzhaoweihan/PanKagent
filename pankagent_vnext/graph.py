@@ -607,6 +607,10 @@ def _dependency_owner_errors(tokens, name, values, metadata, graph_release):
 
 def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, dependency_bindings=None) -> list[str]:
     parameters = parameters or {}
+    from .metadata_guard import recovery as metadata_recovery
+    unsupported_metadata = metadata_recovery(step, step.get("graph_version", "PanKgraph_08_04"))
+    if unsupported_metadata:
+        return [unsupported_metadata['category']]
     if not isinstance(query, str) or not query.strip() or len(query) > 24000:
         return ["missing_or_oversized_cypher"]
     try:
@@ -973,7 +977,10 @@ class GraphAdapter:
         from .release_schema import normalize_constraints
         step = normalize_constraints(step)
         from .measurement_scope import measurement_scope_recovery
-        unsupported_scope = step.get("ranking_issue") or measurement_scope_recovery(step, self.settings.graph_version)
+        from .metadata_guard import recovery as metadata_recovery
+        unsupported_scope = (metadata_recovery(step, self.settings.graph_version)
+                             or step.get("ranking_issue")
+                             or measurement_scope_recovery(step, self.settings.graph_version))
         if unsupported_scope:
             step.update(graph_version=self.settings.graph_version, relation_types=step_relation_types(step),
                         resolved_entities=[], recovery=unsupported_scope,
@@ -1420,6 +1427,12 @@ class GraphAdapter:
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
                 "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True)},
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
+        from .metadata_guard import recovery as metadata_recovery
+        unsupported_metadata = metadata_recovery(step, self.settings.graph_version)
+        if unsupported_metadata:
+            base["validation"].append({"valid": False, "reasons": [unsupported_metadata["category"]]})
+            base["recovery"] = unsupported_metadata
+            return base
         limits = {
             "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
             "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},

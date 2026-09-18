@@ -1,0 +1,14 @@
+{
+  "command": "python -m pytest tests_results/test_dev_access.py tests_results/test_app.py tests_results/test_runtime_ownership.py tests_health tests_vnext/test_metadata_deployment_gate.py tests_vnext/test_numeric_predicates.py tests_vnext/test_donor_query_guard.py tests_vnext/test_donor_categories.py tests_vnext/test_graph.py tests_vnext/test_query_recovery.py tests_vnext/test_runtime.py tests_vnext/test_answer_completion_contract.py tests_vnext/test_planning_scope.py tests_vnext/test_planning_requirements_compatibility.py -q",
+  "passed": 396,
+  "subtests_passed": 41,
+  "failed": 0,
+  "duration_seconds": 7.73,
+  "warnings": "30 existing Neo4j asyncio.iscoroutinefunction deprecations",
+  "javascript_syntax": "node --check pankgraph_health/web/dashboard.js passed",
+  "git_diff_check": "passed before documentation additions",
+  "scope": "Offline synthetic services and temporary state; no live query or inference",
+  "python": "3.14.2",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "dependency_inventory": "deploy_reliability/requirements-demo-runtime.lock versions installed into isolated local test environment; deployed Linux frozen runtime still requires validation"
+}

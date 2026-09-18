@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from .ownership import OwnerLease
 import hashlib
 import os
 import sqlite3
@@ -30,6 +32,7 @@ class Store:
         self.path = state_dir / "sessions.sqlite3"
         self.lock = threading.RLock()
         self.audit_dropped = 0
+        self.owner = None
         self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=5)
         os.chmod(self.path, 0o600)
         self.db.row_factory = sqlite3.Row
@@ -69,13 +72,53 @@ class Store:
                 self.db.execute(f"ALTER TABLE runs ADD COLUMN {name} TEXT")
         if "include_context" not in columns:
             self.db.execute("ALTER TABLE runs ADD COLUMN include_context INTEGER NOT NULL DEFAULT 1")
+        for name, kind in (("owner_id", "TEXT"), ("owner_epoch", "INTEGER")):
+            if name not in columns:
+                self.db.execute(f"ALTER TABLE runs ADD COLUMN {name} {kind}")
+        OwnerLease.initialize(self.db)
         self.db.commit()
+
+    @contextmanager
+    def transaction(self):
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                if self.owner is not None:
+                    self.owner.assert_owned(self.db)
+                yield self.db
+                self.db.commit()
+            except BaseException:
+                self.db.rollback()
+                raise
+
+    def acquire_owner(self, ttl=60.0, clock=time.time):
+        lease = OwnerLease("pankagent-vnext", ttl, clock)
+        with self.lock, self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            lease.acquire(self.db)
+        self.owner = lease
+        return lease.snapshot()
+
+    def renew_owner(self):
+        with self.transaction():
+            self.owner.renew(self.db)
+        return self.owner.snapshot()
+
+    def release_owner(self):
+        with self.lock, self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self.owner.release(self.db)
+
+    def audit_drop(self):
+        self.audit_dropped += 1
 
     @staticmethod
     def _decode(row: sqlite3.Row | None) -> dict | None:
         if row is None:
             return None
         value = dict(row)
+        value.pop("owner_id", None)
+        value.pop("owner_epoch", None)
         value["include_context"] = bool(value["include_context"])
         for key in ("plan", "evidence", "literature", "error", "preview", "preview_cache"):
             value[key] = json.loads(value[key]) if value[key] is not None else None
@@ -95,6 +138,8 @@ class Store:
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (run_id, plan_id, session_id, question, "planning", "queued", now, now, time.time(), int(include_context)),
         )
+        if self.owner is not None:
+            self.db.execute("UPDATE runs SET owner_id=?,owner_epoch=? WHERE run_id=?", (self.owner.owner_id, self.owner.epoch, run_id))
         metadata = {"original_question": question, "parent_run_id": None, "parent_plan_id": None,
                     "revision_instruction": None, "revision_mode": "new_question", "revision_index": 0,
                     "source": "user", "versions": {}, **(audit or {})}
@@ -102,9 +147,8 @@ class Store:
         return self.get(run_id)
 
     def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None, legacy_retry_submission: str | None = None) -> dict:
-        with self.lock, self.db:
+        with self.transaction():
             if legacy_retry_submission is not None and session_id and include_context:
-                self.db.execute("BEGIN IMMEDIATE")
                 from .terminal_retry import terminal_revision_retry
                 latest = self.latest_run(session_id)
                 previous = self.audit_metadata(latest['run_id']) if latest else None
@@ -124,8 +168,7 @@ class Store:
 
     def revise(self, plan_id: str, question: str, *, include_context: bool = True, audit: dict | None = None) -> tuple[dict, dict]:
         """Atomically invalidate an unconfirmed plan and create its replacement."""
-        with self.lock, self.db:
-            self.db.execute("BEGIN IMMEDIATE")
+        with self.transaction():
             old = self.by_plan(plan_id)
             if old is None:
                 raise KeyError("plan")
@@ -174,18 +217,34 @@ class Store:
         for key, value in fields.items():
             values.append(json.dumps(value, ensure_ascii=False) if key in {"plan", "evidence", "literature", "error", "preview", "preview_cache"} and value is not None else value)
         sql = "UPDATE runs SET " + ",".join(f"{key}=?" for key in fields) + ",updated_at=? WHERE run_id=?"
-        with self.lock, self.db:
+        with self.transaction():
             self.db.execute(sql, [*values, utc_now(), run_id])
         return self.get(run_id)
 
+    def update_if_active(self, run_id, **fields):
+        with self.lock:
+            value = self.get(run_id)
+            if value is None or value["status"] in TERMINAL:
+                return value
+            return self.update(run_id, **fields)
+
+    def event_if_active(self, run_id, event_type, payload=None):
+        with self.lock:
+            value = self.get(run_id)
+            if value is None or (value["status"] in TERMINAL and event_type != "terminal"):
+                return None
+            return self.event(run_id, event_type, payload)
+
     def confirm(self, run_id: str) -> bool:
-        with self.lock, self.db:
+        with self.transaction():
             cursor = self.db.execute(
                 "UPDATE runs SET status='queued',stage='queued',updated_at=? "
                 "WHERE run_id=? AND status='awaiting_confirmation'",
                 (utc_now(), run_id),
             )
             if cursor.rowcount == 1:
+                if self.owner is not None:
+                    self.db.execute("UPDATE runs SET owner_id=?,owner_epoch=? WHERE run_id=?", (self.owner.owner_id, self.owner.epoch, run_id))
                 metadata = self.audit_metadata(run_id)
                 if metadata is not None:
                     metadata.update(confirmed_at=utc_now(), confirmed_plan_sha256=self.content_hash(self.get(run_id)["plan"]))
@@ -207,7 +266,7 @@ class Store:
             raw = json.dumps(payload, ensure_ascii=False, allow_nan=False)
             if len(raw.encode()) > 32000:
                 raise ValueError("audit_payload_limit")
-            with self.lock, self.db:
+            with self.transaction():
                 if event_id and self.db.execute("SELECT 1 FROM audit_events WHERE run_id=? AND event_id=?", (run_id, event_id)).fetchone():
                     return "duplicate"
                 if self.db.execute("SELECT COUNT(*) FROM audit_events WHERE run_id=?", (run_id,)).fetchone()[0] >= 1000:
@@ -224,7 +283,7 @@ class Store:
             return {"version": 1, "metadata": self.audit_metadata(run_id), "events": [dict(row) | {"payload": json.loads(row["payload"])} for row in rows], "dropped_since_start": self.audit_dropped}
 
     def event(self, run_id: str, event_type: str, payload: dict | None = None) -> dict:
-        with self.lock, self.db:
+        with self.transaction():
             run = self.get(run_id)
             if run is None:
                 raise KeyError("run")
@@ -259,9 +318,19 @@ class Store:
             result.extend([{"role": "user", "content": row[0]}, {"role": "assistant", "content": row[1][:12000]}])
         return result
 
-    def interrupt_active(self, started_graph_checks=None) -> list[str]:
+    def interrupt_active(self, started_graph_checks=None, *, recovery=False) -> list[str]:
         with self.lock:
-            rows = self.db.execute("SELECT run_id FROM runs WHERE status IN ('planning','queued','running')").fetchall()
+            query = "SELECT run_id FROM runs WHERE status IN ('planning','queued','running')"
+            params = ()
+            if self.owner is not None:
+                self.owner.assert_owned(self.db)
+                if recovery:
+                    query += " AND (owner_epoch IS NULL OR owner_epoch < ?)"
+                    params = (self.owner.epoch,)
+                else:
+                    query += " AND owner_id=? AND owner_epoch=?"
+                    params = (self.owner.owner_id, self.owner.epoch)
+            rows = self.db.execute(query, params).fetchall()
             ids = [row[0] for row in rows]
             for run_id in ids:
                 run = self.get(run_id)

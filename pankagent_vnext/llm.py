@@ -127,17 +127,17 @@ class ClaudeGateway:
         self.plan_cache=VerifiedCache()
     def _options(self):
         return {'thinking':{'type':'disabled'}} if self.settings.model=='claude-sonnet-5' else {}
-    def _reserve(self,purpose,system,body,max_tokens):
+    async def _reserve(self,purpose,system,body,max_tokens):
         # UTF-8 bytes are a conservative input-token upper bound; include tool JSON/framing.
         bound=len((system+json.dumps(body,ensure_ascii=False)).encode())+12000
-        return self.budget.reserve(self.settings.model,purpose,bound,max_tokens)
+        return await self.budget.areserve(self.settings.model,purpose,bound,max_tokens)
     async def _create(self,rid,**kwargs):
         try:
             return await self.client.messages.create(**kwargs)
         except anthropic.APIStatusError as exc:
             # Definitive pre-generation rejections consumed no inference tokens.
             if exc.status_code in (400,401,403,404,413,422,429):
-                self.budget.settle(rid,{})
+                await self.budget.asettle(rid,{})
             raise
     async def plan(self,question,history, _repair=False, grounding=None):
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
@@ -198,13 +198,13 @@ class ClaudeGateway:
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
         output_limit=200 if profile_gene else 2400 if _repair or len(required_categories(question))==12 else 1600
-        rid=self._reserve('plan',system_text,user,output_limit)
+        rid=await self._reserve('plan',system_text,user,output_limit)
         reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
           system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
           messages=[{'role':'user','content':user}],
           tools=[{'name':'record_plan','description':'Record the proposed plan for user review','input_schema':schema,'strict':True}],
           tool_choice={'type':'tool','name':'record_plan'},**self._options())
-        self.budget.settle(rid,reply.usage.model_dump())
+        await self.budget.asettle(rid,reply.usage.model_dump())
         provider_event('planning_response', {'stop_reason':getattr(reply,'stop_reason',None),'repair':_repair})
         for block in reply.content:
             if block.type=='tool_use' and block.name=='record_plan':
@@ -262,12 +262,12 @@ class ClaudeGateway:
         system='Repair a read-only PanKgraph Cypher query. Preserve every requested entity, filter, dependency and completeness requirement. Use only the supplied schema. Never relax filters to find data. Return actual node and relationship objects with all properties. No writes, procedures, LIMIT, list slices or invented labels/properties. Return an empty cypher string if the exact scope cannot be represented safely.'
         body=json.dumps({'question':question,'step':step,'failed_candidate':candidate,'validation_failures':failures,
             'schema':{k:REGISTRY['relations'].get(k) for k in kinds},'guidance':{k:RELATIONS.get(k) for k in kinds}},ensure_ascii=False)
-        rid=self._reserve('cypher_repair',system,body,1800)
+        rid=await self._reserve('cypher_repair',system,body,1800)
         reply=await self._create(rid,model=self.settings.model,max_tokens=1800,
             system=[{'type':'text','text':system}],messages=[{'role':'user','content':body}],
             tools=[{'name':'repair_query','description':'Record one repaired read-only query','input_schema':schema,'strict':True}],
             tool_choice={'type':'tool','name':'repair_query'},**self._options())
-        self.budget.settle(rid,reply.usage.model_dump())
+        await self.budget.asettle(rid,reply.usage.model_dump())
         for block in reply.content:
             if block.type=='tool_use' and block.name=='repair_query':
                 value=block.input.get('cypher')
@@ -278,12 +278,12 @@ class ClaudeGateway:
         """A bounded verification after script-compiled queries; no plan writing."""
         from .plan_verification import SYSTEM, SCHEMA, VERSION, review_input
         body = json.dumps(review_input(question, plan, preview), ensure_ascii=False, default=str)
-        rid = self._reserve('plan_verification', SYSTEM, body, 400)
+        rid = await self._reserve('plan_verification', SYSTEM, body, 400)
         reply = await self._create(rid, model=self.settings.model, max_tokens=400,
             system=[{'type': 'text', 'text': SYSTEM}], messages=[{'role': 'user', 'content': body}],
             tools=[{'name': 'verify_plan', 'description': 'Verify the executed scope', 'input_schema': SCHEMA, 'strict': True}],
             tool_choice={'type': 'tool', 'name': 'verify_plan'}, **self._options())
-        self.budget.settle(rid, reply.usage.model_dump())
+        await self.budget.asettle(rid, reply.usage.model_dump())
         for block in reply.content:
             if block.type == 'tool_use' and block.name == 'verify_plan':
                 value = block.input
@@ -351,7 +351,7 @@ class ClaudeGateway:
         prepared=prepared or self.prepare_answer(question,evidence)
         body=prepared.body
         output_limit=prepared.profile.get('answer_budget',{}).get('max_output_tokens',1600)
-        rid=self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,output_limit)
+        rid=await self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,output_limit)
         scope_filter = ScopeTextFilter(evidence)
         try:
             async with self.client.messages.stream(model=self.settings.model,max_tokens=output_limit,
@@ -363,9 +363,9 @@ class ClaudeGateway:
                 final=await stream.get_final_message()
         except anthropic.APIStatusError as exc:
             if exc.status_code in (400,401,403,404,413,422,429):
-                self.budget.settle(rid,{})
+                await self.budget.asettle(rid,{})
             raise
-        self.budget.settle(rid,final.usage.model_dump()); self.last_success=time.time()
+        await self.budget.asettle(rid,final.usage.model_dump()); self.last_success=time.time()
         prepared.generation.update(stop_reason=final.stop_reason,
                                    truncated=final.stop_reason=='max_tokens',
                                    max_output_tokens=output_limit)
@@ -382,4 +382,6 @@ class ClaudeGateway:
         except Exception as exc:
             category={400:'invalid_request',401:'authentication',402:'billing',403:'authorization',404:'model_unavailable',429:'rate_limited'}.get(getattr(exc,'status_code',None),'timeout' if isinstance(exc,(asyncio.TimeoutError,anthropic.APITimeoutError)) else 'connection' if isinstance(exc,anthropic.APIConnectionError) else 'dependency_unavailable')
             return {'state':'unavailable','model':self.settings.model,'auth_ok':False,'error_category':category}
-    async def close(self): await self.client.close()
+    async def close(self):
+        await self.client.close()
+        await self.budget.aclose()

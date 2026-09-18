@@ -33,7 +33,9 @@ def make_handler(auth, port, upstream_port):
                 self.send_error(403); return
             if self.headers.get('Origin') not in (None, 'http://'+host):
                 self.send_error(403); return
-            if not self.path.startswith('/pankgraph-vnext/'):
+            operator_path = self.path.split('?', 1)[0]
+            operator = operator_path == '/pankgraph/health' or operator_path.startswith('/pankgraph/health/')
+            if not operator and not self.path.startswith('/pankgraph-vnext/'):
                 self.send_error(404); return
             try: length = int(self.headers.get('Content-Length', 0))
             except ValueError: self.send_error(400); return
@@ -41,7 +43,12 @@ def make_handler(auth, port, upstream_port):
                 self.send_error(413); return
             body = self.rfile.read(length) if length else None
             headers = {k:v for k,v in self.headers.items() if k.lower() not in ('authorization','connection','transfer-encoding')}
-            headers['Authorization'] = auth
+            if operator:
+                if self.headers.get('Authorization'):
+                    headers['Authorization'] = self.headers['Authorization']
+            else:
+                headers['Authorization'] = auth
+            headers['X-Forwarded-For'] = self.client_address[0]
             conn = http.client.HTTPConnection('127.0.0.1', upstream_port, timeout=130)
             started = False
             try:

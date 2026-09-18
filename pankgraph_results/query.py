@@ -178,19 +178,25 @@ def _coloc_signals(step, params):
     return signals, sorted(set(issues))
 
 
-def compile_coloc_expansion(params, signals):
-    core = ("UNWIND $signals AS signal "
-            "MATCH (g:Gene {id:$gene_id})-[coloc:SIGNAL_COLOC_WITH]->(d:disease {id:$disease_id}) "
-            "WHERE coloc.qtl_signal_id=signal.qtl_signal_id AND coloc.gwas_signal_id=signal.gwas_signal_id "
-            "AND coloc.coloc_dataset=signal.coloc_dataset AND coloc.data_source=signal.coloc_data_source ")
-    qtl = (core + "MATCH (v:sequence_variant)-[r:PART_OF_QTL_SIGNAL]->(g) "
-           "WHERE v.id IN signal.qtl_leads AND r.credible_set=signal.qtl_signal_id "
-           "AND r.data_source=signal.qtl_data_source AND r.tissue_id=signal.qtl_tissue_id "
-           "RETURN v,r,g AS target")
-    gwas = (core + "MATCH (v:sequence_variant)-[r:PART_OF_GWAS_SIGNAL]->(d) "
-            "WHERE v.id IN signal.gwas_leads AND r.credible_set_id=signal.gwas_credible_set_id "
-            "RETURN v,r,d AS target")
-    return qtl + " UNION ALL " + gwas, {"gene_id": params["gene_id"], "disease_id": params["disease_id"], "signals": signals}
+def compile_coloc_expansion(params, signals, branch):
+    """Read one membership category using context already verified in COLOC.
+
+    Do not rematch SIGNAL_COLOC_WITH here: a missing independent membership
+    record must not remove primary colocalization or the other category.
+    """
+    prefix = "UNWIND $signals AS signal "
+    if branch == "qtl":
+        query = (prefix + "MATCH (v:sequence_variant)-[r:PART_OF_QTL_SIGNAL]->(g:Gene {id:$gene_id}) "
+                 "WHERE v.id IN signal.qtl_leads AND r.credible_set=signal.qtl_signal_id "
+                 "AND r.data_source=signal.qtl_data_source AND r.tissue_id=signal.qtl_tissue_id "
+                 "RETURN v,r,g AS target")
+    elif branch == "gwas":
+        query = (prefix + "MATCH (v:sequence_variant)-[r:PART_OF_GWAS_SIGNAL]->(d:disease {id:$disease_id}) "
+                 "WHERE v.id IN signal.gwas_leads AND r.credible_set_id=signal.gwas_credible_set_id "
+                 "RETURN v,r,d AS target")
+    else:
+        raise ValueError("unknown_coloc_expansion_branch")
+    return query, {"gene_id": params["gene_id"], "disease_id": params["disease_id"], "signals": signals}
 
 
 def _used_limits(steps):
@@ -273,24 +279,42 @@ class QueryService:
                        "graph_version": self.settings.graph_version, "nodes": [], "edges": [], "rows": [],
                        "queries": [], "validation": [], "provenance": [], "truncated": False,
                        "status": "empty", "expansion": {"signal_count": len(signals), "signal_limit": MAX_COLOC_SIGNALS, "issues": issues}}
-            limits = _used_limits(steps)
-            exhausted = (limits["used_bytes"] >= self.settings.max_bytes or limits["used_rows"] >= getattr(self.settings, "max_rows", 1000)
-                         or len(limits["known_node_ids"]) >= self.settings.max_nodes or len(limits["known_edge_keys"]) >= self.settings.max_edges)
-            if exhausted:
-                context.update(status="partial", truncated=True)
-                context["expansion"]["issues"].append("materialization_budget_exhausted")
-            elif signals:
-                expanded_query, expanded_params = compile_coloc_expansion(params, signals)
-                try:
-                    retrieved = await self.execute_query(expanded_query, expanded_params, "coloc_leads", "context", limits=limits)
-                    context.update(retrieved)
-                    for branch, relation in (("qtl", "PART_OF_QTL_SIGNAL"), ("gwas", "PART_OF_GWAS_SIGNAL")):
-                        count = sum(edge.get("type") == relation for edge in context["edges"])
-                        context["expansion"][branch] = {"edge_count": count, "status": "partial" if context["truncated"] else "complete" if count else "empty"}
-                        if not count:
+            branch_steps, branch_errors = [], []
+            for branch, relation in (("qtl", "PART_OF_QTL_SIGNAL"), ("gwas", "PART_OF_GWAS_SIGNAL")):
+                limits = _used_limits([*steps, *branch_steps])
+                exhausted = (limits["used_bytes"] >= self.settings.max_bytes or limits["used_rows"] >= getattr(self.settings, "max_rows", 1000)
+                             or len(limits["known_node_ids"]) >= self.settings.max_nodes or len(limits["known_edge_keys"]) >= self.settings.max_edges)
+                outcome = {"edge_count": 0, "status": "not_requested"}
+                context["expansion"][branch] = outcome
+                if exhausted:
+                    outcome.update(status="partial", reason="materialization_budget_exhausted")
+                    context["truncated"] = True
+                    if "materialization_budget_exhausted" not in issues:
+                        issues.append("materialization_budget_exhausted")
+                elif signals:
+                    expanded_query, expanded_params = compile_coloc_expansion(params, signals, branch)
+                    try:
+                        retrieved = await self.execute_query(expanded_query, expanded_params, "coloc_" + branch + "_leads", "context", limits=limits)
+                        branch_steps.append(retrieved)
+                        count = sum(edge.get("type") == relation for edge in retrieved["edges"])
+                        outcome.update(edge_count=count, status="partial" if retrieved.get("truncated") or retrieved.get("status") == "partial"
+                                       else "failed" if retrieved.get("status") == "failed" else "complete" if count else "empty")
+                        if outcome["status"] == "empty":
                             context["source_note"] += f" No matching {branch.upper()} lead membership was returned under these exact identifiers and filters."
-                except Exception as exc:
-                    context.update(status="failed", error={"category": type(exc).__name__})
+                    except Exception as exc:
+                        error = {"category": type(exc).__name__}
+                        branch_errors.append(error)
+                        outcome.update(status="failed", error=error)
+                        context["source_note"] += f" The independent {branch.upper()} membership check was unavailable; primary colocalization evidence is preserved."
+            if branch_steps:
+                merged = _merge_steps(branch_steps)
+                for key in ("nodes", "edges", "rows", "queries", "validation", "provenance"):
+                    context[key] = merged[key]
+                context["materialized_bytes"] = sum(item.get("materialized_bytes", 0) for item in branch_steps)
+                context["truncated"] = context["truncated"] or merged["truncated"]
+                context["status"] = "partial" if context["truncated"] else merged["completeness"]
+            if branch_errors:
+                context.update(status="failed" if len(branch_errors) == 2 else "partial", error=branch_errors[0])
             if issues:
                 context["status"] = "partial" if context["status"] != "failed" else "failed"
                 context["source_note"] += " Some COLOC records could not be expanded under the verified context or signal bounds."

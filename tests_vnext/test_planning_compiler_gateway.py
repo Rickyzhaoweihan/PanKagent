@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
@@ -26,8 +27,8 @@ def proposal():
 def gateway_for(factory):
     gateway = object.__new__(ClaudeGateway)
     gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
-    gateway.budget = SimpleNamespace(settle=lambda *_: None)
-    gateway._reserve = lambda *_: 'mock'
+    gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+    gateway._reserve = AsyncMock(return_value='mock')
     gateway.plan_cache = VerifiedCache()
     calls = []
     async def create(*args, **kwargs):

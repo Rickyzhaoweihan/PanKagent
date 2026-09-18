@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import asyncio
 import json
 from types import SimpleNamespace
@@ -19,8 +20,8 @@ def test_one_short_review_cannot_approve_with_issues():
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(model='claude-sonnet-5')
         reservations, calls, settlements = [], [], []
-        gateway._reserve = lambda *args: reservations.append(args) or 'reservation'
-        gateway.budget = SimpleNamespace(settle=lambda *args: settlements.append(args))
+        gateway._reserve = AsyncMock(side_effect=lambda *args: reservations.append(args) or 'reservation')
+        gateway.budget = SimpleNamespace(asettle=AsyncMock(side_effect=lambda *args: settlements.append(args)))
         async def create(*args, **kwargs):
             calls.append(kwargs)
             return SimpleNamespace(stop_reason='tool_use', usage=SimpleNamespace(model_dump=lambda: {}), content=[

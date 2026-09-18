@@ -264,7 +264,13 @@ def test_cancel_or_revision_stops_preflight_even_when_upstream_suppresses_cancel
         async with service(tmp_path, graph=graph, gateway=BiologicalGateway(plan=plan)) as (client, runtime, gateway, *_):
             created = (await client.post("/v2/plans", json={"question": "Which cell types express INS?"})).json()
             await asyncio.wait_for(graph.blocked.wait(), 1)
-            before = runtime.store.get(created["run_id"])["preview"]
+            async def saved_preview():
+                while True:
+                    value = (await runtime.io.call(runtime.store.get, created["run_id"]))["preview"]
+                    if value is not None:
+                        return value
+                    await asyncio.sleep(0.005)
+            before = await asyncio.wait_for(saved_preview(), 1)
             assert before["evidence"]["nodes"] and before["pending_step_ids"] == ["s2"]
             if supersede:
                 graph.block_step = None

@@ -23,6 +23,7 @@ from urllib.parse import quote, urlparse, unquote
 
 import httpx
 
+from .external_links import build_external_link_groups
 from .plots import PLOT_VERSION, render_regional_plot
 from .resource_registry import REGISTRY_VERSION, SOURCES, TSV_COLUMNS, registry_snapshot, source_for
 
@@ -200,6 +201,7 @@ def _reference_tabs(nodes: list[dict], edges: list[dict]) -> dict:
         tabs["pankbase_links"].append(["PanKbase scRNA-seq code", "https://github.com/PanKbase/PanKbase-scRNA-seq"])
     if any("ATAC" in edge_type or "OCR" in edge_type or edge_type == "GENE_ACTIVITY_SCORE_IN" for edge_type in edge_types):
         tabs["pankbase_links"].append(["PanKbase scATAC-seq code", "https://github.com/PanKbase/HPAP-scATAC-seq"])
+    tabs["external_link_groups"] = build_external_link_groups(tabs["external_links"], nodes, edges)
     tabs["external_links"] = list({link[2]: link for link in tabs["external_links"]}.values())
     return tabs
 

@@ -276,6 +276,7 @@ def test_health_polling_no_inference_and_dependency_failures(tmp_path):
             runtime.health.observations["claude"]["checked_epoch"] = time.time() - 4000
             assert (await client.get("/health/ready")).status_code == 503
             gateway.budget.remaining = 0
+            await runtime.health.refresh_persistence()
             health = (await client.get("/health/components")).json()
             assert health["components"]["runtime"]["error_category"] == "budget_exhausted"
     asyncio.run(scenario())
