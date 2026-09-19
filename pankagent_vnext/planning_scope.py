@@ -13,9 +13,10 @@ import re
 from .preplanning_grounding import phrase_tokens
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES
+from .genomic_scope import region_scope_issue, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = 'grounded-requested-scope-v5'
-DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
+VERSION = 'grounded-requested-scope-v6'
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 _GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
 _TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
 _INCIDENTAL = {'example', 'examples', 'previous', 'previously', 'unrelated'}
@@ -308,6 +309,9 @@ def scope_issue(question, grounding, plan):
     release = grounding.get('identity', {}).get('graph_release') or grounding.get('schema', {}).get('graph_release')
     if release != REGISTRY['release'] or plan.get('clarification') or plan.get('answer_mode'):
         return None
+    genomic_issue = region_scope_issue(question, grounding, plan)
+    if genomic_issue:
+        return genomic_issue
     assay_issue = _assay_scope_issue(question, grounding, plan)
     if assay_issue:
         return assay_issue
