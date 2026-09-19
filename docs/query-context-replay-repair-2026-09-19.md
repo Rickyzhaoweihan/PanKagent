@@ -52,6 +52,15 @@ selected release paths give it the same endpoint role, and the alias is not a
 real stored field on those paths. Explicit owners, raw-property requests,
 tissues and ambiguous identities do not receive this repair. This covers a
 field-ownership failure observed during a fresh browser region regression.
+For the T1D-specific DEG relation, a uniquely grounded T1D context that the
+planner misplaced on an ownerless endpoint field is normalized to the existing
+disease-identity contract before query validation. The disease context is
+encoded by the relation type, whose actual endpoint remains the cell. Explicit
+raw endpoint requests and other diseases are not silently rewritten.
+
+QTL answer guidance distinguishes source labels from recorded molecular
+phenotypes and distinguishes credible-set record identifiers from evidence of
+independent signals. Complete recorded identifiers must not be called unnamed.
 
 Explicit genomic intervals are bound to a complete public Gene coordinate
 aggregate for the verified graph release. Compilation retains chromosome,
