@@ -96,13 +96,14 @@ def oversized_preview_recovery(preview):
         if (reasons == ['run_graph_materialization_limit'] and not step.get('error')):
             continue
         other_failures.append({**step, 'status': 'failed'})
-    if other_failures:
+    top_error = preview.get('error')
+    top_codes = _error_codes(top_error)
+    if top_codes and all(code.startswith(('run_graph_materialization_limit', 'response_size', 'materialization_limit'))
+                         for code in top_codes):
+        top_error = None
+    if other_failures or top_error:
         # Preserve the actionable error for a separate service/validation
         # failure. Narrowing a result cannot repair authentication or outages.
-        top_error = preview.get('error')
-        if any(code.startswith(('run_graph_materialization_limit', 'response_size', 'materialization_limit'))
-               for code in _error_codes(top_error)):
-            top_error = None
         recovery = retrieval_recovery({'status': 'failed', 'preparation_complete': True,
             'error': top_error, 'evidence': {**evidence, 'steps': other_failures}})
         if recovery:

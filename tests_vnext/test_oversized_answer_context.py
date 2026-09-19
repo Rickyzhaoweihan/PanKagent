@@ -158,3 +158,11 @@ def test_oversized_source_identifiers_are_omitted_not_fabricated():
     node = result['nodes'][0]
     assert node['description'] is None and node['source'] == {'data_source': 'fixture'}
     assert result['context_content_omissions']['omitted_oversized_source_identities'] == 2
+
+
+def test_source_identity_lists_omit_long_members_without_clipping_valid_members():
+    properties = {'data_source_url': ['https://example.org/' + 'x' * 1000, 'https://example.org/valid'],
+                  'data_version': ('v' * 1000, 'v1')}
+    result = node_only_evidence([{'nodes': [{'id': 'g', 'labels': ['Gene'], 'properties': properties}]}])[0]
+    assert result['nodes'][0]['source'] == {'data_source_url': ['https://example.org/valid'], 'data_version': ['v1']}
+    assert result['context_content_omissions']['omitted_oversized_source_identities'] == 2

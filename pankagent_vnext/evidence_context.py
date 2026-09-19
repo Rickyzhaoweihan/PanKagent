@@ -429,6 +429,10 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
                     if value is not None:
                         source[key] = _bounded(value, limits, changes)
                 elif isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
+                    if key in {"data_source_url", "data_version"}:
+                        retained = [v for v in value if len(v) <= limits.string_chars]
+                        changes["omitted_oversized_source_identities"] += len(value) - len(retained)
+                        value = retained
                     source[key] = _bounded(value, limits, changes)
                 elif key in properties:
                     changes["unsupported_source_values"] += 1

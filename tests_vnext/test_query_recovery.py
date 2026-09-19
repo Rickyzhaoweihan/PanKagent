@@ -16,6 +16,20 @@ def failed(reason='missing_required_filter:name', **fields):
 
 
 class QueryRecoveryTests(unittest.TestCase):
+    def test_top_level_service_error_is_not_replaced_by_truncation_notice(self):
+        limited = {'step_id': 's1', 'status': 'partial', 'truncated': True,
+                   'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
+                   'retrieval_execution': {'completed': True, 'cursor_exhausted': False}}
+        for category, retryable in [('authentication', False), ('budget_exhausted', False), ('rate_limited', True)]:
+            with self.subTest(category=category):
+                error = {'category': category}
+                # A resource code must not erase an additional service category.
+                for extra in ({}, {'code': 'run_graph_materialization_limit'}):
+                    recovery = oversized_preview_recovery(preview(limited, status='partial', error={**error, **extra}))
+                    assert recovery['category'] == category
+                    assert recovery['retryable'] == retryable
+                    assert recovery['evidence']['limited_step_ids'] == ['s1']
+
     def test_mixed_truncation_and_service_failure_preserve_the_actionable_error(self):
         limited = {'step_id': 's1', 'status': 'partial', 'truncated': True,
                    'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
