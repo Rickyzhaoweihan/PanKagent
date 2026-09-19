@@ -88,11 +88,11 @@ def test_nonpositive_primary_symbol_predicates_retain_their_literal_meaning(oper
 
 
 @pytest.mark.parametrize('value', [['ADCY3'], '["ADCY3"]'])
-def test_positive_set_preserves_operator_and_encoding(value):
+def test_positive_set_preserves_operator_and_canonical_list(value):
     compiled, issue = compile_plan(plan(value, 'IN'))
     actual = compiled['steps'][0]['constraints'][0]
     assert issue is None and actual['operator'] == 'IN' and actual['property'] == 'id'
-    assert (json.loads(actual['value']) if isinstance(value, str) else actual['value']) == [GENE_ID]
+    assert actual['value'] == [GENE_ID]
     assert scope_issue(QUESTION, grounding(), compiled) is None
 
 
