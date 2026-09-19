@@ -272,6 +272,7 @@ def test_excluding_a_resource_or_incidental_gene_mention_is_not_a_gene_exclusion
     compiled, issue = compile_plan(plan(), grounding(question), question)
     assert issue is None
     assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID
+
     question = 'Previous CFTR is excluded. Find physical interactions of ADCY3.'
     compiled, issue = compile_plan(plan(), grounding(question), question)
     assert issue is None
@@ -281,3 +282,50 @@ def test_excluding_a_resource_or_incidental_gene_mention_is_not_a_gene_exclusion
     compiled, issue = compile_plan(plan(), grounding(other), QUESTION)
     assert issue is None
     assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID
+
+
+@pytest.mark.parametrize('excluded_operator', ['=', '!=', None])
+def test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution(tmp_path, excluded_operator):
+    from test_planning_compiler_gateway import gateway_for
+    from test_runtime import service, new_plan, Gateway, Graph
+    question = 'Find physical interaction partners of ADCY3, excluding CFTR.'
+    data = grounding(question)
+    raw = plan()
+    raw['interpreted_question'] = question
+    raw['steps'][0].update(question=question, complete=True, evidence_combination='independent')
+    if excluded_operator:
+        raw['steps'][0]['constraints'].append({
+            'entity_type': 'Gene', 'property': 'hgnc_symbol', 'operator': excluded_operator, 'value': 'CFTR'})
+    before = deepcopy(raw)
+
+    async def scenario():
+        provider, calls = gateway_for(lambda _: deepcopy(raw))
+        class GroundedGraph(Graph):
+            async def ground_question(self, question):
+                return data
+        class PlanningGateway(Gateway):
+            async def plan(self, question, history, grounding=None):
+                self.plans += 1
+                return await provider.plan(question, history, grounding=grounding)
+        async with service(tmp_path, gateway=PlanningGateway(), graph=GroundedGraph()) as (client, runtime, gateway, graph, literature):
+            created = await new_plan(client, question, expected_status='failed')
+            response = await client.get('/v2/runs/' + created['run_id'])
+            run = response.json()
+            assert response.status_code == 200 and run['status'] == 'failed'
+            assert run['plan']['proposal_issue'] == 'unsupported_gene_exclusion:ENSG00000001626'
+            assert run['plan']['steps'] == []
+            recovery = run['error']['recovery']
+            assert run['error']['category'] == recovery['category'] == 'planning_failure'
+            assert recovery['retryable'] is False
+            assert 'Named gene exclusions are not supported' in recovery['message']
+            assert 'revise' in recovery['message'] and 'retained' in recovery['message']
+            assert 'ENSG' not in str(recovery)
+            assert run['plan']['clarification'] == run['error']['message'] == recovery['message']
+            assert len(calls) == gateway.plans == 1
+            assert not provider.plan_cache.values and raw == before
+            assert graph.calls == gateway.syntheses == literature.calls == 0
+            confirmation = await client.post('/v2/plans/' + created['plan_id'] + '/confirm')
+            assert confirmation.status_code == 409
+            stages = [event['payload'].get('stage') for event in runtime.store.events_after(created['run_id'], 0)]
+            assert 'generating_cypher' not in stages and 'querying_graph' not in stages
+    asyncio.run(scenario())

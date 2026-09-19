@@ -227,7 +227,7 @@ class ClaudeGateway:
                                    for s in plan.get('steps',[]) if s.get('constraint_compilation')]})
                     issue = issue or scope_issue(question, grounding, plan) or requirements_issue(question, grounding, plan, history)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
-                if issue and issue != 'plan_too_large' and not _repair:
+                if issue and issue != 'plan_too_large' and not issue.startswith('unsupported_gene_exclusion:') and not _repair:
                     return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True, grounding=grounding)
                 if issue:
                     if issue == 'plan_too_large':
