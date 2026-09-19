@@ -83,6 +83,8 @@ def source_entry(source, acquired=None):
     modality = source.get("modality", "catalog_only")
     content = str(source.get("content_type", "")).lower()
     aggregate = modality in {"03_de_markers", "04_clinical", "05_functional", "06_treatment", "08_abc"}
+    if "MatrixFile" in source.get("@type", []) or "count matrix" in content:
+        aggregate = False
     if modality == "07_atac" and source.get("file_format_type") == "bed3":
         aggregate = True
     if "meta data" in content or "metadata" in content:
@@ -254,6 +256,9 @@ def file_chunks(source, acquired, analysis, reference, snapshot_id, chunk_rows=5
                 except (ValueError, KeyError):
                     reasons.append("invalid_bed_interval")
         elif modality in {"03_de_markers", "04_clinical", "05_functional", "06_treatment"}:
+            stratum = row.get("stratum", "").strip()
+            if stratum and cell and stratum.casefold() != cell.casefold():
+                reasons.append("cell_type_stratum_mismatch")
             gene_value = next((row[k] for k in ("ensembl_ID", "ensembl_id", "gene", "feature", "")
                                if row.get(k) and row[k].strip().lower() not in {".", "na", "nan", "none"}), "")
             gene_key, mapping = reference.resolve(gene_value)

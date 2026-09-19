@@ -113,6 +113,19 @@ class IngestTests(unittest.TestCase):
         self.assertEqual(bundle["edges"][0]["type"], "HAS_ASSOCIATION_RESULT_WITH")
         self.assertEqual(record["raw_record"]["values"], ["FICTION_A", ".", "-0.5", "0.2", "0.9"])
 
+    def test_disagreeing_row_stratum_never_supports_alias_cell(self):
+        source, acquired, analysis = self.fixture("feature\tp-value\tstratum\nFICTION_A\t0.1\tAlpha\n")
+        bundle = next(file_chunks(source, acquired, analysis, self.reference, "unit-test"))
+        validate_bundle(bundle)
+        self.assertFalse(bundle["edges"])
+        record = bundle["records"][0]
+        self.assertEqual(record["assertion_status"], "quarantined")
+        self.assertIn("cell_type_stratum_mismatch", record["metadata"]["disposition_reasons"])
+
+    def test_matrix_type_overrides_aggregate_modality_privacy(self):
+        source, _, _ = self.fixture("gene\nFICTION_A\n", "04_clinical", **{"@type": ["MatrixFile", "File"], "content_type": "sparse gene count matrix"})
+        self.assertEqual(source_entry(source)["metadata"]["privacy_classification"], "sensitive")
+
     def test_all_rows_counted_and_symbols_not_fabricated(self):
         source, acquired, analysis = self.fixture(
             "gene\tpvalue\nFICTION_A\t0.9\nFICTION_AMBIGUOUS\t0.1\n\nmissing\tNaN\n", "03_de_markers")
