@@ -155,9 +155,13 @@ class PostgresStore:
                     raise HTTPException(409, "Object is absent from the accepted snapshot")
             cur.execute("SELECT count(*) AS count" + common, parameters)
             unfiltered_total = cur.fetchone()["count"]
-            common += filter_sql(filters, parameters)
-            cur.execute("SELECT count(*) AS count" + common, parameters)
-            total = cur.fetchone()["count"]
+            extra_filters = filter_sql(filters, parameters)
+            if extra_filters:
+                common += extra_filters
+                cur.execute("SELECT count(*) AS count" + common, parameters)
+                total = cur.fetchone()["count"]
+            else:
+                total = unfiltered_total
             cur.execute("SELECT er.record_id, er.collection_id, er.context_id, er.source_record_key, "
                         "er.assertion_status, er.metrics, er.raw_record, er.metadata, "
                         "c.context_kind, c.condition, c.cell_type_id, c.metadata AS context_metadata, "

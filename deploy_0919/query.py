@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--request", required=True)
-    parser.add_argument("--route", choices=["/query", "/genes/search", "/records/search"], default="/query")
+    parser.add_argument("--route", choices=["/query", "/genes/search", "/entities/search", "/records/search"], default="/query")
     args = parser.parse_args()
     owned_root(args.root)
     raw = sys.stdin.read(64001) if args.request == "-" else Path(args.request).read_text()

@@ -426,7 +426,7 @@ def test_source_coverage_remains_visible_without_sensitive_metadata():
 
 def test_aggregate_source_values_retained_and_sensitive_opt_in():
     for classification, enabled in (("public_aggregate", False), ("sensitive", True)):
-        cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, {"count": 1}, [source_record(classification)]])
+        cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, [source_record(classification)]])
         result = PostgresStore(settings(allow_sensitive_records=enabled), Connection(cur)).records(
             None, Filters(collection_id="synthetic-collection"), 10, 0)
         assert result["items"][0]["raw_record"] == {"synthetic_source_value": "5"}
@@ -435,10 +435,26 @@ def test_aggregate_source_values_retained_and_sensitive_opt_in():
 
 def test_quarantined_record_cannot_expand_graph_edge_even_if_registry_corrupted():
     cur = Cursor([PG_IDENTITY, ACCEPTED, [{"object_id": EDGE_ID, "object_kind": "edge"}],
-                  {"count": 1}, {"count": 1}, [source_record(status="quarantined")]])
+                  {"count": 1}, [source_record(status="quarantined")]])
     with pytest.raises(HTTPException) as err:
         PostgresStore(settings(), Connection(cur)).records([EDGE_ID], Filters(), 10, 0)
     assert err.value.status_code == 409
+
+
+@pytest.mark.parametrize("scope", ["source_file_id", "collection_id", "context_id", "object_id"])
+def test_unfiltered_record_page_counts_large_scope_once(scope):
+    answers = [PG_IDENTITY, ACCEPTED]
+    ids = [NODE_ID] if scope == "object_id" else None
+    if ids:
+        answers.append([{"object_id": NODE_ID, "object_kind": "node"}])
+    answers += [{"count": 2_000_000}, [source_record()]]
+    cur = Cursor(answers)
+    selected = Filters() if ids else Filters(**{scope: "synthetic-scope"})
+    result = PostgresStore(settings(), Connection(cur)).records(ids, selected, 1, 100)
+    assert result["total"] == result["unfiltered_total"] == 2_000_000
+    assert result["next_offset"] == 101 and result["has_more"]
+    counts = [sql for sql, _ in cur.calls if sql.startswith("SELECT count(*) AS count")]
+    assert len(counts) == 1
 
 
 def test_region_requires_explicit_assembly_and_half_open_interval():
