@@ -22,7 +22,11 @@ def test_bootstrap_authenticates_then_redirects_without_work(tmp_path):
             for path in ('/pankgraph-vnext/access', '/pankgraph-vnext/api/access'):
                 response = await s.client.get(path)
                 assert response.status_code == 401
-                assert 'PanKgraph demo' in response.headers['www-authenticate']
+                assert response.headers['cache-control'] == 'no-store'
+                if path.endswith('/api/access'):
+                    assert 'www-authenticate' not in response.headers
+                else:
+                    assert 'PanKgraph demo' in response.headers['www-authenticate']
                 assert (await s.client.get(path, auth=httpx.BasicAuth('demo', 'wrong'))).status_code == 401
             response = await s.client.get('/pankgraph-vnext/access?return_to=%2Fagent-vnext', auth=AUTH)
             assert response.status_code == 303
@@ -34,6 +38,33 @@ def test_bootstrap_authenticates_then_redirects_without_work(tmp_path):
             assert s.query.calls == s.query.searches == s.layout.calls == s.gateway.calls == 0
             assert s.resources.calls == s.resources.downloads == 0
             assert not s.upstream_calls
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('method,path,challenge', [
+    ('GET', '/pankgraph-vnext/api/access', False),
+    ('GET', '/pankgraph-vnext/api/access?probe=1', False),
+    ('HEAD', '/pankgraph-vnext/api/access', True),
+    ('POST', '/pankgraph-vnext/api/access', True),
+    ('GET', '/pankgraph-vnext/api/access/', True),
+    ('GET', '/pankgraph-vnext/api/access-other', True),
+    ('GET', '/pankgraph-vnext/access?return_to=%2Fagent-vnext', True),
+    ('GET', '/pankgraph-vnext/api/results', True),
+])
+def test_only_get_access_probe_omits_native_auth_challenge(tmp_path, method, path, challenge):
+    async def run():
+        async with service(tmp_path, testing=False) as s:
+            for auth in (None, httpx.BasicAuth('demo', 'wrong')):
+                response = await s.client.request(method, path, auth=auth)
+                assert response.status_code == 401
+                assert response.headers['cache-control'] == 'no-store'
+                assert ('www-authenticate' in response.headers) is challenge
+                if challenge:
+                    assert 'PanKgraph demo' in response.headers['www-authenticate']
+                if method != 'HEAD':
+                    assert response.json() == {'detail': 'Demo login required.'}
+            assert not s.upstream_calls
+            assert s.query.calls == s.query.searches == s.layout.calls == s.gateway.calls == 0
     asyncio.run(run())
 
 

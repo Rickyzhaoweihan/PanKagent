@@ -63,7 +63,13 @@ class DemoAuthentication:
             except (ValueError, UnicodeError):
                 allowed = False
         if not allowed:
-            return await JSONResponse({"detail": "Demo login required."}, status_code=401, headers={"WWW-Authenticate": 'Basic realm="PanKgraph demo", charset="UTF-8"', "Cache-Control": "no-store"})(scope, receive, send)
+            response_headers = {"Cache-Control": "no-store"}
+            # PrefixMiddleware has removed the public prefix. A background
+            # access probe must return promptly so the UI can show its sign-in
+            # link; only top-level navigation should open the native prompt.
+            if scope["method"] != "GET" or scope["path"] != "/api/access":
+                response_headers["WWW-Authenticate"] = 'Basic realm="PanKgraph demo", charset="UTF-8"'
+            return await JSONResponse({"detail": "Demo login required."}, status_code=401, headers=response_headers)(scope, receive, send)
         if scope["method"] not in {"GET", "HEAD", "OPTIONS"}:
             # Native Basic auth is ambient browser authority. Deny cross-site
             # mutations even though no permissive CORS policy is configured.
