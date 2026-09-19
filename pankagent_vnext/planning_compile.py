@@ -13,9 +13,10 @@ import re
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 from .constraint_values import list_value, DIGEST as VALUE_DIGEST
+from .anatomy_paths import REGISTRY as ANATOMY_REGISTRY, DIGEST as ANATOMY_DIGEST
 
-VERSION = 'preplanning-property-owners-v7-typed-lists'
-DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode()).hexdigest()
+VERSION = 'preplanning-property-owners-v8-grounded-cell-endpoint'
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode() + ANATOMY_DIGEST.encode()).hexdigest()
 
 
 def _canonical(value, choices):
@@ -166,6 +167,63 @@ def _grounded_primary_gene_ids(constraint, question, grounding):
     return identifiers or None
 
 
+def _cell_identity_alias(constraint, question, grounding, relations):
+    """Bind a semantic cell alias only to one release-verified endpoint role.
+
+    A real stored cell_type field, an explicit owner, an unverified anatomy
+    class, or a literal property request must keep its original interpretation.
+    The complete, unique mention in the raw request supplies the identity; the
+    relation registry and anatomy inventory supply the endpoint and cell role.
+    Negative operators remain unsupported aliases rather than gaining a new
+    exclusion scope through the positive requested-scope compiler.
+    """
+    prop = constraint.get('property')
+    if (prop not in {'cell_type', 'cell_type_id', 'cell_type_name'} or not question
+            or constraint.get('entity_type') or constraint.get('relationship_type')
+            or constraint.get('owner_kind') is not None
+            or str(constraint.get('operator', '=')).upper() not in {'=', 'IN'}
+            or grounding.get('catalog_complete') is not True
+            or ANATOMY_REGISTRY['graph_release'] != grounding.get('identity', {}).get('graph_release')
+            or re.search(r'\bcell_type(?:_id|_name)?\b', question, re.I)):
+        return None
+    paths = [path for relation in relations
+             for path in REGISTRY['relations'].get(relation, {}).get('paths', [])]
+    # Multiple relations can bind different cells even when their endpoint
+    # labels and directions match. This alias has no variable-level scope.
+    if len(set(relations)) != 1 or any(not REGISTRY['relations'].get(kind, {}).get('paths') for kind in relations):
+        return None
+    labels = {label for path in paths for side in ('source', 'target') for label in path[side]}
+    if (any(prop in REGISTRY['nodes'].get(label, []) for label in labels)
+            or any(prop in REGISTRY['relations'][kind]['properties'] for kind in relations)):
+        return None
+    sides = []
+    for path in paths:
+        endpoints = [side for side in ('source', 'target') if 'anatomical_structure' in path[side]]
+        if len(endpoints) != 1:
+            return None
+        sides.extend(endpoints)
+    if len(set(sides)) != 1:
+        return None
+    identifiers = _grounded_anatomy_ids(_values(constraint), grounding)
+    if not identifiers or any(ANATOMY_REGISTRY['roles'].get(value) != 'cell_type' for value in identifiers):
+        return None
+    # Do not reuse a resolved mention from another question/history or an
+    # explicitly incidental example. This uses the same raw-scope boundary as
+    # the admission guard, including plural cell spellings and replacements.
+    from .planning_scope import _mentions
+    _, mentions, _ = _mentions(question, grounding)
+    requested = {candidate['id'] for _, candidate, _, _ in mentions
+                 if candidate['entity_type'] == 'anatomical_structure'}
+    if not set(identifiers) <= requested:
+        return None
+    for value, identifier in zip(_values(constraint), identifiers):
+        if prop == 'cell_type_id' and value != identifier:
+            return None
+        if prop == 'cell_type_name' and value == identifier:
+            return None
+    return identifiers if str(constraint.get('operator', '=')).upper() == 'IN' else identifiers[0]
+
+
 def _sample_tissue_identity(constraint, question, grounding):
     """Distinguish a requested tissue identity from a raw sample metadata value.
 
@@ -289,6 +347,9 @@ def compile_property_owners(plan, grounding, *, question=None):
                   for label in path['source'] + path['target']}
         sample_role = 'HAS_SAMPLE' in relations
         changes = step.setdefault('constraint_compilation', [])
+        cell_alias_bound = any(change.get('version') == VERSION
+            and change.get('requested', {}).get('property') in {'cell_type', 'cell_type_id', 'cell_type_name'}
+            for change in changes)
         for index, constraint in enumerate(step.get('constraints', [])):
             before = deepcopy(constraint)
             prop = constraint.get('property')
@@ -320,6 +381,11 @@ def compile_property_owners(plan, grounding, *, question=None):
                     constraint['value'] = list_value(constraint.get('value'), categories=categories)
                 except ValueError:
                     return result, f'invalid_constraint_list:{step.get("id", "step")}:{prop}:use_native_array'
+            cell = _cell_identity_alias({**constraint, 'property': prop, 'entity_type': entity,
+                'relationship_type': relation}, question, grounding, relations)
+            if cell is not None:
+                entity, prop, constraint['value'] = 'anatomical_structure', 'id', cell
+                cell_alias_bound = True
             if sample_role and not relation and owner_kind != 'relationship':
                 sample_tissue = _sample_tissue_identity(
                     {**constraint, 'entity_type': entity, 'property': prop}, question, grounding)
@@ -399,6 +465,21 @@ def compile_property_owners(plan, grounding, *, question=None):
                                 'canonical_binding': deepcopy(constraint), 'version': VERSION,
                                 'source': 'verified release ownership and resolved request role',
                                 'schema_digest': SCHEMA_DIGEST})
+        if cell_alias_bound:
+            # A single endpoint cannot be two distinct cells. Do not turn a
+            # model's separate '=' bindings into an invented union/comparison.
+            # Include existing typed identities as well as the new aliases;
+            # duplicate name/id spellings for the same cell remain harmless.
+            positive_sets = []
+            for constraint in step.get('constraints', []):
+                if (constraint.get('entity_type') == 'anatomical_structure'
+                        and constraint.get('property') in {'id', 'name'}
+                        and str(constraint.get('operator', '=')).upper() in {'=', 'IN'}):
+                    identifiers = _grounded_anatomy_ids(_values(constraint), grounding)
+                    if identifiers:
+                        positive_sets.append(set(identifiers))
+            if positive_sets and any(values != positive_sets[0] for values in positive_sets[1:]):
+                return result, f'conflicting_cell_identity:{step.get("id", "step")}'
         if not changes:
             step.pop('constraint_compilation', None)
     return result, None
