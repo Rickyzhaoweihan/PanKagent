@@ -70,6 +70,35 @@ def test_named_locus_is_not_two_genes_and_needs_bounds():
 
 
 @pytest.mark.parametrize('question,state', [
+    ('Are there other genes differentially expressed in beta cells at the MAPT/PLEKHM1 locus in T1D?', 'missing_chromosome_and_bounds'),
+    ('Which genes at the MAPT/PLEKHM1 locus (43–46 Mb) are expressed in GRCh38.p14?', 'missing_chromosome'),
+])
+def test_named_locus_without_chromosome_cannot_be_replaced_by_label_genes(question, state):
+    scope = genomic_scope(question)
+    assert scope['state'] == state
+    assert scope['chromosome'] is None and scope['collection_scope'] is True
+    assert scope['raw_question'] == question
+    assert scope['locus_labels'][0]['surface'] == 'MAPT/PLEKHM1'
+    anchors = {'entity_type': 'Gene', 'property': 'name', 'operator': 'IN', 'value': ['MAPT', 'PLEKHM1']}
+    source = proposal(anchors)
+    result, issue = compile_genomic_scope(question, grounding(), source)
+    assert issue.startswith('unresolved_genomic_scope:' + state)
+    assert 'chromosome and interval bounds' in issue and 'reference-assembly context' in issue
+    assert result == source
+    assert scope_issue(question, grounding(), source) == issue
+    mentions = make_index(alias_graph()).match(question)
+    labels = [m for m in mentions if m.get('context_role', {}).get('kind') == 'genomic_locus_label']
+    assert candidate_ids(labels) == {'mapt', 'plekhm1'}
+    assert all(m['identity_complete'] is False for m in labels)
+
+
+def test_named_gene_pair_without_locus_keeps_existing_lookup_behavior():
+    question = 'Which of the genes MAPT and PLEKHM1 are expressed in beta cells?'
+    assert genomic_scope(question) is None
+    assert {'mapt', 'plekhm1'} <= candidate_ids(make_index(alias_graph()).match(question))
+
+
+@pytest.mark.parametrize('question,state', [
     ('genes in chr17 46–43 Mb', 'invalid_coordinates'),
     ('genes in chr17 43–46 Mb and chr1 2–3 Mb', 'ambiguous_region'),
     ('genes in chr17 43–46 Mb using GRCh37 or GRCh38', 'ambiguous_region'),

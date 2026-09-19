@@ -41,20 +41,28 @@ RETURN count(g) AS total,
 def genomic_scope(question):
     """Return an exact, non-executable interpretation of a Gene region request."""
     chromosomes = list(_CHR.finditer(question))
-    if not chromosomes or not re.search(r'\bgenes?\b|\bEnsembl\s+IDs?\b|\blocus\b', question, re.I):
-        return None
     labels = [{'surface': m[1], 'span': list(m.span(1))} for m in _LOCUS.finditer(question)]
+    collection_scope = bool(re.search(r'\b(?:genes|Ensembl\s+IDs|gene\s+IDs)\b', question, re.I))
+    # A named locus is still a region when its chromosome was omitted. In a
+    # collection request its labels must not become the whole returned set.
+    # Ordinary named-gene lookups without a locus retain their existing path.
+    if (not chromosomes and not (labels and collection_scope)
+            or not re.search(r'\bgenes?\b|\bEnsembl\s+IDs?\b|\blocus\b', question, re.I)):
+        return None
     ranges = list(_RANGE.finditer(question))
     scope = {'version': VERSION, 'raw_question': question, 'entity_type': 'Gene',
-             'chromosome': chromosomes[0]['chromosome'].upper(), 'locus_labels': labels,
+             'chromosome': chromosomes[0]['chromosome'].upper() if chromosomes else None, 'locus_labels': labels,
              'selection': 'contained' if re.search(r'\b(?:entirely|fully|wholly)\s+(?:inside|within|contained)|\bcontained\s+(?:in|within)\b', question, re.I) else 'overlap',
              'coordinate_convention': ('0-based_half-open' if re.search(r'0[- ]based|half[- ]open', question, re.I)
                                        else '1-based_inclusive' if re.search(r'1[- ]based', question, re.I) else 'as_written'),
-             'collection_scope': bool(re.search(r'\b(?:genes|Ensembl\s+IDs|gene\s+IDs)\b', question, re.I)),
+             'collection_scope': collection_scope,
              'complete_collection': not bool(re.search(r'\b(?:top|bottom|first)\s+\d+\b|\bexamples?\b', question, re.I)),
              'state': 'missing_bounds'}
     assemblies = list(dict.fromkeys(m[0] for m in _ASSEMBLY.finditer(question)))
     scope['requested_assembly'] = assemblies[0] if len(assemblies) == 1 else None
+    if not chromosomes:
+        scope['state'] = 'missing_chromosome' if ranges else 'missing_chromosome_and_bounds'
+        return scope
     if len(chromosomes) != 1 or len(assemblies) > 1:
         scope['state'] = 'ambiguous_region'
         return scope
@@ -136,7 +144,7 @@ def _region_binding(question, grounding):
     if not scope:
         return None, None
     if scope['state'] != 'parsed':
-        return None, 'unresolved_genomic_scope:' + scope['state'] + ': Preserve the whole locus; obtain explicit chromosome bounds instead of substituting named genes.'
+        return None, 'unresolved_genomic_scope:' + scope['state'] + ': Preserve the whole locus; obtain explicit chromosome and interval bounds with verified reference-assembly context instead of substituting named genes.'
     metadata = grounding.get('genomic_coordinate_metadata', {})
     if (metadata.get('state') != 'verified' or metadata.get('identity') != grounding.get('identity')
             or metadata.get('coordinate_storage') != 'numeric'
