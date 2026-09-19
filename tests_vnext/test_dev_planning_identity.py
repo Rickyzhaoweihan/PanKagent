@@ -211,3 +211,73 @@ def test_old_persisted_preview_remains_readable_but_cannot_be_reused_after_contr
             assert response.status_code == 409
             assert (gateway.plans, gateway.syntheses, graph.calls, literature.calls) == counts
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('clause', [
+    'excluding CFTR', 'except CFTR', 'except for CFTR', 'without CFTR',
+    'but not CFTR', 'other than CFTR', 'do not include CFTR',
+    'exclude the gene CFTR', 'CFTR is excluded',
+])
+def test_named_gene_exclusion_rejects_contradictory_positive_model_binding(clause):
+    question = 'Find physical interaction partners of ADCY3, ' + clause + '.'
+    original = plan()
+    original['steps'][0]['constraints'].append({
+        'entity_type': 'Gene', 'property': 'hgnc_symbol', 'operator': '=', 'value': 'CFTR'})
+    before = deepcopy(original)
+    compiled, issue = compile_plan(original, grounding(question), question)
+    assert issue == 'unsupported_gene_exclusion:ENSG00000001626'
+    assert compiled == original == before
+
+
+@pytest.mark.parametrize(('operator', 'value'), [
+    ('=', 'CFTR'), ('IN', '["CFTR"]'), ('!=', 'CFTR'),
+    ('<>', 'CFTR'), ('NOT IN', ['CFTR']),
+])
+def test_gene_exclusion_is_fail_closed_and_does_not_rewrite_its_operator(operator, value):
+    question = 'Find physical interaction partners of ADCY3, excluding CFTR.'
+    original = plan()
+    original['steps'][0]['constraints'].append({
+        'entity_type': 'Gene', 'property': 'hgnc_symbol', 'operator': operator, 'value': value})
+    before = deepcopy(original)
+    compiled, issue = compile_plan(original, grounding(question), question)
+    assert issue == 'unsupported_gene_exclusion:ENSG00000001626'
+    # Even a valid negative operator cannot be silently converted, discarded,
+    # or certified by the existing positive-anchor-only scope validator.
+    assert compiled == original == before
+
+
+def test_dropping_the_excluded_gene_from_a_proposal_cannot_bypass_admission():
+    question = 'Find physical interaction partners of ADCY3, excluding CFTR.'
+    original = plan()
+    compiled, issue = compile_plan(original, grounding(question), question)
+    assert issue == 'unsupported_gene_exclusion:ENSG00000001626'
+    assert compiled == original
+
+
+@pytest.mark.parametrize('suffix', [
+    'Do not exclude ADCY3.', 'Never exclude ADCY3.',
+    'Without excluding ADCY3.', 'ADCY3 is not excluded.',
+    'Use ADCY3 instead of CFTR.', 'Use ADCY3 rather than CFTR.',
+])
+def test_retention_and_existing_replacement_wording_are_not_gene_exclusions(suffix):
+    question = 'Find physical interaction partners of ADCY3. ' + suffix
+    compiled, issue = compile_plan(plan(), grounding(question), question)
+    assert issue is None
+    assert compiled['steps'][0]['constraints'][0]['property'] == 'id'
+    assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID
+
+
+def test_excluding_a_resource_or_incidental_gene_mention_is_not_a_gene_exclusion():
+    question = 'Find physical interactions of ADCY3, excluding literature.'
+    compiled, issue = compile_plan(plan(), grounding(question), question)
+    assert issue is None
+    assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID
+    question = 'Previous CFTR is excluded. Find physical interactions of ADCY3.'
+    compiled, issue = compile_plan(plan(), grounding(question), question)
+    assert issue is None
+    assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID
+    # A grounding payload from a different raw question cannot exclude a gene.
+    other = 'Find physical interactions of ADCY3, excluding CFTR.'
+    compiled, issue = compile_plan(plan(), grounding(other), QUESTION)
+    assert issue is None
+    assert compiled['steps'][0]['constraints'][0]['value'] == GENE_ID

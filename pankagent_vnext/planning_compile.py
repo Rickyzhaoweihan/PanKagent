@@ -13,7 +13,7 @@ import re
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 
-VERSION = 'preplanning-property-owners-v5'
+VERSION = 'preplanning-property-owners-v6'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 
@@ -33,6 +33,43 @@ def _values(constraint):
                 return []
         return value if isinstance(value, list) else []
     return [value]
+
+
+def _unsupported_gene_exclusion(question, grounding):
+    """Fail closed on a named-gene exclusion the scope contract cannot express.
+
+    The current scope validator requires positive gene anchors. Canonicalizing
+    an erroneous positive model predicate for an explicitly excluded gene would
+    therefore admit the opposite of the user's request. Do not infer polarity
+    from model operators or invent a negative query; preserve the proposal and
+    require a supported investigation instead. Only direct linguistic exclusions
+    of complete, uniquely grounded genes are recognized here.
+    """
+    if not isinstance(question, str) or not question:
+        return None
+    from .planning_scope import _mentions
+    words, mentions, _ = _mentions(question, grounding)
+    for mention, candidate, _, spans in mentions:
+        if candidate.get('entity_type') != 'Gene':
+            continue
+        # Reuse the existing positive-scope boundary for prior examples,
+        # explicit replacements and mentions absent from this raw question.
+        for start, end in spans:
+            prefix = list(words[max(0, start - 6):start])
+            while prefix and prefix[-1] in {'the', 'gene', 'genes'}:
+                prefix.pop()
+            direct = bool(prefix and (prefix[-1] in {
+                'exclude', 'excluding', 'except', 'without', 'not', 'neither', 'nor'}
+                or tuple(prefix[-2:]) in {('other', 'than'), ('except', 'for'), ('not', 'include')}))
+            # A request to retain a gene must not be read as its exclusion.
+            if (prefix and prefix[-1] in {'exclude', 'excluding'}
+                    and len(prefix) > 1 and prefix[-2] in {'not', 'never', 'without'}):
+                direct = False
+            suffix = words[end:end + 4]
+            direct = direct or suffix[:1] == ('excluded',) or suffix[:2] == ('is', 'excluded')
+            if direct:
+                return 'unsupported_gene_exclusion:' + str(candidate['id'])
+    return None
 
 
 def _grounded_kind(values, grounding, expected=None, exact_id=False):
@@ -245,6 +282,8 @@ def compile_property_owners(plan, grounding, *, question=None):
     if (not isinstance(grounding, dict) or grounding.get('status') != 'ready'
             or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']):
         return result, None
+    if exclusion := _unsupported_gene_exclusion(question, grounding):
+        return result, exclusion
     for step in result.get('steps', []):
         relations = [_canonical(value, REGISTRY['relations']) or value for value in step.get('relation_types', [])]
         labels = {label for relation in relations for path in REGISTRY['relations'].get(relation, {}).get('paths', [])
