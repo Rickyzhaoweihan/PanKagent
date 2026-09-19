@@ -12,9 +12,10 @@ import re
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
+from .constraint_values import list_value, DIGEST as VALUE_DIGEST
 
-VERSION = 'preplanning-property-owners-v6'
-DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
+VERSION = 'preplanning-property-owners-v7-typed-lists'
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode()).hexdigest()
 
 
 def _canonical(value, choices):
@@ -26,12 +27,10 @@ def _values(constraint):
     value = constraint.get('value')
     operator = str(constraint.get('operator', '=')).upper()
     if operator in {'IN', 'NOT IN'}:
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except ValueError:
-                return []
-        return value if isinstance(value, list) else []
+        try:
+            return list_value(value)
+        except ValueError:
+            return []
     return [value]
 
 
@@ -310,6 +309,17 @@ def compile_property_owners(plan, grounding, *, question=None):
             if (entity and relation or entity and owner_kind == 'relationship'
                     or relation and owner_kind == 'node'):
                 return result, f'conflicting_property_owners:{step.get("id", "step")}:{prop}'
+            if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:
+                # Only an exact relationship/category owner in this verified
+                # release may disambiguate a legacy comma-list. In particular,
+                # never guess condition names or move a node filter to an edge.
+                category_owner = relation or (relations[0] if len(relations) == 1 else None)
+                categories = (REGISTRY['categories'].get(str(category_owner) + '.' + str(prop))
+                              if not entity and owner_kind != 'node' and category_owner in relations else None)
+                try:
+                    constraint['value'] = list_value(constraint.get('value'), categories=categories)
+                except ValueError:
+                    return result, f'invalid_constraint_list:{step.get("id", "step")}:{prop}:use_native_array'
             if sample_role and not relation and owner_kind != 'relationship':
                 sample_tissue = _sample_tissue_identity(
                     {**constraint, 'entity_type': entity, 'property': prop}, question, grounding)

@@ -28,6 +28,7 @@ from neo4j.graph import Node, Path as Neo4jPath, Relationship
 from .graph_contract import DIGEST as CONTRACT_DIGEST, RELATIONS, MEASUREMENTS, generation_request
 from .plan_constraints import (CELL_TYPES, build_generation_question, related_context_step,
                                repair_step_constraints, resolved_lookup, step_relation_types)
+from .constraint_values import list_value
 
 
 class GraphValidationError(ValueError):
@@ -171,15 +172,13 @@ def _equal(actual: Any, expected: Any) -> bool:
 
 
 def _normalized_expected(expected: Any, actual: Any, operator: str) -> Any:
-    # Structured planners encode heterogeneous constraint values as strings.
+    if operator == "IN":
+        try:
+            return list_value(expected)
+        except ValueError:
+            return expected  # Invalid list shapes are rejected by validate_cypher.
+    # Legacy scalar constraints retain their original numeric/bool encoding.
     if isinstance(expected, str):
-        if operator == "IN":
-            try:
-                decoded = json.loads(expected)
-                if isinstance(decoded, list):
-                    return decoded
-            except (ValueError, TypeError):
-                pass
         if isinstance(actual, (int, float)) and not isinstance(actual, bool):
             try:
                 return float(expected)
@@ -645,6 +644,12 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
     )):
         errors.append("incomplete_limit_or_slice")
     constraints = list(step.get("constraints") or [])
+    for constraint in constraints:
+        if str(constraint.get("operator", "=")).upper() == "IN":
+            try:
+                list_value(constraint.get("value"))
+            except ValueError:
+                errors.append("invalid_constraint_list:" + str(constraint.get("property", "unknown")))
     dependencies = [name for name in parameters if name.startswith("dep_")]
     if (constraints or dependencies) and any(_word(t, "OR") or _word(t, "XOR") or _word(t, "NOT") for t in tokens):
         errors.append("ambiguous_constraint_boolean_logic")

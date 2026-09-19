@@ -42,7 +42,7 @@ def test_raw_sample_fields_compile_before_requested_scope_validation():
     ('=', 'scrnaseq', 'scRNA-seq'), ('!=', 'multiome', 'snMultiomics'),
     ('<>', 'snMultiomics', 'snMultiomics'),
     ('IN', ['scrnaseq', 'BCR-seq'], ['scRNA-seq', 'BCR-seq']),
-    ('NOT IN', '["multiome", "BCR-seq"]', '["snMultiomics", "BCR-seq"]'),
+    ('NOT IN', '["multiome", "BCR-seq"]', ['snMultiomics', 'BCR-seq']),
 ])
 def test_sample_assay_aliases_preserve_operator_and_all_values(operator, value, expected):
     compiled, issue = compile_property_owners(plan(field('data_modality', value, operator=operator)), context())
@@ -158,7 +158,7 @@ def test_multiple_grounded_anatomy_ids_retain_in_operator():
     result, issue = compile_property_owners(raw, context(TISSUE, other))
     assert issue is None
     c = result['steps'][0]['constraints'][0]
-    assert c['operator'] == 'IN' and json.loads(c['value']) == [TISSUE[1], other[1]]
+    assert c['operator'] == 'IN' and c['value'] == [TISSUE[1], other[1]]
     assert c['property'] == 'id'
 
 

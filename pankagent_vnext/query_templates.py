@@ -14,9 +14,10 @@ from pathlib import Path
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
+from .constraint_values import list_value, DIGEST as VALUE_DIGEST
 
 VERSION = 'typed-relation-templates-v3'
-DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
 _OPERATORS = {'=', '!=', '<>', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
@@ -39,10 +40,7 @@ def _scalar(value):
 
 def _value(value, operator, *, numeric=False):
     if operator == 'IN':
-        if isinstance(value, str):
-            value = json.loads(value)
-        if not isinstance(value, list) or not all(_scalar(v) for v in value):
-            raise ValueError('unsupported_list_value')
+        value = list_value(value)
         if numeric:
             return [_value(member, '=', numeric=True) for member in value]
         return deepcopy(value)
