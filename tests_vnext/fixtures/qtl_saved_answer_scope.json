@@ -1,0 +1,53 @@
+{
+  "description": "Public biological record fields and three negative answer excerpts from the saved PLEKHM1 QTL response. Runtime/private metadata omitted. This is a prompt-contract regression, not a model-reasoning evaluation.",
+  "question": "related question: \"What QTL signals (eQTL or sQTL) are associated with PLEKHM1 in pancreatic tissues?\"",
+  "edges": [
+    {
+      "type": "PART_OF_QTL_SIGNAL",
+      "start_id": "rs62064652",
+      "end_id": "ENSG00000225190",
+      "properties": {
+        "tissue_name": "Islet",
+        "data_version": "02/03/25",
+        "credible_set": "ENSG00000225190__PLEKHM1__ENSG00000225190.4_43545575_43545959__credibleSet3",
+        "credibleset": "3",
+        "data_source": "exon; INSPIRE",
+        "tissue_id": "UBERON_0000006",
+        "n_snp": 113
+      }
+    },
+    {
+      "type": "PART_OF_QTL_SIGNAL",
+      "start_id": "rs112550936",
+      "end_id": "ENSG00000225190",
+      "properties": {
+        "tissue_name": "Islet",
+        "data_version": "02/03/25",
+        "credible_set": "ENSG00000225190__PLEKHM1__ENSG00000225190.4_43545575_43545959__credibleSet1",
+        "credibleset": "1",
+        "data_source": "exon; INSPIRE",
+        "tissue_id": "UBERON_0000006",
+        "n_snp": 1
+      }
+    },
+    {
+      "type": "PART_OF_QTL_SIGNAL",
+      "start_id": "rs62065450",
+      "end_id": "ENSG00000225190",
+      "properties": {
+        "tissue_name": "Islet",
+        "data_version": "02/03/25",
+        "credible_set": "ENSG00000225190__PLEKHM1__credibleSet1",
+        "credibleset": "1",
+        "data_source": "INSPIRE; SusieR",
+        "tissue_id": "UBERON_0000006",
+        "n_snp": 117
+      }
+    }
+  ],
+  "negative_answer_excerpts": {
+    "phenotype": "labeled \"exon\" for two records, suggesting exon-level/splicing-related phenotype",
+    "shared_signal": "these are three distinct signals/credible sets, not one shared signal, since credible_set identifiers differ.",
+    "unnamed": "credibleSet1 (unnamed set)"
+  }
+}
