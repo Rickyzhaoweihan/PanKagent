@@ -261,7 +261,7 @@ def test_schema_draft_reuses_raw_negative_compiler_before_any_model_call(questio
     assert not any(c['entity_type']=='disease' for c in constraints)
 
 
-@pytest.mark.parametrize('operator,value,expected',[('=','hpap','HPAP'),('!=','hpap','HPAP'),('IN','["hpap"]','["HPAP"]')])
+@pytest.mark.parametrize('operator,value,expected',[('=','hpap','HPAP'),('!=','hpap','HPAP'),('IN','["hpap"]',['HPAP'])])
 def test_source_role_binding_preserves_operator_and_recorded_case(operator,value,expected):
     ctx=context(sample_terminology=VOCAB)
     result,issue=compile_property_owners(plan(field('data_source',value,'Sample_node',operator)),ctx,question='Count HPAP samples.')

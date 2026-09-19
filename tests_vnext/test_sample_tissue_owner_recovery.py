@@ -47,7 +47,7 @@ def test_independent_assay_cohorts_keep_tissue_and_all_other_owned_filters(tissu
     ('=', SPLEEN[1], SPLEEN[1]), ('=', 'spleen', SPLEEN[1]),
     ('!=', SPLEEN[1], SPLEEN[1]), ('<>', 'spleen', SPLEEN[1]),
     ('IN', [SPLEEN[1], PANCREAS[1]], [SPLEEN[1], PANCREAS[1]]),
-    ('NOT IN', '["spleen", "pancreas"]', json.dumps([SPLEEN[1], PANCREAS[1]])),
+    ('NOT IN', '["spleen", "pancreas"]', [SPLEEN[1], PANCREAS[1]]),
 ])
 def test_identity_predicates_retain_operator_list_shape_and_provenance(operator, value, expected):
     raw = plan(field('anatomical_structure', value, 'Sample_node', operator))

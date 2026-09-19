@@ -1,7 +1,7 @@
 """Evidence-backed recovery wording; suggestions never alter the submitted plan."""
 import re
 
-VERSION = 'query-recovery-4'
+VERSION = 'query-recovery-6-derived-retrieval-limits'
 
 def stage_recovery(number, vocabulary, release):
     recorded = vocabulary.get('stages')
@@ -59,6 +59,111 @@ def _error_codes(value):
         return [str(value[key]).lower() for key in ('category', 'code', 'error_category', 'http_status', 'status_code')
                 if isinstance(value.get(key), (str, int))]
     return [value.lower()] if isinstance(value, str) else []
+
+
+def _blocked_by_retrieval_limits(steps, root_ids):
+    """Trace only unexecuted dependency failures to verified size-limit roots.
+
+    Unknown parents, cycles, ambiguous IDs and independent execution/error
+    evidence cannot be explained away as consequences of the retrieval limit.
+    This affects recovery wording only, never query readiness or reuse.
+    """
+    identifiers = [step.get('step_id') for step in steps]
+    unique = {value for value in identifiers if isinstance(value, str) and value
+              and identifiers.count(value) == 1}
+    explained = {value for value in root_ids if isinstance(value, str)} & unique
+    derived = set()
+    changed = True
+    while changed:
+        changed = False
+        for step in steps:
+            identifier, parents = step.get('step_id'), step.get('blocked_by')
+            checks = _records(step.get('validation'))
+            if (not isinstance(identifier, str) or identifier not in unique or identifier in explained
+                    or step.get('status') not in {'failed', 'blocked'}
+                    or not isinstance(parents, list) or not parents
+                    or not all(isinstance(parent, str) and parent in explained for parent in parents)
+                    or set(_error_codes(step.get('error'))) != {'dependency_unavailable'}
+                    or not checks or any(check.get('valid') is not False
+                        or check.get('reasons') != ['dependency_unavailable'] for check in checks)
+                    or any(step.get(key) for key in ('queries', 'generator_attempts', 'retrieval_execution',
+                                                     'nodes', 'edges', 'rows'))):
+                continue
+            explained.add(identifier)
+            derived.add(identifier)
+            changed = True
+    return [value for value in identifiers if isinstance(value, str) and value in derived]
+
+
+def oversized_preview_recovery(preview):
+    """Describe a validated but incomplete materialization without admitting it.
+
+    This is a terminal recovery notice, not a successful query or permission to
+    synthesize measurements from a truncated result. The normal confirmation,
+    dependency, population and query-validation guards remain in force.
+    """
+    if not isinstance(preview, dict) or preview.get('preparation_complete') is not True:
+        return None
+    evidence = preview.get('evidence') or {}
+    if not isinstance(evidence, dict):
+        return None
+    steps = _records(evidence.get('steps'))
+    limited = []
+    resource_roots = []
+    for step in steps:
+        checks = _records(step.get('validation'))
+        execution = step.get('retrieval_execution') or {}
+        if (step.get('status') == 'partial' and step.get('truncated') is True
+                and checks and checks[-1].get('reasons') == ['run_graph_materialization_limit']
+                and not step.get('error') and not any(step.get(key) for key in
+                    ('queries', 'generator_attempts', 'retrieval_execution', 'nodes', 'edges', 'rows'))):
+            resource_roots.append(step.get('step_id'))
+        if (step.get('purpose') != 'context' and step.get('status') == 'partial'
+                and step.get('truncated') is True and not step.get('error')
+                and checks and checks[-1].get('valid') is True
+                and isinstance(execution, dict) and execution.get('completed') is True
+                and execution.get('cursor_exhausted') is False
+                and any(isinstance(query, dict) and query.get('cypher') for query in step.get('queries') or [])):
+            limited.append(step.get('step_id'))
+    if not limited:
+        return None
+    derived = _blocked_by_retrieval_limits(steps, limited + resource_roots)
+    other_failures = []
+    for step in steps:
+        if (step.get('purpose') == 'context' or step.get('step_id') in limited
+                or step.get('step_id') in derived
+                or step.get('status') in {'complete', 'empty'} and not step.get('error')):
+            continue
+        checks = _records(step.get('validation'))
+        reasons = checks[-1].get('reasons', []) if checks else []
+        if (reasons == ['run_graph_materialization_limit'] and not step.get('error')):
+            continue
+        other_failures.append({**step, 'status': 'failed'})
+    top_error = preview.get('error')
+    top_codes = _error_codes(top_error)
+    if top_codes and all(code.startswith(('run_graph_materialization_limit', 'response_size', 'materialization_limit'))
+                         for code in top_codes):
+        top_error = None
+    if other_failures or top_error:
+        # Preserve the actionable error for a separate service/validation
+        # failure. Narrowing a result cannot repair authentication or outages.
+        recovery = retrieval_recovery({'status': 'failed', 'preparation_complete': True,
+            'error': top_error, 'evidence': {**evidence, 'steps': other_failures}})
+        if recovery:
+            recovery['message'] += (' Other checks also reached the retrieval limit because the query is too broad. '
+                'A more specific query can reduce that result size, but does not resolve the separate failure above.')
+            recovery['evidence'].update(limited_step_ids=limited, complete_for_requested_scope=False,
+                blocked_by_retrieval_limit_step_ids=derived)
+            return recovery
+    return {'category': 'retrieval_limit', 'title': 'The query is too broad',
+            'message': 'The query is too broad to return a complete result within the current retrieval limit. '
+                       'The retrieved records do not cover the full requested scope. Try a more specific query '
+                       'by narrowing the gene, region, tissue or evidence category. No filters have been changed.',
+            'retryable': False, 'suggestions': [],
+            'evidence': {'graph_release': evidence.get('graph_version'),
+                         'limited_step_ids': limited, 'complete_for_requested_scope': False,
+                         'blocked_by_retrieval_limit_step_ids': derived,
+                         'cursor_exhausted': False}}
 
 
 def retrieval_recovery(preview):

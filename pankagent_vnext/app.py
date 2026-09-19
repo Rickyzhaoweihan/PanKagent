@@ -435,6 +435,7 @@ class Runtime:
     def failed_step(step, error):
         return {"step_id": step["id"], "question": step["question"], "status": "failed", "error": error,
                 "nodes": [], "edges": [], "rows": [], "validation": [{"valid": False, "reasons": [error["category"]]}],
+                "requested_scope": {"relation_types": deepcopy(step.get("relation_types", []))},
                 **{key: step[key] for key in ('purpose', 'context_for', 'title') if key in step}}
 
     def preview_identity(self, plan):
@@ -656,8 +657,12 @@ class Runtime:
         if plan.get('clarification'):
             return {'category': 'scope_needs_clarification', 'title': 'A detail needs your review',
                     'message': plan['clarification'], 'retryable': False, 'suggestions': []}
-        from .query_recovery import retrieval_recovery
+        from .query_recovery import retrieval_recovery, oversized_preview_recovery
         readiness = query_readiness(plan, preview)
+        oversized = oversized_preview_recovery(preview)
+        if oversized:
+            oversized['evidence']['query_readiness'] = readiness
+            return oversized
         blocked = set(readiness['blocked_step_ids'])
         relevant = deepcopy(preview)
         relevant['status'] = 'failed'

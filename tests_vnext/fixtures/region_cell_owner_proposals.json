@@ -1,0 +1,138 @@
+{
+  "description": "Two saved planner proposals for the public biological region question; runtime records and private audit metadata omitted. Grounding is supplied separately as a controlled test fixture.",
+  "question": "Which genes at the chr17 MAPT/PLEKHM1 locus (43–46 Mb) are differentially expressed in alpha cells in T1D?",
+  "proposals": [
+    {
+      "interpreted_question": "Which genes located on chromosome 17 within the 43–46 Mb region (encompassing the MAPT/PLEKHM1 locus, GRCh38.p14) are differentially expressed (T1D DEG) in alpha cells comparing T1D to non-T1D?",
+      "steps": [
+        {
+          "id": "s1",
+          "question": "Which genes are located on chromosome 17 between 43,000,000 and 46,000,000 bp (GRCh38.p14)?",
+          "relation_types": [],
+          "depends_on": [],
+          "constraints": [
+            {
+              "property": "chr",
+              "operator": "=",
+              "entity_type": "Gene",
+              "value": "17"
+            },
+            {
+              "property": "start_loc",
+              "operator": "<=",
+              "entity_type": "Gene",
+              "value": "46000000"
+            },
+            {
+              "property": "end_loc",
+              "operator": ">=",
+              "entity_type": "Gene",
+              "value": "43000000"
+            },
+            {
+              "property": "genome_assembly",
+              "operator": "=",
+              "entity_type": "Gene",
+              "value": "GRCh38.p14"
+            }
+          ],
+          "complete": true,
+          "evidence_combination": "independent"
+        },
+        {
+          "id": "s2",
+          "question": "Of the genes identified in that chr17 43-46 Mb region, which are recorded as differentially expressed in alpha cells in type 1 diabetes?",
+          "relation_types": [
+            "T1D_DEG_IN"
+          ],
+          "depends_on": [
+            "s1"
+          ],
+          "constraints": [
+            {
+              "property": "cell_type",
+              "operator": "=",
+              "entity_type": null,
+              "value": "alpha cell"
+            },
+            {
+              "property": "id",
+              "operator": "=",
+              "entity_type": "anatomical_structure",
+              "value": "CL_0000171"
+            },
+            {
+              "property": "id",
+              "operator": "=",
+              "entity_type": "disease",
+              "value": "MONDO_0005147"
+            }
+          ],
+          "complete": true,
+          "evidence_combination": "independent"
+        }
+      ],
+      "clarification": null
+    },
+    {
+      "interpreted_question": "Which genes located on chromosome 17 between 43 Mb and 46 Mb (the MAPT/PLEKHM1 locus region) are differentially expressed in alpha cells in type 1 diabetes (T1D)?",
+      "steps": [
+        {
+          "id": "s1",
+          "question": "Which genes are located on chromosome 17 between 43,000,000 and 46,000,000 bp (GRCh38.p14)?",
+          "relation_types": [],
+          "depends_on": [],
+          "constraints": [
+            {
+              "property": "chr",
+              "operator": "=",
+              "entity_type": "Gene",
+              "value": "17"
+            },
+            {
+              "property": "start_loc",
+              "operator": "<=",
+              "entity_type": "Gene",
+              "value": "46000000"
+            },
+            {
+              "property": "end_loc",
+              "operator": ">=",
+              "entity_type": "Gene",
+              "value": "43000000"
+            },
+            {
+              "property": "genome_assembly",
+              "operator": "=",
+              "entity_type": "Gene",
+              "value": "GRCh38.p14"
+            }
+          ],
+          "complete": true,
+          "evidence_combination": "independent"
+        },
+        {
+          "id": "s2",
+          "question": "Which of these chr17 43-46Mb genes are recorded as T1D differentially expressed genes (T1D_DEG_IN) with cell_type alpha cell?",
+          "relation_types": [
+            "T1D_DEG_IN"
+          ],
+          "depends_on": [
+            "s1"
+          ],
+          "constraints": [
+            {
+              "property": "cell_type",
+              "operator": "=",
+              "entity_type": null,
+              "value": "alpha cell"
+            }
+          ],
+          "complete": true,
+          "evidence_combination": "independent"
+        }
+      ],
+      "clarification": null
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "description": "Saved public biological question and planner proposal with disease context incorrectly placed in an edge endpoint property; runtime and private audit metadata omitted.",
+  "question": "Which genes at the chr17 MAPT/PLEKHM1 locus (43–46 Mb) are differentially expressed in alpha cells in T1D?",
+  "proposal": {
+    "interpreted_question": "Which genes located on chromosome 17 between 43 and 46 Mb (the region containing MAPT and PLEKHM1) show differential expression in alpha cells in type 1 diabetes?",
+    "steps": [
+      {
+        "id": "s1",
+        "question": "Identify all genes on chromosome 17 with genomic coordinates overlapping 43,000,000-46,000,000 bp (GRCh38.p14)",
+        "relation_types": [],
+        "depends_on": [],
+        "constraints": [
+          {
+            "property": "chr",
+            "operator": "=",
+            "entity_type": "Gene",
+            "value": "17"
+          },
+          {
+            "property": "start_loc",
+            "operator": "<=",
+            "entity_type": "Gene",
+            "value": "46000000"
+          },
+          {
+            "property": "end_loc",
+            "operator": ">=",
+            "entity_type": "Gene",
+            "value": "43000000"
+          },
+          {
+            "property": "genome_assembly",
+            "operator": "=",
+            "entity_type": "Gene",
+            "value": "GRCh38.p14"
+          }
+        ],
+        "complete": true,
+        "evidence_combination": "independent"
+      },
+      {
+        "id": "s2",
+        "question": "Which of these chr17 43-46Mb genes are recorded as differentially expressed (T1D DEG) in alpha cells in type 1 diabetes?",
+        "relation_types": [
+          "T1D_DEG_IN"
+        ],
+        "depends_on": [
+          "s1"
+        ],
+        "constraints": [
+          {
+            "property": "cell_type",
+            "operator": "=",
+            "entity_type": null,
+            "value": "alpha cell"
+          },
+          {
+            "property": "end_id",
+            "operator": "=",
+            "entity_type": null,
+            "value": "MONDO_0005147"
+          }
+        ],
+        "complete": true,
+        "evidence_combination": "independent"
+      }
+    ],
+    "clarification": null
+  },
+  "candidate_queries": [
+    "MATCH (a:Gene)-[deg:T1D_DEG_IN]->(b:anatomical_structure)\nWHERE a.chr = \"17\"\n  AND a.genome_assembly = \"GRCh38.p14\"\n  AND a.start_loc <= 46000000\n  AND a.end_loc >= 43000000\n  AND b.id = \"CL_0000171\"\n  AND a.id IN $dep_0\nWITH a, deg, b\nORDER BY a.id, deg.adjusted_p_value, elementId(deg)\nWITH collect(DISTINCT a) + collect(DISTINCT b) AS nodes,\n     collect(DISTINCT deg) AS edges\nRETURN nodes, edges;",
+    "MATCH (a:Gene)-[deg:T1D_DEG_IN]->(b:anatomical_structure)\nWHERE a.chr = \"17\"\n  AND a.genome_assembly = \"GRCh38.p14\"\n  AND a.start_loc <= 46000000\n  AND a.end_loc >= 43000000\n  AND b.id = \"CL_0000171\"\n  AND deg.end_id = \"MONDO_0005147\"\n  AND a.id IN $dep_0\nWITH a, deg, b\nORDER BY a.id, deg.start_id\nWITH collect(DISTINCT a) + collect(DISTINCT b) AS nodes,\n     collect(DISTINCT deg) AS edges\nRETURN nodes, edges;"
+  ]
+}

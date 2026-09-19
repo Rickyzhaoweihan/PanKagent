@@ -14,9 +14,12 @@ from pathlib import Path
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
+from .constraint_values import list_value, DIGEST as VALUE_DIGEST
+from .genomic_scope import DIGEST as GENOMIC_DIGEST
 
 VERSION = 'typed-relation-templates-v3'
-DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()
+                       + VALUE_DIGEST.encode() + GENOMIC_DIGEST.encode()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
 _OPERATORS = {'=', '!=', '<>', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
@@ -26,6 +29,7 @@ _NUMERIC_FIELDS = {kind: set(fields) - {'expression_call'}
 # Quantitative membership fields independently inspected in the locus audit.
 _NUMERIC_FIELDS.update({'PART_OF_QTL_SIGNAL': {'pip', 'rank', 'nominal_p'},
                         'PART_OF_GWAS_SIGNAL': {'pip', 'rank'}})
+_REGION_FIELDS = {'chr', 'assembly', 'genome_assembly', 'start_loc', 'end_loc'}
 
 
 def _common_endpoint(paths, side):
@@ -39,10 +43,7 @@ def _scalar(value):
 
 def _value(value, operator, *, numeric=False):
     if operator == 'IN':
-        if isinstance(value, str):
-            value = json.loads(value)
-        if not isinstance(value, list) or not all(_scalar(v) for v in value):
-            raise ValueError('unsupported_list_value')
+        value = list_value(value)
         if numeric:
             return [_value(member, '=', numeric=True) for member in value]
         return deepcopy(value)
@@ -129,12 +130,51 @@ def _sample_witness(step, paths):
                 'all_requested_paths_covered': True, 'scope_basis': 'typed_donor_and_resolved_tissue_same_sample'}}
 
 
+def _region_gene_records(step):
+    """Enumerate the full verified interval without requiring a named anchor."""
+    from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
+    if not has_verified_region_scope(step):
+        return None
+    filters, params = [], {}
+    try:
+        for index, constraint in enumerate(step.get('constraints', [])):
+            prop, operator = constraint.get('property'), constraint.get('operator', '=')
+            value = constraint.get('value')
+            if (constraint.get('entity_type') != 'Gene' or constraint.get('owner_kind') not in (None, 'node')
+                    or constraint.get('relationship_type') or prop not in REGISTRY['nodes']['Gene']
+                    or operator not in _OPERATORS):
+                return None
+            verified_coordinate = is_verified_region_constraint(constraint, step)
+            if prop in _REGION_FIELDS and not verified_coordinate:
+                return None
+            resolved = _resolved_entity(step, index, constraint)
+            if resolved:
+                prop, value = 'id', resolved['id']
+            numeric = prop in {'start_loc', 'end_loc'} and verified_coordinate
+            if operator in {'>', '>=', '<', '<='} and not numeric:
+                return None
+            parameter = 'template_' + str(index)
+            params[parameter] = _value(value, operator, numeric=numeric)
+            cypher_operator = '<>' if operator == '!=' else operator
+            filters.append(f'g.`{prop}` {cypher_operator} ${parameter}')
+    except (ValueError, TypeError, OverflowError):
+        return None
+    query = ('MATCH (g:`Gene`)\nWHERE ' + ' AND '.join(filters)
+             + '\nRETURN collect(DISTINCT g) AS nodes, [] AS edges')
+    return {'cypher': query, 'parameters': params, 'template_id': 'verified_gene_region_records',
+            'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
+            'endpoint_coverage': {'source': 'Gene', 'all_requested_paths_covered': True,
+                                  'scope_basis': 'verified_complete_gene_interval'}}
+
+
 def compile_query(step):
     if step.get('graph_version') != REGISTRY['release'] or not step.get('complete', True):
         return None
     if any(step.get(key) for key in ('depends_on', 'ranking', 'semantic_issues', 'anatomy_scope_issue', 'coloc_scope_issue')):
         return None
     kinds = step.get('relation_types', [])
+    if not kinds:
+        return _region_gene_records(step)
     if len(kinds) != 1 or kinds[0] not in REGISTRY['relations']:
         return None
     kind = kinds[0]
@@ -167,6 +207,8 @@ def compile_query(step):
         left, right = (_common_endpoint(selected_paths, side) for side in ('source', 'target'))
     if not left or not right or left == right:
         return None
+    from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
+    region_scope = has_verified_region_scope(step)
     filters, params, resolved_count = [], {}, 0
     try:
         for index, constraint in enumerate(step.get('constraints', [])):
@@ -202,7 +244,11 @@ def compile_query(step):
                 # Recorded ages mix months and years; the reviewed expression is
                 # required rather than raw numeric filtering of this field.
                 return None
-            numeric = variable == 'r' and prop in _NUMERIC_FIELDS.get(kind, set())
+            verified_coordinate = owner == 'Gene' and is_verified_region_constraint(constraint, step)
+            if region_scope and owner == 'Gene' and prop in _REGION_FIELDS and not verified_coordinate:
+                return None
+            numeric = (variable == 'r' and prop in _NUMERIC_FIELDS.get(kind, set())
+                       or verified_coordinate and prop in {'start_loc', 'end_loc'})
             if operator in {'>', '>=', '<', '<='} and not numeric:
                 # Numeric storage is not established by a property name alone.
                 # Unregistered types retain the GPU route and normal guards.
@@ -214,7 +260,7 @@ def compile_query(step):
             filters.append(f'{variable}.`{prop}` {cypher_operator} ${param}')
     except (ValueError, TypeError, OverflowError):
         return None
-    if not filters or not resolved_count:
+    if not filters or not (resolved_count or region_scope):
         return None
     query = f'MATCH (a:`{left}`)-[r:`{kind}`]->(b:`{right}`)\nWHERE ' + ' AND '.join(filters)
     query += '\nRETURN collect(DISTINCT a) + collect(DISTINCT b) AS nodes, collect(DISTINCT r) AS edges'

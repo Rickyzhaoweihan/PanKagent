@@ -17,9 +17,10 @@ from .anatomy_resolution import ALIASES as ANATOMY_ALIASES, RELEASE as ANATOMY_R
 from .grounding_inventory import (build_inventory, inventory_identity, load_inventory,
                                  stable_digest, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
+from .genomic_scope import genomic_scope, load_coordinate_metadata, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = "preplanning-grounding-6"
-DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+VERSION = "preplanning-grounding-7"
+DIGEST = hashlib.sha256(Path(__file__).read_bytes() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
     "SIGNAL_COLOC_WITH": r"coloc|colocali[sz]",
@@ -59,6 +60,9 @@ _SCHEMA_ROLE_PATTERNS = {
     "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",
     "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b",
     "analysis_vocabulary": r"\b(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\s+(?:evidence|signal|association|annotation|analysis|enrichment|data|record|support|for|of|in|with|between)|\b(?:evidence|signal|association|analysis|enrichment)\s+(?:from|for|of|in)?\s*(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\b",
+    "identifier_vocabulary": r"\b(?:Ensembl|Entrez|gene|transcript|variant|stable)\s+(?:IDs?|identifiers?)\b",
+    "coordinate_unit": r"\b\d+(?:\.\d+)?\s*(?:bp|kb|Mb|Gb)\b",
+    "ranking_vocabulary": r"\b(?:top|bottom|first)\s+\d+\b",
 }
 
 
@@ -87,7 +91,7 @@ def _explicit_gene(words, start, end):
     connector = words[start:end] in {(word,) for word in
         ("in", "of", "for", "with", "from", "to", "on", "at", "by", "and", "or")}
     return (bool(before) and (before[-1] == "symbol" or
-            (before[-1] == "gene" and not connector))) or (bool(after) and after[0] == "gene")
+            (before[-1] == "gene" and not connector))) or (bool(after) and after[0] == "gene" and not connector)
 
 
 def _retain_context(mention, selected, role, **details):
@@ -267,17 +271,34 @@ class EntityIndex:
         role_spans = [(kind, *_span(question, match.start(), match.end()))
                       for kind, pattern in _SCHEMA_ROLE_PATTERNS.items()
                       for match in re.finditer(pattern, question, re.I)]
+        region = genomic_scope(question)
+        locus_spans = [_span(question, *label['span']) for label in region.get('locus_labels', [])] if region else []
         cohort_context = bool(re.search(r"\b(?:donors?|samples?|cohort|assays?|multiome|multiomics)\b", question, re.I))
         for mention in mentions:
             start, end = mention["normalized_token_span"]
             candidates = mention["candidates"]
+            if region and region['collection_scope'] and any(first <= start and end <= last for first, last in locus_spans):
+                # These names describe the requested locus. They are useful
+                # metadata, but are not the complete set of genes in its span.
+                mention.update(identity_complete=False, context_role={"kind": "genomic_locus_label",
+                    "rule": "Retain the full genomic interval; these locus names are not a complete gene collection."})
+                continue
+            term = words[start:end]
+            role = next((kind for kind, first, last in role_spans if first <= start and end <= last), None)
+            # A schema phrase such as "gene IDs" describes a column even though
+            # the immediately preceding word is gene. Explicit "gene IDS" is
+            # retained when the spelling is a symbol rather than plural IDs.
+            identifier_column = role == 'identifier_vocabulary' and any(
+                _span(question, m.start(), m.end()) == (start, end)
+                for m in re.finditer(r'\b(?:IDs|ids|identifiers?|id)\b', question))
+            if identifier_column or role in {'coordinate_unit', 'ranking_vocabulary'}:
+                _retain_context(mention, [item for item in candidates if item['entity_type'] != 'Gene'], role)
+                continue
             if _explicit_gene(words, start, end):
                 genes = [item for item in candidates if item["entity_type"] == "Gene"]
                 if genes:
                     _retain_context(mention, genes, "explicit_gene")
                 continue
-            term = words[start:end]
-            role = next((kind for kind, first, last in role_spans if first <= start and end <= last), None)
             if term in self.source_forms and cohort_context:
                 role = "recorded_dataset_source"
             elif term in self.source_forms and any(item["entity_type"] == "Gene" for item in candidates):
@@ -446,6 +467,11 @@ class Grounder:
                            "Schema and metadata matches are not retrieved scientific evidence.",
                            "Do not silently remove a filter, invent an identity, or turn unavailable grounding into zero matches."],
                  "latency_ms": round((time.monotonic() - start) * 1000, 2)}
+        region = genomic_scope(question)
+        if region:
+            value['genomic_scope'] = region
+            value['genomic_coordinate_metadata'] = await load_coordinate_metadata(self.graph, index.identity)
+            value['rules'].append('Preserve the complete requested genomic interval and assembly. Locus labels are not a gene list. Use a default build only from verified complete coordinate metadata, and state its source.')
         for owner_property, values in index.public_categories.items():
             if owner_property.split(".")[0] in set(value["schema"]["nodes"]) | set(value["schema"]["relations"]):
                 value["schema"]["categories"][owner_property] = deepcopy(values)
@@ -565,6 +591,9 @@ def grounding_guidance(payload, *, max_chars=7000, relation_types=None):
             minimal["additional_available_relations"] = schema.get("additional_available_relations", [])
         if "sample_terminology" in view:
             minimal["sample_terminology"] = view["sample_terminology"]
+        for key in ('genomic_scope', 'genomic_coordinate_metadata'):
+            if key in view:
+                minimal[key] = view[key]
         compact = json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))
         # Tiny GPU addenda may omit property guidance because the generator's
         # normal request already carries the owned schema. Say exactly what is

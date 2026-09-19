@@ -161,26 +161,31 @@ class EvidenceContextTests(unittest.TestCase):
         self.assertEqual(result["context_content_omissions"]["clipped_strings"], 1)
         self.assertEqual(json.loads(json.dumps(result, ensure_ascii=False)), result)
 
-    def test_oversized_normal_context_uses_reduced_caps_and_keeps_rare_type(self):
+    def test_oversized_context_exposes_only_node_identity_fields(self):
         properties = {"measurement_" + str(i): "x" * 200 for i in range(20)}
         edges = [edge("g", "cell", "COMMON", **properties) for _ in range(110)]
         edges.append(edge("g", "cell", "RARE", **properties))
         item = evidence([node("g"), node("cell")], edges, rows=[{"v": i} for i in range(50)])
         result = compact_evidence([item])[0]
-        self.assertEqual(result["context_compaction"], "reduced")
-        self.assertEqual(len(result["edges"]), 15)
-        self.assertEqual(len(result["rows"]), 5)
-        self.assertIn("RARE", {item["type"] for item in result["edges"]})
+        self.assertEqual(result["context_compaction"], "node_identity_only")
+        self.assertNotIn("edges", result)
+        self.assertNotIn("rows", result)
+        self.assertEqual(result["context_dropped"]["edges"], 111)
+        self.assertEqual(result["context_dropped"]["rows"], 50)
+        self.assertEqual(set(result['nodes'][0]), {'id', 'type', 'description', 'source'})
         self.assertLessEqual(len(json.dumps([result], ensure_ascii=False, separators=(",", ":")).encode()), MAX_BYTES)
 
     def test_stable_identifiers_are_never_silently_shortened(self):
         huge_id = "g" * (MAX_BYTES + 1)
-        with self.assertRaisesRegex(ValueError, "evidence_context_too_large"):
-            compact_evidence([evidence([node(huge_id)])])
+        result = compact_evidence([evidence([node(huge_id)])])[0]
+        self.assertEqual(result['nodes'], [])
+        self.assertEqual(result['context_dropped']['nodes'], 1)
 
     def test_total_bound_applies_across_steps(self):
         items = [evidence(question="x" * 1200) for _ in range(200)]
-        with self.assertRaisesRegex(ValueError, "evidence_context_too_large"):
+        # Public plans are capped at twelve checks. Do not silently drop or
+        # renumber arbitrary extra check envelopes to meet the size bound.
+        with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
             compact_evidence(items)
 
     def test_invalid_shape_fails_clearly(self):
@@ -234,21 +239,15 @@ def interaction_evidence():
     return item
 
 
-def test_interaction_partner_union_is_computed_before_reduced_excerpt(monkeypatch):
+def test_oversized_interaction_view_does_not_expose_hidden_measurement_totals(monkeypatch):
     import pankagent_vnext.evidence_context as module
     source = interaction_evidence(); before = copy.deepcopy(source)
     monkeypatch.setattr(module, 'TARGET_BYTES', 1)
     result = module.scientific_excerpt(compact_evidence([source]))[0]
-    total = result['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
     assert source == before
-    assert total['records'] == 31
-    assert total['unique_end_entities'] == 9  # Includes the focal gene, not a partner total.
-    assert total['unique_partner_genes'] == 26
-    assert total['focal_interaction_records'] == 31
-    assert total['complete_for_requested_scope'] is True
-    assert len(result['edges']) == 15  # Selected examples cannot redefine the full total.
-    assert result['answer_evidence_scope']['individual_records_are_selected_examples']
-    assert 'unique_partner_genes' in result['answer_evidence_scope']['authoritative_totals']
+    assert 'evidence_totals' not in result and 'edges' not in result
+    assert result['answer_evidence_scope']['mode'] == 'node_identity_only'
+    assert result['answer_evidence_scope']['relationship_and_measurement_evidence_available'] is False
 
 
 def test_interaction_focal_name_requires_unique_verified_release_resolution():
