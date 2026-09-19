@@ -54,6 +54,9 @@ def main():
     env['PANK_RESULTS_FRONTEND_DIR'] = str(release.parent / 'frontend')
     env['PANK_VNEXT_PORT'] = '8794'
     env['PANK_RESULTS_PORT'] = '8795'
+    if args.service == 'results':
+        # The frozen results runtime owns dot as well as its Python bindings.
+        env['PATH'] = str(release / '.venv/bin') + os.pathsep + env.get('PATH', os.defpath)
     state = expected_state
     if state.stat().st_uid != os.geteuid() or state.stat().st_mode & 0o077:
         raise ValueError('Demo state must be owner-only')

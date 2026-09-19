@@ -184,6 +184,18 @@ class ManagerTests(unittest.TestCase):
         result.kill.assert_not_called()
         result.write_pid.assert_not_called()
 
+    def test_only_results_prefers_its_owned_runtime_executables(self):
+        original = '/fixture/original/bin'
+        with patch.dict(manage.os.environ, {'PATH': original}):
+            results = self.invoke('start', service='results')
+            agent = self.invoke('start', service='agent')
+            self.assertIsNone(results.error)
+            self.assertIsNone(agent.error)
+            self.assertEqual(results.popen.call_args.kwargs['env']['PATH'],
+                             str(self.release / '.venv/bin') + manage.os.pathsep + original)
+            self.assertEqual(agent.popen.call_args.kwargs['env']['PATH'], original)
+            self.assertEqual(manage.os.environ['PATH'], original)
+
     def test_already_owned_start_is_idempotent(self):
         self.pidfile.write_text(json.dumps(self.record))
         result = self.invoke('start', owned=True)
