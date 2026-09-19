@@ -17,6 +17,13 @@ from tests_vnext.test_planning_compiler_gateway import gateway_for
 QUESTION = 'Which genes are differentially expressed in alpha cells in T1D?'
 DISEASE = ('disease', 'MONDO_0005147', 'T1D')
 SAVED = json.loads(Path(__file__).with_name('fixtures').joinpath('region_t1d_endpoint_proposal.json').read_text())
+ENDPOINT_FORMS = [
+    field('end_id', DISEASE[1]),
+    field('end_id', DISEASE[1], owner_kind='relationship'),
+    field('end_id', DISEASE[1], relationship_type='T1D_DEG_IN'),
+    field('end_id', DISEASE[1], owner_kind='relationship', relationship_type='T1D_DEG_IN'),
+    field('T1D_DEG_IN.end_id', DISEASE[1]),
+]
 
 
 def grounding():
@@ -30,10 +37,11 @@ def compile_endpoint(constraint=None, *, question=QUESTION, data=None, relations
     return compile_property_owners(raw, data or grounding(), question=question)
 
 
-def test_ownerless_grounded_t1d_context_uses_existing_disease_normalization():
-    original = field('end_id', DISEASE[1])
+@pytest.mark.parametrize('original', ENDPOINT_FORMS)
+def test_grounded_t1d_context_uses_existing_disease_normalization(original):
+    before = deepcopy(original)
     result, issue = compile_endpoint(original)
-    assert issue is None and original == field('end_id', DISEASE[1])
+    assert issue is None and original == before
     step = result['steps'][0]
     assert step['constraints'] == [field('id', DISEASE[1], 'disease', owner_kind='node')]
     assert step['constraint_compilation'][0]['requested'] == original
@@ -43,6 +51,7 @@ def test_ownerless_grounded_t1d_context_uses_existing_disease_normalization():
     assert compile_property_owners(result, grounding(), question=QUESTION) == (result, None)
 
 
+@pytest.mark.parametrize('endpoint', ENDPOINT_FORMS)
 @pytest.mark.parametrize('question', [
     'Find T1D records whose raw end_id field is MONDO_0005147.',
     'For T1D compare the end id to MONDO_0005147.',
@@ -55,8 +64,8 @@ def test_ownerless_grounded_t1d_context_uses_existing_disease_normalization():
     'Find genes in alpha cells.',
     'Previously T1D was investigated. Find genes in alpha cells.',
 ])
-def test_explicit_raw_endpoint_or_absent_current_disease_context_is_preserved(question):
-    result, issue = compile_endpoint(question=question)
+def test_explicit_raw_endpoint_or_absent_current_disease_context_is_preserved(question, endpoint):
+    result, issue = compile_endpoint(endpoint, question=question)
     assert issue is None
     constraint = result['steps'][0]['constraints'][0]
     assert constraint == field('end_id', DISEASE[1], owner_kind='relationship', relationship_type='T1D_DEG_IN')
@@ -64,9 +73,6 @@ def test_explicit_raw_endpoint_or_absent_current_disease_context_is_preserved(qu
 
 
 @pytest.mark.parametrize('constraint', [
-    field('end_id', DISEASE[1], owner_kind='relationship'),
-    field('end_id', DISEASE[1], relationship_type='T1D_DEG_IN'),
-    field('T1D_DEG_IN.end_id', DISEASE[1]),
     field('end_id', DISEASE[1], operator='!='),
     field('end_id', DISEASE[1], operator='<>'),
     field('end_id', [DISEASE[1]], operator='IN'),
@@ -75,7 +81,7 @@ def test_explicit_raw_endpoint_or_absent_current_disease_context_is_preserved(qu
     field('end_id', 'T1D'),
     field('start_id', DISEASE[1]),
 ])
-def test_explicit_edge_owners_other_values_and_operators_are_not_removed(constraint):
+def test_other_values_and_operators_are_not_removed(constraint):
     result, issue = compile_endpoint(constraint)
     assert issue is None
     current = result['steps'][0]['constraints'][0]
@@ -89,8 +95,19 @@ def test_explicit_node_owner_is_not_silently_reassigned(owner):
     assert compile_endpoint(field('end_id', DISEASE[1], owner))[1] == f'invalid_property_owner:s1:{owner}.end_id'
 
 
+@pytest.mark.parametrize('constraint', [
+    field('end_id', DISEASE[1], owner_kind='node'),
+    field('end_id', DISEASE[1], relationship_type='PART_OF_GWAS_SIGNAL'),
+    field('PART_OF_GWAS_SIGNAL.end_id', DISEASE[1]),
+    field('end_id', DISEASE[1], 'disease', relationship_type='T1D_DEG_IN'),
+])
+def test_wrong_or_conflicting_owners_remain_invalid(constraint):
+    assert compile_endpoint(constraint)[1] is not None
+
+
+@pytest.mark.parametrize('endpoint', ENDPOINT_FORMS)
 @pytest.mark.parametrize('change', ['catalog_incomplete', 'identity_incomplete', 'ambiguous', 'unresolved', 'wrong_release', 'unavailable'])
-def test_endpoint_context_mapping_requires_complete_same_release_grounding(change):
+def test_endpoint_context_mapping_requires_complete_same_release_grounding(change, endpoint):
     data = grounding()
     if change == 'catalog_incomplete':
         data['catalog_complete'] = False
@@ -104,8 +121,8 @@ def test_endpoint_context_mapping_requires_complete_same_release_grounding(chang
         data['identity']['graph_release'] = 'other'
     else:
         data['status'] = 'unavailable'
-    result, _ = compile_endpoint(data=data)
-    assert result['steps'][0]['constraints'][0]['property'] == 'end_id'
+    result, _ = compile_endpoint(endpoint, data=data)
+    assert result['steps'][0]['constraints'][0]['property'].endswith('end_id')
 
 
 @pytest.mark.parametrize('relations', [['PART_OF_GWAS_SIGNAL'], ['T1D_DEG_IN', 'PART_OF_GWAS_SIGNAL']])
@@ -114,9 +131,12 @@ def test_other_or_multiple_relationships_do_not_gain_t1d_context_mapping(relatio
     assert result['steps'][0]['constraints'][0]['property'] == 'end_id'
 
 
-def test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope():
+@pytest.mark.parametrize('endpoint', ENDPOINT_FORMS)
+def test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope(endpoint):
     async def check():
         raw = deepcopy(SAVED['proposal'])
+        raw['steps'][1]['constraints'][1] = deepcopy(endpoint)
+        before = deepcopy(raw)
         data = region_grounding()
         gateway, calls = gateway_for(lambda _: deepcopy(raw))
         result = await gateway.plan(SAVED['question'], [], grounding=data)
@@ -126,14 +146,34 @@ def test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_corre
         assert second['relation_types'] == ['T1D_DEG_IN']
         assert not any(c['property'] == 'end_id' or c.get('entity_type') == 'disease' for c in second['constraints'])
         assert any(c['property'] == 'id' and c['value'] == 'CL_0000171' for c in second['constraints'])
-        assert any(binding['requested']['property'] == 'end_id' for binding in second['constraint_compilation'])
+        assert any(binding['requested']['property'].endswith('end_id') for binding in second['constraint_compilation'])
         assert any(binding['to'] == 'required relationship T1D_DEG_IN' for binding in second['schema_bindings'])
         assert await gateway.plan(SAVED['question'], [], grounding=data) == result
-        assert len(calls) == 1 and raw == SAVED['proposal']
+        assert len(calls) == 1 and raw == before
         # Saved Cypher text is exact; dependency IDs here are a controlled
         # validation fixture. This performs no graph read or model call.
         step = {**second, 'graph_version': data['identity']['graph_release']}
         parameters = {'dep_0': ['ENSG00000186868']}
         assert validate_cypher(SAVED['candidate_queries'][0], step, parameters) == []
         assert 'unrequested_identity_filter:end_id' in validate_cypher(SAVED['candidate_queries'][1], step, parameters)
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('endpoint', ENDPOINT_FORMS)
+def test_user_requested_raw_endpoint_survives_gateway_cache_and_validation(endpoint):
+    async def check():
+        raw = deepcopy(SAVED['proposal'])
+        raw['steps'][1]['constraints'][1] = deepcopy(endpoint)
+        question = SAVED['question'] + ' Restrict the raw end_id field to MONDO_0005147.'
+        data = region_grounding()
+        gateway, calls = gateway_for(lambda _: deepcopy(raw))
+        result = await gateway.plan(question, [], grounding=data)
+        assert len(calls) == 1 and not result.get('proposal_issue')
+        second = result['steps'][1]
+        assert any(c['property'] == 'end_id' and c['relationship_type'] == 'T1D_DEG_IN' for c in second['constraints'])
+        assert await gateway.plan(question, [], grounding=data) == result and len(calls) == 1
+        step = {**second, 'graph_version': data['identity']['graph_release']}
+        parameters = {'dep_0': ['ENSG00000186868']}
+        assert validate_cypher(SAVED['candidate_queries'][1], step, parameters) == []
+        assert 'missing_relationship_filter:T1D_DEG_IN.end_id' in validate_cypher(SAVED['candidate_queries'][0], step, parameters)
     asyncio.run(check())

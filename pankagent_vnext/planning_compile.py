@@ -15,7 +15,7 @@ from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 from .constraint_values import list_value, DIGEST as VALUE_DIGEST
 from .anatomy_paths import REGISTRY as ANATOMY_REGISTRY, DIGEST as ANATOMY_DIGEST
 
-VERSION = 'preplanning-property-owners-v9-t1d-endpoint-context'
+VERSION = 'preplanning-property-owners-v10-t1d-relation-context'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode() + ANATOMY_DIGEST.encode()).hexdigest()
 
 
@@ -228,14 +228,16 @@ def _t1d_endpoint_context(constraint, question, grounding, relations):
     """Recover one grounded disease context mislabeled as an edge endpoint.
 
     T1D_DEG_IN encodes T1D in its relation type, while its endpoint is anatomy.
-    Only the planner's ownerless exact positive disease ID is eligible. Bind it
-    to the already supported disease identity normalization; explicit storage
-    predicates, owners, other diseases and exclusions retain their meaning.
+    Only an exact positive disease ID on this relation is eligible. Bind it to
+    the existing disease identity normalization: the planner's owner annotation
+    does not make this a user-requested raw field. Raw requests, wrong owners,
+    other diseases and exclusions retain their meaning.
     """
     if (set(relations) != {'T1D_DEG_IN'} or constraint.get('property') != 'end_id'
             or constraint.get('operator', '=') != '=' or constraint.get('value') != 'MONDO_0005147'
-            or constraint.get('entity_type') or constraint.get('relationship_type')
-            or constraint.get('owner_kind') is not None or not question
+            or constraint.get('entity_type')
+            or constraint.get('relationship_type') not in (None, 'T1D_DEG_IN')
+            or constraint.get('owner_kind') not in (None, 'relationship') or not question
             or grounding.get('catalog_complete') is not True
             or re.search(r'\bend[\s_]*id\b|\b(?:end|target|endpoint)[\s_]+(?:id|identifier)\b'
                          r'|\b(?:target|endpoint)\s+(?:node\s+)?(?:is|equals)\b', question, re.I)):
@@ -410,7 +412,7 @@ def compile_property_owners(plan, grounding, *, question=None):
                     return result, f'invalid_constraint_list:{step.get("id", "step")}:{prop}:use_native_array'
             if _t1d_endpoint_context({**constraint, 'property': prop, 'entity_type': entity,
                     'relationship_type': relation}, question, grounding, relations):
-                entity, prop = 'disease', 'id'
+                entity, relation, prop = 'disease', None, 'id'
             cell = _cell_identity_alias({**constraint, 'property': prop, 'entity_type': entity,
                 'relationship_type': relation}, question, grounding, relations)
             if cell is not None:
