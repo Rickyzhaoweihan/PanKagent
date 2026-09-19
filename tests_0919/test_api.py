@@ -12,13 +12,14 @@ import pytest
 from pankgraph0919_backend.app import create_app
 from pankgraph0919_backend.config import Settings
 from pankgraph0919_backend.graph import GraphStore, serialize, validate_cypher
-from pankgraph0919_backend.models import Filters, GeneSearch
+from pankgraph0919_backend.models import EntitySearch, Filters, GeneSearch, SEARCHABLE_ENTITY_TYPES
 from pankgraph0919_backend.postgres import PostgresStore, page
 
 SNAPSHOT = "synthetic-test-snapshot"
 TOKEN = "unit-test-token-that-is-never-a-real-secret"
 NODE_ID = node_id("Gene", "synthetic-test", "example")[0]
 CELL_ID = node_id("Cell_type", "synthetic-test", "example")[0]
+REGION_ID = node_id("Regulatory_region", "synthetic-test", "example-interval")[0]
 EDGE_ID = edge_id(NODE_ID, "HAS_EXPRESSION_RESULT_IN", CELL_ID)[0]
 
 
@@ -109,6 +110,13 @@ class FakePostgres:
     def search_genes(self, query):
         self.calls.append(("search", query))
         return page([{"object_id": NODE_ID}], 2, query.limit, query.offset)
+
+    def search_entities(self, query):
+        self.calls.append(("entity_search", query))
+        return {**page([{"object_id": REGION_ID, "entity_type": query.entity_type,
+                         "properties": {"name": "synthetic-source-region"},
+                         "intervals": [{"genome_assembly": "synthetic-assembly", "chr": "1", "start_loc": 10, "end_loc": 20}]}],
+                       2, query.limit, query.offset), "interval_coverage": {"available": True}}
 
     def contexts(self, filters, limit, offset):
         self.calls.append(("contexts", filters, limit, offset))
@@ -241,6 +249,7 @@ def test_postgres_query_routes_work_when_graph_unavailable_at_startup():
     with TestClient(create_app(config, graph, FakePostgres())) as web:
         assert web.get("/health").status_code == 503
         assert web.post("/genes/search", headers=AUTH, json={"query": "synthetic"}).status_code == 200
+        assert web.post("/entities/search", headers=AUTH, json={"query": "synthetic", "entity_type": "Regulatory_region"}).status_code == 200
         assert web.post("/query", headers=AUTH, json={"postgres_search": {"query": "synthetic"}}).status_code == 200
         assert web.post("/records/search", headers=AUTH, json={"collection_id": "synthetic"}).status_code == 200
         assert web.post("/query", headers=AUTH, json={"cypher": "RETURN 1"}).status_code == 503
@@ -400,6 +409,21 @@ def test_source_search_counts_and_privacy_redaction():
     assert "assertion_status = %s" in cur.calls[3][0]
 
 
+def test_source_coverage_remains_visible_without_sensitive_metadata():
+    source = {"file_id": "synthetic-file", "metadata": {
+        "privacy_classification": "sensitive", "acquisition_status": "downloaded",
+        "controlled_access": None, "individual_measurement": "PRIVATE"},
+        "build_summary": {"status": "build_failed", "reason": "invalid layout"}}
+    cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, [source], [], []])
+    result = PostgresStore(settings(), Connection(cur)).sources(10, 0)
+    item = result["items"][0]
+    assert item["metadata"]["acquisition_status"] == "downloaded"
+    assert item["metadata"]["controlled_access"] is None
+    assert "individual_measurement" not in item["metadata"]
+    assert item["build_summary"]["status"] == "build_failed"
+    assert item["record_counts"] == {}
+
+
 def test_aggregate_source_values_retained_and_sensitive_opt_in():
     for classification, enabled in (("public_aggregate", False), ("sensitive", True)):
         cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, {"count": 1}, [source_record(classification)]])
@@ -423,3 +447,77 @@ def test_region_requires_explicit_assembly_and_half_open_interval():
     cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 0}, []])
     PostgresStore(settings(), Connection(cur)).search_genes(GeneSearch(chromosome="1", assembly="synthetic-assembly", start=1, end=10))
     assert any("ei.locus && int8range(%s, %s, '[)')" in sql for sql, _ in cur.calls)
+
+
+def test_entity_route_requires_auth_and_preserves_region_parameters():
+    web, pg, _ = client()
+    body = {"entity_type": "Regulatory_region", "assembly": "synthetic-assembly", "chromosome": "1",
+            "start": 10, "end": 20, "limit": 1, "offset": 1}
+    with web:
+        assert web.post("/entities/search", json=body).status_code == 401
+        response = web.post("/entities/search", headers=AUTH, json=body)
+        assert response.status_code == 200
+        assert response.json()["items"][0]["object_id"] == REGION_ID
+        assert response.json()["items"][0]["intervals"][0] == {
+            "genome_assembly": "synthetic-assembly", "chr": "1", "start_loc": 10, "end_loc": 20}
+        assert pg.calls[-1][0] == "entity_search" and pg.calls[-1][1].model_dump() == {"query": None, **body}
+
+
+@pytest.mark.parametrize("entity_type", sorted(SEARCHABLE_ENTITY_TYPES))
+def test_entity_search_accepts_only_named_entity_types(entity_type):
+    web, _, _ = client()
+    with web:
+        assert web.post("/entities/search", headers=AUTH, json={"entity_type": entity_type, "query": "synthetic"}).status_code == 200
+
+
+@pytest.mark.parametrize("body", [
+    {"query": "synthetic"},
+    {"entity_type": "Gene' OR true --", "query": "synthetic"},
+    {"entity_type": "Donor", "query": "synthetic"},
+    {"entity_type": "Regulatory_region", "chromosome": "1", "start": 10, "end": 20},
+    {"entity_type": "Regulatory_region", "query": "synthetic", "limit": 101},
+    {"entity_type": "Regulatory_region", "query": "synthetic", "offset": 1_000_001},
+    {"entity_type": "Regulatory_region", "query": "synthetic", "sql": "SELECT 1"},
+])
+def test_entity_search_rejects_unsupported_type_or_unbounded_request(body):
+    web, _, _ = client()
+    with web:
+        assert web.post("/entities/search", headers=AUTH, json=body).status_code == 422
+
+
+def test_generic_entity_sql_binds_type_and_returns_authoritative_intervals():
+    item = {"object_id": REGION_ID, "entity_type": "Regulatory_region", "node_labels": ["Regulatory_region"],
+            "properties": {"name": "synthetic-source-region"},
+            "intervals": [{"genome_assembly": "synthetic-assembly", "chr": "1", "start_loc": 10, "end_loc": 20}]}
+    cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, [item], {"available": True}])
+    store = PostgresStore(settings(), Connection(cur))
+    result = store.search_entities(EntitySearch(entity_type="Regulatory_region", assembly="synthetic-assembly",
+                                                chromosome="1", start=10, end=20, query="synthetic_%"))
+    assert result["items"] == [item] and result["interval_coverage"]["available"]
+    assert result["interval_coverage"]["coordinate_convention"] == "zero_based_half_open"
+    sql, parameters = cur.calls[2]
+    assert "go.entity_type = %s" in sql and "Regulatory_region" not in sql
+    assert parameters[:2] == [SNAPSHOT, "Regulatory_region"]
+    assert parameters[-4:] == ["synthetic-assembly", "1", 10, 20]
+    assert "jsonb_agg" in cur.calls[3][0] and "FROM cakg_mm.entity_interval stored" in cur.calls[3][0]
+    assert cur.calls[4][1] == [SNAPSHOT, "Regulatory_region"]
+    with pytest.raises(HTTPException):
+        store.search_entities(EntitySearch.model_construct(entity_type="Gene' OR true --", query="x"))
+
+
+def test_gene_interval_absence_is_explicit_without_changing_old_gene_contract():
+    cur = Cursor([PG_IDENTITY, ACCEPTED, {"count": 0}, [], {"available": False}])
+    result = PostgresStore(settings(), Connection(cur)).search_entities(
+        EntitySearch(entity_type="Gene", chromosome="1", assembly="synthetic-assembly", start=10, end=20))
+    assert result["items"] == [] and result["total"] == 0
+    assert result["interval_coverage"]["available"] is False
+    assert "biological absence is not established" in result["interval_coverage"]["empty_result_interpretation"]
+    old = Cursor([PG_IDENTITY, ACCEPTED, {"count": 1}, [{"object_id": NODE_ID}]])
+    old_result = PostgresStore(settings(), Connection(old)).search_genes(GeneSearch(query="synthetic"))
+    assert "interval_coverage" not in old_result and "intervals" not in old_result["items"][0]
+    assert len(old.calls) == 4 and old.calls[2][1][:2] == [SNAPSHOT, "Gene"]
+    web, _, _ = client()
+    with web:
+        assert web.post("/genes/search", headers=AUTH, json={"query": "synthetic", "entity_type": "Regulatory_region"}).status_code == 422
+        assert web.post("/query", headers=AUTH, json={"postgres_search": {
+            "query": "synthetic", "entity_type": "Regulatory_region"}}).status_code == 422

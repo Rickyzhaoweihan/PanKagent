@@ -442,6 +442,42 @@ class Acceptance:
         return {"sensitive_source_file_id": sources[0]["file_id"], "details_redacted": True,
                 "full_source_records": expected, "raw_values_recorded_in_audit": False}
 
+    def api_regulatory_region_overlap(self) -> dict:
+        candidates = self.rows("""SELECT go.object_id,go.properties,ei.genome_assembly,ei.chr,ei.start_loc,ei.end_loc
+            FROM cakg_mm.entity_interval ei JOIN cakg_mm.graph_object go USING(object_id)
+            JOIN cakg_mm.snapshot_object so USING(object_id)
+            WHERE so.snapshot_id=%s AND go.entity_type='Regulatory_region'
+            ORDER BY go.object_id,ei.genome_assembly,ei.chr,ei.start_loc,ei.end_loc LIMIT 1""", (self.snapshot,))
+        require(bool(candidates), "real_regulatory_region_interval_unavailable")
+        expected = candidates[0]
+        body = {"entity_type": "Regulatory_region", "assembly": expected["genome_assembly"],
+                "chromosome": expected["chr"], "start": expected["start_loc"], "end": expected["end_loc"], "limit": 2}
+        self.request("POST", "/entities/search", body=body, status=401, auth=False)
+        self.request("POST", "/entities/search", body={**body, "entity_type": "Gene' OR true --"}, status=422)
+        self.request("POST", "/entities/search", body={**body, "limit": 101}, status=422)
+        result = self.request("POST", "/entities/search", body=body)
+        require(bool(result["items"]) and result["items"][0]["object_id"] == expected["object_id"],
+                "regional_overlap_did_not_return_exact_source_region")
+        item = result["items"][0]
+        interval = {k: expected[k] for k in ("genome_assembly", "chr", "start_loc", "end_loc")}
+        require(interval in item.get("intervals", []) and item.get("properties") == expected["properties"],
+                "region_properties_or_interval_values_mismatch")
+        require(result["interval_coverage"].get("available") is True and
+                result["interval_coverage"].get("coordinate_convention") == "zero_based_half_open", "region_interval_coverage_mismatch")
+        evidence = self.request("GET", "/objects/" + expected["object_id"] + "/records", params={"limit": 2})
+        self.compare_records(evidence["items"], object_id=expected["object_id"])
+        gene_intervals = self.one("""SELECT count(*) AS count FROM cakg_mm.entity_interval ei
+            JOIN cakg_mm.graph_object go USING(object_id) JOIN cakg_mm.snapshot_object so USING(object_id)
+            WHERE so.snapshot_id=%s AND go.entity_type='Gene'""", (self.snapshot,))["count"]
+        require(gene_intervals == 0, "unexpected_gene_intervals_require_coordinate_provenance_review")
+        genes = self.request("POST", "/entities/search", body={**body, "entity_type": "Gene"})
+        require(genes["items"] == [] and genes["total"] == 0 and genes["interval_coverage"].get("available") is False,
+                "absent_gene_interval_coverage_not_explicit")
+        return {"regulatory_region_id": expected["object_id"], "assembly": expected["genome_assembly"],
+                "coordinate_convention": "zero_based_half_open", "interval_values_match_postgres": True,
+                "source_records_compared": len(evidence["items"]), "gene_interval_rows": gene_intervals,
+                "gene_interval_coverage": "not_available", "empty_gene_overlap_is_biological_absence": False}
+
     def api_source_coverage(self) -> dict:
         require(bool(self.source_rows), "source_inventory_not_verified")
         actual, offset = {}, 0
@@ -523,6 +559,7 @@ def main() -> int:
                     ("api_context_filters_and_pagination", checks.api_context_and_pagination),
                     ("api_postgres_search_and_quarantined_abc", checks.api_postgres_and_quarantine),
                     ("api_sensitive_details_redacted", checks.api_sensitive_redaction),
+                    ("api_regulatory_region_overlap_and_source_evidence", checks.api_regulatory_region_overlap),
                     ("api_complete_source_coverage", checks.api_source_coverage),
                     ("protected_existing_listeners_unchanged", checks.protected_listeners),
                     ("graph_counts_unchanged_after_acceptance", checks.graph_counts)):

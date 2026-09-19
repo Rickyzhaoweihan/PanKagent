@@ -6,7 +6,7 @@ from psycopg.rows import dict_row
 from cakg.multimodal import SCHEMA_NAME
 from fastapi import HTTPException
 
-from .models import Filters
+from .models import EntitySearch, Filters, SEARCHABLE_ENTITY_TYPES
 
 if SCHEMA_NAME != "cakg_mm":
     raise RuntimeError("Unsupported context standard schema")
@@ -74,8 +74,16 @@ class PostgresStore:
                 "snapshot_id": self.settings.snapshot_id, "status": "accepted", "object_counts": counts}
 
     def search_genes(self, search):
-        parameters = [self.settings.snapshot_id]
-        where = "so.snapshot_id = %s AND go.entity_type = 'Gene' AND go.object_kind = 'node'"
+        return self._search_entities(search, "Gene", with_intervals=False)
+
+    def search_entities(self, search: EntitySearch):
+        return self._search_entities(search, search.entity_type, with_intervals=True)
+
+    def _search_entities(self, search, entity_type, *, with_intervals):
+        if entity_type not in SEARCHABLE_ENTITY_TYPES:
+            raise HTTPException(422, "Unsupported searchable entity type")
+        parameters = [self.settings.snapshot_id, entity_type]
+        where = "so.snapshot_id = %s AND go.entity_type = %s AND go.object_kind = 'node'"
         if search.query and search.query.strip():
             text = search.query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             where += (" AND (go.properties->>'canonical_id' ILIKE %s OR go.properties->>'name' ILIKE %s "
@@ -88,15 +96,35 @@ class PostgresStore:
                       "AND ei.genome_assembly = %s AND ei.chr = %s AND ei.locus && int8range(%s, %s, '[)'))")
             parameters += [search.assembly, search.chromosome, search.start, search.end]
         common = " FROM cakg_mm.graph_object go JOIN cakg_mm.snapshot_object so USING (object_id) WHERE " + where
+        projection = "SELECT go.object_id, go.entity_type, go.node_labels, go.properties"
+        if with_intervals:
+            projection += (", COALESCE((SELECT jsonb_agg(jsonb_build_object("
+                           "'genome_assembly', stored.genome_assembly, 'chr', stored.chr, "
+                           "'start_loc', stored.start_loc, 'end_loc', stored.end_loc) "
+                           "ORDER BY stored.genome_assembly, stored.chr, stored.start_loc, stored.end_loc) "
+                           "FROM cakg_mm.entity_interval stored WHERE stored.object_id=go.object_id), '[]'::jsonb) AS intervals")
         limit = min(search.limit, self.settings.max_rows)
         with self.transaction() as cur:
             self.accepted(cur)
             cur.execute("SELECT count(*) AS count" + common, parameters)
             total = cur.fetchone()["count"]
-            cur.execute("SELECT go.object_id, go.entity_type, go.node_labels, go.properties" + common +
+            cur.execute(projection + common +
                         " ORDER BY go.object_id LIMIT %s OFFSET %s", parameters + [limit, search.offset])
             items = cur.fetchall()
-        return page(items, total, limit, search.offset)
+            if with_intervals:
+                cur.execute("SELECT EXISTS (SELECT 1 FROM cakg_mm.entity_interval ei "
+                            "JOIN cakg_mm.graph_object go USING (object_id) "
+                            "JOIN cakg_mm.snapshot_object so USING (object_id) "
+                            "WHERE so.snapshot_id=%s AND go.entity_type=%s) AS available",
+                            [self.settings.snapshot_id, entity_type])
+                available = cur.fetchone()["available"]
+        result = page(items, total, limit, search.offset)
+        if with_intervals:
+            result.update(entity_type=entity_type, interval_coverage={
+                "available": available, "scope": "entity_type_in_snapshot", "source": "cakg_mm.entity_interval",
+                "coordinate_convention": "zero_based_half_open",
+                "empty_result_interpretation": "No matching indexed records; biological absence is not established."})
+        return result
 
     def records(self, object_ids, filters, limit, offset):
         limit = min(limit, self.settings.max_rows)
@@ -186,8 +214,10 @@ class PostgresStore:
             self.accepted(cur)
             cur.execute("SELECT count(*) AS count" + common, parameters)
             total = cur.fetchone()["count"]
-            cur.execute("SELECT sf.file_id, sf.dataset_id, sf.url, sf.sha256, sf.status, sf.metadata" + common +
-                        " ORDER BY sf.file_id LIMIT %s OFFSET %s", parameters + [limit, offset])
+            cur.execute("SELECT sf.file_id, sf.dataset_id, sf.url, sf.sha256, sf.status, sf.metadata, "
+                        "COALESCE(snap.manifest->'files'->sf.file_id, '{}'::jsonb) AS build_summary" + common +
+                        " JOIN cakg_mm.snapshot snap ON snap.snapshot_id = %s"
+                        " ORDER BY sf.file_id LIMIT %s OFFSET %s", [self.settings.snapshot_id, limit, offset])
             items = cur.fetchall()
             ids = [item["file_id"] for item in items]
             cur.execute("SELECT er.source_file_id, er.assertion_status, count(*) AS count "
@@ -204,7 +234,16 @@ class PostgresStore:
                 source["rejections"] = [r.copy() for r in rejections if r["file_id"] == source["file_id"]]
                 if not self.settings.allow_sensitive_records and source["metadata"].get("privacy_classification") not in {
                         "public_aggregate", "public_metadata"}:
-                    source["metadata"] = {"privacy_classification": source["metadata"].get("privacy_classification", "unclassified")}
+                    # Operational coverage is not an individual measurement.
+                    # Preserve this allowlist so staged/failed source files are
+                    # distinguishable without exposing any donor/sample rows.
+                    visible = {"privacy_classification", "acquisition_status", "source_status", "modality",
+                               "rows_unavailable", "controlled_access", "access_metadata_status", "file_format",
+                               "file_format_type", "content_type", "version", "assembly", "bytes",
+                               "catalog_md5_verified", "retrieved_utc", "reason", "http_status",
+                               "private_staging_only", "staging_basis", "metadata_url", "metadata_sha256"}
+                    source["metadata"] = {k: v for k, v in source["metadata"].items() if k in visible}
+                    source["metadata"].setdefault("privacy_classification", "unclassified")
                     source["metadata_redacted"] = True
                     for rejection in source["rejections"]:
                         rejection.pop("details", None)

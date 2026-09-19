@@ -1,5 +1,5 @@
 """Bounded public request schema. Physical SQL names are never client input."""
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -46,6 +46,16 @@ class GeneSearch(StrictModel):
         if not (self.query and self.query.strip()) and self.chromosome is None:
             raise ValueError("Supply nonblank query text or a complete genomic region")
         return self
+
+
+SearchableEntityType = Literal[
+    "Gene", "Regulatory_region", "Cell_type", "Phenotype", "Exposure", "Anatomical_structure",
+]
+SEARCHABLE_ENTITY_TYPES = frozenset(get_args(SearchableEntityType))
+
+
+class EntitySearch(GeneSearch):
+    entity_type: SearchableEntityType
 
 
 class QueryRequest(StrictModel):

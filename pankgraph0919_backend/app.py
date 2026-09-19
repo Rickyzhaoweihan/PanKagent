@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .graph import GraphStore, safe, validate_cypher
-from .models import Filters, GeneSearch, QueryRequest, RecordSearch
+from .models import EntitySearch, Filters, GeneSearch, QueryRequest, RecordSearch
 from .postgres import PostgresStore
 
 LOGGER = logging.getLogger("pankgraph0919")
@@ -188,6 +188,11 @@ def create_app(settings=None, graph=None, postgres=None):
     def genes_search(body: GeneSearch):
         runtime.require_snapshot(graph_required=False)
         return respond(runtime.postgres.search_genes(body))
+
+    @app.post("/entities/search")
+    def entities_search(body: EntitySearch):
+        runtime.require_snapshot(graph_required=False)
+        return respond(runtime.postgres.search_entities(body))
 
     @app.post("/records/search")
     def records_search(body: RecordSearch):
