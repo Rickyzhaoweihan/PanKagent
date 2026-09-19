@@ -120,6 +120,18 @@ def test_real_relationship_cell_field_keeps_storage_semantics(relation, prop):
         prop, 'alpha cell', owner_kind='relationship', relationship_type=relation)
 
 
+def test_real_cell_storage_field_provenance_does_not_trigger_alias_guard_on_recompile():
+    data = context(catalog_complete=True)
+    question = 'Find records whose raw cell_type field equals alpha cell and endpoint id is CL_0000171.'
+    raw = plan(field('cell_type', 'alpha cell'), field('id', ALPHA[1], 'anatomical_structure'),
+               relation='GENE_DETECTED_IN')
+    first, issue = compile_property_owners(raw, data, question=question)
+    assert issue is None
+    assert first['steps'][0]['constraints'][0] == field(
+        'cell_type', 'alpha cell', owner_kind='relationship', relationship_type='GENE_DETECTED_IN')
+    assert compile_property_owners(first, data, question=question) == (first, None)
+
+
 def test_future_real_node_field_cannot_be_replaced_by_cell_identity(monkeypatch):
     registry = deepcopy(planning_compile.REGISTRY)
     registry['nodes']['Gene'].append('cell_type')

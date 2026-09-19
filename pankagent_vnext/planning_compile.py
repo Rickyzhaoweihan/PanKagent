@@ -348,7 +348,9 @@ def compile_property_owners(plan, grounding, *, question=None):
         sample_role = 'HAS_SAMPLE' in relations
         changes = step.setdefault('constraint_compilation', [])
         cell_alias_bound = any(change.get('version') == VERSION
-            and change.get('requested', {}).get('property') in {'cell_type', 'cell_type_id', 'cell_type_name'}
+            and change.get('canonical_binding', {}).get('entity_type') == 'anatomical_structure'
+            and change.get('canonical_binding', {}).get('property') == 'id'
+            and _cell_identity_alias(change.get('requested', {}), question, grounding, relations) is not None
             for change in changes)
         for index, constraint in enumerate(step.get('constraints', [])):
             before = deepcopy(constraint)
