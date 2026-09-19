@@ -86,6 +86,30 @@ def oversized_preview_recovery(preview):
             limited.append(step.get('step_id'))
     if not limited:
         return None
+    other_failures = []
+    for step in _records(evidence.get('steps')):
+        if (step.get('purpose') == 'context' or step.get('step_id') in limited
+                or step.get('status') in {'complete', 'empty'} and not step.get('error')):
+            continue
+        checks = _records(step.get('validation'))
+        reasons = checks[-1].get('reasons', []) if checks else []
+        if (reasons == ['run_graph_materialization_limit'] and not step.get('error')):
+            continue
+        other_failures.append({**step, 'status': 'failed'})
+    if other_failures:
+        # Preserve the actionable error for a separate service/validation
+        # failure. Narrowing a result cannot repair authentication or outages.
+        top_error = preview.get('error')
+        if any(code.startswith(('run_graph_materialization_limit', 'response_size', 'materialization_limit'))
+               for code in _error_codes(top_error)):
+            top_error = None
+        recovery = retrieval_recovery({'status': 'failed', 'preparation_complete': True,
+            'error': top_error, 'evidence': {**evidence, 'steps': other_failures}})
+        if recovery:
+            recovery['message'] += (' Other checks also reached the retrieval limit because the query is too broad. '
+                'A more specific query can reduce that result size, but does not resolve the separate failure above.')
+            recovery['evidence'].update(limited_step_ids=limited, complete_for_requested_scope=False)
+            return recovery
     return {'category': 'retrieval_limit', 'title': 'The query is too broad',
             'message': 'The query is too broad to return a complete result within the current retrieval limit. '
                        'The retrieved records do not cover the full requested scope. Try a more specific query '

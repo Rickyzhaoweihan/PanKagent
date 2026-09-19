@@ -383,13 +383,16 @@ class ClaudeGateway:
         body=prepared.body
         output_limit=prepared.profile.get('answer_budget',{}).get('max_output_tokens',1600)
         rid=await self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,output_limit)
-        scope_filter = ScopeTextFilter(evidence)
+        # The node-only view deliberately withholds relationship/comparison
+        # evidence. Never reintroduce it through a full-evidence text rewrite.
+        node_only = prepared.profile.get('model_context',{}).get('mode') == NODE_ONLY_MODE
+        scope_filter = None if node_only else ScopeTextFilter(evidence)
         try:
             async with self.client.messages.stream(model=self.settings.model,max_tokens=output_limit,
                 system=prepared.system,
                 messages=[{'role':'user','content':body}],**self._options()) as stream:
                 async for text in stream.text_stream:
-                    visible = scope_filter.feed(text)
+                    visible = text if scope_filter is None else scope_filter.feed(text)
                     if visible: yield visible
                 final=await stream.get_final_message()
         except anthropic.APIStatusError as exc:
@@ -401,9 +404,10 @@ class ClaudeGateway:
                                    truncated=final.stop_reason=='max_tokens',
                                    max_output_tokens=output_limit)
         provider_event('answer_generation', dict(prepared.generation))
-        tail = scope_filter.feed('', final=True)
+        tail = '' if scope_filter is None else scope_filter.feed('', final=True)
         if tail: yield tail
-        provider_event('answer_scope_validation', {'scope': 'known_cell_search_contradictions_only', 'corrections': scope_filter.corrections})
+        provider_event('answer_scope_validation', {'scope': 'skipped_for_node_identity_only' if node_only else 'known_cell_search_contradictions_only',
+                                                'corrections': [] if scope_filter is None else scope_filter.corrections})
         if final.stop_reason=='max_tokens': yield '\n\n[Answer reached its output limit.]'
     async def probe(self):
         if not self.settings.anthropic_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}

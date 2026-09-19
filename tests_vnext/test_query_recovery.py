@@ -16,6 +16,19 @@ def failed(reason='missing_required_filter:name', **fields):
 
 
 class QueryRecoveryTests(unittest.TestCase):
+    def test_mixed_truncation_and_service_failure_preserve_the_actionable_error(self):
+        limited = {'step_id': 's1', 'status': 'partial', 'truncated': True,
+                   'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
+                   'retrieval_execution': {'completed': True, 'cursor_exhausted': False}}
+        unavailable = failed('generation_unavailable:ConnectionError', step_id='s2')
+        value = preview(limited, unavailable, status='partial', error={'category': 'run_graph_materialization_limit'})
+        recovery = oversized_preview_recovery(value)
+        assert recovery['category'] == 'retrieval_unavailable'
+        assert recovery['retryable'] is True
+        assert recovery['evidence']['failed_step_ids'] == ['s2']
+        assert recovery['evidence']['limited_step_ids'] == ['s1']
+        assert 'does not resolve the separate failure' in recovery['message']
+
     def test_validated_truncation_has_specific_recovery_without_claiming_query_failure(self):
         step = {'step_id': 's1', 'status': 'partial', 'truncated': True,
                 'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],

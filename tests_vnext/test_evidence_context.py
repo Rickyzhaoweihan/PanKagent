@@ -183,10 +183,10 @@ class EvidenceContextTests(unittest.TestCase):
 
     def test_total_bound_applies_across_steps(self):
         items = [evidence(question="x" * 1200) for _ in range(200)]
-        result = compact_evidence(items)
-        self.assertEqual(len(result), 200)
-        self.assertEqual(result[-1]['evidence_id'], 'G200')
-        self.assertLessEqual(len(json.dumps(result, ensure_ascii=False, separators=(',', ':')).encode()), MAX_BYTES)
+        # Public plans are capped at twelve checks. Do not silently drop or
+        # renumber arbitrary extra check envelopes to meet the size bound.
+        with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
+            compact_evidence(items)
 
     def test_invalid_shape_fails_clearly(self):
         with self.assertRaisesRegex(ValueError, "invalid_evidence_node"):

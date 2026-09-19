@@ -117,3 +117,44 @@ def test_fallback_prompt_is_pinned_in_application_bundle():
     path = manifest['oversized_result_contract']['path']
     assert manifest['sha256'][path] == hashlib.sha256((root / path).read_bytes()).hexdigest()
     assert manifest['oversized_result_contract']['scope'] == 'application_local_node_only_fallback_not_shared_kg_standard'
+
+
+def test_node_only_stream_never_uses_full_evidence_text_rewrites(monkeypatch, tmp_path):
+    async def scenario():
+        text = 'This query is too broad for a detailed answer; try a more specific query. [G1]'
+        gateway, fake, _ = gateway_with_mock(monkeypatch, tmp_path, [text])
+        def forbidden(*_):
+            raise AssertionError('Full-evidence text rewriting is forbidden in node-only mode')
+        monkeypatch.setattr('pankagent_vnext.llm.ScopeTextFilter', forbidden)
+        evidence = large_evidence()
+        try:
+            prepared = gateway.prepare_answer('Tell me about this gene.', evidence)
+            answer = ''.join([part async for part in gateway.synthesize('Tell me about this gene.', evidence, prepared=prepared)])
+            assert answer == text
+            assert len(fake.stream_calls) == 1 and not fake.create_calls
+        finally:
+            await gateway.close()
+    asyncio.run(scenario())
+
+
+def test_empty_and_failed_check_categories_remain_distinguishable():
+    source = [{'step_id': 's1', 'status': 'failed', 'title': 'Check pancreatic QTLs',
+               'requested_scope': {'relation_types': ['PART_OF_QTL_SIGNAL']}, 'nodes': []},
+              {'step_id': 's2', 'status': 'empty', 'title': 'Check T1D GWAS',
+               'requested_scope': {'relation_types': ['PART_OF_GWAS_SIGNAL']}, 'nodes': []}]
+    result = scientific_excerpt(node_only_evidence(source))
+    assert result[0]['check']['relation_types'] == ['PART_OF_QTL_SIGNAL']
+    assert result[1]['check']['relation_types'] == ['PART_OF_GWAS_SIGNAL']
+    assert [s['status'] for s in result] == ['failed', 'empty']
+    assert all(not s['answer_evidence_scope']['relationship_and_measurement_evidence_available'] for s in result)
+
+
+def test_oversized_source_identifiers_are_omitted_not_fabricated():
+    value = {'nodes': [{'id': 'g', 'labels': ['Gene'], 'properties': {
+        'description': {'private_measurement': 100},
+        'data_source': 'fixture', 'data_source_url': 'https://example.org/' + 'x' * 1000,
+        'data_version': 'v' * 1000}}]}
+    result = node_only_evidence([value])[0]
+    node = result['nodes'][0]
+    assert node['description'] is None and node['source'] == {'data_source': 'fixture'}
+    assert result['context_content_omissions']['omitted_oversized_source_identities'] == 2

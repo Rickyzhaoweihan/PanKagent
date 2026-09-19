@@ -391,6 +391,17 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
             "context_dropped": {"nodes": len(nodes), "edges": len(step.get("edges") or []),
                                 "rows": len(step.get("rows") or [])},
         }
+        # These identify the requested check, not biological observations.
+        # Keep empty/failed QTL, GWAS, expression, etc. distinguishable without
+        # forwarding their predicates, measurements or raw execution records.
+        scope = step.get("requested_scope") or {}
+        check_changes = Counter()
+        check_limits = _Limits(0, 0, 0, 256, 16)
+        entry["check"] = {
+            "title": _bounded(step.get("title") or step.get("question") or "", check_limits, check_changes),
+            "relation_types": _bounded(scope.get("relation_types") or [], check_limits, check_changes),
+            "purpose": "context" if step.get("purpose") == "context" else "primary",
+        }
         for key in ("step_id", "graph_version"):
             value = step.get(key)
             if isinstance(value, str) and len(value) <= 128:
@@ -404,9 +415,16 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
         for node in selected:
             properties = node.get("properties") or {}
             changes = Counter()
+            description = properties.get("description")
+            if description is not None and not isinstance(description, str):
+                changes["unsupported_description_values"] += 1
+                description = None
             source = {}
             for key in ("source", "data_source", "data_source_url", "data_version"):
                 value = properties.get(key)
+                if key in {"data_source_url", "data_version"} and isinstance(value, str) and len(value) > limits.string_chars:
+                    changes["omitted_oversized_source_identities"] += 1
+                    continue
                 if isinstance(value, (str, int, float)) or value is None:
                     if value is not None:
                         source[key] = _bounded(value, limits, changes)
@@ -415,7 +433,7 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
                 elif key in properties:
                     changes["unsupported_source_values"] += 1
             projected.append({"id": str(node["id"]), "type": list(node.get("labels") or []),
-                              "description": _bounded(properties.get("description"), limits, changes),
+                              "description": _bounded(description, limits, changes),
                               "source": source or None})
             if changes:
                 entry.setdefault("context_content_omissions", {})
