@@ -427,6 +427,25 @@ def _unrequested_identity_filters(tokens: list[Token], constraints: list[dict], 
     return errors
 
 
+def _region_scope_errors(tokens: list[Token], step: dict, parameters: dict) -> list[str]:
+    """A region's chromosome, build and bounds must bind one required Gene."""
+    if 'genomic_scope_contract' not in step:
+        return []
+    from .genomic_scope import has_verified_region_scope
+    if not has_verified_region_scope(step):
+        return ['invalid_genomic_scope_contract']
+    nodes, paths = _pattern_bindings(tokens, graph_release=step.get('graph_version'))
+    predicates = step['genomic_scope_contract']['predicates']
+    relations = step_relation_types(step)
+    for variable, labels in nodes.items():
+        if ('Gene' in labels
+                and all(_predicate_present(tokens, predicate, parameters, {variable}) for predicate in predicates)
+                and all(any(kind in kinds and variable in (source, target)
+                            for source, target, kinds in paths) for kind in relations)):
+            return []
+    return ['region_scope_not_same_gene']
+
+
 def _unrequested_measurement_filters(tokens, constraints, parameters, *, graph_release=None):
     """A generated threshold must not silently narrow the requested evidence.
 
@@ -695,6 +714,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
                 errors.append("independent_measurements_require_separate_steps")
     for part in branches:
         _, paths = _pattern_bindings(part, graph_release=step.get("graph_version"))
+        errors.extend(_region_scope_errors(part, step, parameters))
         errors.extend(_enrichment_property_errors(part, step, parameters))
         errors.extend(_unrequested_measurement_filters(part, measurement_choices, parameters,
                                                        graph_release=step.get("graph_version")))
@@ -866,6 +886,10 @@ class GraphAdapter:
         entry = {"constraint_index": index, "requested": dict(constraint), "state": "unsupported",
                  "graph_version": self.settings.graph_version, "labels": []}
         prop, value = str(constraint.get("property", "")).split(".")[-1], constraint.get("value")
+        from .genomic_scope import is_verified_region_constraint
+        if (step.get('graph_version') == self.settings.graph_version
+                and is_verified_region_constraint(constraint, step)):
+            return {**entry, "state": "literal_predicate"}
         if self._entity_type(constraint, step) == 'anatomical_structure' and prop in {'name','id'} and isinstance(value,str) and 0 < len(value) <= 512:
             explicit_pattern = constraint.get('operator','=') == 'CONTAINS' and re.search(r'\bcontains?\b|\bcontaining\b|substring|names? matching',step.get('question',''),re.I)
             if constraint.get('operator','=') in {'=','CONTAINS'} and not explicit_pattern:
