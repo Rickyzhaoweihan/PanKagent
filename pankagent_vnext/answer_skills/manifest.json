@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.8.0",
+  "bundle_version": "1.9.0",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -19,7 +19,8 @@
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
     "bim/general_interpretation.json": "717738584e7ab1cfef0538c7553ef0209b609dcf84514ce12feab5885c0fb6e1",
     "bim/evidence_glossary.json": "5587f2e9dbb64bb312540d07da583cd5b6585a00ea4b2aede0f0e1bbed406211",
-    "bim/common_caveats.md": "d1371be9e1d8541691a89c47d1a6deec46448cb78c3688c0d7fac046c9994b6e"
+    "bim/common_caveats.md": "d1371be9e1d8541691a89c47d1a6deec46448cb78c3688c0d7fac046c9994b6e",
+    "bim/oversized_results.md": "a8efc83cc47323b8b8567b2c81be63fa7f079f6989997f702b4bd81ed4cc1aa0"
   },
   "aliases": {
     "nodes": {
@@ -733,5 +734,10 @@
     "sources": [
       "https://geneontology.org/docs/guide-go-evidence-codes/"
     ]
+  },
+  "oversized_result_contract": {
+    "path": "bim/oversized_results.md",
+    "version": 1,
+    "scope": "application_local_node_only_fallback_not_shared_kg_standard"
   }
 }

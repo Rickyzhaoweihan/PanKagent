@@ -8,7 +8,8 @@ from pathlib import Path
 import anthropic
 from .answer_router import AnswerSkillRouter
 from .budget import Budget
-from .evidence_context import compact_evidence, scientific_excerpt
+from .evidence_context import MAX_BYTES, NODE_ONLY_MODE, compact_evidence, node_only_evidence, scientific_excerpt
+from .constraint_values import VALUE_SCHEMA
 from .plan_constraints import repair_step_constraints
 from .scope_guard import ScopeTextFilter, broad_cell_search, NOTE as SCOPE_NOTE
 from .evidence_coverage import VERSION as COVERAGE_VERSION
@@ -27,12 +28,12 @@ PLAN_SCHEMA = {
     'constraints':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{
      'property':{'type':'string'},'operator':{'type':'string','enum':['=','!=','<>','IN','CONTAINS','STARTS WITH','ENDS WITH','>','>=','<','<=']},
      'entity_type':{'type':['string','null']},
-     'value':{'type':'string'}},'required':['property','operator','value','entity_type']}},
+     'value':VALUE_SCHEMA},'required':['property','operator','value','entity_type']}},
     'complete':{'type':'boolean'}},'required':['id','question','title','rationale','relation_types','depends_on','constraints','complete']}},
   'literature':{'type':'boolean'},'clarification':{'type':['string','null']}},
  'required':['interpreted_question','steps','literature','clarification']}
 
-PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concise plan with at most twelve independent graph checks. Most questions need one complete natural-language step, not decomposition. For a standalone question, preserve the original wording verbatim as the step question whenever possible. Never expand direct effector prioritization into extra variant, GO, pathway, regulatory or physical-interaction investigation unless explicitly requested. Never infer extra evidence categories or scientific goals. Preserve scope strictly. Combine cleanup and follow-up interpretation here. Resolve pronouns only using provided session history. Record disease/gene/tissue/cohort/property constraints explicitly. Preserve user-supplied identifiers exactly. Use PanKgraph labels Gene, disease, anatomical_structure, variants, donor, GO_term, reactome and relation types in the provided question; do not invent IDs. T1D is type 1 diabetes, MONDO_0005147. IDs use property id; gene symbols use name. Put unknown IDs in the natural-language question rather than inventing them. Constraint values are scalar strings; for IN encode a JSON array as the string. Use the release schema notes below; do not guess property names. If an entity has an explicit identifier, constrain id only, retaining its human name in the question; do not add a redundant name predicate. Do not invent ontology IDs for non-diabetic or antibody-positive cohorts. Context in a requested measurement column is not necessarily a row predicate. Every step question must include all its scientific constraints so it can be sent independently to a Cypher writer. Dependencies refer to earlier step IDs and pass their returned stable entity IDs, never broaden a failed dependency. complete=true for all/every/full/complete requests, false for explicitly limited representative examples. For unspecified sets prefer complete=true. If the user asks for more than twelve independent investigations or lacks a necessary entity, set clarification and no steps. Never perform retrieval or answer the question while planning.'''
+PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concise plan with at most twelve independent graph checks. Most questions need one complete natural-language step, not decomposition. For a standalone question, preserve the original wording verbatim as the step question whenever possible. Never expand direct effector prioritization into extra variant, GO, pathway, regulatory or physical-interaction investigation unless explicitly requested. Never infer extra evidence categories or scientific goals. Preserve scope strictly. Combine cleanup and follow-up interpretation here. Resolve pronouns only using provided session history. Record disease/gene/tissue/cohort/property constraints explicitly. Preserve user-supplied identifiers exactly. Use PanKgraph labels Gene, disease, anatomical_structure, variants, donor, GO_term, reactome and relation types in the provided question; do not invent IDs. T1D is type 1 diabetes, MONDO_0005147. IDs use property id; gene symbols use name. Put unknown IDs in the natural-language question rather than inventing them. Constraint values are scalar strings; for IN use a nonempty native array of strings. Never use comma-separated text or a serialized array as the list value; preserve commas within individual literal values. Use the release schema notes below; do not guess property names. If an entity has an explicit identifier, constrain id only, retaining its human name in the question; do not add a redundant name predicate. Do not invent ontology IDs for non-diabetic or antibody-positive cohorts. Context in a requested measurement column is not necessarily a row predicate. Every step question must include all its scientific constraints so it can be sent independently to a Cypher writer. Dependencies refer to earlier step IDs and pass their returned stable entity IDs, never broaden a failed dependency. complete=true for all/every/full/complete requests, false for explicitly limited representative examples. For unspecified sets prefer complete=true. If the user asks for more than twelve independent investigations or lacks a necessary entity, set clarification and no steps. Never perform retrieval or answer the question while planning.'''
 
 # Schema-only reference: accepted PanKgraph 08_04 property export, not held-out answers.
 PLAN_SYSTEM += '''
@@ -88,7 +89,8 @@ ANSWER_CONTRACT += '''
 Full-record fact contract (takes precedence over example-driven wording): each answer_facts ledger was computed before selecting example records. Use its per-assay counts, source/method/throughput distributions, formal GO code names and signal roles. Keep the opening conclusion as accurate as the tables. Colocalization can involve different lead variants. same_complete_lead_set=false means the complete lead sets differ, not that they cannot overlap. Report a shared recorded lead only from shared_recorded_lead_variant_ids; an empty list establishes no shared recorded lead, a nonempty list identifies the exact overlap, and null leaves overlap unknown. Membership does not establish lead status: use Recorded variant as the column heading unless lead_role explicitly establishes lead/nonlead. Never add an unrecorded source qualifier such as GTEx-style. Do not describe all interactions as one method or throughput class unless the full distribution verifies it. Omit unsolicited assay generalizations and speculative technical explanations such as ambient RNA, dropout, aggregation artifacts or doublets unless the user requests hypotheses or source records explicitly report them. Select only relevant supported common caveats; a caveat section is optional, never an invitation to invent uncertainty. Computed donor/sample distributions are available even if individual examples are omitted. Do not say a complete search is limited or source data unavailable because only selected records are shown to you. For an aggregate question, report aggregates and omit individual donor examples unless asked.'''
 
 from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\ngrounded-synthesis-v3').encode()).hexdigest()[:16]
+OVERSIZED_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/oversized_results.md').read_text()
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\ngrounded-synthesis-v4').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -322,9 +324,35 @@ class ClaudeGateway:
                 return value
             excerpt=relevant(excerpt)
             profile['model_context']['omitted_unrequested_fields']=['rank_in_cell_type']
-        body=json.dumps({'question':question,'evidence':excerpt,
-            'verified_search_scope': SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.'},ensure_ascii=False,default=str)
-        if len(body.encode())>100000: raise ValueError('evidence_context_too_large')
+        def answer_body(items):
+            limited = any(item.get('answer_evidence_scope',{}).get('mode') == NODE_ONLY_MODE for item in items)
+            scope = ('Oversized query: node identities, descriptions and provenance only; no relationship or measurement conclusions are supported by this view.'
+                if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
+            return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope},ensure_ascii=False,default=str)
+        body=answer_body(excerpt)
+        if len(body.encode()) > MAX_BYTES:
+            # Include the final question, JSON spacing and scope notes in the
+            # size decision, not only the intermediate compact evidence.
+            compact=node_only_evidence(evidence, max_bytes=max(1000, MAX_BYTES-len(question.encode())-20000))
+            excerpt=scientific_excerpt(compact, include_donor_details=requested_details)
+            body=answer_body(excerpt)
+        if len(body.encode()) > MAX_BYTES:
+            raise ValueError('answer_request_envelope_too_large')
+        node_only=any(item.get('context_compaction') == NODE_ONLY_MODE for item in compact)
+        profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
+        profile['model_context'].update(sampled=profile['context_sampled'],
+            mode=NODE_ONLY_MODE if node_only else 'standard',
+            query_too_broad=node_only,
+            steps=[{'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
+                    'omitted':item.get('context_dropped',{})} for item in compact])
+        if node_only:
+            profile['model_context']['exposed_node_fields']=['id','type','description','source']
+            profile['model_context']['measurement_guidance_suppressed']=True
+            profile['answer_budget']={'max_output_tokens':900,
+                                     'primary_checks':sum(step.get('purpose') != 'context' for step in evidence.values())}
+            return PreparedAnswer(body,[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}},
+                {'type':'text','text':ANSWER_CONTRACT},
+                {'type':'text','text':OVERSIZED_RESULT_CONTRACT}],profile)
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]
         if routed.guidance:
             system.append({'type':'text','text':'Matched interpretation guidance (apply under the evidence and presentation rules above):\n'+routed.guidance,

@@ -19,6 +19,7 @@ from .evidence_coverage import coverage_for_answer
 
 TARGET_BYTES = 75_000
 MAX_BYTES = 100_000
+NODE_ONLY_MODE = "node_identity_only"
 _SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary")
 
 
@@ -359,10 +360,98 @@ def compact_evidence(evidence: Mapping | list) -> list[dict]:
 
     result, size = build(_NORMAL)
     if size > TARGET_BYTES:
-        result, size = build(_REDUCED)
-    if size > MAX_BYTES:
-        raise ValueError("evidence_context_too_large")
+        return node_only_evidence(steps)
     return result
+
+
+def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES) -> list[dict]:
+    """Bound the oversized answer view to four explicitly allowed node fields.
+
+    Full query records stay untouched. Identity/type values are never clipped:
+    an individually oversized record is omitted, with a disclosed count. Other
+    properties, edges, rows and derived measurement facts cannot reach synthesis.
+    """
+    steps = list(evidence.values()) if isinstance(evidence, Mapping) else evidence
+    if not isinstance(steps, list) or any(not isinstance(s, Mapping) for s in steps):
+        raise ValueError("invalid_evidence_shape")
+    limits = _Limits(0, 0, 0, 512, 8)
+    entries, candidates = [], []
+    for index, step in enumerate(steps):
+        nodes = step.get("nodes") or []
+        if any(not isinstance(n, Mapping) or "id" not in n for n in nodes):
+            raise ValueError("invalid_evidence_node")
+        entry = {
+            "evidence_id": f"G{index + 1}",
+            "status": step.get("status") if step.get("status") in
+                {"complete", "partial", "empty", "failed", "blocked", "skipped"} else "unknown",
+            "truncated": bool(step.get("truncated")),
+            "nodes": [], "context_sampled": True,
+            "context_compaction": NODE_ONLY_MODE,
+            "context_counts": {"full_nodes_selected": 0},
+            "context_dropped": {"nodes": len(nodes), "edges": len(step.get("edges") or []),
+                                "rows": len(step.get("rows") or [])},
+        }
+        for key in ("step_id", "graph_version"):
+            value = step.get(key)
+            if isinstance(value, str) and len(value) <= 128:
+                entry[key] = value
+        entries.append(entry)
+        # Interleave rare types first, rather than dropping an entire category.
+        selected, _ = _sample(nodes, min(len(nodes), 200), _node_type)
+        type_counts = Counter(_node_type(node) for node in nodes)
+        selected.sort(key=lambda node: (type_counts[_node_type(node)], _node_type(node)))
+        projected = []
+        for node in selected:
+            properties = node.get("properties") or {}
+            changes = Counter()
+            source = {}
+            for key in ("source", "data_source", "data_source_url", "data_version"):
+                value = properties.get(key)
+                if isinstance(value, (str, int, float)) or value is None:
+                    if value is not None:
+                        source[key] = _bounded(value, limits, changes)
+                elif isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
+                    source[key] = _bounded(value, limits, changes)
+                elif key in properties:
+                    changes["unsupported_source_values"] += 1
+            projected.append({"id": str(node["id"]), "type": list(node.get("labels") or []),
+                              "description": _bounded(properties.get("description"), limits, changes),
+                              "source": source or None})
+            if changes:
+                entry.setdefault("context_content_omissions", {})
+                for key, count in changes.items():
+                    entry["context_content_omissions"][key] = entry["context_content_omissions"].get(key, 0) + count
+        candidates.append(projected)
+
+    def size(value):
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
+
+    # Reserve room for changing count digits and the final scientific scope note.
+    available = max_bytes - size(entries) - 1024
+    added = []
+    for position in range(max((len(items) for items in candidates), default=0)):
+        for index, items in enumerate(candidates):
+            if position >= len(items):
+                continue
+            node = items[position]
+            cost = size(node) + 1
+            if cost > available:
+                continue
+            entries[index]["nodes"].append(node)
+            entries[index]["context_counts"]["full_nodes_selected"] += 1
+            entries[index]["context_dropped"]["nodes"] -= 1
+            available -= cost
+            added.append(index)
+    while size(entries) > max_bytes and added:
+        index = added.pop()
+        entries[index]["nodes"].pop()
+        entries[index]["context_counts"]["full_nodes_selected"] -= 1
+        entries[index]["context_dropped"]["nodes"] += 1
+    if size(entries) > max_bytes:
+        # Public plans contain at most twelve checks. Malformed/unbounded step
+        # envelopes still fail explicitly, never silently renumber citations.
+        raise ValueError("evidence_step_envelope_too_large")
+    return entries
 
 
 def scientific_excerpt(compact, *, include_donor_details=False):
@@ -379,6 +468,16 @@ def scientific_excerpt(compact, *, include_donor_details=False):
     result=[]
     for item in compact:
         entry=clean(item)
+        if item.get("context_compaction") == NODE_ONLY_MODE:
+            entry["answer_evidence_scope"] = {
+                "mode": NODE_ONLY_MODE, "query_too_broad": True,
+                "selected_node_count": item["context_counts"]["full_nodes_selected"],
+                "omitted_node_count": item["context_dropped"]["nodes"],
+                "node_text_clipped": bool(item.get("context_content_omissions")),
+                "relationship_and_measurement_evidence_available": False,
+            }
+            result.append(entry)
+            continue
         donor_details_hidden = False
         if not include_donor_details and any(set(node.get('labels') or []) & {'donor', 'Sample_node'} for node in entry.get('nodes', [])):
             # Aggregate requests need the full computed facts, not incidental

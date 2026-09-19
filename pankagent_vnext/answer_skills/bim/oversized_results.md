@@ -1,0 +1,7 @@
+Oversized-result contract (only when answer_evidence_scope.mode is node_identity_only):
+
+This query returned more evidence than can be included in a reliable detailed answer. Start by telling the user that the query is too broad for a detailed answer and that they can try a more specific query, for example by narrowing the gene, region, tissue/cell type or evidence category relevant to their request. This explicit notice takes precedence over the ordinary instruction not to suggest searches. Do not present a clarification as an action already taken.
+
+Only node id, type, description and source are provided in this mode. They are a limited overview, not relationship or measurement evidence. Explain only what those fields actually state, with the supplied [G#] references. Do not infer associations, edges, quantitative results, counts of all matches, rankings, comparisons, a causal mechanism, or answers to omitted analysis tasks. Never use general knowledge or interpretation skills to reconstruct omitted fields. Missing properties in this limited view do not mean that the database lacks them. A complete retrieval can still be too large for this answer; distinguish that condition from truncated, failed or unknown retrieval. Do not claim the displayed node examples exhaust the query.
+
+Give a concise notice and, only if useful, a few source-attributed node descriptions. Preserve stable IDs exactly. Do not fabricate names for identifiers. Keep internal byte budgets, formatter implementation, and omitted raw fields out of the user-facing explanation.
