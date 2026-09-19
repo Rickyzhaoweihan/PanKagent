@@ -360,8 +360,13 @@ def test_optional_timeout_keeps_evidence_citations_in_plan_order(tmp_path):
         graph = ReorderedGraph(block_step='s3')
         plan = multi_plan()
         plan['steps'][2]['purpose'] = 'context'
-        async with service(tmp_path, graph=graph, gateway=Gateway(plan=plan), preview_timeout=.06) as (client, runtime, gateway, *_):
+        async with service(tmp_path, graph=graph, gateway=Gateway(plan=plan), preview_timeout=1) as (client, runtime, gateway, *_):
             created = await create(client)
+            # This scenario exercises an in-flight optional timeout. Wait for
+            # s3 to enter execute so scheduler/load variance cannot turn it into
+            # a timeout before the optional check starts.
+            await asyncio.wait_for(graph.blocked.wait(), 2)
+            assert graph.step_calls == {'s1': 1, 's2': 1, 's3': 1}
             ready = await wait_state(client, created['run_id'], {'awaiting_confirmation'})
             outcomes = ready['preview']['evidence']['steps']
             assert [(item['step_id'], item['evidence_id']) for item in outcomes] == [('s1', 'G1'), ('s2', 'G2'), ('s3', 'G3')]
