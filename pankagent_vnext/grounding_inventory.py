@@ -17,7 +17,7 @@ import tempfile
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST, CAPABILITIES, SOURCE
 
-VERSION = "grounding-inventory-4"
+VERSION = "grounding-inventory-5"
 PUBLIC_CATALOG_LABELS = (
     "Gene", "anatomical_structure", "disease", "GO_term", "kegg", "reactome", "data_modality",
 )
@@ -75,8 +75,13 @@ def public_record(label, row):
     name = _text(row.get("name")) or _text(row.get("hgnc_symbol")) or identifier
     aliases = _synonyms(row.get("synonyms"))
     aliases.extend(v for field in ("hgnc_symbol", "hgnc_id") if (v := _text(row.get(field))))
-    return {"id": identifier, "name": name, "entity_type": label,
-            "labels": allowed_labels, "aliases": sorted(set(aliases) - {identifier, name})}
+    record = {"id": identifier, "name": name, "entity_type": label,
+              "labels": allowed_labels, "aliases": sorted(set(aliases) - {identifier, name})}
+    # Keep the primary symbol's field provenance. A historic synonym or the
+    # display name alone cannot authorize an HGNC-symbol predicate rewrite.
+    if label == "Gene" and (symbol := _text(row.get("hgnc_symbol"))):
+        record["hgnc_symbol"] = symbol
+    return record
 
 
 async def build_inventory(graph, *, include_schema_observations=False):

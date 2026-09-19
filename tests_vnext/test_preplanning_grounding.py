@@ -25,7 +25,7 @@ class FakeGraph:
         self.rows = {label: [] for label in PUBLIC_CATALOG_LABELS}
         self.annotation_sources = [{"values": ["KEGG", "Reactome"], "record_count": 8, "valued_records": 8}]
         self.rows["Gene"] = [
-            {"id": "ENSG00000138031", "name": "ADCY3", "labels": ["Gene"], "synonyms": ["AC3"]},
+            {"id": "ENSG00000138031", "name": "ADCY3", "labels": ["Gene"], "synonyms": ["AC3"], "hgnc_symbol": "ADCY3"},
             {"id": "ENSG00000001626", "name": "CFTR", "labels": ["Gene"]},
             {"id": "gene-one", "name": "ONE", "labels": ["Gene"], "synonyms": ["shared alias"]},
             {"id": "gene-two", "name": "TWO", "labels": ["Gene"], "synonyms": ["shared alias"]},
@@ -89,7 +89,7 @@ def test_full_catalog_build_is_read_only_and_has_two_read_cap():
     assert all(" LIMIT " not in query and "SKIP" not in query for query, _ in graph.calls)
     assert "password" not in json.dumps(inventory)
     assert "donor" not in inventory["counts"] and "Sample_node" not in inventory["counts"]
-    assert all(set(value) <= {"id", "name", "entity_type", "labels", "aliases"} for value in inventory["records"])
+    assert all(set(value) <= {"id", "name", "entity_type", "labels", "aliases", "hgnc_symbol"} for value in inventory["records"])
 
 
 def test_grounding_resolves_live_gene_variant_disease_before_plan():

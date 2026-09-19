@@ -13,7 +13,7 @@ import re
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 
-VERSION = 'preplanning-property-owners-v4'
+VERSION = 'preplanning-property-owners-v5'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 
@@ -90,6 +90,39 @@ def _grounded_anatomy_ids(values, grounding):
                 continue
             forms = [candidate['id'], candidate.get('name'), mention.get('requested')]
             if isinstance(value, str) and any(isinstance(form, str) and form.casefold() == value.casefold() for form in forms):
+                matches.add(candidate['id'])
+        if len(matches) != 1:
+            return None
+        identifiers.append(matches.pop())
+    return identifiers or None
+
+
+def _grounded_primary_gene_ids(constraint, question, grounding):
+    """Normalize a requested gene's verified primary symbol, never an alias.
+
+    This repairs a planner's choice of identity field. An explicit raw-property
+    request, negative predicate, ambiguous or incomplete identity remains literal.
+    The catalog must retain the actual release-read hgnc_symbol value; name and
+    generic aliases do not prove that field's value.
+    """
+    if (grounding.get('catalog_complete') is not True
+            or str(constraint.get('operator', '=')).upper() not in {'=', 'IN'}
+            or not question or re.search(r'\bhgnc_symbol\b', question, re.I)):
+        return None
+    identifiers = []
+    for value in _values(constraint):
+        matches = set()
+        for mention in grounding.get('mentions', []):
+            candidates = mention.get('candidates', [])
+            if (mention.get('state') != 'resolved' or mention.get('identity_complete') is False
+                    or len(candidates) != 1):
+                continue
+            candidate = candidates[0]
+            symbol = candidate.get('hgnc_symbol')
+            if (candidate.get('entity_type') == 'Gene' and candidate.get('id')
+                    and candidate.get('hgnc_symbol_unique') is True
+                    and isinstance(value, str) and isinstance(symbol, str) and symbol
+                    and value.casefold() == symbol.casefold()):
                 matches.add(candidate['id'])
         if len(matches) != 1:
             return None
@@ -301,6 +334,12 @@ def compile_property_owners(plan, grounding, *, question=None):
                         return result, f'{category}:{step.get("id", "step")}:{prop}:{names}'
                     owner_kind, owner = owners[0]
                     entity, relation = (owner, None) if owner_kind == 'node' else (None, owner)
+            if entity == 'Gene' and prop == 'hgnc_symbol':
+                identifiers = _grounded_primary_gene_ids(constraint, question, grounding)
+                if identifiers:
+                    prop = 'id'
+                    constraint['value'] = ((json.dumps(identifiers) if isinstance(constraint.get('value'), str) else identifiers)
+                                           if str(constraint.get('operator', '=')).upper() == 'IN' else identifiers[0])
             constraint.update(property=prop, entity_type=entity, owner_kind='node' if entity else 'relationship')
             if relation:
                 constraint['relationship_type'] = relation

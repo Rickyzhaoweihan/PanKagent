@@ -18,7 +18,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
                                  stable_digest, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 
-VERSION = "preplanning-grounding-5"
+VERSION = "preplanning-grounding-6"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -49,7 +49,7 @@ ENTITY_TYPE_TERMS = {
     "kegg": r"\bkegg\b|pathways?", "reactome": r"\breactome\b|pathways?",
     "data_modality": r"modality|modalities|assay", "OCR_peak": r"chromatin|\bocr\b",
 }
-_GENERIC_GENE_WORDS = {"a", "an", "and", "as", "at", "by", "can", "do", "for", "has", "have", "in", "is", "it", "no", "not", "of", "on", "or", "rest", "so", "the", "to", "was", "with", "yes"}
+_GENERIC_GENE_WORDS = {"a", "all", "an", "and", "any", "as", "at", "by", "can", "do", "every", "for", "has", "have", "in", "is", "it", "no", "not", "of", "on", "or", "rest", "so", "the", "to", "was", "with", "yes"}
 _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon"})
 # These are linguistic roles, not excluded gene symbols. An explicit gene
 # request always retains a recorded alias, including aliases that are words.
@@ -72,8 +72,11 @@ def phrase_tokens(text):
     return tuple(plural.get(token, token) for token in tokens)
 
 
-def _public_candidate(record, kind):
-    return {key: deepcopy(record[key]) for key in ("id", "name", "entity_type", "labels")} | {"match_kind": kind}
+def _public_candidate(record, kind, *, primary_symbol_unique=False):
+    result = {key: deepcopy(record[key]) for key in ("id", "name", "entity_type", "labels", "hgnc_symbol") if key in record} | {"match_kind": kind}
+    if "hgnc_symbol" in result:
+        result["hgnc_symbol_unique"] = primary_symbol_unique
+    return result
 
 
 def _explicit_gene(words, start, end):
@@ -155,7 +158,17 @@ class EntityIndex:
         self.source_forms = {phrase_tokens(value) for value in self.sample_terminology.get("sources", [])}
         self.first = {}
         self.max_words = 0
+        # Canonical display-name preference can hide another record's alias.
+        # Primary-symbol uniqueness must therefore use the entire catalog,
+        # before a request's candidate selection or name preference is applied.
+        primary_symbols = {}
         for record in inventory["records"]:
+            symbol = record.get("hgnc_symbol")
+            if record["entity_type"] == "Gene" and isinstance(symbol, str) and symbol:
+                primary_symbols.setdefault(symbol.casefold(), set()).add(record["id"])
+        for record in inventory["records"]:
+            primary_symbol_unique = (inventory.get("catalog_complete") is True
+                and len(primary_symbols.get(str(record.get("hgnc_symbol", "")).casefold(), set())) == 1)
             forms = [(record["id"], "recorded_id"), (record["name"], "recorded_name")]
             forms.extend((value, "recorded_alias") for value in record.get("aliases", []))
             if self.identity["graph_release"] == ANATOMY_RELEASE:
@@ -175,7 +188,7 @@ class EntityIndex:
                     continue
                 table = self.first.setdefault(words[0], {})
                 key = (record["entity_type"], record["id"])
-                table.setdefault(words, {}).setdefault(key, _public_candidate(record, kind))
+                table.setdefault(words, {}).setdefault(key, _public_candidate(record, kind, primary_symbol_unique=primary_symbol_unique))
                 self.max_words = max(self.max_words, len(words))
 
     def match(self, question):

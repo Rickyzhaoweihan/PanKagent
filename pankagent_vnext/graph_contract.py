@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-08-04-intent-v8-grounded-planning'
+VERSION = 'pankgraph-08-04-intent-v9-grounded-identity'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
     'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Recorded measurements include median_donor_log_cpm, median_donor_cpm, median_pct_cells_expressing, total_cells, expression_call and condition. There is no generic rank or id property on this relationship; do not ORDER BY nonexistent fields or invent a ranking. Return recorded measurements without invented significance cutoffs.',
@@ -58,7 +58,10 @@ from .cypher_repair import VERSION as REPAIR_VERSION, DIGEST as REPAIR_DIGEST
 from pathlib import Path
 # Read source bytes rather than importing graph, which consumes this contract.
 VALIDATOR_DIGEST = hashlib.sha256(Path(__file__).with_name('graph.py').read_bytes()).hexdigest()
-DIGEST = hashlib.sha256(json.dumps({'patterns': PATTERN_DIGEST, 'template': TEMPLATE_DIGEST, 'repair': REPAIR_VERSION, 'repair_implementation': REPAIR_DIGEST, 'validator_implementation': VALIDATOR_DIGEST, 'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'cohort_scope': COHORT_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'metadata_guard': METADATA_GUARD_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+PLANNING_IDENTITY_DIGEST = hashlib.sha256(b''.join(
+    Path(__file__).with_name(name).read_bytes() for name in (
+        'grounding_inventory.py', 'preplanning_grounding.py', 'planning_compile.py', 'planning_scope.py'))).hexdigest()
+DIGEST = hashlib.sha256(json.dumps({'patterns': PATTERN_DIGEST, 'template': TEMPLATE_DIGEST, 'repair': REPAIR_VERSION, 'repair_implementation': REPAIR_DIGEST, 'validator_implementation': VALIDATOR_DIGEST, 'planning_identity': PLANNING_IDENTITY_DIGEST, 'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'cohort_scope': COHORT_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'metadata_guard': METADATA_GUARD_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
 
 
 def planner_notes():
