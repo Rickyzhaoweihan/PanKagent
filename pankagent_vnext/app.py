@@ -435,6 +435,7 @@ class Runtime:
     def failed_step(step, error):
         return {"step_id": step["id"], "question": step["question"], "status": "failed", "error": error,
                 "nodes": [], "edges": [], "rows": [], "validation": [{"valid": False, "reasons": [error["category"]]}],
+                "requested_scope": {"relation_types": deepcopy(step.get("relation_types", []))},
                 **{key: step[key] for key in ('purpose', 'context_for', 'title') if key in step}}
 
     def preview_identity(self, plan):

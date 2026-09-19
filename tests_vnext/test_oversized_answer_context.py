@@ -149,6 +149,16 @@ def test_empty_and_failed_check_categories_remain_distinguishable():
     assert all(not s['answer_evidence_scope']['relationship_and_measurement_evidence_available'] for s in result)
 
 
+def test_runtime_failure_retains_requested_category_for_limited_view():
+    from pankagent_vnext.app import Runtime
+    step = {'id': 's1', 'question': 'Check pancreatic QTLs', 'relation_types': ['PART_OF_QTL_SIGNAL']}
+    failed = Runtime.failed_step(step, {'category': 'graph_unavailable'})
+    step['relation_types'].clear()
+    result = scientific_excerpt(node_only_evidence([failed]))
+    assert result[0]['status'] == 'failed'
+    assert result[0]['check']['relation_types'] == ['PART_OF_QTL_SIGNAL']
+
+
 def test_oversized_source_identifiers_are_omitted_not_fabricated():
     value = {'nodes': [{'id': 'g', 'labels': ['Gene'], 'properties': {
         'description': {'private_measurement': 100},
