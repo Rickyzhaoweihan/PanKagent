@@ -53,10 +53,11 @@ real stored field on those paths. Explicit owners, raw-property requests,
 tissues and ambiguous identities do not receive this repair. This covers a
 field-ownership failure observed during a fresh browser region regression.
 For the T1D-specific DEG relation, a uniquely grounded T1D context that the
-planner misplaced on an ownerless endpoint field is normalized to the existing
+planner misplaced on an endpoint field is normalized to the existing
 disease-identity contract before query validation. The disease context is
 encoded by the relation type, whose actual endpoint remains the cell. Explicit
-raw endpoint requests and other diseases are not silently rewritten.
+raw endpoint requests and other diseases are not silently rewritten. A model
+adding an explicit field owner does not make it a user-requested raw predicate.
 
 QTL answer guidance distinguishes source labels from recorded molecular
 phenotypes and distinguishes credible-set record identifiers from evidence of
