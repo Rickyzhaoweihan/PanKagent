@@ -44,6 +44,9 @@ standard, not a change to the existing PanKgraph release or its pinned submodule
 5. `manage grant-reader` grants only SELECT on the new schema to
    `pankgraph0919_reader`. `manage freeze-graph` activates and verifies actual
    Neo4j read-only access. A staged configuration file alone does not pass.
+   Verify each materialized relationship type has an ONLINE RANGE index on
+   `id`; the pinned standard provides `ensure_neo4j_lookup_indexes`. Exact edge
+   lookups use typed relationships, and node-ID lookups include `BioEntity`.
 6. `manage start-api --release … --snapshot …` refuses a writable graph and an
    occupied API port. It starts only the new application, clears inherited Python
    import paths, and keeps sensitive record detail redacted.
