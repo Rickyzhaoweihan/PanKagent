@@ -46,6 +46,12 @@ by compilation, validation and deterministic query templates. Legacy JSON lists
 are accepted. A bare comma string is split only against a complete, owner-bound
 recorded vocabulary; unresolved values require repair or clarification.
 Relationship tissue filters must remain on their recorded relationship owner.
+An ownerless semantic `cell_type` constraint can be bound to an anatomical
+endpoint ID only when the raw request uniquely grounds a verified cell, all
+selected release paths give it the same endpoint role, and the alias is not a
+real stored field on those paths. Explicit owners, raw-property requests,
+tissues and ambiguous identities do not receive this repair. This covers a
+field-ownership failure observed during a fresh browser region regression.
 
 Explicit genomic intervals are bound to a complete public Gene coordinate
 aggregate for the verified graph release. Compilation retains chromosome,
