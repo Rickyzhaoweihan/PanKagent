@@ -18,6 +18,7 @@ import time
 from urllib.parse import urlsplit
 
 import httpx
+from cakg.multimodal import RELATION_PROFILES
 from neo4j import GraphDatabase, Query, READ_ACCESS, WRITE_ACCESS
 from neo4j.exceptions import Neo4jError
 import psycopg
@@ -30,6 +31,8 @@ MODALITIES = (
     "06_treatment", "07_atac", "08_abc", "09_perifusion", "10_bulk",
 )
 PROTECTED_PORTS = (8794, 8795, 8796)
+GENE_POINT_QUERY = "MATCH (g:BioEntity:Gene {id:$gene_id}) RETURN g"
+GENE_RELATIONSHIP_TYPES = frozenset(name for name, (source, _) in RELATION_PROFILES.items() if source == "Gene")
 
 
 class GateFailure(Exception):
@@ -42,6 +45,14 @@ class GateFailure(Exception):
 def require(condition: bool, code: str) -> None:
     if not condition:
         raise GateFailure(code)
+
+
+def gene_edge_point_query(relationship_type: str) -> str:
+    """Use indexed labels/types; no unchecked source text becomes Cypher syntax."""
+    require(isinstance(relationship_type, str) and relationship_type in GENE_RELATIONSHIP_TYPES,
+            "unsupported_gene_point_lookup_relationship_type")
+    return ("MATCH (g:BioEntity:Gene {id:$gene_id})"
+            f"-[r:{relationship_type} {{id:$edge_id}}]->(c:BioEntity) RETURN g,r,c")
 
 
 def checked_base_url(value: str) -> str:
@@ -341,17 +352,17 @@ class Acceptance:
 
     def api_graph_evidence(self) -> dict:
         self.select_sample()
+        cypher = gene_edge_point_query(self.sample["relationship_type"])
         parameters = {"gene_id": self.sample["gene_id"], "edge_id": self.sample["edge_id"]}
-        gene = self.request("POST", "/query", body={"cypher": "MATCH (g:Gene {id:$gene_id}) RETURN g",
+        gene = self.request("POST", "/query", body={"cypher": GENE_POINT_QUERY,
                                                     "parameters": {"gene_id": self.sample["gene_id"]}, "limit": 1})
         require(gene.get("object_ids") == [self.sample["gene_id"]] and len(gene.get("graph_rows", [])) == 1,
                 "genuine_gene_brief_identity_mismatch")
-        gene_detail = self.request("POST", "/query", body={"cypher": "MATCH (g:Gene {id:$gene_id}) RETURN g",
+        gene_detail = self.request("POST", "/query", body={"cypher": GENE_POINT_QUERY,
                                    "parameters": {"gene_id": self.sample["gene_id"]}, "mode": "detail", "limit": 1})
         require(gene_detail.get("expansion_policy") == "returned_nodes" and
                 gene_detail["evidence"].get("object_ids") == [self.sample["gene_id"]], "gene_detail_expansion_mismatch")
         self.compare_records(gene_detail["evidence"]["items"], object_id=self.sample["gene_id"])
-        cypher = "MATCH (g:Gene {id:$gene_id})-[r]->(c) WHERE r.id=$edge_id RETURN g,r,c"
         brief = self.request("POST", "/query", body={"cypher": cypher, "parameters": parameters, "limit": 2})
         require(set(brief.get("object_ids", [])) == {self.sample["gene_id"], self.sample["edge_id"], self.sample["end_id"]},
                 "genuine_graph_object_ids_mismatch")

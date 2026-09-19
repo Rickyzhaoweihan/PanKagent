@@ -7,6 +7,8 @@ import psycopg
 import pytest
 
 from deploy_0919 import build, query
+from deploy_0919.acceptance import Acceptance, GateFailure, GENE_POINT_QUERY, GENE_RELATIONSHIP_TYPES, gene_edge_point_query
+from pankgraph0919_backend.graph import validate_cypher
 
 
 def test_private_client_routes_entity_search_without_exposing_token(monkeypatch, capsys):
@@ -81,3 +83,24 @@ def test_analyze_refuses_uncommitted_unloaded_or_foreign_database(changes):
     with pytest.raises(RuntimeError):
         build.analyze_loaded_snapshot(conn, "synthetic-snapshot")
     assert not any(sql.startswith("ANALYZE") for sql, _ in conn.calls)
+
+
+@pytest.mark.parametrize("relationship_type", sorted(GENE_RELATIONSHIP_TYPES))
+def test_acceptance_point_lookup_uses_indexed_labels_and_whitelisted_type(relationship_type):
+    cypher = gene_edge_point_query(relationship_type)
+    validate_cypher(cypher, {"gene_id": "synthetic-gene", "edge_id": "synthetic-edge"})
+    assert "(g:BioEntity:Gene {id:$gene_id})" in cypher
+    assert "[r:" + relationship_type + " {id:$edge_id}]" in cypher
+    assert "(c:BioEntity)" in cypher and "[r]" not in cypher
+    assert GENE_POINT_QUERY == "MATCH (g:BioEntity:Gene {id:$gene_id}) RETURN g"
+
+
+@pytest.mark.parametrize("relationship_type", [
+    "UNKNOWN", "HAS_EXPRESSION_RESULT_IN] RETURN 1 //", "HAS_ACCESSIBILITY_RESULT_IN", None,
+])
+def test_acceptance_rejects_untrusted_relationship_type_before_api_request(relationship_type):
+    check = Acceptance(None, None, None, None, None, {}, None)
+    check.select_sample = lambda: check.sample.update(relationship_type=relationship_type)
+    check.request = lambda *args, **kwargs: pytest.fail("Unvalidated relationship reached the API")
+    with pytest.raises(GateFailure, match="unsupported_gene_point_lookup_relationship_type"):
+        check.api_graph_evidence()

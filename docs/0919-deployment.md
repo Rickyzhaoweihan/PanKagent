@@ -64,7 +64,7 @@ the module search path. The following request can be supplied as JSON on stdin
 to `python -m deploy_0919.query --root /db/pankgraph0919 --request -`:
 
 ```json
-{"cypher":"MATCH (g:Gene {name:$name})-[r:HAS_EXPRESSION_RESULT_IN]->(c:Cell_type) RETURN g,r,c","parameters":{"name":"INS"},"mode":"detail","filters":{"collection_id":"pankbase:03_de_markers"},"limit":5}
+{"cypher":"MATCH (g:BioEntity:Gene {name:$name})-[r:HAS_EXPRESSION_RESULT_IN]->(c:BioEntity:Cell_type) RETURN g,r,c","parameters":{"name":"INS"},"mode":"detail","filters":{"collection_id":"pankbase:03_de_markers"},"limit":5}
 ```
 
 The [API contract](0919-api.md) covers independent PostgreSQL search and context
