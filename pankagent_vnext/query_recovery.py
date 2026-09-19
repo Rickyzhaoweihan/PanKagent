@@ -1,7 +1,7 @@
 """Evidence-backed recovery wording; suggestions never alter the submitted plan."""
 import re
 
-VERSION = 'query-recovery-5-oversized-preview'
+VERSION = 'query-recovery-6-derived-retrieval-limits'
 
 def stage_recovery(number, vocabulary, release):
     recorded = vocabulary.get('stages')
@@ -61,6 +61,40 @@ def _error_codes(value):
     return [value.lower()] if isinstance(value, str) else []
 
 
+def _blocked_by_retrieval_limits(steps, root_ids):
+    """Trace only unexecuted dependency failures to verified size-limit roots.
+
+    Unknown parents, cycles, ambiguous IDs and independent execution/error
+    evidence cannot be explained away as consequences of the retrieval limit.
+    This affects recovery wording only, never query readiness or reuse.
+    """
+    identifiers = [step.get('step_id') for step in steps]
+    unique = {value for value in identifiers if isinstance(value, str) and value
+              and identifiers.count(value) == 1}
+    explained = {value for value in root_ids if isinstance(value, str)} & unique
+    derived = set()
+    changed = True
+    while changed:
+        changed = False
+        for step in steps:
+            identifier, parents = step.get('step_id'), step.get('blocked_by')
+            checks = _records(step.get('validation'))
+            if (not isinstance(identifier, str) or identifier not in unique or identifier in explained
+                    or step.get('status') not in {'failed', 'blocked'}
+                    or not isinstance(parents, list) or not parents
+                    or not all(isinstance(parent, str) and parent in explained for parent in parents)
+                    or set(_error_codes(step.get('error'))) != {'dependency_unavailable'}
+                    or not checks or any(check.get('valid') is not False
+                        or check.get('reasons') != ['dependency_unavailable'] for check in checks)
+                    or any(step.get(key) for key in ('queries', 'generator_attempts', 'retrieval_execution',
+                                                     'nodes', 'edges', 'rows'))):
+                continue
+            explained.add(identifier)
+            derived.add(identifier)
+            changed = True
+    return [value for value in identifiers if isinstance(value, str) and value in derived]
+
+
 def oversized_preview_recovery(preview):
     """Describe a validated but incomplete materialization without admitting it.
 
@@ -73,10 +107,17 @@ def oversized_preview_recovery(preview):
     evidence = preview.get('evidence') or {}
     if not isinstance(evidence, dict):
         return None
+    steps = _records(evidence.get('steps'))
     limited = []
-    for step in _records(evidence.get('steps')):
+    resource_roots = []
+    for step in steps:
         checks = _records(step.get('validation'))
         execution = step.get('retrieval_execution') or {}
+        if (step.get('status') == 'partial' and step.get('truncated') is True
+                and checks and checks[-1].get('reasons') == ['run_graph_materialization_limit']
+                and not step.get('error') and not any(step.get(key) for key in
+                    ('queries', 'generator_attempts', 'retrieval_execution', 'nodes', 'edges', 'rows'))):
+            resource_roots.append(step.get('step_id'))
         if (step.get('purpose') != 'context' and step.get('status') == 'partial'
                 and step.get('truncated') is True and not step.get('error')
                 and checks and checks[-1].get('valid') is True
@@ -86,9 +127,11 @@ def oversized_preview_recovery(preview):
             limited.append(step.get('step_id'))
     if not limited:
         return None
+    derived = _blocked_by_retrieval_limits(steps, limited + resource_roots)
     other_failures = []
-    for step in _records(evidence.get('steps')):
+    for step in steps:
         if (step.get('purpose') == 'context' or step.get('step_id') in limited
+                or step.get('step_id') in derived
                 or step.get('status') in {'complete', 'empty'} and not step.get('error')):
             continue
         checks = _records(step.get('validation'))
@@ -109,7 +152,8 @@ def oversized_preview_recovery(preview):
         if recovery:
             recovery['message'] += (' Other checks also reached the retrieval limit because the query is too broad. '
                 'A more specific query can reduce that result size, but does not resolve the separate failure above.')
-            recovery['evidence'].update(limited_step_ids=limited, complete_for_requested_scope=False)
+            recovery['evidence'].update(limited_step_ids=limited, complete_for_requested_scope=False,
+                blocked_by_retrieval_limit_step_ids=derived)
             return recovery
     return {'category': 'retrieval_limit', 'title': 'The query is too broad',
             'message': 'The query is too broad to return a complete result within the current retrieval limit. '
@@ -118,6 +162,7 @@ def oversized_preview_recovery(preview):
             'retryable': False, 'suggestions': [],
             'evidence': {'graph_release': evidence.get('graph_version'),
                          'limited_step_ids': limited, 'complete_for_requested_scope': False,
+                         'blocked_by_retrieval_limit_step_ids': derived,
                          'cursor_exhausted': False}}
 
 

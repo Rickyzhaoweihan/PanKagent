@@ -15,7 +15,99 @@ def failed(reason='missing_required_filter:name', **fields):
             'validation': [{'valid': False, 'reasons': [reason]}], **fields}
 
 
+def limited_step():
+    return {'step_id': 's1', 'status': 'partial', 'truncated': True,
+            'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
+            'retrieval_execution': {'completed': True, 'cursor_exhausted': False}}
+
+
+def dependency_step(identifier, parents):
+    # Match Runtime.failed_step and the preview worker's blocked_by field.
+    from pankagent_vnext.app import Runtime
+    result = Runtime.failed_step({'id': identifier, 'question': 'Retrieve requested evidence.'},
+        {'category': 'dependency_unavailable', 'message': 'A required earlier check could not be completed.'})
+    result['blocked_by'] = parents
+    return result
+
+
 class QueryRecoveryTests(unittest.TestCase):
+    def test_direct_and_transitive_limit_dependencies_keep_the_size_recovery(self):
+        for children in ([dependency_step('s2', ['s1'])],
+                         [dependency_step('s3', ['s2']), dependency_step('s2', ['s1'])]):
+            with self.subTest(children=[child['step_id'] for child in children]):
+                value = preview(limited_step(), *children, status='partial')
+                original = deepcopy(value)
+                result = oversized_preview_recovery(value)
+                assert result['category'] == 'retrieval_limit' and result['retryable'] is False
+                assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == [c['step_id'] for c in children]
+                assert 'service' not in result['message']
+                assert value == original
+
+    def test_unexecuted_materialization_limit_can_explain_its_dependents(self):
+        resource = {'step_id': 's2', 'status': 'partial', 'truncated': True,
+                    'validation': [{'valid': False, 'reasons': ['run_graph_materialization_limit']}],
+                    'queries': [], 'generator_attempts': [], 'nodes': [], 'edges': [], 'rows': []}
+        result = oversized_preview_recovery(preview(limited_step(), resource, dependency_step('s3', ['s2']), status='partial'))
+        assert result['category'] == 'retrieval_limit'
+        assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == ['s3']
+
+    def test_mixed_service_and_limit_parents_remain_actionable(self):
+        service = failed('authentication', step_id='s2', error={'category': 'authentication'})
+        result = oversized_preview_recovery(preview(limited_step(), service,
+            dependency_step('s3', ['s1', 's2']), status='partial'))
+        assert result['category'] == 'authentication' and result['retryable'] is False
+        assert result['evidence']['failed_step_ids'] == ['s2', 's3']
+        assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == []
+
+    def test_independent_failure_is_retained_beside_a_proven_limit_dependent(self):
+        service = failed('generation_unavailable:ConnectionError', step_id='s3')
+        result = oversized_preview_recovery(preview(limited_step(), dependency_step('s2', ['s1']), service, status='partial'))
+        assert result['category'] == 'retrieval_unavailable' and result['retryable'] is True
+        assert result['evidence']['failed_step_ids'] == ['s3']
+        assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == ['s2']
+
+    def test_unknown_empty_or_malformed_parents_never_prove_limit_derivation(self):
+        for parents in ([], ['unknown'], ['s1', 'unknown'], ['s2'], 's1', [None]):
+            with self.subTest(parents=parents):
+                result = oversized_preview_recovery(preview(limited_step(), dependency_step('s2', parents), status='partial'))
+                assert result['category'] == 'retrieval_unavailable'
+                assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == []
+
+    def test_cycles_and_duplicate_parent_identities_never_prove_limit_derivation(self):
+        for children in ([dependency_step('s2', ['s1', 's3']), dependency_step('s3', ['s2'])],
+                         [dependency_step('s2', ['s1']), dependency_step('s2', ['s1'])]):
+            with self.subTest(children=children):
+                result = oversized_preview_recovery(preview(limited_step(), *children, status='partial'))
+                assert result['category'] == 'retrieval_unavailable'
+                assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == []
+
+    def test_own_execution_or_independent_error_is_never_hidden_by_blocked_by(self):
+        mutations = [
+            {'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}]},
+            {'retrieval_execution': {'completed': False}},
+            {'generator_attempts': [{'status': 'failed', 'http_status': 403}]},
+            {'nodes': [{'id': 'already-retrieved'}]},
+            {'error': {'category': 'dependency_unavailable', 'code': 'authentication'}},
+            {'validation': [{'valid': False, 'reasons': ['dependency_unavailable', 'graph_execution_failed']}]},
+        ]
+        for change in mutations:
+            with self.subTest(change=change):
+                child = {**dependency_step('s2', ['s1']), **change}
+                result = oversized_preview_recovery(preview(limited_step(), child, status='partial'))
+                assert result['category'] != 'retrieval_limit'
+                assert result['evidence']['blocked_by_retrieval_limit_step_ids'] == []
+
+    def test_recovery_does_not_make_the_truncated_parent_or_dependents_ready(self):
+        from pankagent_vnext.evidence_status import query_readiness, confirmation_eligible
+        plan = {'steps': [{'id': 's1', 'depends_on': [], 'complete': True},
+                          {'id': 's2', 'depends_on': ['s1'], 'complete': True}]}
+        value = preview(limited_step(), dependency_step('s2', ['s1']), status='partial')
+        before = query_readiness(plan, value)
+        assert oversized_preview_recovery(value)['category'] == 'retrieval_limit'
+        assert query_readiness(plan, value) == before
+        assert before['blocked_step_ids'] == ['s1', 's2']
+        assert not confirmation_eligible(plan, value)
+
     def test_top_level_service_error_is_not_replaced_by_truncation_notice(self):
         limited = {'step_id': 's1', 'status': 'partial', 'truncated': True,
                    'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
