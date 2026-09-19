@@ -71,7 +71,10 @@ def test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis(tm
             assert failed['preview']['confirmation_eligible'] is False
             assert failed['preview']['evidence']['nodes']
             assert failed['preview']['query_readiness']['blocked_step_ids'] == ['s2']
-            assert failed['error']['recovery']['retryable'] is True
+            assert failed['error']['recovery']['retryable'] is (outcome != 'partial')
+            if outcome == 'partial':
+                assert failed['error']['recovery']['category'] == 'retrieval_limit'
+                assert 'more specific query' in failed['error']['recovery']['message']
             assert not ready_events(runtime, created['run_id'])
             assert (await client.post(f"/v2/plans/{created['plan_id']}/confirm")).status_code == 409
             assert gateway.syntheses == literature.calls == 0

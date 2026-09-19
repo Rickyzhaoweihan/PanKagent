@@ -2,7 +2,7 @@
 from copy import deepcopy
 import unittest
 
-from pankagent_vnext.query_recovery import retrieval_recovery, stage_recovery
+from pankagent_vnext.query_recovery import retrieval_recovery, stage_recovery, oversized_preview_recovery
 
 
 def preview(*steps, status='failed', finished=True, error=None):
@@ -16,6 +16,27 @@ def failed(reason='missing_required_filter:name', **fields):
 
 
 class QueryRecoveryTests(unittest.TestCase):
+    def test_validated_truncation_has_specific_recovery_without_claiming_query_failure(self):
+        step = {'step_id': 's1', 'status': 'partial', 'truncated': True,
+                'validation': [{'valid': True}], 'queries': [{'cypher': 'MATCH (g:Gene) RETURN g'}],
+                'retrieval_execution': {'completed': True, 'cursor_exhausted': False},
+                'nodes': [{'id': 'g', 'labels': ['Gene'], 'properties': {'private': 'DO_NOT_EXPOSE'}}]}
+        value = preview(step, status='partial')
+        before = deepcopy(value)
+        recovery = oversized_preview_recovery(value)
+        self.assertEqual(recovery['category'], 'retrieval_limit')
+        self.assertIn('too broad', recovery['message'])
+        self.assertIn('more specific query', recovery['message'])
+        self.assertFalse(recovery['retryable'])
+        self.assertFalse(recovery['evidence']['complete_for_requested_scope'])
+        self.assertNotIn('DO_NOT_EXPOSE', str(recovery))
+        self.assertEqual(value, before)
+        for change in ({'truncated': False}, {'validation': [{'valid': False}]},
+                       {'retrieval_execution': {'completed': False, 'cursor_exhausted': False}},
+                       {'queries': []}, {'error': {'category': 'budget_exhausted'}}):
+            with self.subTest(change=change):
+                self.assertIsNone(oversized_preview_recovery(preview({**step, **change}, status='partial')))
+
     def test_waits_for_final_preview_and_ignores_unexecuted_checks(self):
         value = preview(failed(), status='partial', finished=False)
         value['pending_step_ids'] = ['s2', 's3']

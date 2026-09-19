@@ -1,7 +1,7 @@
 """Evidence-backed recovery wording; suggestions never alter the submitted plan."""
 import re
 
-VERSION = 'query-recovery-4'
+VERSION = 'query-recovery-5-oversized-preview'
 
 def stage_recovery(number, vocabulary, release):
     recorded = vocabulary.get('stages')
@@ -59,6 +59,41 @@ def _error_codes(value):
         return [str(value[key]).lower() for key in ('category', 'code', 'error_category', 'http_status', 'status_code')
                 if isinstance(value.get(key), (str, int))]
     return [value.lower()] if isinstance(value, str) else []
+
+
+def oversized_preview_recovery(preview):
+    """Describe a validated but incomplete materialization without admitting it.
+
+    This is a terminal recovery notice, not a successful query or permission to
+    synthesize measurements from a truncated result. The normal confirmation,
+    dependency, population and query-validation guards remain in force.
+    """
+    if not isinstance(preview, dict) or preview.get('preparation_complete') is not True:
+        return None
+    evidence = preview.get('evidence') or {}
+    if not isinstance(evidence, dict):
+        return None
+    limited = []
+    for step in _records(evidence.get('steps')):
+        checks = _records(step.get('validation'))
+        execution = step.get('retrieval_execution') or {}
+        if (step.get('purpose') != 'context' and step.get('status') == 'partial'
+                and step.get('truncated') is True and not step.get('error')
+                and checks and checks[-1].get('valid') is True
+                and isinstance(execution, dict) and execution.get('completed') is True
+                and execution.get('cursor_exhausted') is False
+                and any(isinstance(query, dict) and query.get('cypher') for query in step.get('queries') or [])):
+            limited.append(step.get('step_id'))
+    if not limited:
+        return None
+    return {'category': 'retrieval_limit', 'title': 'The query is too broad',
+            'message': 'The query is too broad to return a complete result within the current retrieval limit. '
+                       'The retrieved records do not cover the full requested scope. Try a more specific query '
+                       'by narrowing the gene, region, tissue or evidence category. No filters have been changed.',
+            'retryable': False, 'suggestions': [],
+            'evidence': {'graph_release': evidence.get('graph_version'),
+                         'limited_step_ids': limited, 'complete_for_requested_scope': False,
+                         'cursor_exhausted': False}}
 
 
 def retrieval_recovery(preview):
