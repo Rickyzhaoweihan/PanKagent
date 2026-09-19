@@ -202,3 +202,9 @@ def test_negative_alias_cannot_satisfy_requested_positive_cell_scope(operator):
         assert result['proposal_issue'] == 'unknown_property_owner:s2:cell_type:'
         assert result['steps'] == [] and result['recovery']['category'] == 'planning_failure'
     asyncio.run(check())
+
+
+@pytest.mark.parametrize('prop,value', [('id', BETA[1]), ('name', BETA[2])])
+def test_additional_identity_absent_from_current_grounding_cannot_bypass_alias_scope(prop, value):
+    raw = plan(field('cell_type', 'alpha cell'), field(prop, value, 'anatomical_structure'), relation='T1D_DEG_IN')
+    assert compile_property_owners(raw, grounded(), question=QUESTION)[1] == 'unverified_cell_identity:s1'

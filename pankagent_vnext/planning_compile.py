@@ -476,8 +476,9 @@ def compile_property_owners(plan, grounding, *, question=None):
                         and constraint.get('property') in {'id', 'name'}
                         and str(constraint.get('operator', '=')).upper() in {'=', 'IN'}):
                     identifiers = _grounded_anatomy_ids(_values(constraint), grounding)
-                    if identifiers:
-                        positive_sets.append(set(identifiers))
+                    if not identifiers:
+                        return result, f'unverified_cell_identity:{step.get("id", "step")}'
+                    positive_sets.append(set(identifiers))
             if positive_sets and any(values != positive_sets[0] for values in positive_sets[1:]):
                 return result, f'conflicting_cell_identity:{step.get("id", "step")}'
         if not changes:
