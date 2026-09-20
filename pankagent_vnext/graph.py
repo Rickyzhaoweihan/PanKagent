@@ -662,6 +662,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         t.kind == "WORD" and t.value.upper() in {"LIMIT", "SKIP", "RAND"} for t in tokens
     )):
         errors.append("incomplete_limit_or_slice")
+    from .annotation_selection import validation_errors as annotation_errors
+    errors.extend(annotation_errors(query, step, parameters))
     constraints = list(step.get("constraints") or [])
     for constraint in constraints:
         if str(constraint.get("operator", "=")).upper() == "IN":
@@ -1162,6 +1164,8 @@ class GraphAdapter:
                 source = {**source, 'semantic_request': {
                     'source': 'user_request', 'question': plan['original_question'],
                     'revision_instruction': (plan.get('revision_trace') or {}).get('instruction', '')}}
+            from .annotation_selection import apply_default
+            source = apply_default(source, plan.get('original_question', ''))
             prepared["steps"].append(await self._prepare_step(source, emit))
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
@@ -1185,6 +1189,10 @@ class GraphAdapter:
             from .query_recovery import plan_recovery
             prepared["recovery"] = plan_recovery(prepared, self.settings.graph_version)
             prepared["clarification"] = prepared["recovery"]["message"]
+        from .annotation_selection import allocate_independent_budgets
+        prepared = allocate_independent_budgets(prepared, self.settings)
+        for step in prepared["steps"]:
+            step["resolution_key"] = self._resolution_signature(step)
         return prepared
 
     async def _verify_identity(self):
@@ -1379,7 +1387,9 @@ class GraphAdapter:
         seen_nodes = set(limits.get("known_node_ids", []))
         seen_edges = set(limits.get("known_edge_keys", []))
         byte_limit = max(0, self.settings.max_bytes - limits.get("used_bytes", 0))
+        byte_limit = min(byte_limit, limits.get("max_step_bytes", byte_limit))
         row_limit = max(0, getattr(self.settings, "max_rows", 1000) - limits.get("used_rows", 0))
+        row_limit = min(row_limit, limits.get("max_step_rows", row_limit))
 
         def put(target: dict, key, value, maximum, seen, budget_key=None):
             nonlocal size, truncated
@@ -1388,7 +1398,8 @@ class GraphAdapter:
             budget_key = key if budget_key is None else budget_key
             width = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
             if (budget_key not in seen and len(seen) >= maximum or size + width > byte_limit
-                    or target is nodes and len(nodes) >= limits.get("max_step_nodes", self.settings.max_nodes)):
+                    or target is nodes and len(nodes) >= limits.get("max_step_nodes", self.settings.max_nodes)
+                    or target is edges and len(edges) >= limits.get("max_step_edges", self.settings.max_edges)):
                 truncated = True
                 return
             target[key] = value
@@ -1454,8 +1465,12 @@ class GraphAdapter:
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
-                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True)},
+                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True), "retrieval_selection": step.get("retrieval_selection")},
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
+        if step.get("gwas_scope_unavailable"):
+            base["validation"].append({"valid": False, "reasons": ["gene_gwas_variant_scope_unresolved"]})
+            base["error"] = {"category": "scope_unavailable", "message": "The requested gene has no verified variant or locus binding for this GWAS check. A disease-wide search was not substituted."}
+            return base
         from .metadata_guard import recovery as metadata_recovery
         unsupported_metadata = metadata_recovery(step, self.settings.graph_version)
         if unsupported_metadata:
@@ -1467,7 +1482,10 @@ class GraphAdapter:
             "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
             "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
             "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
-            "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
+            "max_step_nodes": min(20 if step.get("purpose") == "context" else self.settings.max_nodes, (step.get("retrieval_budget") or {}).get("max_nodes", self.settings.max_nodes)),
+            "max_step_bytes": (step.get("retrieval_budget") or {}).get("max_bytes", getattr(self.settings, "max_bytes", 2_000_000)),
+            "max_step_edges": (step.get("retrieval_budget") or {}).get("max_edges", getattr(self.settings, "max_edges", 5000)),
+            "max_step_rows": (step.get("retrieval_budget") or {}).get("max_rows", getattr(self.settings, "max_rows", 1000)),
         }
         if limits["used_bytes"] >= getattr(self.settings, "max_bytes", 2_000_000):
             base["status"], base["truncated"] = "partial", True
@@ -1652,7 +1670,10 @@ class GraphAdapter:
                             "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
                             "used_bytes": sum(item.get("materialized_bytes", 0) for item in previous.values()),
                             "used_rows": sum(len(item.get("rows", [])) for item in previous.values()),
-                            "max_step_nodes": 20 if step.get("purpose") == "context" else self.settings.max_nodes,
+                            "max_step_nodes": min(20 if step.get("purpose") == "context" else self.settings.max_nodes, (step.get("retrieval_budget") or {}).get("max_nodes", self.settings.max_nodes)),
+                            "max_step_bytes": (step.get("retrieval_budget") or {}).get("max_bytes", getattr(self.settings, "max_bytes", 2_000_000)),
+                            "max_step_edges": (step.get("retrieval_budget") or {}).get("max_edges", getattr(self.settings, "max_edges", 5000)),
+                            "max_step_rows": (step.get("retrieval_budget") or {}).get("max_rows", getattr(self.settings, "max_rows", 1000)),
                         }
                         retrieval_started = time.monotonic()
                         base["queries"].append({"cypher": query, "parameters": candidate_parameters, "normalization": normalization})

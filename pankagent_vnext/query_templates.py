@@ -19,7 +19,8 @@ from .genomic_scope import DIGEST as GENOMIC_DIGEST
 
 VERSION = 'typed-relation-templates-v3'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()
-                       + VALUE_DIGEST.encode() + GENOMIC_DIGEST.encode()).hexdigest()
+                       + VALUE_DIGEST.encode() + GENOMIC_DIGEST.encode()
+                       + Path(__file__).with_name('annotation_selection.py').read_bytes()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
 _OPERATORS = {'=', '!=', '<>', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
@@ -168,7 +169,9 @@ def _region_gene_records(step):
 
 
 def compile_query(step):
-    if step.get('graph_version') != REGISTRY['release'] or not step.get('complete', True):
+    from .annotation_selection import overview
+    bounded_annotation = overview(step)
+    if step.get('graph_version') != REGISTRY['release'] or (not step.get('complete', True) and not bounded_annotation):
         return None
     if any(step.get(key) for key in ('depends_on', 'ranking', 'semantic_issues', 'anatomy_scope_issue', 'coloc_scope_issue')):
         return None
@@ -205,7 +208,7 @@ def compile_query(step):
         if not selected_paths:
             return None
         left, right = (_common_endpoint(selected_paths, side) for side in ('source', 'target'))
-    if not left or not right or left == right:
+    if not left or (not right and not bounded_annotation) or left == right:
         return None
     from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
     region_scope = has_verified_region_scope(step)
@@ -225,7 +228,7 @@ def compile_query(step):
                     return None
                 owner, prop, value = resolved['entity_type'], 'id', resolved['id']
                 resolved_count += 1
-            if owner in (left, right):
+            if owner is not None and owner in (left, right):
                 variable = 'a' if owner == left else 'b'
                 allowed = REGISTRY['nodes'].get(owner, [])
             elif owner is None:
@@ -262,7 +265,10 @@ def compile_query(step):
         return None
     if not filters or not (resolved_count or region_scope):
         return None
-    query = f'MATCH (a:`{left}`)-[r:`{kind}`]->(b:`{right}`)\nWHERE ' + ' AND '.join(filters)
+    target = f'(b:`{right}`)' if right else '(b)'
+    query = f'MATCH (a:`{left}`)-[r:`{kind}`]->{target}\nWHERE ' + ' AND '.join(filters)
+    if bounded_annotation:
+        query += '\nWITH a, b, r ORDER BY a.id, b.id, elementId(r) LIMIT 10'
     query += '\nRETURN collect(DISTINCT a) + collect(DISTINCT b) AS nodes, collect(DISTINCT r) AS edges'
     return {'cypher': query, 'parameters': params, 'template_id': 'directed_relation_records',
             'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,

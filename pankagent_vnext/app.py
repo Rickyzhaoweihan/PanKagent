@@ -765,7 +765,7 @@ class Runtime:
                 check_freshness=step['id'] not in required_ids)
             accepted_failed = (matching and preview.get('query_readiness',{}).get('partial_ready')
                 and step['id'] in preview['query_readiness']['blocked_step_ids']
-                and cached.get('status') in {'failed','blocked','unavailable'})
+                and step['id'] in preview['query_readiness'].get('retained_failed_step_ids', []))
             if reason is not None and step['id'] in required_ids and not accepted_failed:
                 recovery = self.preview_recovery(run, reason)
                 (await self.io.call(self.store.update_if_active, run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery}))
@@ -831,21 +831,23 @@ class Runtime:
                 "recovery": population_issue}))
             (await self.io.call(self.store.audit_event, run_id, "population_answer_guard", population_issue["evidence"]))
         status_message = population_issue["message"] if population_issue else outcome_message(previous)
+        from .evidence_status import synthesis_evidence
+        answer_evidence = synthesis_evidence(previous)
         async def tokens():
-            missing = [step for step in previous.values() if step.get('purpose') != 'context' and step.get('status') in {'failed','blocked','unavailable'}]
+            missing = [step for step in previous.values() if step.get('purpose') != 'context' and (step.get('status') in {'failed','blocked','unavailable'} or step.get('truncated'))]
             if preview.get('query_readiness',{}).get('partial_ready') and missing:
                 total = len(required_ids)
                 yield f"Partial answer: {total-len(missing)} of {total} requested checks completed. The remaining checks could not finish; their failure does not establish that evidence is absent.\n\n"
             if status_message:
                 yield status_message
             else:
-                async for token in self.gateway.synthesize(question, previous, **options):
+                async for token in self.gateway.synthesize(question, answer_evidence, **options):
                     yield token
         try:
             question = run["plan"].get("interpreted_question", run["question"])
             options = {}
             if not status_message and hasattr(self.gateway, "prepare_answer"):
-                prepared = self.gateway.prepare_answer(question, previous)
+                prepared = self.gateway.prepare_answer(question, answer_evidence)
                 evidence["answer_profile"] = prepared.profile
                 (await self.io.call(self.store.update_if_active, run_id, evidence=evidence))
                 self.metrics.observe("answer_skill_selection", prepared.profile["timing_ms"]["total"] / 1000)
