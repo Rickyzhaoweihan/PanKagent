@@ -39,3 +39,27 @@ def validation_errors(query, step, parameters):
             or parameters != expected['parameters']):
         return ['annotation_overview_requires_bounded_template']
     return []
+
+
+def allocate_independent_budgets(plan, settings):
+    """Partition hard materialization caps so concurrent checks cannot starve peers."""
+    steps = plan.get('steps') or []
+    count = max(1, len(steps))
+    for step in steps:
+        step['retrieval_budget'] = {'max_bytes': getattr(settings, 'max_bytes', 2_000_000) // count,
+            'max_nodes': getattr(settings, 'max_nodes', 2000) // count, 'max_edges': getattr(settings, 'max_edges', 5000) // count,
+            'max_rows': getattr(settings, 'max_rows', 1000) // count}
+    # A gene mentioned in a GWAS question is not a variant/locus binding. Keep
+    # the unavailable branch explicit instead of silently scanning a disease.
+    genes = [entity for step in steps for entity in step.get('resolved_entities', [])
+             if entity.get('state') == 'resolved' and entity.get('entity_type') == 'Gene']
+    for step in steps:
+        step.pop('gwas_scope_unavailable', None)
+        if step.get('relation_types') != ['PART_OF_GWAS_SIGNAL'] or step.get('depends_on'):
+            continue
+        if any(c.get('entity_type') in {'variants', 'Gene'} for c in step.get('constraints', [])):
+            continue
+        if any(re.search(r'(?<!\w)' + re.escape(str(entity[field])) + r'(?!\w)', step.get('question', ''), re.I)
+               for entity in genes for field in ('id', 'name') if entity.get(field)):
+            step['gwas_scope_unavailable'] = True
+    return plan

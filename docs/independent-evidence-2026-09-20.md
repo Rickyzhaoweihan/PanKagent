@@ -7,7 +7,11 @@ identity only. Neither behavior respected an independent multi-category question
 Opted-in partial investigations now retain terminal truncations alongside failed
 checks without rerunning them at confirmation. Successful independent checks
 remain usable. Missing checks are disclosed; their records are excluded from
-synthesis but retained in the audit. Dependency verification, exact population
+synthesis but retained in the audit. Hard byte/node/edge/row caps are partitioned
+between checks so one concurrent branch cannot exhaust the other branches. A
+gene-scoped GWAS question without a verified variant or locus binding is marked
+unavailable before execution, never replaced with all disease GWAS records.
+Dependency verification, exact population
 checks, cancellation, scope validation and the global materialization cap remain.
 
 For ordinary annotation overviews, FUNCTION_ANNOTATION and ASSOCIATED_WITH_GO each

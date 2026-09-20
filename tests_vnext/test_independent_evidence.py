@@ -70,3 +70,33 @@ def test_annotation_edge_source_filter_is_preserved_for_mixed_target_labels():
     compiled = compile_query(selected)
     assert compiled and 'r.`data_source` = $template_1' in compiled['cypher']
     assert validate_cypher(compiled['cypher'], selected, compiled['parameters']) == []
+
+
+def test_partitioned_caps_and_unbound_gene_gwas_do_not_starve_independent_checks():
+    from types import SimpleNamespace
+    from pankagent_vnext.annotation_selection import allocate_independent_budgets
+    source = step('FUNCTION_ANNOTATION')
+    gwas = step('PART_OF_GWAS_SIGNAL', [{'entity_type':'disease', 'property':'id', 'value':'disease', 'operator':'='}], question='Variants near CFTR associated with disease')
+    plan = allocate_independent_budgets({'steps':[source,gwas]}, SimpleNamespace(max_bytes=2000,max_nodes=20,max_edges=40))
+    assert all(s['retrieval_budget']['max_bytes']==1000 for s in plan['steps'])
+    assert gwas['gwas_scope_unavailable'] is True
+    gwas['question']='All disease GWAS variants'
+    allocate_independent_budgets(plan, SimpleNamespace(max_bytes=2000,max_nodes=20,max_edges=40))
+    assert 'gwas_scope_unavailable' not in gwas
+
+
+def test_materialization_partition_leaves_capacity_for_later_steps():
+    import asyncio
+    from types import SimpleNamespace
+    from pankagent_vnext.graph import GraphAdapter
+    from test_graph import FakeSession, FakeTransaction
+    async def run():
+        graph = object.__new__(GraphAdapter)
+        graph.settings = SimpleNamespace(graph_timeout=1, max_nodes=20, max_edges=50, max_bytes=1000)
+        graph._session = lambda: FakeSession(FakeTransaction([{'value':'x'*200} for _ in range(20)]))
+        first = await graph._retrieve('RETURN 1', {}, {'max_step_bytes':300})
+        assert first['truncated'] and first['materialized_bytes'] <= 300
+        graph._session = lambda: FakeSession(FakeTransaction([{'value':42}]))
+        second = await graph._retrieve('RETURN 42', {}, {'used_bytes':first['materialized_bytes'], 'max_step_bytes':300})
+        assert not second['truncated'] and second['rows']==[{'value':42}]
+    asyncio.run(run())
