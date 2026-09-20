@@ -77,18 +77,18 @@ def test_normal_answer_retains_measurements_and_has_no_oversize_instruction(monk
     asyncio.run(scenario())
 
 
-def test_final_serialized_body_overflow_also_uses_node_only_fallback(monkeypatch, tmp_path):
+def test_final_serialized_body_overflow_recompacts_without_global_downgrade(monkeypatch, tmp_path):
     async def scenario():
         gateway, _, _ = gateway_with_mock(monkeypatch, tmp_path, [])
         import pankagent_vnext.llm as llm
         normal = compact_evidence(detection_evidence())
         normal[0]['large_post_compaction_field'] = 'PRIVATE_ENVELOPE' * 8000
-        monkeypatch.setattr(llm, 'compact_evidence', lambda _: normal)
+        monkeypatch.setattr(llm, 'compact_evidence', lambda value, **kw: compact_evidence(value, **kw) if kw else normal)
         try:
             prepared = gateway.prepare_answer('多' * 6000, detection_evidence())
             assert len(prepared.body.encode()) <= MAX_BYTES
             assert 'PRIVATE_ENVELOPE' not in prepared.body
-            assert prepared.profile['model_context']['mode'] == 'node_identity_only'
+            assert prepared.profile['model_context']['mode'] == 'standard'
         finally:
             await gateway.close()
     asyncio.run(scenario())

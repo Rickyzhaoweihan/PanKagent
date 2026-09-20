@@ -662,6 +662,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         t.kind == "WORD" and t.value.upper() in {"LIMIT", "SKIP", "RAND"} for t in tokens
     )):
         errors.append("incomplete_limit_or_slice")
+    from .annotation_selection import validation_errors as annotation_errors
+    errors.extend(annotation_errors(query, step, parameters))
     constraints = list(step.get("constraints") or [])
     for constraint in constraints:
         if str(constraint.get("operator", "=")).upper() == "IN":
@@ -1162,6 +1164,8 @@ class GraphAdapter:
                 source = {**source, 'semantic_request': {
                     'source': 'user_request', 'question': plan['original_question'],
                     'revision_instruction': (plan.get('revision_trace') or {}).get('instruction', '')}}
+            from .annotation_selection import apply_default
+            source = apply_default(source, plan.get('original_question', ''))
             prepared["steps"].append(await self._prepare_step(source, emit))
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
@@ -1454,7 +1458,7 @@ class GraphAdapter:
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
-                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True)},
+                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True), "retrieval_selection": step.get("retrieval_selection")},
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
         from .metadata_guard import recovery as metadata_recovery
         unsupported_metadata = metadata_recovery(step, self.settings.graph_version)

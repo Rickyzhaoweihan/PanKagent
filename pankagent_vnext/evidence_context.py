@@ -333,7 +333,7 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     return entry
 
 
-def compact_evidence(evidence: Mapping | list) -> list[dict]:
+def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES) -> list[dict]:
     """Return a JSON-safe synthesis view; do not modify the full evidence.
 
     Caps apply to full records per step. Minimal endpoint stubs may increase
@@ -353,14 +353,27 @@ def compact_evidence(evidence: Mapping | list) -> list[dict]:
             if isinstance(node, Mapping) and "id" in node:
                 node_context.setdefault((str(step.get("graph_version", "")), str(node["id"])), node)
 
-    def build(limits):
-        result = [_compact_step(item, index, limits, node_context) for index, item in enumerate(steps)]
-        size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
-        return result, size
+    def size(value):
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
-    result, size = build(_NORMAL)
-    if size > TARGET_BYTES:
-        return node_only_evidence(steps)
+    result = [_compact_step(item, index, _NORMAL, node_context) for index, item in enumerate(steps)]
+    # Reduce only the largest branch at each stage; smaller independent checks
+    # retain their relationships, measurements and stable citation identifiers.
+    reduced, identity = set(), set()
+    while size(result) > max_bytes and len(identity) < len(steps):
+        index = max((i for i in range(len(steps)) if i not in identity), key=lambda i: size(result[i]))
+        if index not in reduced:
+            candidate = _compact_step(steps[index], index, _REDUCED, node_context)
+            if size(candidate) < size(result[index]):
+                result[index] = candidate
+            reduced.add(index)
+            continue
+        budget = max(1000, max_bytes - size([item for i, item in enumerate(result) if i != index]) - 100)
+        result[index] = node_only_evidence([steps[index]], max_bytes=budget)[0]
+        result[index]['evidence_id'] = f'G{index + 1}'
+        identity.add(index)
+    if size(result) > max_bytes:
+        raise ValueError('evidence_step_envelope_too_large')
     return result
 
 

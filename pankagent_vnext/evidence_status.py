@@ -47,7 +47,7 @@ def outcome_message(evidence):
 
 
 
-QUERY_READINESS_VERSION = 'query-executed-plan-v2-partial-independent'
+QUERY_READINESS_VERSION = 'query-executed-plan-v3-independent-truncation'
 PARTIAL_INDEPENDENT_POLICY = 'partial_independent_v1'
 TERMINAL_QUERY_STATUSES = frozenset({'complete', 'empty', 'partial', 'failed', 'blocked', 'unavailable'})
 
@@ -146,10 +146,11 @@ def query_readiness(plan, preview):
     nonempty_primary_ids = [step['id'] for step in required
                             if step['id'] in verified and _nonempty_primary_result(step, verified[step['id']])]
     retained_failure_ids = [step_id for step_id in required_ids if step_id not in verified
-                            and (outcomes.get(step_id) or {}).get('status') in {'failed', 'blocked', 'unavailable'}]
-    # Only explicit failed outcomes can be retained unchanged. A nominally
-    # successful but unverified/truncated result must not enter synthesis under
-    # the partial policy; it needs an explicit failure result or a fresh check.
+                            and ((outcomes.get(step_id) or {}).get('status') in {'failed', 'blocked', 'unavailable'}
+                                 or ((outcomes.get(step_id) or {}).get('status') == 'partial'
+                                     and (outcomes.get(step_id) or {}).get('truncated') is True))]
+    # Retain terminal truncations for audit, but exclude their unverified
+    # records from synthesis. They never satisfy dependent input verification.
     blocked_are_failures = len(retained_failure_ids) == len(required_ids) - len(verified)
     partial_ready = bool(not full_coverage and common_guard and all_finished and nonempty_primary_ids
                          and blocked_are_failures
@@ -167,3 +168,19 @@ def query_readiness(plan, preview):
 
 def confirmation_eligible(plan, preview):
     return query_readiness(plan, preview)['ready']
+
+
+def synthesis_evidence(evidence):
+    """Keep failed check identities, never their unverified biological records."""
+    from copy import deepcopy
+    result = {}
+    for key, step in evidence.items():
+        if step.get('truncated') or step.get('status') in {'failed', 'blocked', 'unavailable'}:
+            result[key] = {field: deepcopy(step[field]) for field in
+                ('step_id', 'question', 'title', 'purpose', 'graph_version', 'requested_scope') if field in step}
+            result[key].update(status='unavailable', truncated=bool(step.get('truncated')),
+                               nodes=[], edges=[], rows=[],
+                               error={'category': 'retrieval_limit' if step.get('truncated') else 'check_unavailable'})
+        else:
+            result[key] = step
+    return result

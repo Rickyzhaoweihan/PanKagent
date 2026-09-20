@@ -90,7 +90,9 @@ Full-record fact contract (takes precedence over example-driven wording): each a
 
 from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
 OVERSIZED_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/oversized_results.md').read_text()
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\ngrounded-synthesis-v4').encode()).hexdigest()[:16]
+INDEPENDENT_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/independent_results.md').read_text()
+ANSWER_CONTRACT += '\n' + INDEPENDENT_RESULT_CONTRACT
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+'\ngrounded-synthesis-v5').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -328,7 +330,7 @@ class ClaudeGateway:
             excerpt=relevant(excerpt)
             profile['model_context']['omitted_unrequested_fields']=['rank_in_cell_type']
         def answer_body(items):
-            limited = any(item.get('answer_evidence_scope',{}).get('mode') == NODE_ONLY_MODE for item in items)
+            limited = bool(items) and all(item.get('answer_evidence_scope',{}).get('mode') == NODE_ONLY_MODE for item in items)
             scope = ('Oversized query: node identities, descriptions and provenance only; no relationship or measurement conclusions are supported by this view.'
                 if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
             return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope},ensure_ascii=False,default=str)
@@ -336,18 +338,18 @@ class ClaudeGateway:
         if len(body.encode()) > MAX_BYTES:
             # Include the final question, JSON spacing and scope notes in the
             # size decision, not only the intermediate compact evidence.
-            compact=node_only_evidence(evidence, max_bytes=max(1000, MAX_BYTES-len(question.encode())-20000))
+            compact=compact_evidence(evidence, max_bytes=max(1000, MAX_BYTES-len(question.encode())-20000))
             excerpt=scientific_excerpt(compact, include_donor_details=requested_details)
             body=answer_body(excerpt)
         if len(body.encode()) > MAX_BYTES:
             raise ValueError('answer_request_envelope_too_large')
-        node_only=any(item.get('context_compaction') == NODE_ONLY_MODE for item in compact)
+        node_only=bool(compact) and all(item.get('context_compaction') == NODE_ONLY_MODE for item in compact)
         profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
         profile['model_context'].update(sampled=profile['context_sampled'],
             mode=NODE_ONLY_MODE if node_only else 'standard',
             query_too_broad=node_only,
             steps=[{'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
-                    'omitted':item.get('context_dropped',{})} for item in compact])
+                    'omitted':item.get('context_dropped',{}), 'mode':item.get('context_compaction')} for item in compact])
         if node_only:
             profile['model_context']['exposed_node_fields']=['id','type','description','source']
             profile['model_context']['measurement_guidance_suppressed']=True
@@ -386,7 +388,11 @@ class ClaudeGateway:
         # The node-only view deliberately withholds relationship/comparison
         # evidence. Never reintroduce it through a full-evidence text rewrite.
         node_only = prepared.profile.get('model_context',{}).get('mode') == NODE_ONLY_MODE
-        scope_filter = None if node_only else ScopeTextFilter(evidence)
+        identity_ids = {item.get('evidence_id') for item in prepared.profile.get('model_context', {}).get('steps', [])
+                        if item.get('mode') == NODE_ONLY_MODE}
+        filter_evidence = {key: value for index, (key, value) in enumerate(evidence.items())
+                           if f'G{index + 1}' not in identity_ids}
+        scope_filter = None if node_only else ScopeTextFilter(filter_evidence)
         try:
             async with self.client.messages.stream(model=self.settings.model,max_tokens=output_limit,
                 system=prepared.system,

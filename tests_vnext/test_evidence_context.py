@@ -166,7 +166,7 @@ class EvidenceContextTests(unittest.TestCase):
         edges = [edge("g", "cell", "COMMON", **properties) for _ in range(110)]
         edges.append(edge("g", "cell", "RARE", **properties))
         item = evidence([node("g"), node("cell")], edges, rows=[{"v": i} for i in range(50)])
-        result = compact_evidence([item])[0]
+        result = compact_evidence([item], max_bytes=5000)[0]
         self.assertEqual(result["context_compaction"], "node_identity_only")
         self.assertNotIn("edges", result)
         self.assertNotIn("rows", result)
@@ -242,8 +242,7 @@ def interaction_evidence():
 def test_oversized_interaction_view_does_not_expose_hidden_measurement_totals(monkeypatch):
     import pankagent_vnext.evidence_context as module
     source = interaction_evidence(); before = copy.deepcopy(source)
-    monkeypatch.setattr(module, 'TARGET_BYTES', 1)
-    result = module.scientific_excerpt(compact_evidence([source]))[0]
+    result = module.scientific_excerpt(module.node_only_evidence([source]))[0]
     assert source == before
     assert 'evidence_totals' not in result and 'edges' not in result
     assert result['answer_evidence_scope']['mode'] == 'node_identity_only'

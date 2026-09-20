@@ -116,7 +116,7 @@ def test_truncated_evidence_is_never_a_verified_partial_admission_basis():
     ready = query_readiness(plan(), preview(result('coloc', truncated=True), result('gwas', 'failed'), result('qtl', 'failed')))
     assert not ready['ready'] and not ready['verified_step_ids']
     ready = query_readiness(plan(), preview(result('coloc'), result('gwas', 'partial', truncated=True), result('qtl', 'failed')))
-    assert not ready['partial_ready'] and ready['verified_step_ids'] == ['coloc']
+    assert ready['partial_ready'] and ready['verified_step_ids'] == ['coloc']
     assert ready['blocked_step_ids'] == ['gwas', 'qtl']
 
 
@@ -175,7 +175,7 @@ def test_unavailable_terminal_result_can_be_disclosed_with_independent_success()
     assert ready['blocked_step_ids'] == ['gwas', 'qtl']
 
 
-@pytest.mark.parametrize('failure_status', ['failed', 'blocked', 'unavailable'])
+@pytest.mark.parametrize('failure_status', ['failed', 'blocked', 'unavailable', 'partial'])
 def test_runtime_partial_confirmation_reuses_checked_and_failed_snapshot_without_extra_calls(tmp_path, failure_status):
     import asyncio
     from test_runtime import Gateway, service, wait_state
@@ -187,6 +187,8 @@ def test_runtime_partial_confirmation_reuses_checked_and_failed_snapshot_without
         class TerminalFailureGraph(PreviewGraph):
             async def execute(self, step, previous, emit):
                 value = await super().execute(step, previous, emit)
+                if value['status'] == 'partial':
+                    value.update(truncated=True, retrieval_execution={'completed': True, 'cursor_exhausted': False})
                 if value['status'] in {'blocked', 'unavailable'}:
                     value.update(nodes=[], edges=[], rows=[], queries=[],
                                  validation=[{'valid': False, 'reasons': ['component_unavailable']}],
@@ -212,7 +214,7 @@ def test_runtime_partial_confirmation_reuses_checked_and_failed_snapshot_without
             failed = next(step for step in final['evidence']['steps'] if step['step_id'] == 's2')
             assert failed['status'] == failure_status
             assert final['evidence']['completeness'] == 'partial'
-            assert final['evidence']['retrieval']['failed_checks'] == 1
+            assert final['evidence']['retrieval']['failed_checks'] == (0 if failure_status == 'partial' else 1)
             # Reading/reconnecting a saved partial answer performs no new calls.
             assert (await client.get(f"/v2/runs/{created['run_id']}")).status_code == 200
             assert graph.calls == 3 and gateway.syntheses == 1
