@@ -39,3 +39,25 @@ class ResultPlotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(http.call[1]['params'],{'trace_type':'ins_ieq','age_min':'3','age_max':'68','result_page':'Yes'})
         for path, value in [('api/charts/cohort-traces','Yes'),('api/charts/cohort-traces.png','invalid')]:
             with self.assertRaises(ValueError):await functional.fetch(http,path,{'result_page':value})
+
+    async def test_association_chart_preserves_axis_and_cohort_filters(self):
+        # The functional service OpenAPI and native frontend both use x_key,
+        # including BMI; dropping it silently falls back to the age axis.
+        params={'x_key':'bmi','y_trait':'INS-IEQ G 16.7 AUC','disease':'T1D',
+                'sex':'F','center':'Penn','age_min':'18','age_max':'65','bmi_max':'30'}
+        for path in ('api/charts/association','api/charts/association.png'):
+            with self.subTest(path=path):
+                http=HTTP()
+                await functional.fetch(http,path,params)
+                self.assertEqual(http.call[0],('GET',functional.BASE+'/'+path))
+                self.assertEqual(http.call[1]['params'],params)
+
+    async def test_association_axis_keeps_existing_input_boundaries(self):
+        for params in ({'x_key':'x'*201},{'x_key':'age\n'},
+                       {'x_key':'age','donor_ids':'private'},
+                       {'x_key':'age','url':'http://elsewhere'},
+                       {'x_key':'age','age_min':'65','age_max':'18'}):
+            with self.subTest(params=params), self.assertRaises(ValueError):
+                await functional.fetch(HTTP(),'api/charts/association',params)
+        with self.assertRaises(ValueError):
+            functional.parameters({'x_key':'bmi'},trace=True)

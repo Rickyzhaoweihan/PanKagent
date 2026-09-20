@@ -11,7 +11,7 @@ PATHS = {'health','api/data/summary','api/data/donors','api/charts/cohort-traces
          'api/charts/trait-summary','api/charts/trait-summary.png','api/charts/association','api/charts/association.png'}
 
 def parameters(values, trace=False):
-    allowed=FILTERS | ({'trace_type'} if trace else {'trace_type','trait','x_trait','y_trait','limit'})
+    allowed=FILTERS | ({'trace_type'} if trace else {'trace_type','trait','x_key','x_trait','y_trait','limit'})
     if set(values)-allowed: raise ValueError('unknown_functional_filter')
     out={k:str(v) for k,v in values.items() if v is not None and str(v)!=''}
     for k,v in out.items():
