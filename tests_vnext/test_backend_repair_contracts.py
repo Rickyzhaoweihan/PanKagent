@@ -492,3 +492,27 @@ def test_historical_tell_me_profile_uses_registered_scope_without_losing_modifie
         assert {r for s in plan['steps'] for r in s['relation_types']}==GENERIC_GENE_CATEGORIES
     assert generic_profile_gene('Tell me about gene INS in beta cells') is None
     assert generic_profile_gene('Tell me about gene INS and PTPN22') is None
+
+
+def test_registered_profile_carries_t1d_scope_only_to_compatible_checks():
+    from pankagent_vnext.investigations import generic_profile_gene, expand_registered_profile
+    question='Tell me about the gene PTPN22 in T1D'
+    assert generic_profile_gene(question)=='PTPN22'
+    plan=expand_registered_profile(question,'PTPN22')
+    assert len(plan['steps'])==12
+    for step in plan['steps']:
+        disease=[c for c in step['constraints'] if c['entity_type']=='disease']
+        assert bool(disease)==(step['relation_types'][0] in {'EFFECTOR_GENE_OF','SIGNAL_COLOC_WITH'})
+        if disease: assert disease[0]['value']=='type 1 diabetes'
+    assert generic_profile_gene(question+' in beta cells') is None
+
+
+def test_spatial_variant_scope_never_substitutes_empty_qtl_search():
+    from pankagent_vnext.planning_fastpath import genomic_neighborhood_plan
+    for question in ('now tell me about the INS gene and what SNPs are near it',
+                     'which of those SNPs is inside the gene body?'):
+        plan=genomic_neighborhood_plan(question)
+        assert plan['steps']==[] and plan['interpreted_question']==question
+        assert plan['planning_route']['claude_calls']==0
+        assert 'No neighborhood or gene-body search was executed' in plan['clarification']
+    assert genomic_neighborhood_plan('Which QTL variants are associated with INS?') is None

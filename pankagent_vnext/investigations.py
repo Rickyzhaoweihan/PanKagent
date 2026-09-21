@@ -91,12 +91,13 @@ def generic_profile_gene(question):
     # A full match prevents losing additional disease, tissue or revision scope.
     match=re.fullmatch(r'\s*(?:(?:give me|show|provide)\s+)?(?:a\s+)?comprehensive\s+(?:gene\s+)?(?:profile|overview|insights)\s+(?:of|for|on)\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)[.?!]?\s*',question,re.I)
     if match is None:
-        match=re.fullmatch(r'\s*tell me about gene\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)[.?!]?\s*',question,re.I)
+        match=re.fullmatch(r'\s*tell me about (?:the\s+)?gene\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)(?:\s+in\s+(?:T1D|type 1 diabetes))?[.?!]?\s*',question,re.I)
     return match.group(1) if match else None
 
 
 def expand_registered_profile(question, gene):
     if generic_profile_gene(question) != gene: raise ValueError('profile_scope_mismatch')
+    disease_scope=bool(re.search(r'\bin\s+(?:T1D|type 1 diabetes)[.?!]?\s*$',question,re.I))
     steps=[]
     for index,(kind,wording) in enumerate(PROFILE_CHECKS,1):
         pathway_check=kind=='FGSEA_ENRICHED_IN'
@@ -104,5 +105,10 @@ def expand_registered_profile(question, gene):
                       'relation_types':[kind],'depends_on':['s9'] if pathway_check else [],
                       'constraints':[] if pathway_check else [{'entity_type':'Gene','property':'name','operator':'=','value':gene}],
                       'complete':True,'evidence_combination':'independent'})
+    if disease_scope:
+        for step in steps:
+            if step['relation_types'][0] in {'EFFECTOR_GENE_OF','SIGNAL_COLOC_WITH'}:
+                step['constraints'].append({'entity_type':'disease','property':'name','operator':'=','value':'type 1 diabetes'})
+                step['question']=step['question'].replace(' across diseases','')+' Restrict disease evidence to type 1 diabetes.'
     return {'interpreted_question':question,'steps':steps,'clarification':None,
             'profile_scope_source':'registered-gene-profile-v1'}

@@ -52,3 +52,19 @@ def unsupported_analysis_plan(question):
     from .plan_recovery import mark_failure
     return mark_failure({'interpreted_question':question, 'proposal_issue':'unsupported_analysis:ssgsea',
                          'literature':False, 'planning_route':{'kind':'unsupported_analysis','claude_calls':0}})
+
+
+def genomic_neighborhood_plan(question):
+    """A QTL search cannot answer an unbounded spatial variant question."""
+    if not re.search(r'\b(?:SNPs?|variants?)\b',question,re.I):
+        return None
+    if not re.search(r'\b(?:near|nearby|flanking)\b|\b(?:inside|within)\b.{0,40}\bgene body\b',question,re.I):
+        return None
+    message=('A genomic-neighborhood search is unavailable for this request: a verified variant-coordinate '
+        'and gene-boundary mapping in the same reference assembly is required, with an explicit distance '
+        'window for nearby variants. QTL membership is not a substitute for physical proximity. '
+        'No neighborhood or gene-body search was executed, and no absence of variants is established.')
+    return {'interpreted_question':question,'steps':[],'clarification':message,'literature':False,
+        'planning_route':{'kind':'genomic_neighborhood_unavailable','claude_calls':0},
+        'recovery':{'category':'scope_needs_clarification','title':'Genomic variant scope is not executable',
+                    'message':message,'retryable':False,'suggestions':[]}}
