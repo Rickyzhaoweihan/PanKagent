@@ -404,3 +404,12 @@ def test_tool_markup_clarification_is_planning_error_after_one_repair():
     result=asyncio.run(recover_empty_plan(gateway,malformed,'Keep original sources',[],2))
     assert gateway.calls==1 and result['recovery']['category']=='planning_failure'
     assert '<' not in json.dumps(result) and result['interpreted_question']=='Keep original sources'
+
+
+def test_session_summary_is_one_sentence_without_changing_decimal_facts():
+    import re
+    from pankagent_vnext.session_summary import answer
+    e=detection_evidence()['s1'];e['edges'][0]['properties']['recorded_value']=12.34567
+    summary=answer({'run_id':'earlier','status':'completed','evidence':{'steps':[e]}})
+    assert '12.34567' in summary
+    assert len(re.findall(r'[.!?](?=\s|$)',summary))==1

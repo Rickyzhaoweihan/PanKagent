@@ -3,7 +3,7 @@ import re
 from .answer_blocks import catalogue
 from .evidence_status import synthesis_evidence
 
-VERSION = 'session-evidence-summary-v1'
+VERSION = 'session-evidence-summary-v2'
 
 
 def requested(question):
@@ -31,7 +31,9 @@ def answer(prior):
     if not details:
         return 'The previous result has no graph evidence available to summarize; its saved literature and status remain available in the earlier result.'
     selected=details[:3]
-    fragments=[f['text'].rstrip('.') + ' ['+f['evidence_id']+']' for f in selected]
+    # Keep sentence boundaries out of the fragments while preserving decimal
+    # values and source URLs; the returned summary is one compound sentence.
+    fragments=[re.sub(r'[.!?](?=\s|$)', ';', f['text'].rstrip('.')) + ' ['+f['evidence_id']+']' for f in selected]
     prefix='From the earlier recorded evidence'
     if prior.get('status')!='completed': prefix+=' (partial result)'
     return prefix + ': ' + '; '.join(fragments) + '; no new search was performed.'
