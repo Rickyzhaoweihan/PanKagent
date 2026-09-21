@@ -466,3 +466,16 @@ def test_independent_assay_bundle_preserves_tissue_and_source_without_rna_atac_j
     assert len(split(plan,'Find the intersection of RNA and ATAC evidence')['steps'])==1
     plan['steps'][0]['constraints'].append({'entity_type':'anatomical_structure','property':'unknown_scope','value':'x'})
     assert len(split(plan,'Summarize RNA and ATAC')['steps'])==1
+
+
+def test_independent_effector_and_coloc_do_not_require_a_join():
+    from pankagent_vnext.independent_checks import split
+    gene={'entity_type':'Gene','property':'id','operator':'=','value':'ENSG_FIXTURE'}
+    disease={'entity_type':'disease','property':'id','operator':'=','value':'EFO_FIXTURE'}
+    plan={'steps':[{'id':'s1','relation_types':['EFFECTOR_GENE_OF','SIGNAL_COLOC_WITH'],
+        'constraints':[gene,disease],'depends_on':[],'evidence_combination':'independent'}]}
+    result=split(plan,'Summarize independent gene evidence')
+    assert len(result['steps'])==2
+    assert all(s['constraints']==[gene,disease] for s in result['steps'])
+    plan['steps'][0]['evidence_combination']='intersection'
+    assert len(split(plan,'Summarize gene evidence')['steps'])==1
