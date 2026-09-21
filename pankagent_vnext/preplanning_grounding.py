@@ -19,7 +19,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .genomic_scope import genomic_scope, load_coordinate_metadata, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = "preplanning-grounding-8"
+VERSION = "preplanning-grounding-9"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -61,7 +61,7 @@ _SCHEMA_ROLE_PATTERNS = {
     "signal_context_vocabulary": r"\b(?:credible[- ]sets?|lead[- ]variants?|fine[- ]mapping)\b",
     "evidence_class_vocabulary": r"\b(?:evidence|measurement|assay|record|relationship)[- ]types?\b",
     "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",
-    "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b",
+    "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b|\bATAC\s+gene\s+activity\b|\bRNA\s+expression\b|\b(?:ATAC|RNA)\s+(?:distinct from|versus|vs\.?)\s+(?:ATAC|RNA)\b",
     "analysis_vocabulary": r"\b(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\s+(?:evidence|signal|association|annotation|analysis|enrichment|data|record|support|for|of|in|with|between)|\b(?:evidence|signal|association|analysis|enrichment)\s+(?:from|for|of|in)?\s*(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\b",
     "identifier_vocabulary": r"\b(?:Ensembl|Entrez|gene|transcript|variant|stable)\s+(?:IDs?|identifiers?)\b",
     "coordinate_unit": r"\b\d+(?:\.\d+)?\s*(?:bp|kb|Mb|Gb)\b",
@@ -295,6 +295,12 @@ class EntityIndex:
                 _span(question, m.start(), m.end()) == (start, end)
                 for m in re.finditer(r'\b(?:IDs|ids|identifiers?|id)\b', question))
             if identifier_column or role in {'coordinate_unit', 'ranking_vocabulary'}:
+                _retain_context(mention, [item for item in candidates if item['entity_type'] != 'Gene'], role)
+                continue
+            assay_activity = (role == 'assay_vocabulary' and term == ('atac',)
+                and tuple(words[end:end+2]) == ('gene','activity')
+                and (not start or words[start-1] not in {'gene','symbol'}))
+            if assay_activity:
                 _retain_context(mention, [item for item in candidates if item['entity_type'] != 'Gene'], role)
                 continue
             if _explicit_gene(words, start, end):

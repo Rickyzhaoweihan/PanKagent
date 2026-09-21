@@ -578,3 +578,12 @@ def test_strict_coloc_tissue_scope_uses_verified_dataset_mapping():
     assert compile_scope('Show coloc in islet tissue',{},plan)[1]=='unverified_coloc_tissue_mapping'
     assert compile_scope('Show coloc and describe tissue context',grounding,plan)==(plan,None)
     assert compile_scope('Show coloc in pancreas and islet tissue',grounding,plan)[1].startswith('ambiguous')
+
+
+def test_atac_gene_activity_is_assay_language_not_a_second_gene():
+    from tests_vnext.test_preplanning_grounding import FakeGraph, make_index
+    graph=FakeGraph();graph.rows['Gene'].append({'id':'fixture-atac-id','name':'ATAC','labels':['Gene']})
+    index=make_index(graph)
+    matches=index.match('Compare mean ATAC gene activity for CFTR. Keep ATAC distinct from RNA.')
+    assert not any(m['state']=='resolved' and any(c['id']=='fixture-atac-id' for c in m['candidates']) for m in matches)
+    assert any(m['state']=='resolved' and any(c['id']=='fixture-atac-id' for c in m['candidates']) for m in index.match('Show gene ATAC'))
