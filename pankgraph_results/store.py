@@ -28,7 +28,7 @@ class ResultStore:
         db.row_factory = sqlite3.Row
         return db
 
-    def create(self, source, identity):
+    def create(self, source, identity, *, initial=None):
         key = digest(identity)
         now = time.time()
         with self.db() as db:
@@ -38,6 +38,10 @@ class ResultStore:
                 return json.loads(row["payload"]), False
             rid = str(uuid.uuid4())
             payload = {"version": 1, "result_id": rid, "status": "preparing", "component_status": {"graph": "pending", "layout": "pending", "resources": "pending", "answer": "pending"}, "created_at": now, "updated_at": now}
+            if initial:
+                if {"result_id", "version", "created_at", "updated_at"}.intersection(initial):
+                    raise ValueError("immutable_result_identity")
+                payload.update(initial)
             db.execute("INSERT INTO results VALUES (?,?,?,?,?,?)", (rid, key, json.dumps(source), json.dumps(payload), now, now))
             return payload, True
 

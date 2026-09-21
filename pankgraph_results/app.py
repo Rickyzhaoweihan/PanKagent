@@ -22,6 +22,7 @@ from .assembly import assemble
 from .auth import DemoAuthentication
 from .config import ResultsSettings
 from .coloc import ColocExplorer, coloc_router
+from .coloc_summary import answer_configuration, summary_identity, summary_source
 from .coordinates import CoordinateLookup
 from .health import ResultsHealth
 from .inputs import ResultRequest, agent_snapshot, template_snapshot, template_question
@@ -106,6 +107,40 @@ class ResultsRuntime:
     async def update(self, rid, **changes):
         return await asyncio.to_thread(self.store.update, rid, **changes)
 
+    async def create_coloc_summary(self, record_id):
+        try:
+            detail = await self.coloc.summary_snapshot(record_id)
+        except KeyError:
+            raise HTTPException(404, "Recorded colocalization not found in the configured graph release.") from None
+        except Exception:
+            raise HTTPException(503, "This recorded colocalization cannot currently be loaded.") from None
+        source = summary_source(detail, answer_configuration(self.gateway, self.vnext))
+        identity = summary_identity(source)
+        async with self.admission:
+            result = await asyncio.to_thread(self.store.by_identity, identity)
+            if result:
+                self.health.count("result_cache_hits")
+                return result
+            if len(self.tasks) >= self.settings.max_queue + self.settings.max_concurrent:
+                raise HTTPException(429, "Result queue is full.")
+            initial = {"status": "ready", "answer": "", "question": source["question"],
+                "evidence": source["evidence"], "completeness": source["evidence"]["completeness"],
+                "source": {"kind": "coloc", "record_id": record_id,
+                    "snapshot_sha256": source["snapshot_sha256"], "summary_version": source["summary_version"]},
+                "answer_configuration": source["answer_configuration"],
+                "component_status": {"graph": "available", "layout": "not_requested",
+                    "resources": "not_requested", "answer": "pending"}}
+            result, created = await asyncio.to_thread(self.store.create, source, identity, initial=initial)
+            if created:
+                rid = result["result_id"]
+                await asyncio.to_thread(self.store.audit_event, rid, "coloc_summary_requested",
+                    {"record_id": record_id, "snapshot_sha256": source["snapshot_sha256"],
+                        "answer_configuration": source["answer_configuration"]})
+                task = asyncio.create_task(self.execute(rid, source))
+                self.tasks[rid] = task
+                task.add_done_callback(lambda _: self.tasks.pop(rid, None))
+        return result
+
     async def resolve_resources(self, rid, evidence):
         started = time.monotonic()
         try:
@@ -139,8 +174,14 @@ class ResultsRuntime:
             # Scope note is explicit in both the human question and step evidence.
             question = source["question"] + ("\nEvidence scope: " + evidence["scope_note"] if evidence.get("scope_note") else "")
             steps = {step.get("step_id", str(index)): step for index, step in enumerate(evidence.get("steps", []), 1)}
+            options = {}
+            if hasattr(self.gateway, "prepare_answer"):
+                prepared = self.gateway.prepare_answer(question, steps)
+                options["prepared"] = prepared
+                await self.update(rid, answer_profile=prepared.profile)
+                await asyncio.to_thread(self.store.audit_event, rid, "answer_profile", prepared.profile)
             async with asyncio.timeout(25):
-                async for chunk in self.gateway.synthesize(question, steps):
+                async for chunk in self.gateway.synthesize(question, steps, **options):
                     text += citations.feed(chunk)
                     await self.update(rid, answer=text)
             text += citations.feed("", final=True)
@@ -170,6 +211,9 @@ class ResultsRuntime:
         async with self.semaphore:
             self.active += 1
             try:
+                if source["kind"] == "coloc":
+                    await self.answer(rid, source, source["evidence"])
+                    return
                 evidence = source["evidence"] if source["kind"] == "agent" else await self.query.execute(source["template_id"], source["parameters"], source["question"])
                 if source["kind"] != "agent":
                     failed_steps = [step for step in evidence.get("steps", []) if step.get("status") == "failed"]
@@ -280,6 +324,11 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)
     app.include_router(coloc_router(runtime.coloc))
+
+    @app.post("/api/coloc/records/{record_id}/summary", status_code=202)
+    async def coloc_summary(record_id: str):
+        value = await runtime.create_coloc_summary(record_id)
+        return JSONResponse(value, status_code=202, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/results", status_code=202)
     async def create_result(body: ResultRequest):
