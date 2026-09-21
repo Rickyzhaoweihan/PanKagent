@@ -587,3 +587,30 @@ def test_atac_gene_activity_is_assay_language_not_a_second_gene():
     matches=index.match('Compare mean ATAC gene activity for CFTR. Keep ATAC distinct from RNA.')
     assert not any(m['state']=='resolved' and any(c['id']=='fixture-atac-id' for c in m['candidates']) for m in matches)
     assert any(m['state']=='resolved' and any(c['id']=='fixture-atac-id' for c in m['candidates']) for m in index.match('Show gene ATAC'))
+
+
+def test_cohort_sample_request_cannot_degrade_to_donor_inventory():
+    from pankagent_vnext.cohort_plan_scope import compile_scope
+    predicate={'entity_type':'donor','property':'data_source','value':'audited-source'}
+    plan={'steps':[{'id':'s1','question':'Count donors','relation_types':['HAS_DONOR'],
+        'constraints':[predicate],'depends_on':[]}]}
+    question='Which donors have an islet assay? Return aggregate donor and assay-record counts only.'
+    result,issue=compile_scope(question,{},plan)
+    assert issue is None
+    assert result['steps'][0]['relation_types']==['HAS_SAMPLE']
+    assert result['steps'][0]['constraints']==[predicate]
+    assert result['steps'][0]['question']==question
+    assert compile_scope('Count donors',{},plan)==(plan,None)
+    molecular={'steps':[{'id':'s1','relation_types':['GENE_DETECTED_IN'],'constraints':[]}]}
+    assert compile_scope('Show the gene assay context without donor identifiers',{},molecular)==(molecular,None)
+    assert compile_scope('Count donors without samples',{},plan)[1]=='missing_requested_category:HAS_SAMPLE'
+
+
+def test_unqueried_sample_inventory_is_unknown_not_zero():
+    step={'evidence_id':'G1','status':'complete','truncated':False,
+          'nodes':[{'id':'private-donor','labels':['donor'],'properties':{}}],'edges':[]}
+    visible=project(step)
+    assert visible['aggregate_record_counts']['samples'] is None
+    answer=fallback(catalogue([visible]))
+    assert 'assay/sample record count unavailable' in answer
+    assert '0 assay' not in answer and 'private-donor' not in answer

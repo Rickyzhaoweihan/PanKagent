@@ -164,8 +164,11 @@ class ClaudeGateway:
         from .schema_drafting import compile_schema_draft, DIGEST as SCHEMA_DRAFT_DIGEST
         from .independent_checks import DIGEST as INDEPENDENT_CHECKS_DIGEST
         from .coloc_tissue_scope import compile_scope as compile_coloc_tissue, DIGEST as COLOC_TISSUE_DIGEST
+        from .cohort_plan_scope import compile_scope as compile_cohort_scope, DIGEST as COHORT_SCOPE_DIGEST
         def compile_scopes(proposal):
-            proposal, issue = compile_property_owners(proposal, grounding, question=question)
+            proposal, issue = compile_cohort_scope(question, grounding, proposal)
+            if issue is None:
+                proposal, issue = compile_property_owners(proposal, grounding, question=question)
             if issue is None:
                 from .independent_checks import split
                 try: proposal = split(proposal, question)
@@ -187,7 +190,7 @@ class ClaudeGateway:
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,INDEPENDENT_CHECKS_DIGEST,COLOC_TISSUE_DIGEST,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,INDEPENDENT_CHECKS_DIGEST,COLOC_TISSUE_DIGEST,COHORT_SCOPE_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:

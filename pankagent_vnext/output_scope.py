@@ -2,7 +2,7 @@
 from copy import deepcopy
 import re
 
-VERSION = 'aggregate-output-v3'
+VERSION = 'aggregate-output-v4'
 PRIVATE_TYPES = {'donor', 'Sample_node'}
 
 
@@ -85,7 +85,7 @@ def project(value, *, context=None):
                 'file_availability':'not_verified'})
             result['aggregate_record_counts'] = {
                 'donors': len({n.get('id') for n in obj['nodes'] if 'donor' in n.get('labels', [])}),
-                'samples': len({n.get('id') for n in obj['nodes'] if 'Sample_node' in n.get('labels', [])}),
+                'samples': len(samples) if samples else None,
                 'count_scope': 'retrieved records', 'complete': obj.get('status') == 'complete' and obj.get('truncated') is False}
         return result
     result = clean(deepcopy(value))

@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v4'
+VERSION = 'verified-answer-blocks-v5'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -78,7 +78,8 @@ def catalogue(evidence):
         execution = step.get('retrieval_execution') or {}
         aggregate = step.get('aggregate_record_counts')
         if aggregate:
-            add(eid, 'cohort', f"{title}: {aggregate['donors']} unique donors and {aggregate['samples']} assay/sample records retained. "
+            sample_text=(str(aggregate['samples'])+' assay/sample records retained' if aggregate.get('samples') is not None else 'assay/sample record count unavailable because sample records were not retained')
+            add(eid, 'cohort', f"{title}: {aggregate['donors']} unique donors and {sample_text}. "
                 + ('These are retrieved-record totals.' if aggregate.get('complete') else 'Retrieval is incomplete; these are retained-record counts only.')
                 + ' Recorded stage is distinct from diagnosis; assay records are not donors.', True)
             cohort = step.get('aggregate_cohort_facts') or {}
