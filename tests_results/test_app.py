@@ -282,6 +282,11 @@ def test_basic_authentication_and_forwarded_operator_boundary(tmp_path):
     async def scenario():
         async with service(tmp_path, testing=False) as s:
             assert (await s.client.get("/pankgraph-vnext/")).status_code == 401
+            for prefix in ("", "/pankgraph-vnext"):
+                for suffix in ("", "/" + "a" * 64, "/" + "a" * 64 + "/download/qtl"):
+                    denied = await s.client.get(prefix + "/api/coloc/records" + suffix)
+                    assert denied.status_code == 401
+                    assert denied.headers["cache-control"] == "no-store"
             assert (await s.client.get("/health/components")).status_code == 200  # Direct local operator.
             assert (await s.client.get("/pankgraph-vnext/health/components", headers={"X-Forwarded-For": "203.0.113.8"})).status_code == 401
             auth = httpx.BasicAuth("demo", "synthetic-test-password")
