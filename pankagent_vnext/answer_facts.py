@@ -14,7 +14,7 @@ import re
 
 from .release_schema import REGISTRY
 
-VERSION = 'full-record-answer-facts-v2'
+VERSION = 'full-record-answer-facts-v3-classifications'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 GO_SOURCE = 'https://geneontology.org/docs/guide-go-evidence-codes/'
 # Formal names and categories verified against the official guide, 2026-09-09.
@@ -271,6 +271,7 @@ def build_answer_facts(item, *, coverage=None, max_groups=30, max_records=20):
             'prove that an incorrect plan preserves the user request. Only the existing coverage contract can '
             'support a complete executed-scope claim. Do not invent source, method, causation, ambient RNA or '
             'aggregation explanations absent from the recorded evidence.'}
+    result['source_classifications'] = {'counting_unit':'relationship records', 'distribution':source_classifications(edges), 'interpretation':'Source labels are not independent proof of causality.'}
     sample = _sample_facts(item,nodes,edges,complete,max_groups)
     if sample is not None:
         result['sample_counts'] = sample
@@ -287,3 +288,29 @@ def build_answer_facts(item, *, coverage=None, max_groups=30, max_records=20):
     if go is not None:
         result['go_annotations'] = go
     return result
+
+
+def source_classifications(edges):
+    """Count recorded labels, including the source's structured summary field.
+
+    A label in arbitrary prose or a model answer is not a source classification.
+    Conflicting labels remain unknown rather than choosing the strongest one.
+    """
+    counts = Counter()
+    for edge in edges:
+        props = _properties(edge)
+        label = props.get('classification')
+        if label is None and edge.get('type') == 'EFFECTOR_GENE_OF':
+            try:
+                records = json.loads(props.get('evidence', 'null'))
+            except (ValueError, TypeError):
+                records = None
+            labels = set()
+            for record in records if isinstance(records, list) else []:
+                summary = record.get('summary') if isinstance(record, dict) else None
+                if isinstance(summary, str):
+                    match = re.fullmatch(r'.+ classified as (Possible|Moderate|Strong|Causal) \(overall score [0-9.]+\)', summary)
+                    if match: labels.add(match.group(1))
+            if len(labels) == 1: label = labels.pop()
+        counts[str(label) if label is not None else 'not recorded'] += 1
+    return dict(sorted(counts.items()))

@@ -37,6 +37,9 @@ def outcome_message(evidence):
         return ('I couldn’t retrieve the graph evidence needed to answer this question. '
                 'This is a retrieval failure, so it does not establish whether the biological relationship is present or absent. '
                 'The step outcomes below identify what could not be checked.')
+    if any(s.get('execution_status') == 'skipped_empty_dependency' or any(str(r).startswith('empty_dependency:') for v in s.get('validation', []) for r in v.get('reasons', [])) for s in primary):
+        return ('The required input returned no matching records. Dependent checks were not executed; '
+                'this does not establish zero matches for those independent evidence categories.')
     from .evidence_coverage import complete_empty_message
     checked_absence = complete_empty_message(steps)
     if checked_absence:
@@ -47,7 +50,7 @@ def outcome_message(evidence):
 
 
 
-QUERY_READINESS_VERSION = 'query-executed-plan-v3-independent-truncation'
+QUERY_READINESS_VERSION = 'query-executed-plan-v4-execution-provenance'
 PARTIAL_INDEPENDENT_POLICY = 'partial_independent_v1'
 TERMINAL_QUERY_STATUSES = frozenset({'complete', 'empty', 'partial', 'failed', 'blocked', 'unavailable'})
 
@@ -127,6 +130,13 @@ def query_readiness(plan, preview):
     the exact checked snapshot, label missing categories and never rerun failed
     checks implicitly after confirmation.
     """
+    if plan.get('plan_mode') in {'literature_only', 'session_summary'} and not plan.get('steps'):
+        ready = not plan.get('clarification') and (preview or {}).get('preparation_complete') is True
+        return {'version': QUERY_READINESS_VERSION, 'ready': ready, 'partial_ready': False,
+                'full_coverage': False, 'all_required_finished': True, 'required_step_ids': [],
+                'verified_step_ids': [], 'blocked_step_ids': [], 'no_match_step_ids': [],
+                'derived_empty_step_ids': [], 'retained_failed_step_ids': [], 'nonempty_primary_step_ids': [],
+                'graph_status': 'not_requested', 'plan_mode': plan['plan_mode']}
     required = required_query_steps(plan)
     outcomes = {step.get('step_id'): step for step in ((preview or {}).get('evidence') or {}).get('steps', [])}
     verified = {}
@@ -152,7 +162,7 @@ def query_readiness(plan, preview):
     # Retain terminal truncations for audit, but exclude their unverified
     # records from synthesis. They never satisfy dependent input verification.
     blocked_are_failures = len(retained_failure_ids) == len(required_ids) - len(verified)
-    partial_ready = bool(not full_coverage and common_guard and all_finished and nonempty_primary_ids
+    partial_ready = bool(not full_coverage and common_guard and all_finished and (nonempty_primary_ids or (plan.get('literature_intent') or {}).get('reason') == 'explicit_request')
                          and blocked_are_failures
                          and plan.get('retrieval_policy') == PARTIAL_INDEPENDENT_POLICY)
     return {'version': QUERY_READINESS_VERSION, 'ready': full_coverage or partial_ready,
@@ -162,7 +172,7 @@ def query_readiness(plan, preview):
             'retained_failed_step_ids': retained_failure_ids if partial_ready else [],
             'required_step_ids': required_ids, 'verified_step_ids': list(verified),
             'blocked_step_ids': [step_id for step_id in required_ids if step_id not in verified],
-            'no_match_step_ids': [step_id for step_id, result in verified.items() if result.get('status') == 'empty'],
+            'no_match_step_ids': [step_id for step_id, result in verified.items() if result.get('status') == 'empty' and result.get('queries')],
             'derived_empty_step_ids': [step_id for step_id, result in verified.items() if not result.get('queries')]}
 
 
@@ -175,9 +185,13 @@ def synthesis_evidence(evidence):
     from copy import deepcopy
     result = {}
     for key, step in evidence.items():
-        if step.get('truncated') or step.get('status') in {'failed', 'blocked', 'unavailable'}:
+        checks = step.get('validation') or []
+        usable_partial = (step.get('status') == 'partial'
+                          and (step.get('retrieval_execution') or {}).get('completed') is True
+                          and bool(checks) and checks[-1].get('valid') is True)
+        if (step.get('truncated') and not usable_partial) or step.get('status') in {'failed', 'blocked', 'unavailable'}:
             result[key] = {field: deepcopy(step[field]) for field in
-                ('step_id', 'question', 'title', 'purpose', 'graph_version', 'requested_scope') if field in step}
+                ('step_id', 'evidence_id', 'question', 'title', 'purpose', 'graph_version', 'requested_scope', 'execution_status', 'retrieval_execution') if field in step}
             result[key].update(status='unavailable', truncated=bool(step.get('truncated')),
                                nodes=[], edges=[], rows=[],
                                error={'category': 'retrieval_limit' if step.get('truncated') else 'check_unavailable'})

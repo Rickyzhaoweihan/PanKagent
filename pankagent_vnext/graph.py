@@ -1167,6 +1167,8 @@ class GraphAdapter:
             from .annotation_selection import apply_default
             source = apply_default(source, plan.get('original_question', ''))
             prepared["steps"].append(await self._prepare_step(source, emit))
+        from .dependency_scope import normalize as preserve_dependency_scope
+        prepared = preserve_dependency_scope(prepared)
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
         rewritten = set((prepared.get('coloc_comparison_normalization') or {}).get('rewritten_step_ids') or [])
@@ -1514,6 +1516,30 @@ class GraphAdapter:
                 base["validation"].append({"valid": False, "reasons": ["dependency_unavailable:" + dependency]})
                 return base
             ids = sorted({str(node["id"]) for node in evidence.get("nodes", []) if node.get("id") is not None})
+            dependency_nodes = evidence.get('nodes', [])
+            if step.get('relation_types') == ['PART_OF_GWAS_SIGNAL']:
+                # A disease or gene node from a preceding check is not a GWAS
+                # variant input. Never satisfy this dependency on disease alone.
+                dependency_nodes = [n for n in dependency_nodes if 'variants' in (n.get('labels') or [])]
+                if not dependency_nodes and evidence.get('graph_version') == self.settings.graph_version:
+                    from .coloc_scope import _leads
+                    leads = set().union(*[_leads((e.get('properties') or {}).get('gwas_lead_vars'))
+                        for e in evidence.get('edges', []) if e.get('type') == 'SIGNAL_COLOC_WITH'])
+                    if len(leads) > 8:
+                        base['validation'].append({'valid':False,'reasons':['dependency_variant_resolution_limit']})
+                        return base
+                    for lead in sorted(leads):
+                        binding = {'entity_type':'variants','property':'id','operator':'=','value':lead}
+                        resolved = await self._resolve_constraint(binding, 0, step)
+                        if resolved.get('state') != 'resolved' or 'variants' not in resolved.get('labels', []):
+                            base['validation'].append({'valid':False,'reasons':['dependency_variant_identity_unresolved']})
+                            return base
+                        dependency_nodes.append({'id':resolved['id'],'labels':resolved['labels']})
+                    if leads:
+                        base.setdefault('dependency_inputs', []).append({'step_id':dependency,
+                            'source_property':'SIGNAL_COLOC_WITH.gwas_lead_vars', 'identity_verified':True,
+                            'scope':'recorded colocalization lead variants only', 'variant_count':len(leads)})
+                ids = sorted({str(n['id']) for n in dependency_nodes if n.get('id') is not None})
             inherited_partial |= evidence.get("status") == "partial"
             if (evidence.get("status") == "partial" and evidence.get("truncated") is False
                     and ((evidence.get("requested_scope") or {}).get("complete") is False
@@ -1524,12 +1550,15 @@ class GraphAdapter:
                     base['validation'].append({'valid': False, 'reasons': ['dependency_missing_entity_ids:' + dependency]})
                     return base
                 base["status"] = "partial" if inherited_partial else "empty"
+                base['execution_status'] = 'skipped_empty_dependency'
+                base['retrieval_execution'] = {'completed': False, 'cursor_exhausted': False,
+                                               'mode': 'dependency_inference'}
                 base["validation"].append({"valid": True, "reasons": ["empty_dependency:" + dependency]})
                 return base
             name = "dep_" + str(index)
             parameters[name] = ids
             labels_by_id = {}
-            for node in evidence.get('nodes', []):
+            for node in dependency_nodes:
                 identifier, labels = node.get('id'), node.get('labels')
                 if identifier is not None and isinstance(labels, list) and all(isinstance(label, str) and label for label in labels):
                     labels_by_id.setdefault(str(identifier), set()).update(labels)

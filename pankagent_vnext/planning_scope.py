@@ -15,7 +15,7 @@ from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES
 from .genomic_scope import region_scope_issue, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = 'grounded-requested-scope-v6'
+VERSION = 'grounded-requested-scope-v7-locus-context'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 _GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
 _TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
@@ -324,6 +324,11 @@ def scope_issue(question, grounding, plan):
     tissues = {candidate['id'] for _, candidate, _, spans in mentions
                if candidate['entity_type'] == 'anatomical_structure' and
                (_direct_tissue(words, spans) or any((candidate['id'], *span) in replacement_targets for span in spans))}
+    if genes and not any(c['entity_type'] == 'variants' for _, c, _, _ in mentions):
+        for step in steps:
+            if (step.get('relation_types') == ['PART_OF_GWAS_SIGNAL'] and not step.get('depends_on')
+                    and not any(c.get('entity_type') == 'variants' and c.get('property') in {'id','name'} for c in step.get('constraints', []))):
+                return 'missing_gene_locus_input:' + step['id'] + ':GWAS needs the requested variant or verified variants from a gene-scoped check; do not search disease-wide'
     for mention, candidate, forms, spans in mentions:
         kind = candidate['entity_type']
         if kind == 'anatomical_structure':
@@ -370,6 +375,13 @@ def scope_issue(question, grounding, plan):
             return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
         # Gene/variant questions must not be replaced by a different family
         # merely because an unrelated independently planned step is executable.
+        if kind == 'Gene' and not compatible and all(set(s.get('relation_types', [])) == {'PART_OF_GWAS_SIGNAL'} for s in steps):
+            near = re.search(r'\b(?:near|nearby|at the)\s+' + re.escape(mention['requested']) + r'\b', question, re.I)
+            variants = [(c, f) for _, c, f, _ in mentions if c['entity_type'] == 'variants']
+            if near and variants and all(any(_identity_present(s, c, f) for c, f in variants) for s in steps):
+                # The supplied variant owns GWAS membership; the named nearby
+                # gene is locus context, not a fabricated Gene->GWAS edge.
+                continue
         if kind in {'Gene', 'variants'} and not compatible:
             return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
     return None

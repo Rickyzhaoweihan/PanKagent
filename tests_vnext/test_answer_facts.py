@@ -40,7 +40,7 @@ class AnswerFactsTests(unittest.TestCase):
         self.assertEqual(hist['distinct_donor_sample_pairs'],144)
         self.assertEqual(hist['donor_sample_link_records'],145)
         self.assertTrue(hist['complete_for_executed_scope'])
-        self.assertNotIn('d1',json.dumps(result));self.assertNotIn('s143',json.dumps(result))
+        self.assertNotIn('"d1"',json.dumps(result));self.assertNotIn('"s143"',json.dumps(result))
         self.assertEqual(item,original)
         compact=compact_evidence([item])[0]
         self.assertLess(len(compact['nodes']),len(ns))

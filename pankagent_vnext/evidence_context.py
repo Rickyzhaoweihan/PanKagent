@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from .evidence_coverage import coverage_for_answer
+from .evidence_identity import evidence_id
 
 
 TARGET_BYTES = 75_000
 MAX_BYTES = 100_000
 NODE_ONLY_MODE = "node_identity_only"
-_SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary")
+_SUMMARY_FIELDS = ("step_id", "status", "execution_status", "retrieval_execution", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary", "functional_metadata")
 
 
 @dataclass(frozen=True)
@@ -218,7 +219,7 @@ def _interaction_totals(item: Mapping, edges: list, node_index: dict, coverage: 
 def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict) -> dict:
     changes = Counter()
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
-    entry["evidence_id"] = "G" + str(index + 1)
+    entry["evidence_id"] = evidence_id(item, index)
     entry["validation"] = _validation(item.get("validation"), limits, changes)
     # Record full query/source scope before sampling. Never clip scope filters or
     # turn excerpt omissions into a retrieval limit. The total-size gate remains.
@@ -370,7 +371,7 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
             continue
         budget = max(1000, max_bytes - size([item for i, item in enumerate(result) if i != index]) - 100)
         result[index] = node_only_evidence([steps[index]], max_bytes=budget)[0]
-        result[index]['evidence_id'] = f'G{index + 1}'
+        result[index]['evidence_id'] = evidence_id(steps[index], index)
         identity.add(index)
     if size(result) > max_bytes:
         raise ValueError('evidence_step_envelope_too_large')
@@ -394,7 +395,7 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
         if any(not isinstance(n, Mapping) or "id" not in n for n in nodes):
             raise ValueError("invalid_evidence_node")
         entry = {
-            "evidence_id": f"G{index + 1}",
+            "evidence_id": evidence_id(step, index),
             "status": step.get("status") if step.get("status") in
                 {"complete", "partial", "empty", "failed", "blocked", "skipped"} else "unknown",
             "truncated": bool(step.get("truncated")),

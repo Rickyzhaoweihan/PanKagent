@@ -101,6 +101,7 @@ class PreparedAnswer:
     system: list
     profile: dict
     generation: dict = field(default_factory=dict)
+    facts: list = field(default_factory=list)
 
 
 def plan_structure_issue(plan):
@@ -165,6 +166,7 @@ class ClaudeGateway:
             if issue is None:
                 proposal, issue = compile_genomic_scope(question, grounding, proposal)
             return proposal, issue
+        scope_question = (grounding or {}).get('session_scope_question') or question
         cache_key = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
@@ -177,7 +179,7 @@ class ClaudeGateway:
                     cache_issue=plan_structure_issue(cached)
                     if cache_issue is None:
                         cached, cache_issue=compile_scopes(cached)
-                    cache_issue=cache_issue or scope_issue(question,grounding,cached) or requirements_issue(question,grounding,cached,history)
+                    cache_issue=cache_issue or scope_issue(scope_question,grounding,cached) or requirements_issue(question,grounding,cached,history)
                     if cache_issue is None:
                         provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
                         return cached
@@ -187,7 +189,7 @@ class ClaudeGateway:
                 if matched is not None:
                     matched, pattern_issue = compile_scopes(matched)
                     pattern_issue = (pattern_issue or plan_structure_issue(matched)
-                                     or scope_issue(question, grounding, matched)
+                                     or scope_issue(scope_question, grounding, matched)
                                      or requirements_issue(question, grounding, matched, history))
                     provider_event('planning_pattern', {'matched': True, 'valid': pattern_issue is None,
                                    'category': pattern_issue, 'route': matched.get('planning_route')})
@@ -216,6 +218,11 @@ class ClaudeGateway:
         for block in reply.content:
             if block.type=='tool_use' and block.name=='record_plan':
                 plan=block.input
+                if not isinstance(plan, dict):
+                    if not _repair:
+                        return await self.plan(question, history, _repair=True, grounding=grounding)
+                    from .plan_recovery import mark_failure
+                    return mark_failure({'interpreted_question': question, 'proposal_issue': 'malformed_plan'})
                 provider_event('planning_proposal', {'plan':plan,'repair':_repair,'grounding_version':(grounding or {}).get('version')})
                 if profile_gene:
                     if plan.get('gene_name') != profile_gene: raise ValueError('profile_scope_mismatch')
@@ -232,7 +239,7 @@ class ClaudeGateway:
                     provider_event('planning_constraint_compilation', {'valid':issue is None, 'category':issue,
                         'changes':[{'step_id':s.get('id'),'bindings':s['constraint_compilation']}
                                    for s in plan.get('steps',[]) if s.get('constraint_compilation')]})
-                    issue = issue or scope_issue(question, grounding, plan) or requirements_issue(question, grounding, plan, history)
+                    issue = issue or scope_issue(scope_question, grounding, plan) or requirements_issue(question, grounding, plan, history)
                 provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
                 if issue and issue != 'plan_too_large' and not issue.startswith('unsupported_gene_exclusion:') and not _repair:
                     return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True, grounding=grounding)
@@ -240,7 +247,7 @@ class ClaudeGateway:
                     if issue == 'plan_too_large':
                         return {**plan,'steps':[],'proposal_issue':issue,'clarification':'This investigation needs more than twelve graph checks. Please narrow its scope.'}
                     from .plan_recovery import mark_failure
-                    return mark_failure({**plan,'proposal_issue':issue})
+                    return mark_failure({'interpreted_question':question,'proposal_issue':issue})
                 try:
                     plan=expand_compact_plan(plan)
                     plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
@@ -256,10 +263,12 @@ class ClaudeGateway:
                 except (ValueError, KeyError, TypeError) as exc:
                     if not _repair:
                         return await self.plan(question, history + [{'role':'system','content':'The last structured plan failed '+str(exc)+'. Supply valid independent checks preserving every requested category and the original scope.'}], _repair=True, grounding=grounding)
-                    raise ValueError('planning_repair_exhausted')
+                    from .plan_recovery import mark_failure
+                    return mark_failure({'interpreted_question':question,'proposal_issue':'planning_repair_exhausted'})
         if not _repair:
             return await self.plan(question, history, _repair=True, grounding=grounding)
-        raise ValueError('missing_structured_plan')
+        from .plan_recovery import mark_failure
+        return mark_failure({'interpreted_question':question,'proposal_issue':'missing_structured_plan'})
     async def repair_cypher(self, step, question, failures, candidate):
         """One grounded, budgeted fallback; the caller must revalidate and EXPLAIN."""
         from .release_schema import REGISTRY
@@ -301,6 +310,13 @@ class ClaudeGateway:
         raise ValueError('invalid_plan_verification')
 
     def prepare_answer(self,question,evidence):
+        from .output_scope import aggregate_only, project
+        if aggregate_only(question):
+            # Compute donor/sample summaries before suppressing raw examples.
+            from .answer_facts import build_answer_facts
+            evidence = {key: {**step, 'answer_facts': build_answer_facts(step)}
+                        for key, step in evidence.items()}
+            evidence = {key: project(step) for key, step in evidence.items()}
         # Inspect full bounded evidence before sampling; this does not call a model.
         routed=self.answer_router.select(evidence)
         compact=compact_evidence(evidence)
@@ -350,6 +366,10 @@ class ClaudeGateway:
             query_too_broad=node_only,
             steps=[{'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
                     'omitted':item.get('context_dropped',{}), 'mode':item.get('context_compaction')} for item in compact])
+        from .answer_blocks import catalogue, VERSION as BLOCK_VERSION
+        facts = catalogue(evidence)
+        profile['answer_contract_version'] = BLOCK_VERSION
+        profile['verified_fact_catalogue'] = {'facts': len(facts), 'full_record_facts_before_sampling': True, 'legacy_excerpt_used_for_synthesis': False}
         if node_only:
             profile['model_context']['exposed_node_fields']=['id','type','description','source']
             profile['model_context']['measurement_guidance_suppressed']=True
@@ -357,7 +377,7 @@ class ClaudeGateway:
                                      'primary_checks':sum(step.get('purpose') != 'context' for step in evidence.values())}
             return PreparedAnswer(body,[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}},
                 {'type':'text','text':ANSWER_CONTRACT},
-                {'type':'text','text':OVERSIZED_RESULT_CONTRACT}],profile)
+                {'type':'text','text':OVERSIZED_RESULT_CONTRACT}],profile, facts=facts)
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]
         if routed.guidance:
             system.append({'type':'text','text':'Matched interpretation guidance (apply under the evidence and presentation rules above):\n'+routed.guidance,
@@ -372,49 +392,60 @@ class ClaudeGateway:
             system.append({'type':'text','text':'For this multi-check answer, cover every requested category concisely under at most three short headings. Use at most FOUR illustrative table rows in the ENTIRE answer, never a row for every returned cell or partner. Prefer one or two sentences per category with its source reference; aim for 350–450 words. Use authoritative full-result evidence_totals for counts. Never infer a total unique-partner count from visible example rows or from only start/end endpoint counts. Omit a count if its correct denominator is unavailable. Leave exhaustive records to the existing graph and downloads.'})
         if any(edge.get('type') == 'PART_OF_QTL_SIGNAL' for step in evidence.values() for edge in step.get('edges', [])):
             system.append({'type':'text','text':'QTL terminology for these records: a source name such as GTEx or INSPIRE alone is not a molecular-phenotype definition. Use molecular QTL unless an explicit recorded class or supplied verified subtype mapping identifies expression, splicing, or exon QTL. A generic slope does not establish an expression-unit effect. Do not label a generic QTL as eQTL in the opening sentence and then disclaim the subtype later.'})
-        return PreparedAnswer(body,system,profile)
+        from .answer_blocks import catalogue, VERSION as BLOCK_VERSION
+        facts = catalogue(evidence)
+        profile['answer_contract_version'] = BLOCK_VERSION
+        return PreparedAnswer(body,system,profile,facts=facts)
 
     async def synthesize(self,question,evidence,*,prepared=None):
-        from .evidence_status import outcome_message
-        message = outcome_message(evidence)
-        if message:
-            yield message
-            return
-        if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
-        prepared=prepared or self.prepare_answer(question,evidence)
-        body=prepared.body
-        output_limit=prepared.profile.get('answer_budget',{}).get('max_output_tokens',1600)
-        rid=await self._reserve('synthesis','\n'.join(block['text'] for block in prepared.system),body,output_limit)
-        # The node-only view deliberately withholds relationship/comparison
-        # evidence. Never reintroduce it through a full-evidence text rewrite.
-        node_only = prepared.profile.get('model_context',{}).get('mode') == NODE_ONLY_MODE
-        identity_ids = {item.get('evidence_id') for item in prepared.profile.get('model_context', {}).get('steps', [])
-                        if item.get('mode') == NODE_ONLY_MODE}
-        filter_evidence = {key: value for index, (key, value) in enumerate(evidence.items())
-                           if f'G{index + 1}' not in identity_ids}
-        scope_filter = None if node_only else ScopeTextFilter(filter_evidence)
+        from .answer_blocks import SYSTEM, TOOL, VERSION, catalogue, render, fallback
+        if not self.settings.anthropic_key:
+            raise RuntimeError('claude_key_not_configured')
+        prepared = prepared or self.prepare_answer(question, evidence)
+        facts = prepared.facts
+        # Fact values and references are immutable inputs. The only generated
+        # output allowed by the schema is a bounded selection of their IDs.
+        body = json.dumps({'question': question, 'facts': facts}, ensure_ascii=False)
+        if len(body.encode()) > MAX_BYTES:
+            raise ValueError('answer_fact_catalogue_too_large')
+        system = [{'type': 'text', 'text': SYSTEM, 'cache_control': {'type': 'ephemeral'}}]
+        guidance = '\n'.join(block['text'] for block in prepared.system if block.get('text', '').startswith('Matched interpretation guidance'))
+        if guidance:
+            system.append({'type': 'text', 'text': 'Use this guidance only to select relevant fact IDs, never to add claims: ' + guidance})
+        output_limit = prepared.profile.get('answer_budget', {}).get('max_output_tokens', 1600)
+        rid = await self._reserve('synthesis', json.dumps(system) + json.dumps(TOOL), body, output_limit)
         try:
-            async with self.client.messages.stream(model=self.settings.model,max_tokens=output_limit,
-                system=prepared.system,
-                messages=[{'role':'user','content':body}],**self._options()) as stream:
-                async for text in stream.text_stream:
-                    visible = text if scope_filter is None else scope_filter.feed(text)
-                    if visible: yield visible
-                final=await stream.get_final_message()
+            async with self.client.messages.stream(model=self.settings.model, max_tokens=output_limit,
+                    system=system, messages=[{'role':'user','content':body}],
+                    tools=[TOOL], tool_choice={'type':'tool','name':TOOL['name']}, **self._options()) as stream:
+                # Nothing is shown or persisted until the complete selection is
+                # validated. Progress SSE events are owned by the runtime.
+                final = await stream.get_final_message()
         except anthropic.APIStatusError as exc:
             if exc.status_code in (400,401,403,404,413,422,429):
                 await self.budget.asettle(rid,{})
             raise
-        await self.budget.asettle(rid,final.usage.model_dump()); self.last_success=time.time()
-        prepared.generation.update(stop_reason=final.stop_reason,
-                                   truncated=final.stop_reason=='max_tokens',
-                                   max_output_tokens=output_limit)
+        await self.budget.asettle(rid, final.usage.model_dump())
+        self.last_success = time.time()
+        validation = {'version': VERSION, 'scope': 'canonical_record_facts',
+                      'valid': True, 'application_fallback': False,
+                      'source_scientific_correctness_verified': False}
+        try:
+            blocks = [block for block in final.content if block.type == 'tool_use'
+                      and block.name == TOOL['name']]
+            if len(blocks) != 1 or final.stop_reason == 'max_tokens':
+                raise ValueError('invalid_answer_blocks')
+            answer = render(blocks[0].input, facts)
+        except (ValueError, TypeError, AttributeError) as exc:
+            validation.update(valid=False, application_fallback=True,
+                              error_category='invalid_answer_blocks')
+            answer = 'Partial answer: the generated fact selection could not be validated. '
+            answer += 'Verified evidence is summarized below.\n\n' + fallback(facts)
+        prepared.generation.update(stop_reason=final.stop_reason, truncated=final.stop_reason=='max_tokens',
+                                   max_output_tokens=output_limit, answer_validation=validation)
         provider_event('answer_generation', dict(prepared.generation))
-        tail = '' if scope_filter is None else scope_filter.feed('', final=True)
-        if tail: yield tail
-        provider_event('answer_scope_validation', {'scope': 'skipped_for_node_identity_only' if node_only else 'known_cell_search_contradictions_only',
-                                                'corrections': [] if scope_filter is None else scope_filter.corrections})
-        if final.stop_reason=='max_tokens': yield '\n\n[Answer reached its output limit.]'
+        yield answer
+
     async def probe(self):
         if not self.settings.anthropic_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}
         try:

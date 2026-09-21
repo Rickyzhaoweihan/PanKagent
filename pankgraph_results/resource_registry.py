@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import re
 from urllib.parse import quote
 
-REGISTRY_VERSION = "2026-09-06.1"
+REGISTRY_VERSION = "2026-09-21.1"
 PUBLIC_ORIGIN = "https://pank-s3-to-share.s3.us-east-1.amazonaws.com"
 TSV_COLUMNS = ("snp", "pip", "nominal_p", "effect_allele", "other_allele", "slope", "lbf")
 

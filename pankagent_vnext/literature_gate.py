@@ -1,10 +1,14 @@
 """Literature enriches a usable new graph answer; it never replaces one."""
-VERSION = 'grounded-literature-v2'
+VERSION = 'independent-literature-v3'
 
 
 def literature_gate(plan, evidence, answer):
     if not plan.get('literature'):
         return False, 'not_requested'
+    if plan.get('plan_mode') == 'literature_only':
+        return True, 'explicit_literature_only'
+    if (plan.get('literature_intent') or {}).get('reason') == 'explicit_request':
+        return True, 'explicit_request_independent_of_graph'
     from .definition_intent import definition_only_plan
     if not plan.get('steps') or plan.get('answer_mode') in {'skills', 'skill_only', 'explanation'} or definition_only_plan(plan):
         return False, 'no_new_graph_requested'

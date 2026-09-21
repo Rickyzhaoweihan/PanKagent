@@ -182,7 +182,7 @@ def test_empty_dependency_is_verified_without_unrestricted_child_query(tmp_path)
             created = await create(client)
             ready = await wait_state(client, created['run_id'], {'awaiting_confirmation'})
             assert ready['preview']['query_readiness']['derived_empty_step_ids'] == ['s2']
-            assert ready['preview']['query_readiness']['no_match_step_ids'] == ['s1', 's2']
+            assert ready['preview']['query_readiness']['no_match_step_ids'] == ['s1']
     asyncio.run(scenario())
 
 

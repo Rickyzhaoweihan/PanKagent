@@ -54,7 +54,8 @@ def public_run(run: dict) -> dict:
     plan=run.get('plan') or {}
     if plan.get('contract_sha256')!=CONTRACT_DIGEST and plan.get('steps'):
         result['rerun_advisory']='This saved result predates corrected terminology and relationship-path checks. Rerun the question before using its conclusion.'
-    return result
+    from .output_scope import enabled, project
+    return project(result) if enabled(run) else result
 
 
 def safe_error(exc: BaseException) -> dict:
@@ -74,8 +75,9 @@ def safe_error(exc: BaseException) -> dict:
 class CitationFilter:
     """Buffer incomplete citation markers so invalid step IDs never reach the UI."""
 
-    def __init__(self, count: int):
-        self.count, self.pending, self.invalid = count, "", False
+    def __init__(self, count):
+        self.allowed = set(range(1, count + 1)) if isinstance(count, int) else {int(x[1:]) for x in count}
+        self.pending, self.invalid = "", False
         self.seen: set[int] = set()
 
     def feed(self, value: str, final: bool = False) -> str:
@@ -87,7 +89,7 @@ class CitationFilter:
                 self.pending, value = value[start:], value[:start]
 
         def replace(match):
-            if 1 <= int(match.group(1)) <= self.count:
+            if int(match.group(1)) in self.allowed:
                 self.seen.add(int(match.group(1)))
                 return match.group(0)
             self.invalid = True
@@ -114,11 +116,14 @@ def normalize_plan(plan: dict) -> dict:
         plan["steps"][index] = repair_step_constraints(step)
     plan.setdefault("literature", False)
     plan.setdefault("clarification", None)
-    if not plan["steps"] and not plan["clarification"]:
+    if not plan["steps"] and not plan["clarification"] and plan.get("plan_mode") not in {"literature_only", "session_summary"}:
         from .plan_recovery import mark_failure
         plan = mark_failure(plan)
     from .investigations import group_plan
-    return group_plan(plan)
+    plan = group_plan(plan)
+    for index, step in enumerate(plan["steps"]):
+        step["evidence_id"] = f"G{index + 1}"
+    return plan
 
 
 def aggregate_evidence(previous: dict) -> dict:
@@ -134,7 +139,8 @@ def aggregate_evidence(previous: dict) -> dict:
                     seen.add(identity)
                     result[kind].append(item)
     for index, step in enumerate(steps):
-        step["evidence_id"] = f"G{index + 1}"
+        from .evidence_identity import evidence_id
+        step["evidence_id"] = evidence_id(step, index)
         result["queries"].extend(step.get("queries", []))
         provenance = step.get("provenance", [])
         result["provenance"].extend(provenance if isinstance(provenance, list) else [provenance])
@@ -255,6 +261,8 @@ class Runtime:
         stage = payload.get("stage") if event_type == "progress" else None
         if stage in {"planning", "resolving_entities", "preparing_preview", "preparing_execution", "reusing_preview", "generating_cypher", "validating", "querying_graph", "writing_answer", "searching_literature", "queued"}:
             (await self.io.call(self.store.update_if_active, run_id, stage=stage))
+        from .output_scope import enabled, project
+        if enabled(run): payload = project(payload, context=run)
         (await self.io.call(self.store.event_if_active, run_id, event_type, payload))
 
     async def heartbeat(self, run_id: str):
@@ -312,7 +320,16 @@ class Runtime:
                 instruction = metadata.get('revision_instruction') or run['question']
                 grounding = None
                 fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
-                if fast:
+                from .planning_fastpath import literature_request_plan
+                literature_plan = literature_request_plan(run["question"])
+                from .session_summary import plan as summary_plan
+                prior_answer = await self.io.call(self.store.latest_answered_run, run['session_id']) if run['include_context'] else None
+                summary = summary_plan(run['question'], prior_answer)
+                if summary:
+                    proposed = summary
+                elif literature_plan and not fast:
+                    proposed = literature_plan
+                elif fast:
                     proposed = deepcopy(parent['plan'])
                     self.metrics.count('planning_model_bypassed')
                     (await self.io.call(self.store.audit_event, run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'}))
@@ -321,7 +338,11 @@ class Runtime:
                     plan_options = {}
                     if hasattr(self.graph, 'ground_question'):
                         grounding_started = time.monotonic()
-                        grounding = await self.graph.ground_question(run['question'])
+                        from .followup_scope import grounding_question
+                        scoped_question = grounding_question(run['question'], prior_answer)
+                        grounding = await self.graph.ground_question(scoped_question)
+                        if scoped_question != run['question']:
+                            grounding['session_scope_question'] = scoped_question
                         (await self.io.call(self.store.audit_event, run_id, 'preplanning_grounding', grounding))
                         self.metrics.observe('preplanning_grounding', time.monotonic() - grounding_started)
                         import inspect
@@ -350,10 +371,19 @@ class Runtime:
                         "before_steps": (parent.get("plan") or {}).get("steps", []),
                         "after_steps": deepcopy(plan["steps"])}
                 plan = enable_literature(plan)
+                requested_literature = apply_literature_policy(plan, run["question"])
+                if requested_literature['literature_intent']['reason'] == 'explicit_request':
+                    plan['literature_intent'] = requested_literature['literature_intent']
+                if plan.get('plan_mode') == 'session_summary':
+                    plan['literature'] = False
+                    plan['literature_intent'] = {'included':False,'reason':'reuse_session_summary','policy_version':'session-evidence-summary-v1'}
                 plan.pop("review_ready", None)
                 plan["contract_sha256"] = CONTRACT_DIGEST
                 plan["original_question"] = metadata.get("original_question", run["question"])
                 plan["include_context"] = run["include_context"]
+                from .output_scope import aggregate_only, VERSION as OUTPUT_SCOPE_VERSION
+                if aggregate_only(run["question"]):
+                    plan["output_scope"] = {"mode": "aggregate_only", "version": OUTPUT_SCOPE_VERSION}
                 (await self.io.call(self.store.update_if_active, run_id, plan=plan))
                 preview_started = time.monotonic()
                 try:
@@ -454,6 +484,9 @@ class Runtime:
 
     @staticmethod
     def annotate_plan_evidence(plan, previous):
+        for index, step in enumerate(plan.get('steps', [])):
+            if step['id'] in previous:
+                previous[step['id']].setdefault('evidence_id', f'G{index + 1}')
         from .coloc_scope import summarize_linkage
         linkage = summarize_linkage(plan, previous)
         for group in linkage.get('groups', []):
@@ -521,6 +554,17 @@ class Runtime:
             result = await self.graph.execute(step, previous, progress)
             (await self.io.call(self.check_active, run_id))
             result.setdefault("step_id", step["id"])
+            plan = (await self.io.call(self.store.get, run_id)).get("plan") or {}
+            position = next((i for i, item in enumerate(plan.get("steps", [])) if item["id"] == step["id"]), 0)
+            result["evidence_id"] = step.get("evidence_id", f"G{position + 1}")
+            execution = result.get('retrieval_execution') or {}
+            state = ('skipped_empty_dependency' if result.get('execution_status') == 'skipped_empty_dependency'
+                else 'failed' if result.get('status') in {'failed', 'blocked', 'unavailable'}
+                else 'truncated' if result.get('truncated') else 'executed_empty'
+                if result.get('status') == 'empty' and execution.get('completed') is True
+                else 'executed' if execution.get('completed') is True else 'unknown')
+            result['execution_provenance'] = {'version': 'execution-provenance-v1', 'outcome': state,
+                'completed': execution.get('completed'), 'cursor_exhausted': execution.get('cursor_exhausted')}
             result.setdefault("question", step["question"])
             if result.get("status") != "failed":
                 if (getattr(self.graph, "last_generation_success", None) != prior_generation
@@ -737,6 +781,22 @@ class Runtime:
         return None
 
     async def graph_answer(self, run_id: str, run: dict) -> tuple[dict, bool]:
+        if run['plan'].get('plan_mode') == 'session_summary':
+            from .session_summary import answer as summarize, VERSION
+            source = await self.io.call(self.store.get, run['plan']['session_summary']['source_run_id'])
+            if not source or source['session_id'] != run['session_id']:
+                raise ValueError('summary_source_unavailable')
+            answer = summarize(source)
+            evidence = deepcopy(source.get('evidence') or {})
+            evidence['session_summary'] = {**run['plan']['session_summary'], 'new_search_performed':False}
+            evidence['answer_validation'] = {'valid':True,'scope':'deterministic_session_facts','version':VERSION}
+            await self.io.call(self.store.update_if_active, run_id, evidence=evidence, graph_answer=answer)
+            await self.emit(run_id, 'graph_answer', {'answer':answer,'evidence':evidence,'delta':False})
+            return evidence, source['status']=='completed'
+        if run["plan"].get("plan_mode") == "literature_only":
+            evidence = {"steps": [], "nodes": [], "edges": [], "completeness": "not_requested", "literature_mode": "literature_only"}
+            await self.io.call(self.store.update_if_active, run_id, evidence=evidence, graph_answer="")
+            return evidence, True
         issue = self.confirmation_preview_issue(run, check_freshness=False)
         if issue:
             recovery = self.preview_recovery(run, issue)
@@ -790,6 +850,7 @@ class Runtime:
                 result = await self.execute_step(run_id, step, previous, before_query=wait_prior)
                 await wait_prior()
                 previous[step["id"]] = result
+            previous[step["id"]]["evidence_id"] = cached.get("evidence_id", f"G{index + 1}") if reason is None else f"G{index + 1}"
             evidence = aggregate_evidence(previous)
             evidence["preview_reuse"] = reuse_info
             (await self.io.call(self.store.update_if_active, run_id, evidence=evidence))
@@ -818,7 +879,7 @@ class Runtime:
         evidence["category_outcomes"] = coverage(run["plan"], previous)
         await self.emit(run_id, "progress", {"stage": "writing_answer"})
         answer = ""
-        citation_filter = CitationFilter(len(previous))
+        citation_filter = CitationFilter([step["evidence_id"] for step in previous.values()])
         synthesis_error = None
         synthesis_started = False
         from .population_completeness import population_recovery
@@ -860,18 +921,22 @@ class Runtime:
                 visible = citation_filter.feed(token)
                 if visible:
                     answer += visible
-                    (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
-                    await self.emit(run_id, "graph_answer", {"text": visible, "delta": True})
+                    # Keep progress events live, but buffer the whole answer until
+                    # schema/fact and citation validation has finished.
             tail = citation_filter.feed("", final=True)
             (await self.io.call(self.check_active, run_id))
             if tail:
                 answer += tail
-                await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
+
             if synthesis_started:
                 self.health.record_inference("claude", True)
             generation = getattr(options.get('prepared'), 'generation', {})
             if generation:
                 evidence['answer_generation'] = deepcopy(generation)
+            if generation.get('answer_validation'):
+                evidence['answer_validation'] = deepcopy(generation['answer_validation'])
+                if not generation['answer_validation']['valid']:
+                    synthesis_error = {'category': 'answer_validation', 'message': 'A validated partial evidence summary is shown because answer selection was invalid.'}
             if generation.get('truncated'):
                 synthesis_error = {'category':'answer_output_limit',
                                    'message':'The written answer reached its length limit before finishing. The retrieved evidence is preserved.'}
@@ -899,15 +964,14 @@ class Runtime:
             reference_validation["invalid_references_removed"] = True
         elif synthesis_error is None and not citation_filter.seen:
             # Identify supplied evidence without asserting claim-level support.
-            supplied = [f"[G{index}]" for index, step in enumerate(previous.values(), 1)
+            supplied = [f"[{step['evidence_id']}]" for step in previous.values()
                         if step.get("status") in {"complete", "partial"}
                         and any(step.get(kind) for kind in ("nodes", "edges", "rows"))]
             if supplied:
                 footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
                 answer += footer
                 reference_validation["application_fallback"] = True
-                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
-                await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
+
         evidence["follow_up_questions"] = [] if status_message else followup_questions(previous)
         evidence["answer_reference_validation"] = reference_validation
         if synthesis_error:
@@ -977,7 +1041,7 @@ class Runtime:
                 current = (await self.io.call(self.store.get, run_id))
                 allowed, gate_reason = literature_gate(run["plan"], current.get("evidence") or {}, current.get("graph_answer"))
                 (await self.io.call(self.store.event_if_active, run_id, "literature_gate", {"allowed": allowed, "reason": gate_reason, "version": LITERATURE_GATE_VERSION}))
-                if allowed and graph_ok:
+                if allowed and (graph_ok or (run["plan"].get("literature_intent") or {}).get("reason") == "explicit_request" or run["plan"].get("plan_mode") == "literature_only"):
                     (await self.io.call(self.store.event_if_active, run_id, "progress", {"stage": "searching_literature", "parallel": False}))
                     literature_task = asyncio.create_task(retrieve_literature())
                 graph_visible = True
@@ -1264,6 +1328,9 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                 batch = (await runtime.io.call(runtime.store.events_after, run_id, cursor))
                 for event in batch:
                     cursor = event["sequence"]
+                    from .output_scope import enabled, project
+                    snapshot = await runtime.io.call(runtime.store.get, run_id)
+                    if enabled(snapshot): event = project(event, context=snapshot)
                     yield sse_event_bytes(event)
                 if not batch and (await runtime.io.call(runtime.store.get, run_id))["status"] in TERMINAL:
                     return

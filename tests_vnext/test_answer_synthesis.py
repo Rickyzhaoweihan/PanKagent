@@ -73,9 +73,13 @@ class MockStream:
 
     async def get_final_message(self):
         self.owner.final_messages += 1
+        body = json.loads(self.owner.stream_calls[-1]['messages'][0]['content'])
+        selection = {'fact_ids': [f['id'] for f in body['facts']][:24]}
+        if '[G99]' in ''.join(self.owner.tokens): selection = {'fact_ids': ['G99:unknown']}
+        content = [SimpleNamespace(type='tool_use', name='select_answer_facts', input=selection)] if self.owner.tokens else []
         return SimpleNamespace(
             usage=SimpleNamespace(model_dump=lambda: deepcopy(USAGE)),
-            stop_reason="end_turn",
+            stop_reason="tool_use", content=content,
         )
 
 
@@ -156,15 +160,17 @@ def test_prepared_bim_answer_uses_one_stream_and_settles_actual_cost(monkeypatch
             reserved_during_stream = []
             fake.on_enter = lambda: reserved_during_stream.append(gateway.budget.snapshot())
             answer = "".join([text async for text in gateway.synthesize(QUESTION, evidence, prepared=prepared)])
-            assert answer == "".join(tokens)
+            assert "RNA detection" in answer and "12.34567" in answer
+            assert prepared.generation["answer_validation"]["valid"] is True
             assert len(fake.stream_calls) == fake.final_messages == 1
             assert fake.create_calls == []
             call = fake.stream_calls[0]
             assert call["model"] == "claude-sonnet-5"
             assert call["thinking"] == {"type": "disabled"}
-            assert not {"temperature", "top_p", "top_k", "tools", "tool_choice"} & call.keys()
-            assert call["system"] == prepared.system
-            assert call["messages"] == [{"role": "user", "content": prepared.body}]
+            assert not {"temperature", "top_p", "top_k"} & call.keys()
+            assert call["tool_choice"] == {"type":"tool", "name":"select_answer_facts"}
+            assert 'select_answer_facts' in call['system'][0]['text']
+            assert json.loads(call['messages'][0]['content']) == {'question':QUESTION, 'facts':prepared.facts}
             assert reserved_during_stream[0]["pending_calls"] == 1
             assert reserved_during_stream[0]["reserved_usd"] > 0
             settled = gateway.budget.snapshot()
@@ -384,14 +390,15 @@ def test_answer_profile_persists_and_replays_once_with_citation_filter(monkeypat
                 assert profile["style_version"]
                 assert profile["source_commit"]
                 assert profile["context_sampled"] is False
-                assert run["evidence"]["answer_reference_validation"]["valid"] is not invalid_reference
+                assert run["evidence"]["answer_reference_validation"]["valid"] is True
+                assert run["evidence"]["answer_validation"]["valid"] is not invalid_reference
                 assert run["evidence"]["answer_reference_validation"]["model_references_present"] is True
                 assert run["evidence"]["answer_reference_validation"]["application_fallback"] is False
                 assert "Graph evidence supplied:" not in run["graph_answer"]
                 assert "[G1]" in run["graph_answer"]
                 assert "[G99]" not in run["graph_answer"]
                 if invalid_reference:
-                    assert "[unverified reference]" in run["graph_answer"]
+                    assert "Partial answer" in run["graph_answer"]
 
                 events = sse_events(await client.get(created["events_url"]))
                 profiles = [event for event in events if event["type"] == "answer_profile"]
@@ -404,7 +411,7 @@ def test_answer_profile_persists_and_replays_once_with_citation_filter(monkeypat
                 assert profile_event["sequence"] < graph_events[0]["sequence"]
                 assert graph_events[-1]["payload"]["evidence"]["answer_profile"] == profile
                 deltas = "".join(event["payload"]["text"] for event in graph_events if event["payload"].get("delta"))
-                assert deltas == run["graph_answer"]
+                assert deltas == ""  # Validate before display: only the final answer event is public.
                 assert "[G99]" not in deltas
                 assert events[-1]["type"] == "terminal"
 
@@ -534,26 +541,19 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 assert gateway.budget.snapshot()["pending_calls"] == 0
                 validation = run["evidence"]["answer_reference_validation"]
                 assert validation["scope"] == "reference_ids_only"
-                assert validation["model_references_present"] is False
-                assert validation["application_fallback"] is bool(expected_ids)
+                assert validation["model_references_present"] is bool(expected_calls)
+                assert validation["application_fallback"] is False
                 events = sse_events(await client.get(created["events_url"]))
                 graph_events = [event for event in events if event["type"] == "graph_answer"]
-                deltas = [event["payload"]["text"] for event in graph_events if event["payload"].get("delta")]
-                if expected_ids:
-                    footer = "\n\nGraph evidence supplied: " + ", ".join(f"[G{index}]" for index in expected_ids) + "."
-                    assert run["graph_answer"] == "".join(tokens) + footer
-                    assert deltas[-1] == footer
-                    assert "".join(deltas) == run["graph_answer"]
-                    assert validation["valid"] is True
-                else:
-                    assert "Graph evidence supplied:" not in run["graph_answer"]
-                    assert not any("Graph evidence supplied:" in delta for delta in deltas)
-                assert graph_events[-1]["payload"]["answer"] == run["graph_answer"]
-                assert graph_events[-1]["payload"]["evidence"]["answer_reference_validation"] == validation
-                if "[G99]" in "".join(tokens):
-                    assert validation["valid"] is False
-                    assert validation["invalid_references_removed"] is True
-                    assert "[unverified reference]" in run["graph_answer"]
+                assert len(graph_events) == 1
+                assert graph_events[0]["payload"]["delta"] is False
+                assert graph_events[0]["payload"]["answer"] == run["graph_answer"]
+                assert "Graph evidence supplied:" not in run["graph_answer"]
+                if expected_calls:
+                    assert "RNA detection" in run["graph_answer"]
+                    valid_selection = bool(tokens) and "[G99]" not in "".join(tokens)
+                    assert run["evidence"]["answer_validation"]["valid"] is valid_selection
+                assert "[G99]" not in run["graph_answer"]
                 assert app.state.runtime.store.get(created["run_id"])["graph_answer"] == run["graph_answer"]
     asyncio.run(scenario())
 

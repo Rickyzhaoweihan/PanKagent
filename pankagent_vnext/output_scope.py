@@ -1,0 +1,72 @@
+"""Versioned aggregate-only boundary. Historical unmarked runs are unchanged."""
+from copy import deepcopy
+import re
+
+VERSION = 'aggregate-output-v1'
+PRIVATE_TYPES = {'donor', 'Sample_node'}
+
+
+def aggregate_only(question):
+    return bool(re.search(r'\baggregate(?:s|[- ]only)?\b|\bcounts? only\b|'
+                          r'\b(?:without|no|do not (?:show|list|include|print))\b[^.]{0,60}'
+                          r'\b(?:donor|sample)\s*(?:ids?|identifiers?)\b', question, re.I))
+
+
+def enabled(run):
+    return (run.get('output_scope') or (run.get('plan') or {}).get('output_scope') or {}).get('mode') == 'aggregate_only'
+
+
+def project(value, *, context=None):
+    """Remove record-level channels on a copy; retain computed aggregate facts.
+
+    This is applied before synthesis, at public snapshots and SSE replay. Results
+    consumes the same public snapshot, so its graphs/tables/downloads inherit it.
+    Raw canonical evidence stays private for query and count validation.
+    """
+    hidden = set()
+    def private(obj):
+        return isinstance(obj, dict) and bool(set(obj.get('labels') or []) & PRIVATE_TYPES)
+    def collect(obj):
+        if isinstance(obj, list):
+            for item in obj: collect(item)
+        elif isinstance(obj, dict):
+            if private(obj):
+                for key in ('id', 'name'):
+                    for source in (obj, obj.get('properties') or {}):
+                        if source.get(key) is not None: hidden.add(str(source[key]))
+            for key, item in obj.items():
+                if key in {'donor_id', 'sample_id'} and item is not None: hidden.add(str(item))
+                collect(item)
+    collect(value)
+    if context is not None: collect(context)
+    def clean(obj):
+        if isinstance(obj, list):
+            return [clean(x) for x in obj if not private(x)]
+        if isinstance(obj, str):
+            if obj in hidden: return '[individual identifier withheld]'
+            for identifier in sorted(hidden, key=len, reverse=True):
+                if len(identifier) >= 4:
+                    obj = re.sub(r'(?<!\w)' + re.escape(identifier) + r'(?!\w)', '[individual identifier withheld]', obj)
+            return obj
+        if not isinstance(obj, dict): return obj
+        result = {}
+        for key, item in obj.items():
+            if key in {'queries', 'validation', 'generator_attempts', 'resolved_entities',
+                       'resolved_constraints', 'rows', 'series', 'donor_id', 'sample_id',
+                       'donor_ids', 'sample_ids', 'parameters', 'candidate_cypher', 'cypher'}:
+                continue
+            if key == 'edges':
+                item = [e for e in item if str(e.get('start_id')) not in hidden and str(e.get('end_id')) not in hidden]
+            result[key] = clean(item)
+        if any(private(n) for n in obj.get('nodes', [])):
+            from .semantic_registry import donor_summary
+            summary = donor_summary(obj)
+            if summary: result['donor_summary'] = clean(summary)
+            result['aggregate_record_counts'] = {
+                'donors': len({n.get('id') for n in obj['nodes'] if 'donor' in n.get('labels', [])}),
+                'samples': len({n.get('id') for n in obj['nodes'] if 'Sample_node' in n.get('labels', [])}),
+                'count_scope': 'retrieved records', 'complete': obj.get('status') == 'complete' and obj.get('truncated') is False}
+        return result
+    result = clean(deepcopy(value))
+    if isinstance(result, dict): result['output_scope'] = {'mode': 'aggregate_only', 'version': VERSION}
+    return result

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-VERSION = 'pankgraph-semantics-v7-explicit-assay-scope'
+VERSION = 'pankgraph-semantics-v8-source-stage-intent'
 RELEASE = 'PanKgraph_08_04'
 SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
 STAGES = {
@@ -71,12 +71,23 @@ def dataset_source_owner(question, value):
                       or re.match(r'[\"\']?\s+as\s+(?:the\s+)?(?:sample|assay)[- ](?:data[- ]?)?(?:source|provider)\b', after, re.I))
         donor = bool(re.search(r'(?:\bdonor\s*\.\s*data_source|\b(?:donor|cohort)[- ](?:data[- ]?)?source)\s*(?:is|=|:|of|from)?\s*[\"\']?$', before, re.I)
                      or re.match(r'[\"\']?\s+(?:donors?|cohort)\b', after, re.I))
+        # Ordinary 'metadata' denotes information, not a request to select
+        # the dataset whose recorded source happens to be named Metadata.
+        if value.casefold() == 'metadata' and not (sample or donor):
+            continue
         if sample:
             owners.add('Sample_node')
         elif donor or re.search(r'\b(?:donors?|samples?|cohort)\b', before + ' ' + after, re.I):
             owners.add('donor')
     return owners.pop() if len(owners) == 1 else None
 
+
+
+def diagnosis_filter_intent(text):
+    # Explanation and exclusion clauses do not request another cohort filter.
+    text = re.sub(r'\b(?:distinguish|differentiate|explain|compare)\b[^.!?;]*', '', text, flags=re.I)
+    text = re.sub(r"\b(?:without|do not|don't|no)\b[^.!?;]*\b(?:diagnos\w*|clinical diabetes|diabetes_type)\b[^.!?;]*", '', text, flags=re.I)
+    return bool(re.search(r'diagnos|clinical diabetes|disease (?:link|category)|diabetes_type', text, re.I))
 
 def _diagnosis_request_text(step, vocabulary):
     request = step.get('semantic_request') or {}
@@ -268,7 +279,7 @@ def resolve(step, vocabulary, release):
         issues.append('HPAP donor source is not verified in this release.')
     disease=re.search(r'\bT([12])D\b|\btype\s*([12])\s*diabetes\b',q,re.I)
     diagnosis_text, diagnosis_source = _diagnosis_request_text(out, vocabulary)
-    explicit_diagnosis = bool(re.search(r'diagnos|clinical diabetes|disease (?:link|category)|diabetes_type', diagnosis_text, re.I))
+    explicit_diagnosis = diagnosis_filter_intent(diagnosis_text)
     if diagnosis_source == 'revision_add_clinical_filter':
         explicit_diagnosis = True
         disease = re.search(r'\bT([12])D\b|\btype\s*([12])\s*diabetes\b', diagnosis_text, re.I) or disease

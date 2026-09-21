@@ -4,7 +4,7 @@ import time
 from urllib.parse import urlencode
 
 BASE = 'https://functional.pankgraph.org'
-VERSION = 'functional-adapter-3'
+VERSION = 'functional-adapter-4-contributors'
 FILTERS = {'disease','sex','center','race','age_min','age_max','bmi_min','bmi_max'}
 TRACES = {'ins_ieq','ins_content','gcg_ieq','gcg_content'}
 PATHS = {'health','api/data/summary','api/data/donors','api/charts/cohort-traces','api/charts/cohort-traces.png',
@@ -41,6 +41,37 @@ async def fetch(http,path,params):
             if len(content)>8*1024*1024:raise ValueError('functional_response_too_large')
         return bytes(content),response.headers.get('content-type','application/json')
 
+def contributor_counts(data):
+    """Count unique finite contributors, never selected inventory as a mean N.
+
+    Older sources can omit individual series values. That means unknown, not
+    zero contributors. Duplicate series for a donor count once per timepoint.
+    """
+    times = data.get('times', [])
+    series = data.get('series', [])
+    selected = {row.get('donor_id') for row in series if row.get('donor_id')}
+    verified = (bool(series) or not any(v is not None for v in data.get('mean', []))) and all(isinstance(row.get('values'), list)
+                   and len(row['values']) == len(times) and row.get('donor_id')
+                   and all(v is None or (isinstance(v, (int, float))
+                           and not isinstance(v, bool) and math.isfinite(v))
+                           for v in row['values']) for row in series)
+    contributors = [set() for _ in times]
+    if verified:
+        for row in series:
+            for index, value in enumerate(row['values']):
+                if value is not None:
+                    contributors[index].add(row['donor_id'])
+    counts = [len(ids) for ids in contributors] if verified else [None] * len(times)
+    return {'selected_donors': len(selected),
+            'contributing_donors': len(set().union(*contributors)) if verified else None,
+            'contributing_donors_by_timepoint': counts,
+            'contributor_counts_verified': bool(verified),
+            'counting_unit': 'unique donors with finite measurements',
+            'trace_points': [{'time_minutes': t, 'mean_response': m,
+                              'contributing_donors': n}
+                             for t, m, n in zip(times, data.get('mean', []), counts)]}
+
+
 async def evidence(http,params,question,graph_version):
     import json
     params=parameters(params,trace=True)
@@ -55,7 +86,8 @@ async def evidence(http,params,question,graph_version):
     step={'step_id':'functional','status':'complete' if rows else 'empty','question':question,
           'nodes':[],'edges':[],'rows':rows,'graph_version':graph_version,'truncated':False,
           'functional_metadata':{'filters':params,'trace_type':data.get('trace_type'), 'y_label':data.get('y_label'),
-              'stimuli':data.get('stimuli',[]),'unique_donors':len({r.get('donor_id') for r in data.get('series',[]) if r.get('donor_id')})},
+              'stimuli':data.get('stimuli',[]),'unique_donors':len({r.get('donor_id') for r in data.get('series',[]) if r.get('donor_id')}),
+              **contributor_counts(data)},
           'provenance':[{'source':source,'retrieved_at':time.time(),'adapter_version':VERSION}],
           'validation':[{'valid':True,'checks':['typed_filters','bounded_trace_shape']}], 'queries':[]}
     return {'nodes':[],'edges':[],'rows':rows,'steps':[step],'graph_version':graph_version,'completeness':'complete',
