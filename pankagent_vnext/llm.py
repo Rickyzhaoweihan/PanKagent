@@ -92,7 +92,7 @@ from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
 OVERSIZED_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/oversized_results.md').read_text()
 INDEPENDENT_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/independent_results.md').read_text()
 ANSWER_CONTRACT += '\n' + INDEPENDENT_RESULT_CONTRACT
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+'\ngrounded-synthesis-v5').encode()).hexdigest()[:16]
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+Path(__file__).with_name('answer_blocks.py').read_text()+'\ngrounded-synthesis-v6').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -165,6 +165,10 @@ class ClaudeGateway:
                 proposal, issue = compile_requested_scope(question, grounding, proposal)
             if issue is None:
                 proposal, issue = compile_genomic_scope(question, grounding, proposal)
+            if issue is None:
+                from .dependency_scope import compile_inputs
+                try: proposal = compile_inputs(proposal)
+                except ValueError as exc: issue = str(exc)
             return proposal, issue
         scope_question = (grounding or {}).get('session_scope_question') or question
         cache_key = None

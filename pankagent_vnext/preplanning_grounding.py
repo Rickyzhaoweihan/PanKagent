@@ -57,6 +57,7 @@ _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta
 _REQUEST_VERBS = {"find", "show", "list", "count", "compare", "describe", "explain", "identify", "retrieve", "search", "get", "check", "tell", "give"}
 _SCHEMA_ROLE_PATTERNS = {
     "ontology_vocabulary": r"\b(?:GO|gene ontology)(?:\s+(?:term|annotation|evidence|biological|molecular|cellular|for|of))|\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\s+(?:GO|annotation|term)",
+    "analysis_collection_vocabulary": r"\b(?:gene[- ]sets?|effector[- ]sets?|result[- ]sets?|set of (?:genes|variants|records))\b",
     "signal_context_vocabulary": r"\b(?:credible[- ]sets?|lead[- ]variants?|fine[- ]mapping)\b",
     "evidence_class_vocabulary": r"\b(?:evidence|measurement|assay|record|relationship)[- ]types?\b",
     "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",

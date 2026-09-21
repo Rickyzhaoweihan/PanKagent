@@ -320,12 +320,15 @@ class Runtime:
                 instruction = metadata.get('revision_instruction') or run['question']
                 grounding = None
                 fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
-                from .planning_fastpath import literature_request_plan
+                from .planning_fastpath import literature_request_plan, unsupported_analysis_plan
                 literature_plan = literature_request_plan(run["question"])
                 from .session_summary import plan as summary_plan
                 prior_answer = await self.io.call(self.store.latest_answered_run, run['session_id']) if run['include_context'] else None
                 summary = summary_plan(run['question'], prior_answer)
-                if summary:
+                unsupported = unsupported_analysis_plan(run['question'])
+                if unsupported:
+                    proposed = unsupported
+                elif summary:
                     proposed = summary
                 elif literature_plan and not fast:
                     proposed = literature_plan

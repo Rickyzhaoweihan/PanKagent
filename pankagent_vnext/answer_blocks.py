@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v2'
+VERSION = 'verified-answer-blocks-v3'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -31,7 +31,9 @@ LABELS = {'GENE_DETECTED_IN': 'RNA detection', 'GENE_ENRICHED_IN': 'RNA enrichme
           'PART_OF_QTL_SIGNAL': 'Molecular QTL membership', 'PART_OF_GWAS_SIGNAL': 'GWAS membership',
           'SIGNAL_COLOC_WITH': 'Colocalization', 'EFFECTOR_GENE_OF': 'Effector prioritization'}
 CONTEXT = ('condition', 'tissue_name', 'tissue_id', 'data_source', 'data_version',
-           'credible_set', 'credibleset', 'credible_set_id', 'phenotype', 'experimental_system',
+           'credible_set', 'credibleset', 'credible_set_id', 'phenotype', 'coloc_dataset', 'gwas_signal_id', 'qtl_signal_id', 'gwas_lead_vars', 'qtl_lead_vars',
+           'gwas_locus_name', 'qtl_locus_name', 'locus_name', 'lead_status', 'method',
+           'effect_allele', 'other_allele', 'non_effect_allele', 'experimental_system',
            'experimental_system_type', 'qtl_type', 'type', 'molecular_trait', 'data_source_url', 'throughput', 'pubmed_id', 'publication', 'confidence', 'classification')
 
 
@@ -79,7 +81,7 @@ def catalogue(evidence):
                 + ('These are retrieved-record totals.' if aggregate.get('complete') else 'Retrieval is incomplete; these are retained-record counts only.')
                 + ' Recorded stage is distinct from diagnosis; assay records are not donors.', True)
             continue
-        if not (nodes or edges or rows):
+        if not (nodes or edges or rows or step.get('functional_metadata')):
             verified_empty = (bool(step.get('queries')) and execution.get('completed') is True
                               and execution.get('cursor_exhausted') is True and not step.get('truncated'))
             add(eid, 'scope', f'{title}: ' + ('the executed query returned no matching records in its recorded scope.'
@@ -89,8 +91,11 @@ def catalogue(evidence):
             add(eid, 'input_scope', 'GWAS membership was checked for verified lead variants recorded by the preceding gene-scoped colocalization check; this is not a disease-wide GWAS search or exhaustive gene-locus fine mapping.', True)
         suffix = (' Coverage is incomplete; these are the retained matches, not an exhaustive list.'
                   if step.get('truncated') or step.get('status') == 'partial' else '')
-        add(eid, 'scope', f'{title}: {len(edges)} relationship records, {len(nodes)} entities and '
-            f'{len(rows)} result rows retained.' + suffix, True)
+        if step.get('functional_metadata'):
+            add(eid, 'scope', f'{title}: aggregate functional measurements are available for the recorded cohort.' + suffix, True)
+        else:
+            add(eid, 'scope', f'{title}: {len(edges)} relationship records, {len(nodes)} entities and '
+                f'{len(rows)} result rows retained.' + suffix, True)
         index = {n['id']: n for n in nodes if isinstance(n, dict) and 'id' in n}
 
         def identity(identifier):
@@ -142,6 +147,22 @@ def catalogue(evidence):
                             'does not establish statistical significance or causality.')
         if len(edges) > 40:
             add(eid, 'context_omission', 'Detailed numerical comparisons are limited to 40 retained relationship records in this answer; all retrieved relationships remain in the result. This answer limit does not mean evidence is absent.', True)
+        if any(e.get('type') == 'SIGNAL_COLOC_WITH' for e in edges):
+            from .answer_facts import build_answer_facts
+            roles = (build_answer_facts(step) or {}).get('signal_roles') or {}
+            for role in roles.get('records', []):
+                if role.get('relation') != 'SIGNAL_COLOC_WITH' or not role.get('typed_endpoints_verified'):
+                    continue
+                gwas, qtl = role.get('gwas_lead_variant_ids'), role.get('qtl_lead_variant_ids')
+                if gwas is not None and qtl is not None:
+                    shared = role.get('shared_recorded_lead_variant_ids')
+                    add(eid, 'signal_roles', 'Recorded GWAS lead variants: ' + ', '.join(map(text,gwas))
+                        + '; QTL lead variants: ' + ', '.join(map(text,qtl))
+                        + '; shared recorded leads: ' + (', '.join(map(text,shared)) if shared else 'none')
+                        + '. Lead identity is separate from credible-set membership; different leads do not invalidate recorded colocalization.', True)
+            add(eid, 'limitation', 'Colocalization is recorded statistical evidence of a shared association signal under its source model; it is not proof of a causal gene or mechanism.', True)
+        if any(e.get('type') == 'PART_OF_GWAS_SIGNAL' for e in edges):
+            add(eid, 'limitation', 'GWAS association and fine-mapping posterior probabilities provide statistical support and variant prioritization, not proof of causality. Lead status is reported only when explicitly recorded; credible-set membership alone does not establish it.', True)
         if any(e.get('type') == 'T1D_DEG_IN' for e in edges):
             add(eid, 'limitation', 'The recorded differential-expression result does not by itself '
                 'establish cell specificity, a source-method significance threshold, or exclusion of technical artifacts.', True)

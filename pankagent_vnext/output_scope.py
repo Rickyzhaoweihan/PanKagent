@@ -2,7 +2,7 @@
 from copy import deepcopy
 import re
 
-VERSION = 'aggregate-output-v1'
+VERSION = 'aggregate-output-v2'
 PRIVATE_TYPES = {'donor', 'Sample_node'}
 
 
@@ -51,14 +51,17 @@ def project(value, *, context=None):
         if not isinstance(obj, dict): return obj
         result = {}
         for key, item in obj.items():
+            if key == 'rows' and isinstance(item, list) and item and all(isinstance(row, dict) and {'time_minutes','mean_response'} <= set(row) <= {'time_minutes','mean_response','unit'} for row in item):
+                result[key] = clean(item)
+                continue
             if key in {'queries', 'validation', 'generator_attempts', 'resolved_entities',
                        'resolved_constraints', 'rows', 'series', 'donor_id', 'sample_id',
                        'donor_ids', 'sample_ids', 'parameters', 'candidate_cypher', 'cypher'}:
                 continue
-            if key == 'edges':
+            if key == 'edges' and isinstance(item, list):
                 item = [e for e in item if str(e.get('start_id')) not in hidden and str(e.get('end_id')) not in hidden]
             result[key] = clean(item)
-        if any(private(n) for n in obj.get('nodes', [])):
+        if isinstance(obj.get('nodes'), list) and any(private(n) for n in obj['nodes']):
             from .semantic_registry import donor_summary
             summary = donor_summary(obj)
             if summary: result['donor_summary'] = clean(summary)

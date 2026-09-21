@@ -44,3 +44,11 @@ def literature_request_plan(question, history=()):
         'planning_route': {'kind': 'explicit_literature_only', 'claude_calls': 0},
         'literature_mode_version': 'independent-literature-v1'}, question)
     return plan if plan['literature'] else None
+
+
+def unsupported_analysis_plan(question):
+    if not re.search(r'\b(?:run|perform|execute|compute|calculate)\b[^.!?]{0,100}\bssgsea\b', question, re.I):
+        return None
+    from .plan_recovery import mark_failure
+    return mark_failure({'interpreted_question':question, 'proposal_issue':'unsupported_analysis:ssgsea',
+                         'literature':False, 'planning_route':{'kind':'unsupported_analysis','claude_calls':0}})

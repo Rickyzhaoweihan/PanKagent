@@ -248,11 +248,11 @@ def test_provider_schema_uses_supported_subset_and_local_length_guard():
 def test_evidence_type_grammar_does_not_add_a_gene_alias():
     from tests_vnext.test_preplanning_grounding import FakeGraph, make_index
     graph = FakeGraph()
-    graph.rows['Gene'].append({'id':'gene-type','name':'TYPE','labels':['Gene']})
+    graph.rows['Gene'].append({'id':'fixture-type-id','name':'TYPE','labels':['Gene']})
     index = make_index(graph)
     matches = index.match('Show the cell-type expression or enrichment evidence for CFTR. For each evidence type, explain the comparison.')
-    assert not any(m['state']=='resolved' and any(c['id']=='gene-type' for c in m['candidates']) for m in matches)
-    assert any(m['state']=='resolved' and any(c['id']=='gene-type' for c in m['candidates']) for m in index.match('Show gene TYPE'))
+    assert not any(m['state']=='resolved' and any(c['id']=='fixture-type-id' for c in m['candidates']) for m in matches)
+    assert any(m['state']=='resolved' and any(c['id']=='fixture-type-id' for c in m['candidates']) for m in index.match('Show gene TYPE'))
 
 
 def test_gwas_dependencies_preserve_exact_variants_and_disease():
@@ -275,8 +275,48 @@ def test_gwas_dependencies_preserve_exact_variants_and_disease():
 def test_credible_set_grammar_does_not_add_set_gene():
     from tests_vnext.test_preplanning_grounding import FakeGraph, make_index
     graph = FakeGraph()
-    graph.rows['Gene'].append({'id':'gene-set','name':'SET','labels':['Gene']})
+    graph.rows['Gene'].append({'id':'fixture-set-id','name':'SET','labels':['Gene']})
     index = make_index(graph)
     matches = index.match('What T1D GWAS evidence is recorded for rs689? Report the credible set and lead-variant context.')
-    assert not any(m['state']=='resolved' and any(c['id']=='gene-set' for c in m['candidates']) for m in matches)
-    assert any(m['state']=='resolved' and any(c['id']=='gene-set' for c in m['candidates']) for m in index.match('Show gene SET'))
+    assert not any(m['state']=='resolved' and any(c['id']=='fixture-set-id' for c in m['candidates']) for m in matches)
+    assert any(m['state']=='resolved' and any(c['id']=='fixture-set-id' for c in m['candidates']) for m in index.match('Show gene SET'))
+
+
+def test_aggregate_projection_accepts_numeric_display_counts():
+    r=project({'display':{'nodes':3,'edges':2},'steps':[{'nodes':[], 'edges':[], 'rows':[{'time_minutes':3,'mean_response':.04,'unit':'ng/min'}]}]})
+    assert r['display']=={'nodes':3,'edges':2}
+    assert r['steps'][0]['rows'][0]['mean_response']==.04
+
+
+def test_functional_facts_survive_aggregate_projection_without_graph_records():
+    step={'status':'complete','nodes':[],'edges':[],'rows':[], 'functional_metadata':{
+        'unique_donors':5,'contributing_donors':3,'contributing_donors_by_timepoint':[3]*50,
+        'trace_points':[{'time_minutes':3*i,'mean_response':.04,'contributing_donors':3} for i in range(1,51)],
+        'y_label':'ng/100 IEQs/min','filters':{'center':'HPAP','disease':'T1D'},'stimuli':[[0,150,'recorded stimulus']]}}
+    answer=fallback(catalogue([project(step)]))
+    assert 'Selected donor inventory: 5; donors contributing finite values: 3' in answer
+    assert '50 timepoints' in answer and 'no records are available' not in answer
+    assert 'recorded stimulus' in answer and 'HPAP' in answer
+
+
+def test_necessary_gene_gwas_input_is_independent_and_acyclic():
+    from pankagent_vnext.dependency_scope import compile_inputs
+    gene={'entity_type':'Gene','property':'id','operator':'=','value':'verified-gene'}
+    disease={'entity_type':'disease','property':'id','operator':'=','value':'verified-disease'}
+    p={'steps':[
+        {'id':'gwas','relation_types':['PART_OF_GWAS_SIGNAL'],'depends_on':[],'constraints':[gene,disease]},
+        {'id':'qtl','relation_types':['PART_OF_QTL_SIGNAL'],'depends_on':[],'constraints':[gene]},
+        {'id':'coloc','relation_types':['SIGNAL_COLOC_WITH'],'depends_on':['gwas','qtl'],'constraints':[gene,disease]}]}
+    result=compile_inputs(p);byid={s['id']:s for s in result['steps']}
+    assert byid['gwas']['depends_on']==['coloc'] and byid['coloc']['depends_on']==[]
+    assert byid['gwas']['constraints']==[disease]
+    assert [s['id'] for s in result['steps']].index('coloc') < [s['id'] for s in result['steps']].index('gwas')
+    assert p['steps'][0]['depends_on']==[]
+
+
+def test_ssgsea_request_is_honest_zero_cost_unsupported():
+    from pankagent_vnext.planning_fastpath import unsupported_analysis_plan
+    p=unsupported_analysis_plan('Find T1D effector genes and run ssGSEA on them')
+    assert not p['steps'] and 'No ssGSEA analysis was run' in p['clarification']
+    assert p['planning_route']['claude_calls']==0
+    assert unsupported_analysis_plan('What does ssGSEA mean?') is None

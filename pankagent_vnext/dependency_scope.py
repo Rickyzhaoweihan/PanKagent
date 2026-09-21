@@ -51,3 +51,47 @@ def normalize(plan):
         by_id[step['id']]=step
     result['dependency_scope_version']=VERSION
     return result
+
+
+def compile_inputs(plan):
+    """Represent a gene-scoped GWAS check through an existing variant source.
+
+    No extra graph check, relation or biological identity is invented. Identity
+    predicates move only to an existing independently requested matching check.
+    """
+    result = normalize(plan)
+    steps = result.get('steps', [])
+    def genes(step):
+        return {str(c.get('value')) for c in step.get('constraints', [])
+                if c.get('entity_type') == 'Gene' and c.get('property') in {'id','name','hgnc_symbol'}
+                and c.get('operator','=') == '='}
+    all_genes = set().union(*(genes(s) for s in steps)) if steps else set()
+    for step in steps:
+        if step.get('relation_types') != ['PART_OF_GWAS_SIGNAL'] or step.get('depends_on'):
+            continue
+        if any(c.get('entity_type') == 'variants' and c.get('property') in {'id','name'} for c in step.get('constraints',[])):
+            continue
+        target = genes(step) or all_genes
+        if len(target) != 1:
+            continue
+        if any(c.get('entity_type') == 'Gene' and c.get('property') not in {'id','name','hgnc_symbol'} for c in step.get('constraints',[])):
+            continue
+        sources = []
+        for relation in ('SIGNAL_COLOC_WITH','PART_OF_QTL_SIGNAL'):
+            sources = [s for s in steps if s['id'] != step['id'] and s.get('relation_types') == [relation]
+                       and genes(s) == target and not s.get('depends_on')]
+            if len(sources) == 1: break
+        if len(sources) != 1: continue
+        source = sources[0]
+        step['depends_on'] = [source['id']]
+        step['constraints'] = [c for c in step.get('constraints',[]) if c.get('entity_type') != 'Gene']
+        step['dependency_scope'] = {'version':VERSION, 'necessary_variant_input':source['id'],
+                                   'inherited_gene_identity':sorted(target)}
+    # Stable topological ordering; reject cycles instead of silently dropping a dependency.
+    ordered, pending, seen = [], list(steps), set()
+    while pending:
+        ready = next((s for s in pending if set(s.get('depends_on',[])) <= seen), None)
+        if ready is None: raise ValueError('invalid_plan_dependencies')
+        ordered.append(ready);seen.add(ready['id']);pending.remove(ready)
+    result['steps'] = ordered
+    return result

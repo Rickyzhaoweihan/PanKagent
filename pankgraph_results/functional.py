@@ -4,7 +4,7 @@ import time
 from urllib.parse import urlencode
 
 BASE = 'https://functional.pankgraph.org'
-VERSION = 'functional-adapter-4-contributors'
+VERSION = 'functional-adapter-5-aggregate'
 FILTERS = {'disease','sex','center','race','age_min','age_max','bmi_min','bmi_max'}
 TRACES = {'ins_ieq','ins_content','gcg_ieq','gcg_content'}
 PATHS = {'health','api/data/summary','api/data/donors','api/charts/cohort-traces','api/charts/cohort-traces.png',
@@ -90,8 +90,10 @@ async def evidence(http,params,question,graph_version):
               **contributor_counts(data)},
           'provenance':[{'source':source,'retrieved_at':time.time(),'adapter_version':VERSION}],
           'validation':[{'valid':True,'checks':['typed_filters','bounded_trace_shape']}], 'queries':[]}
-    return {'nodes':[],'edges':[],'rows':rows,'steps':[step],'graph_version':graph_version,'completeness':'complete',
+    result = {'nodes':[],'edges':[],'rows':rows,'steps':[step],'graph_version':graph_version,'completeness':'complete',
             'functional_filters':params,'scope_note':'Functional measurements from the selected cohort; no knowledge-graph or literature search was performed.'}
+    from pankagent_vnext.output_scope import aggregate_only, project
+    return project(result) if aggregate_only(question) else result
 
 
 def synthesis_body(question, steps):
@@ -102,3 +104,27 @@ def synthesis_body(question, steps):
     body=json.dumps({"question":question,"evidence":selected},ensure_ascii=False)
     if len(body.encode())>100000:raise ValueError("functional_synthesis_context_too_large")
     return body
+
+
+def aggregate_plot(evidence):
+    """Render only verified means; no upstream donor lines or labels enter assets."""
+    from io import BytesIO
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    metadata = next(s['functional_metadata'] for s in evidence['steps'] if s.get('functional_metadata'))
+    points = metadata['trace_points']
+    fig = Figure(figsize=(10, 5), layout='constrained')
+    FigureCanvasAgg(fig)
+    axis = fig.subplots()
+    axis.plot([p['time_minutes'] for p in points],
+              [p['mean_response'] if p['mean_response'] is not None else float('nan') for p in points],
+              color='#bd3838', label='Cohort mean', linewidth=2)
+    for i, interval in enumerate(metadata.get('stimuli', [])):
+        start,end,label = interval
+        axis.axvspan(start,end,color=('#eef4f8' if i % 2 == 0 else '#d7e9ed'),alpha=.6,zorder=0)
+        axis.text((start+end)/2,1.01,label,transform=axis.get_xaxis_transform(),ha='center',va='bottom',fontsize=7,rotation=35)
+    axis.set(xlabel='Time (minutes)',ylabel=metadata.get('y_label') or 'Recorded response')
+    axis.set_title(f"Selected donors: {metadata.get('unique_donors')}; contributing donors: {metadata.get('contributing_donors')}",pad=55)
+    axis.legend(loc='best');axis.grid(alpha=.15)
+    output=BytesIO();fig.savefig(output,format='png',dpi=130)
+    return output.getvalue()
