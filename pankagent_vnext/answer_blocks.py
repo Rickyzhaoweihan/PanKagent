@@ -81,6 +81,13 @@ def catalogue(evidence):
             add(eid, 'cohort', f"{title}: {aggregate['donors']} unique donors and {aggregate['samples']} assay/sample records retained. "
                 + ('These are retrieved-record totals.' if aggregate.get('complete') else 'Retrieval is incomplete; these are retained-record counts only.')
                 + ' Recorded stage is distinct from diagnosis; assay records are not donors.', True)
+            cohort = step.get('aggregate_cohort_facts') or {}
+            for key,label in [('recorded_stage_counts','Recorded stages'), ('recorded_source_counts','Recorded donor sources')]:
+                if cohort.get(key):
+                    add(eid,'cohort',label + ': ' + '; '.join(text(k) + ': ' + str(v) + ' donors' for k,v in sorted(cohort[key].items())) + '.',True)
+            for assay,counts in sorted(cohort.get('assays',{}).items()):
+                add(eid,'cohort',text(assay) + ': ' + str(counts['sample_count']) + ' assay/sample records linked to '
+                    + str(counts['donor_count']) + ' unique donors. File availability has not been verified.',True)
             continue
         if not (nodes or edges or rows or step.get('functional_metadata')):
             verified_empty = (bool(step.get('queries')) and execution.get('completed') is True

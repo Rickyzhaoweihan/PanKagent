@@ -105,6 +105,9 @@ class PreparedAnswer:
 
 
 def plan_structure_issue(plan):
+    from .plan_recovery import contains_tool_markup
+    if contains_tool_markup(plan):
+        return 'malformed_plan'
     if not isinstance(plan,dict) or not isinstance(plan.get('steps'),list):
         return 'malformed_plan'
     if any(not isinstance(s,dict) or not isinstance(s.get('depends_on'),list) or not s.get('id') for s in plan['steps']):

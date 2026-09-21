@@ -2,7 +2,7 @@
 from copy import deepcopy
 import re
 
-VERSION = 'aggregate-output-v2'
+VERSION = 'aggregate-output-v3'
 PRIVATE_TYPES = {'donor', 'Sample_node'}
 
 
@@ -65,6 +65,24 @@ def project(value, *, context=None):
             from .semantic_registry import donor_summary
             summary = donor_summary(obj)
             if summary: result['donor_summary'] = clean(summary)
+            from collections import Counter
+            donors = {n.get('id'):n for n in obj['nodes'] if 'donor' in n.get('labels', [])}
+            samples = {n.get('id'):n for n in obj['nodes'] if 'Sample_node' in n.get('labels', [])}
+            stages = Counter(str((n.get('properties') or {}).get('t1d_stage') or 'not recorded') for n in donors.values())
+            sources = Counter(str((n.get('properties') or {}).get('data_source') or 'not recorded') for n in donors.values())
+            assays = {}
+            for sample_id, sample in samples.items():
+                modality = str((sample.get('properties') or {}).get('data_modality') or 'not recorded')
+                group = assays.setdefault(modality, {'sample_ids':set(), 'donor_ids':set()})
+                group['sample_ids'].add(sample_id)
+                for edge in obj.get('edges', []):
+                    if edge.get('type') == 'HAS_SAMPLE' and edge.get('end_id') == sample_id and edge.get('start_id') in donors:
+                        group['donor_ids'].add(edge['start_id'])
+            result['aggregate_cohort_facts'] = clean({'recorded_stage_counts':dict(stages),
+                'recorded_source_counts':dict(sources), 'assays':{name:{'sample_count':len(group['sample_ids']),
+                    'donor_count':len(group['donor_ids'])} for name,group in assays.items()},
+                'count_scope':'retrieved records; diagnosis is not inferred from stage',
+                'file_availability':'not_verified'})
             result['aggregate_record_counts'] = {
                 'donors': len({n.get('id') for n in obj['nodes'] if 'donor' in n.get('labels', [])}),
                 'samples': len({n.get('id') for n in obj['nodes'] if 'Sample_node' in n.get('labels', [])}),

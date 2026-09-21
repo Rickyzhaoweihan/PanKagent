@@ -377,3 +377,30 @@ def test_exact_signal_memberships_retain_cross_evidence_citations_and_tissue():
     qtl['properties']['tissue_id']='wrong-tissue'
     fact=next(f for f in catalogue(steps) if f['kind']=='signal_membership')
     assert fact['supporting_evidence_ids']==['G2'] and 'rs2' not in fact['text']
+
+
+def test_aggregate_cohort_retains_stage_source_and_assay_denominators():
+    step={'evidence_id':'G1','status':'complete','truncated':False,'nodes':[
+        {'id':'private-donor','labels':['donor'],'properties':{'t1d_stage':'Stage 1','data_source':'HPAP'}},
+        {'id':'private-sample-a','labels':['Sample_node'],'properties':{'data_modality':'scRNA-seq'}},
+        {'id':'private-sample-b','labels':['Sample_node'],'properties':{'data_modality':'scRNA-seq'}}],
+        'edges':[{'type':'HAS_SAMPLE','start_id':'private-donor','end_id':s} for s in ['private-sample-a','private-sample-b']]}
+    visible=project(step);answer=fallback(catalogue([visible]))
+    assert 'Stage 1: 1 donors' in answer and 'HPAP: 1 donors' in answer
+    assert '2 assay/sample records linked to 1 unique donors' in answer
+    assert 'private-' not in json.dumps(visible) and 'private-' not in answer
+    assert project(visible)['aggregate_cohort_facts']==visible['aggregate_cohort_facts']
+
+
+def test_tool_markup_clarification_is_planning_error_after_one_repair():
+    from pankagent_vnext.llm import plan_structure_issue
+    from pankagent_vnext.plan_recovery import recover_empty_plan
+    malformed={'interpreted_question':'Question','steps':[], 'clarification':'null</ ant ml:para meter>\n'}
+    assert plan_structure_issue(malformed)=='malformed_plan'
+    class Gateway:
+        calls=0
+        async def plan(self,*args,**kwargs):self.calls+=1;return malformed
+    gateway=Gateway()
+    result=asyncio.run(recover_empty_plan(gateway,malformed,'Keep original sources',[],2))
+    assert gateway.calls==1 and result['recovery']['category']=='planning_failure'
+    assert '<' not in json.dumps(result) and result['interpreted_question']=='Keep original sources'
