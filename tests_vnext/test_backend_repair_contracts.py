@@ -559,3 +559,22 @@ def test_neighborhood_guard_preserves_known_rs689_gwas_identity():
               'Report the recorded disease, source, credible set and lead-variant context.')
     assert genomic_neighborhood_plan(question) is None
     assert genomic_neighborhood_plan('Which GWAS SNPs are near rs689?') is not None
+
+
+def test_strict_coloc_tissue_scope_uses_verified_dataset_mapping():
+    from pankagent_vnext.coloc_tissue_scope import compile_scope
+    from pankagent_vnext.coloc_scope import RELEASE, QTL_CONTEXT
+    grounding={'identity':{'graph_release':RELEASE},'schema':{'categories':{
+        'PART_OF_QTL_SIGNAL.tissue_name':['Pancreas','Islet'],
+        'PART_OF_QTL_SIGNAL.tissue_id':['UBERON_0001264','UBERON_0000006']}}}
+    plan={'steps':[{'id':'s1','relation_types':['SIGNAL_COLOC_WITH'],'constraints':[
+        {'entity_type':'Gene','property':'id','value':'ENSG_FIXTURE'}]}]}
+    result,issue=compile_scope('Show coloc specifically in pancreatic or islet tissue',grounding,plan)
+    assert issue is None
+    assert result['steps'][0]['constraints'][-1]['value']==sorted(QTL_CONTEXT)
+    result,issue=compile_scope('Show coloc in islet tissue',grounding,plan)
+    assert issue is None and len(result['steps'][0]['constraints'][-1]['value'])==2
+    assert all(QTL_CONTEXT[k][1]=='UBERON_0000006' for k in result['steps'][0]['constraints'][-1]['value'])
+    assert compile_scope('Show coloc in islet tissue',{},plan)[1]=='unverified_coloc_tissue_mapping'
+    assert compile_scope('Show coloc and describe tissue context',grounding,plan)==(plan,None)
+    assert compile_scope('Show coloc in pancreas and islet tissue',grounding,plan)[1].startswith('ambiguous')
