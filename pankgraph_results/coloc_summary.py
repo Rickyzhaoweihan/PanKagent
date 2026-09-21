@@ -12,7 +12,7 @@ from pankagent_vnext.llm import STYLE_VERSION
 
 from .store import digest
 
-SUMMARY_VERSION = "coloc-summary-1"
+SUMMARY_VERSION = "coloc-summary-2"
 TOP_MEMBERS = 5
 
 
@@ -51,14 +51,19 @@ def summary_source(detail, configuration):
     scope = ("Only this recorded gene, disease, dataset and exact QTL/GWAS signal pair are in scope. "
         "The original coloc nsnp is the analysis denominator; membership counts describe the returned credible sets. "
         "Shared membership is not a recomputed colocalization result. Source-file members are tabular evidence, "
-        "not additional Neo4j relationships. No LD, effect harmonization or causal mechanism was computed.")
+        "not additional Neo4j relationships. No LD, effect harmonization or causal mechanism was computed. "
+        "Lead membership facts use all returned members; sampled graph edges and top-row excerpts cannot establish membership or absence.")
     question = (f"Summarize this recorded colocalization comparison for {record['gene_name']} "
-        f"({record['gene_id']}) and {record['disease_name']}, dataset {record['dataset']}, "
-        f"QTL signal {record['qtl_signal_id']} and GWAS signal {record['gwas_signal_id']}. "
-        "Use about 100–150 words: explain the recorded H4 in context, identify the strongest recorded "
-        "candidates within each supplied credible set, and state the membership coverage and main limitation. "
-        "A small table of two to four rows is useful if it clarifies counts. Keep nsnp separate from set sizes; "
-        "distinguish support for a shared signal from proof of a causal gene, variant or mechanism.")
+        f"and {record['disease_name']}, dataset {record['dataset']}. "
+        "Use at most 100 prose words plus exactly one table with two study rows: GWAS and QTL. "
+        "Use only the columns Study, Members (returned/expected), Recorded lead, and Lead PIP. "
+        "State the recorded H4, source/tissue, original nsnp, shared-member count, and main evidence caveat briefly. "
+        "Do not add headings, a H0–H4 table, or full signal IDs; these are already visualized. "
+        "Use the explicit recorded_lead_membership facts for each lead's membership and PIP in either study. "
+        "Never infer other-study lead membership from sampled graph edges or top-row excerpts. "
+        "Cross-study lead-membership commentary may be omitted for conciseness. "
+        "A null membership means unknown because retrieval is incomplete; only false establishes absence from a complete returned set. "
+        "Keep nsnp separate from set sizes; distinguish support for a shared signal from proof of a causal gene, variant or mechanism.")
 
     def step(step_id, rows, *, nodes=None, edges=None, complete=True, purpose="context"):
         return {"step_id": step_id, "graph_version": snapshot["graph_version"],
@@ -66,10 +71,28 @@ def summary_source(detail, configuration):
             "requested_scope": {"description": scope, "constraints": []}, "truncated": False,
             "nodes": nodes or [], "edges": edges or [], "rows": rows}
 
+    variant_index = {variant["id"]: variant for variant in snapshot["variants"]}
+    lead_facts = []
+    for variant_id in sorted(set(record["gwas_leads"]) | set(record["qtl_leads"])):
+        variant = variant_index.get(variant_id, {})
+        fact = {"variant_id": variant_id,
+            "gwas_lead": variant_id in record["gwas_leads"],
+            "qtl_lead": variant_id in record["qtl_leads"]}
+        for role in ("gwas", "qtl"):
+            association = variant.get(role)
+            fact["in_returned_" + role] = association is not None
+            fact[role + "_member"] = (True if association is not None
+                else False if coverage[role + "_complete"] else None)
+            fact[role + "_pip"] = association.get("pip") if association is not None else None
+        lead_facts.append(fact)
     graph = snapshot["graph"]
     steps = [step("recorded_coloc", [
         {"kind": "recorded_colocalization", **record},
         {"kind": "credible_set_coverage", **coverage},
+        {"kind": "recorded_lead_membership", "basis": "all returned members, independent of graph display and top-row selection",
+            "gwas_complete": coverage["gwas_complete"], "qtl_complete": coverage["qtl_complete"],
+            "membership_semantics": "true: observed member; false: absent from complete returned set; null: not observed in incomplete returned set",
+            "leads": lead_facts},
         {"kind": "record_limitations", "notices": snapshot["notices"],
             "coordinate_build": snapshot["coordinate_build"]}],
         nodes=graph["nodes"], edges=graph["edges"],
