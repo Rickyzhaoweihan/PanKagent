@@ -175,7 +175,7 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
     asyncio.run(scenario())
 
 
-def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path):
+def test_literature_explicit_optout_without_changing_graph_scope(tmp_path):
     async def scenario():
         question = "Is KRT19 selectively expressed in ductal cells? Use graph evidence only."
         plan = json.loads(json.dumps(PLAN))
@@ -184,11 +184,11 @@ def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path)
         async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
             created = await new_plan(client, question)
             saved = runtime.store.get(created["run_id"])
-            assert saved["plan"]["literature"] is True
-            assert saved["plan"]["literature_intent"]["reason"] == "always_enabled"
+            assert saved["plan"]["literature"] is False
+            assert saved["plan"]["literature_intent"]["reason"] == "explicit_opt_out"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             completed = await wait_state(client, created["run_id"], {"completed"})
-            assert completed["literature"]["status"] == "complete" and literature.calls == 1
+            assert literature.calls == 0
             assert gateway.plans == gateway.syntheses == graph.calls == 1
     asyncio.run(scenario())
 

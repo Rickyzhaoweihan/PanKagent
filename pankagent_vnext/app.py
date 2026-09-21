@@ -377,7 +377,10 @@ class Runtime:
                         "after_steps": deepcopy(plan["steps"])}
                 plan = enable_literature(plan)
                 requested_literature = apply_literature_policy(plan, run["question"])
-                if requested_literature['literature_intent']['reason'] == 'explicit_request':
+                revision_preference = (parent and metadata.get('revision_mode') == 'instruction'
+                    and (plan.get('literature_intent') or {}).get('reason') in {'explicit_opt_out', 'explicit_request', 'inherited_explicit'})
+                if not revision_preference and requested_literature['literature_intent']['reason'] in {'explicit_request', 'explicit_opt_out'}:
+                    plan['literature'] = requested_literature['literature']
                     plan['literature_intent'] = requested_literature['literature_intent']
                 if plan.get('plan_mode') == 'session_summary':
                     plan['literature'] = False

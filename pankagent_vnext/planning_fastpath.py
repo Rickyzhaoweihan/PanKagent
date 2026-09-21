@@ -8,6 +8,9 @@ def literature_only_revision(instruction):
 
 
 def enable_literature(plan):
+    # Default enrichment must not overwrite a confirmed explicit preference.
+    if (plan.get('literature_intent') or {}).get('reason') in {'explicit_opt_out', 'explicit_request', 'inherited_explicit'}:
+        return plan
     return {**plan, 'literature': True, 'literature_intent': {'included': True,
         'reason': 'always_enabled', 'policy_version': 'always-enabled-v1',
         'summary': 'Literature evidence will be searched after confirmation to help interpret the graph findings.'}}
