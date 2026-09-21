@@ -56,6 +56,8 @@ def unsupported_analysis_plan(question):
 
 def genomic_neighborhood_plan(question):
     """A QTL search cannot answer an unbounded spatial variant question."""
+    if re.search(r'\b(?:evidence|association|fine[- ]mapping)\b[^?]{0,60}\bfor\s+rs\d+\b',question,re.I) and not re.search(r'\bgene body\b',question,re.I):
+        return None  # A named variant already supplies identity; nearby gene is locus context.
     if not re.search(r'\b(?:SNPs?|variants?)\b',question,re.I):
         return None
     if not re.search(r'\b(?:near|nearby|flanking)\b|\b(?:inside|within)\b.{0,40}\bgene body\b',question,re.I):

@@ -551,3 +551,11 @@ def test_overview_keeps_atac_while_comprehensive_profile_keeps_registered_fgsea(
     assert 'GENE_ACTIVITY_SCORE_IN' in types(overview) and 'FGSEA_ENRICHED_IN' not in types(overview)
     assert 'FGSEA_ENRICHED_IN' in types(comprehensive)
     assert all(not s['depends_on'] for s in overview['steps'])
+
+
+def test_neighborhood_guard_preserves_known_rs689_gwas_identity():
+    from pankagent_vnext.planning_fastpath import genomic_neighborhood_plan
+    question=('What T1D GWAS or fine-mapping evidence is recorded for rs689 near INS? '
+              'Report the recorded disease, source, credible set and lead-variant context.')
+    assert genomic_neighborhood_plan(question) is None
+    assert genomic_neighborhood_plan('Which GWAS SNPs are near rs689?') is not None
