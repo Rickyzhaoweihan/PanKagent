@@ -18,3 +18,51 @@ def grounding_question(question, prior):
                 anchors.add(binding['value'])
     if len(anchors)!=1: return question
     return question + '\nRetain the previously requested gene: ' + next(iter(anchors)) + '.'
+
+
+def preserve_original_sources(plan, question, prior):
+    """Honor explicit source-preserving follow-ups before any graph execution.
+
+    A planner-added evidence category is not part of a request to reinterpret
+    the previously retrieved sources. Exact source/version bindings come from
+    those records, not from model-invented aliases.
+    """
+    from copy import deepcopy
+    if not prior or not re.search(r'\bkeep (?:the )?original sources\b', question, re.I):
+        return plan
+    result = deepcopy(plan)
+    previous = (prior.get('plan') or {}).get('steps', [])
+    allowed = {r for s in previous for r in s.get('relation_types', [])}
+    kept, rejected = [], []
+    for step in result.get('steps', []):
+        relations = step.get('relation_types', [])
+        if not relations or not set(relations) <= allowed:
+            rejected.append(step['id'])
+            continue
+        if len(relations) != 1:
+            raise ValueError('original_source_scope_requires_single_relation')
+        relation = relations[0]
+        records = [e for s in (prior.get('evidence') or {}).get('steps', [])
+                   for e in s.get('edges', []) if e.get('type') == relation]
+        for prop in ('data_source', 'data_version'):
+            values = {str((e.get('properties') or {})[prop]) for e in records
+                      if (e.get('properties') or {}).get(prop) is not None}
+            if len(values) > 1:
+                raise ValueError('original_source_scope_ambiguous')
+            if not values:
+                continue
+            value = next(iter(values))
+            existing = [c for c in step.get('constraints', []) if c.get('property') == prop]
+            if any(c.get('operator', '=') != '=' or str(c.get('value')) != value for c in existing):
+                raise ValueError('changed_original_source_scope')
+            if not existing:
+                step.setdefault('constraints', []).append({'entity_type':None,
+                    'owner_kind':'relationship', 'relationship_type':relation,
+                    'property':prop, 'operator':'=', 'value':value})
+        kept.append(step)
+    if not kept or any(set(s.get('depends_on', [])) & set(rejected) for s in kept):
+        raise ValueError('original_source_scope_unavailable')
+    result['steps'] = kept
+    result['followup_source_scope'] = {'version':'original-sources-v1',
+        'source_run_id':prior['run_id'], 'rejected_unrequested_step_ids':rejected}
+    return result

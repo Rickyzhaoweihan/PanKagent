@@ -56,10 +56,11 @@ def catalogue(evidence):
     def add(eid, kind, prose, mandatory=False):
         identity = hashlib.sha256((eid + kind + prose).encode()).hexdigest()[:16]
         if (eid, identity) in identities:
-            return
+            return next(f for f in facts if f['id'] == eid + ':' + identity)
         identities.add((eid, identity))
         facts.append({'id': eid + ':' + identity, 'evidence_id': eid,
                       'kind': kind, 'text': prose, 'mandatory': mandatory})
+        return facts[-1]
 
     for step, eid in zip(steps, ids):
         title = text(step.get('title') or step.get('question') or 'Requested check')
@@ -201,6 +202,16 @@ def catalogue(evidence):
                           if isinstance(v, (str, int, float)) and len(str(v)) <= 240]
                 if values:
                     add(eid, 'row', 'Recorded result: ' + '; '.join(values) + '.')
+    from .signal_comparison import membership_facts
+    for comparison in membership_facts(steps, ids):
+        members = lambda values: ', '.join(map(text, values)) if values else 'not verified in retrieved records'
+        fact = add(comparison['evidence_id'], 'signal_membership',
+            'Exact recorded signal linkage: GWAS credible set ' + text(comparison['gwas_signal_id'])
+            + ' contains retrieved members ' + members(comparison['gwas_members'])
+            + '; QTL credible set ' + text(comparison['qtl_signal_id'])
+            + ' contains retrieved members ' + members(comparison['qtl_members'])
+            + ' under the recorded source/tissue mapping. These are separate memberships; missing support does not establish absence.', True)
+        fact['supporting_evidence_ids'] = sorted(set(fact.get('supporting_evidence_ids', [])) | set(comparison['support']))
     return facts
 
 
@@ -215,7 +226,7 @@ def render(selection, facts):
         raise ValueError('invalid_answer_fact_reference')
     # Every requested category and every mandatory limitation survives selection.
     chosen = set(selected) | {f['id'] for f in facts if f['mandatory']}
-    output = [f"{fact['text']} [{fact['evidence_id']}]" for fact in facts if fact['id'] in chosen]
+    output = [fact['text'] + ' ' + ' '.join('['+eid+']' for eid in dict.fromkeys([fact['evidence_id'], *fact.get('supporting_evidence_ids', [])])) for fact in facts if fact['id'] in chosen]
     if not output:
         raise ValueError('empty_answer_blocks')
     return '\n\n'.join(output)

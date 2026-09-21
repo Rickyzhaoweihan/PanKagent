@@ -92,7 +92,7 @@ from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
 OVERSIZED_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/oversized_results.md').read_text()
 INDEPENDENT_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/independent_results.md').read_text()
 ANSWER_CONTRACT += '\n' + INDEPENDENT_RESULT_CONTRACT
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+Path(__file__).with_name('answer_blocks.py').read_text()+'\ngrounded-synthesis-v6').encode()).hexdigest()[:16]
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+Path(__file__).with_name('answer_blocks.py').read_text()+Path(__file__).with_name('signal_comparison.py').read_text()+'\ngrounded-synthesis-v7').encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)

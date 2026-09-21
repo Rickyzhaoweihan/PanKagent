@@ -845,7 +845,7 @@ class GraphAdapter:
         manifest_hash = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
         from .semantic_registry import DIGEST as semantic_digest
         from .anatomy_scope import DIGEST as anatomy_scope_digest
-        return {"semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "qtl_tissue_binding": "qtl-tissue-owner-v2", "measurement_filter_contract": "requested-measurement-predicates-v1", "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
+        return {"record_comparison_contract": "recorded-signal-comparison-v1", "semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "qtl_tissue_binding": "qtl-tissue-owner-v2", "measurement_filter_contract": "requested-measurement-predicates-v1", "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
                 "identity_verified": self.identity_verified,
                 **{key: getattr(self.settings, key, None) for key in (
                     "neo4j_uri", "neo4j_database", "cypher_url", "max_nodes", "max_edges", "max_rows",
@@ -1171,6 +1171,8 @@ class GraphAdapter:
         prepared = preserve_dependency_scope(prepared)
         from .coloc_scope import compile_comparisons
         prepared = compile_comparisons(prepared, self.settings.graph_version)
+        from .signal_comparison import compile_comparisons as compile_record_comparisons
+        prepared = compile_record_comparisons(prepared, self.settings.graph_version)
         rewritten = set((prepared.get('coloc_comparison_normalization') or {}).get('rewritten_step_ids') or [])
         if rewritten:
             prepared['steps'] = [await self._prepare_step(step, emit) if step['id'] in rewritten else step

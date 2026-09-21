@@ -320,3 +320,60 @@ def test_ssgsea_request_is_honest_zero_cost_unsupported():
     assert not p['steps'] and 'No ssGSEA analysis was run' in p['clarification']
     assert p['planning_route']['claude_calls']==0
     assert unsupported_analysis_plan('What does ssGSEA mean?') is None
+
+
+def test_keep_original_sources_rejects_new_category_before_execution():
+    from pankagent_vnext.followup_scope import preserve_original_sources
+    prior={'run_id':'prior','plan':{'steps':[{'relation_types':['GENE_DETECTED_IN']}]},
+           'evidence':{'steps':[{'edges':[{'type':'GENE_DETECTED_IN','properties':{
+               'data_source':'recorded-source','data_version':'v1'}}]}]}}
+    p={'steps':[{'id':'detection','relation_types':['GENE_DETECTED_IN'],'constraints':[]},
+                {'id':'invented-deg','relation_types':['T1D_DEG_IN'],'constraints':[]}]}
+    r=preserve_original_sources(p,'Now restrict to beta cells. Keep the original sources.',prior)
+    assert [s['id'] for s in r['steps']]==['detection']
+    assert {c['property']:c['value'] for c in r['steps'][0]['constraints']}=={'data_source':'recorded-source','data_version':'v1'}
+    assert r['followup_source_scope']['rejected_unrequested_step_ids']==['invented-deg']
+    assert len(p['steps'])==2
+    p['steps'][0]['constraints']=[{'property':'data_source','value':'new-source'}]
+    with pytest.raises(ValueError,match='changed_original_source_scope'):
+        preserve_original_sources(p,'Keep the original sources',prior)
+
+
+def test_signal_comparison_is_record_operation_not_new_join():
+    from pankagent_vnext.signal_comparison import compile_comparisons, RELEASE
+    def parent(identifier, relation, identities, depends=()):
+        cs=[{'entity_type':kind,'property':'id','operator':'=','value':value} for kind,value in identities]
+        return {'id':identifier,'relation_types':[relation],'constraints':cs,'depends_on':list(depends),
+                'complete':True,'graph_version':RELEASE,'evidence_combination':'independent',
+                'resolved_entities':[{'constraint_index':i,'entity_type':c['entity_type'],
+                    'id':c['value'],'name':{'gene':'ADCY3','disease':'T1D'}.get(c['value']),
+                    'requested':c,'state':'resolved','graph_version':RELEASE} for i,c in enumerate(cs)]}
+    parents=[parent('c','SIGNAL_COLOC_WITH',[('Gene','gene'),('disease','disease')]),
+             parent('q','PART_OF_QTL_SIGNAL',[('Gene','gene')]),
+             parent('g','PART_OF_GWAS_SIGNAL',[('disease','disease')],['q'])]
+    compare={'id':'compare','relation_types':['SIGNAL_COLOC_WITH','PART_OF_QTL_SIGNAL','PART_OF_GWAS_SIGNAL'],
+             'depends_on':['c','q','g'],'constraints':[],'complete':True,
+             'question':'Do the retrieved coloc gwas_signal_id/qtl_signal_id and lead variants match the identifiers found in the separate QTL and GWAS signal records for ADCY3 and T1D?'}
+    result=compile_comparisons({'steps':parents+[compare]},RELEASE)
+    assert len(result['steps'])==3
+    assert result['record_comparison_operations'][0]['no_new_retrieval']
+    compare['question']+=' Only include European cohorts.'
+    assert len(compile_comparisons({'steps':parents+[compare]},RELEASE)['steps'])==4
+
+
+def test_exact_signal_memberships_retain_cross_evidence_citations_and_tissue():
+    from pankagent_vnext.signal_comparison import RELEASE
+    def step(eid,edges):return {'evidence_id':eid,'status':'complete','graph_version':RELEASE,'nodes':[],'edges':edges,'rows':[]}
+    coloc={'type':'SIGNAL_COLOC_WITH','start_id':'gene','end_id':'disease','properties':{
+        'gwas_signal_id':'LOC__credibleSet1__selected','qtl_signal_id':'qtl1','coloc_dataset':'t1d_eQTL-inspire_coloc'}}
+    gwas={'type':'PART_OF_GWAS_SIGNAL','start_id':'rs1','end_id':'disease','properties':{'credible_set_id':'LOC__credibleSet1'}}
+    qtl={'type':'PART_OF_QTL_SIGNAL','start_id':'rs2','end_id':'gene','properties':{
+        'credible_set':'qtl1','data_source':'INSPIRE; SusieR','tissue_id':'UBERON_0000006'}}
+    steps=[step('G1',[coloc]),step('G2',[gwas]),step('G3',[qtl])]
+    facts=catalogue(steps);fact=next(f for f in facts if f['kind']=='signal_membership')
+    assert fact['supporting_evidence_ids']==['G2','G3']
+    assert 'rs1' in fact['text'] and 'rs2' in fact['text']
+    assert '[G1] [G2] [G3]' in render({'fact_ids':[]},facts)
+    qtl['properties']['tissue_id']='wrong-tissue'
+    fact=next(f for f in catalogue(steps) if f['kind']=='signal_membership')
+    assert fact['supporting_evidence_ids']==['G2'] and 'rs2' not in fact['text']

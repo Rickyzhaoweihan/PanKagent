@@ -364,6 +364,8 @@ class Runtime:
                 from .plan_recovery import recover_empty_plan
                 proposed = await recover_empty_plan(self.gateway, proposed, run["question"], (await self.io.call(self.planning_history, run)), self.settings.plan_timeout, grounding=grounding)
                 plan = normalize_plan(proposed)
+                from .followup_scope import preserve_original_sources
+                plan = preserve_original_sources(plan, run["question"], prior_answer)
                 if parent and metadata.get("revision_mode") == "instruction":
                     plan = preserve_revision_preference(plan, parent.get("plan") or {}, metadata.get("revision_instruction") or run["question"])
                     from .revision_guard import preserve_additive_scope
