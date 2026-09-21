@@ -563,12 +563,13 @@ class Runtime:
             position = next((i for i, item in enumerate(plan.get("steps", [])) if item["id"] == step["id"]), 0)
             result["evidence_id"] = step.get("evidence_id", f"G{position + 1}")
             execution = result.get('retrieval_execution') or {}
+            from .evidence_status import executed_without_records
             state = ('skipped_empty_dependency' if result.get('execution_status') == 'skipped_empty_dependency'
                 else 'failed' if result.get('status') in {'failed', 'blocked', 'unavailable'}
                 else 'truncated' if result.get('truncated') else 'executed_empty'
-                if result.get('status') == 'empty' and execution.get('completed') is True
+                if executed_without_records(result) or result.get('status') == 'empty' and execution.get('completed') is True
                 else 'executed' if execution.get('completed') is True else 'unknown')
-            result['execution_provenance'] = {'version': 'execution-provenance-v1', 'outcome': state,
+            result['execution_provenance'] = {'version': 'execution-provenance-v2', 'outcome': state,
                 'completed': execution.get('completed'), 'cursor_exhausted': execution.get('cursor_exhausted')}
             result.setdefault("question", step["question"])
             if result.get("status") != "failed":

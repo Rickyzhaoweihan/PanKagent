@@ -518,3 +518,18 @@ def test_spatial_variant_scope_never_substitutes_empty_qtl_search():
         assert plan['planning_route']['claude_calls']==0
         assert 'No neighborhood or gene-body search was executed' in plan['clarification']
     assert genomic_neighborhood_plan('Which QTL variants are associated with INS?') is None
+
+
+def test_bounded_executed_empty_annotation_is_not_a_retrieval_failure():
+    from pankagent_vnext.evidence_status import outcome_message, executed_without_records
+    step={'status':'partial','title':'GO name contains insulin secretion','evidence_id':'G7',
+          'nodes':[],'edges':[],'rows':[],'queries':[{'cypher':'verified_fixture'}],
+          'retrieval_execution':{'completed':True,'cursor_exhausted':True},'truncated':False}
+    assert executed_without_records(step)
+    answer=outcome_message([step])
+    assert 'executed query returned no matching records within its recorded filters' in answer
+    assert 'not an exhaustive absence claim or a retrieval failure' in answer
+    assert '[G7]' in answer
+    step['retrieval_execution']['completed']=False
+    assert not executed_without_records(step)
+    assert 'couldn’t retrieve' in outcome_message([step])

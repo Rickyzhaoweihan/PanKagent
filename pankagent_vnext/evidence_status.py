@@ -25,6 +25,15 @@ def aggregate_outcome_status(steps):
     }
 
 
+def executed_without_records(step):
+    execution=step.get('retrieval_execution') or {}
+    return (step.get('status') in {'complete','empty','partial'} and bool(step.get('queries'))
+        and execution.get('completed') is True and execution.get('cursor_exhausted') is True
+        and not step.get('truncated') and not step.get('error')
+        and step.get('execution_status')!='skipped_empty_dependency'
+        and not any(step.get(k) for k in ('nodes','edges','rows','functional_metadata')))
+
+
 def outcome_message(evidence):
     steps = list(evidence.values()) if isinstance(evidence, dict) else list(evidence)
     primary = [s for s in steps if s.get('purpose') != 'context'] or steps
@@ -32,6 +41,12 @@ def outcome_message(evidence):
               and any(s.get(k) for k in ('nodes', 'edges', 'rows'))]
     if usable:
         return None
+    if primary and any(s.get('status')=='partial' for s in primary) and all(executed_without_records(s) for s in primary):
+        from .answer_blocks import text
+        return '\n\n'.join(text(s.get('title') or s.get('question') or 'Requested check')
+            + ': the executed query returned no matching records within its recorded filters. '
+            + 'The query was bounded or its requested coverage remains incomplete; this is not an exhaustive absence claim or a retrieval failure. '
+            + ('['+s['evidence_id']+']' if s.get('evidence_id') else '') for s in primary)
     failed = any(s.get('status') not in ('complete', 'empty') for s in primary)
     if failed or not primary:
         return ('I couldn’t retrieve the graph evidence needed to answer this question. '
@@ -50,7 +65,7 @@ def outcome_message(evidence):
 
 
 
-QUERY_READINESS_VERSION = 'query-executed-plan-v4-execution-provenance'
+QUERY_READINESS_VERSION = 'query-executed-plan-v5-scoped-empty-outcomes'
 PARTIAL_INDEPENDENT_POLICY = 'partial_independent_v1'
 TERMINAL_QUERY_STATUSES = frozenset({'complete', 'empty', 'partial', 'failed', 'blocked', 'unavailable'})
 
