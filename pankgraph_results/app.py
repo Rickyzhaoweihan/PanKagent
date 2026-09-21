@@ -21,6 +21,7 @@ from pankagent_vnext.transport import JSONResponseLimitMiddleware
 from .assembly import assemble
 from .auth import DemoAuthentication
 from .config import ResultsSettings
+from .coloc import ColocExplorer, coloc_router
 from .coordinates import CoordinateLookup
 from .health import ResultsHealth
 from .inputs import ResultRequest, agent_snapshot, template_snapshot, template_question
@@ -59,6 +60,7 @@ class ResultsRuntime:
         self.coordinates = CoordinateLookup(settings.dbsnp_command)
         self.resources = resources or ResourceManager(settings.state_dir / "resources", self.coordinates,
             public_base=settings.public_path + "/api/resources", settings=settings)
+        self.coloc = ColocExplorer(self.query, self.resources, self.coordinates, vnext.graph_version, settings)
         # Both services open the SAME ledger with SQLite atomic reservations.
         self.gateway = gateway or ClaudeGateway(vnext)
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
@@ -277,6 +279,7 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     app.add_middleware(JSONResponseLimitMiddleware)
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)
+    app.include_router(coloc_router(runtime.coloc))
 
     @app.post("/api/results", status_code=202)
     async def create_result(body: ResultRequest):

@@ -28,6 +28,7 @@ class ResultsSettings:
     resource_max_objects: int = 4
     resource_ttl_seconds: float = 86400
     dbsnp_command: str = field(default_factory=lambda: env("DBSNP_COMMAND", "dbsnp-query"))
+    coloc_extract_manifest: str = field(default_factory=lambda: env("COLOC_EXTRACT_MANIFEST"))
     operator_token: str = field(default_factory=lambda: env("OPERATOR_TOKEN"))
     basic_user: str = field(default_factory=lambda: env("BASIC_USER", "pank-demo"))
     password_hash: str = field(default_factory=lambda: env("PASSWORD_HASH"))
