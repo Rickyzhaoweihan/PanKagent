@@ -7,6 +7,7 @@ must never masquerade as complete signal membership. No statistic is recomputed.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -259,6 +260,7 @@ class ColocExplorer:
         self._catalog_lock = asyncio.Lock()
         self._detail_slots = asyncio.Semaphore(2)
         self._detail_requests = 0
+        self._summary_snapshots = OrderedDict()
 
     async def _paged(self, query, count_query, params, kind, maximum):
         count_step = await self.query.execute_query(count_query, params, "coloc_" + kind + "_count")
@@ -425,9 +427,21 @@ class ColocExplorer:
             async with asyncio.timeout(40):
                 async with self._detail_slots:
                     async with asyncio.timeout(35):
-                        return await self._detail(record, original)
+                        value = await self._detail(record, original)
+                        self._summary_snapshots[record_id] = (time.monotonic(), deepcopy(value))
+                        self._summary_snapshots.move_to_end(record_id)
+                        while len(self._summary_snapshots) > 8:
+                            self._summary_snapshots.popitem(last=False)
+                        return value
         finally:
             self._detail_requests -= 1
+
+    async def summary_snapshot(self, record_id):
+        """Reuse the detail just read by the UI; no inference occurs here."""
+        cached = self._summary_snapshots.get(record_id)
+        if cached and time.monotonic() - cached[0] < CATALOG_TTL:
+            return deepcopy(cached[1])
+        return await self.detail(record_id)
 
     async def extract_download(self, record_id, role):
         if role not in {"gwas", "qtl"}:
