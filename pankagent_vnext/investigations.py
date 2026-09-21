@@ -90,6 +90,8 @@ PROFILE_CHECKS = (
 def generic_profile_gene(question):
     # A full match prevents losing additional disease, tissue or revision scope.
     match=re.fullmatch(r'\s*(?:(?:give me|show|provide)\s+)?(?:a\s+)?comprehensive\s+(?:gene\s+)?(?:profile|overview|insights)\s+(?:of|for|on)\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)[.?!]?\s*',question,re.I)
+    if match is None:
+        match=re.fullmatch(r'\s*tell me about gene\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)[.?!]?\s*',question,re.I)
     return match.group(1) if match else None
 
 

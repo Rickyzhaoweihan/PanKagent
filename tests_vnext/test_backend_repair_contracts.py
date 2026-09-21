@@ -479,3 +479,16 @@ def test_independent_effector_and_coloc_do_not_require_a_join():
     assert all(s['constraints']==[gene,disease] for s in result['steps'])
     plan['steps'][0]['evidence_combination']='intersection'
     assert len(split(plan,'Summarize gene evidence')['steps'])==1
+
+
+def test_historical_tell_me_profile_uses_registered_scope_without_losing_modifiers():
+    from pankagent_vnext.investigations import generic_profile_gene, expand_registered_profile, GENERIC_GENE_CATEGORIES
+    from pankagent_vnext.independent_checks import split
+    for gene in ('INS','PTPN22'):
+        question='Tell me about gene '+gene
+        assert generic_profile_gene(question)==gene
+        plan=split(expand_registered_profile(question,gene),question)
+        assert len(plan['steps'])==12
+        assert {r for s in plan['steps'] for r in s['relation_types']}==GENERIC_GENE_CATEGORIES
+    assert generic_profile_gene('Tell me about gene INS in beta cells') is None
+    assert generic_profile_gene('Tell me about gene INS and PTPN22') is None
