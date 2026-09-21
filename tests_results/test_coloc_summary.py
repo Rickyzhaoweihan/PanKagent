@@ -347,3 +347,62 @@ def test_initial_payload_cannot_override_store_identity(tmp_path, field):
     with pytest.raises(ValueError, match="immutable_result_identity"):
         store.create({"kind": "test"}, {"identity": "test"}, initial={field: "replacement"})
     assert store.by_identity({"identity": "test"}) is None
+
+
+@pytest.mark.anyio
+async def test_lead_cross_membership_uses_full_sets_even_outside_graph_and_top_rows(tmp_path):
+    # ADCY3-shaped regression: the QTL lead is absent from the complete GWAS
+    # set, but the GWAS lead is a low-PIP QTL member outside its graph/top5.
+    gwas_lead, qtl_lead = "rs55893453", "rs10176214"
+    qtl_ids = [qtl_lead, gwas_lead, *["rs" + str(i) for i in range(3, 9)]]
+    raw = "snp\tpip\tnominal_p\teffect_allele\tother_allele\tslope\tlbf\n"
+    for variant in qtl_ids:
+        pip = .8 if variant == qtl_lead else .001 if variant == gwas_lead else .01
+        raw += f"{variant}\t{pip}\t0.0001\tG\tA\t0.2\t5\n"
+    query = FakeQuery(catalog=[core(gwas_lead_vars=gwas_lead, qtl_lead_vars=qtl_lead)],
+        gwas=[member(gwas_lead), member("rs999")],
+        qtl=[member(qtl_lead, role="qtl", size=8, pip=.8)])
+    async with service(tmp_path, query=query, resources=FakeResources(tmp_path, raw=raw.encode()), gateway=SharedGateway()) as s:
+        rid, _ = await selected(s)
+        await finished(s.client, (await submit(s, rid))["result_id"])
+        evidence = s.gateway.evidence
+        facts = next(row for row in evidence["recorded_coloc"]["rows"] if row["kind"] == "recorded_lead_membership")
+        leads = {row["variant_id"]: row for row in facts["leads"]}
+        assert facts["gwas_complete"] and facts["qtl_complete"]
+        assert leads[qtl_lead] == {"variant_id": qtl_lead, "gwas_lead": False, "qtl_lead": True,
+            "in_returned_gwas": False, "gwas_member": False, "gwas_pip": None,
+            "in_returned_qtl": True, "qtl_member": True, "qtl_pip": .8}
+        assert leads[gwas_lead] == {"variant_id": gwas_lead, "gwas_lead": True, "qtl_lead": False,
+            "in_returned_gwas": True, "gwas_member": True, "gwas_pip": .5,
+            "in_returned_qtl": True, "qtl_member": True, "qtl_pip": .001}
+        assert gwas_lead not in {row.get("variant_id") for row in evidence["qtl_credible_set"]["rows"]}
+        assert not any(edge["type"] == "PART_OF_QTL_SIGNAL" and edge["start_id"] == gwas_lead
+            for edge in evidence["recorded_coloc"]["edges"])
+        body = json.loads(s.gateway.prepared.body)
+        compiled_facts = next(row for row in body["evidence"][0]["rows"] if row["kind"] == "recorded_lead_membership")
+        assert compiled_facts["leads"] == facts["leads"]
+        question = body["question"]
+        assert "at most 100 prose words" in question
+        assert "shared-member count" in question
+        assert "exactly one table with two study rows: GWAS and QTL" in question
+        assert "Do not add headings, a H0–H4 table, or full signal IDs" in question
+        assert "Never infer other-study lead membership from sampled graph edges or top-row excerpts" in question
+        source = s.runtime.store.source((await submit(s, rid))["result_id"])
+        assert source["summary_version"] == "coloc-summary-2"
+
+
+@pytest.mark.anyio
+async def test_absent_lead_is_unknown_when_other_study_membership_is_incomplete(tmp_path):
+    from pankgraph_results.resources import ResourceError
+    query = FakeQuery(catalog=[core(gwas_lead_vars="rs1", qtl_lead_vars="rs2")],
+        qtl=[member("rs2", role="qtl", size=28)])
+    async with service(tmp_path, query=query, resources=FakeResources(tmp_path, error=ResourceError("denied")), gateway=SharedGateway()) as s:
+        rid, _ = await selected(s)
+        await finished(s.client, (await submit(s, rid))["result_id"])
+        facts = next(row for row in s.gateway.evidence["recorded_coloc"]["rows"] if row["kind"] == "recorded_lead_membership")
+        leads = {row["variant_id"]: row for row in facts["leads"]}
+        assert not facts["qtl_complete"]
+        assert leads["rs1"]["gwas_member"] is True
+        assert leads["rs1"]["in_returned_qtl"] is False
+        assert leads["rs1"]["qtl_member"] is None and leads["rs1"]["qtl_pip"] is None
+        assert leads["rs2"]["qtl_member"] is True
