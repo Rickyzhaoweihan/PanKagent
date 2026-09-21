@@ -100,8 +100,10 @@ def generic_profile_gene(question):
 def expand_registered_profile(question, gene):
     if generic_profile_gene(question) != gene: raise ValueError('profile_scope_mismatch')
     disease_scope=bool(re.search(r'\bin\s+(?:T1D|type 1 diabetes)[.?!]?\s*$',question,re.I))
+    overview=bool(re.match(r'\s*tell me about\b',question,re.I))
+    checks=tuple(('GENE_ACTIVITY_SCORE_IN','Find recorded ATAC gene-activity evidence for {gene}.') if kind=='FGSEA_ENRICHED_IN' and overview else (kind,wording) for kind,wording in PROFILE_CHECKS)
     steps=[]
-    for index,(kind,wording) in enumerate(PROFILE_CHECKS,1):
+    for index,(kind,wording) in enumerate(checks,1):
         pathway_check=kind=='FGSEA_ENRICHED_IN'
         steps.append({'id':'s'+str(index),'question':wording.format(gene=gene),
                       'relation_types':[kind],'depends_on':['s9'] if pathway_check else [],
@@ -113,4 +115,4 @@ def expand_registered_profile(question, gene):
                 step['constraints'].append({'entity_type':'disease','property':'name','operator':'=','value':'type 1 diabetes'})
                 step['question']=step['question'].replace(' across diseases','')+' Restrict disease evidence to type 1 diabetes.'
     return {'interpreted_question':question,'steps':steps,'clarification':None,
-            'profile_scope_source':'registered-gene-profile-v1'}
+            'profile_scope_source':'registered-gene-overview-v1' if overview else 'registered-gene-profile-v1'}

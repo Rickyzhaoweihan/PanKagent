@@ -489,7 +489,7 @@ def test_historical_tell_me_profile_uses_registered_scope_without_losing_modifie
         assert generic_profile_gene(question)==gene
         plan=split(expand_registered_profile(question,gene),question)
         assert len(plan['steps'])==12
-        assert {r for s in plan['steps'] for r in s['relation_types']}==GENERIC_GENE_CATEGORIES
+        assert {r for s in plan['steps'] for r in s['relation_types']}==(GENERIC_GENE_CATEGORIES-{'FGSEA_ENRICHED_IN'})|{'GENE_ACTIVITY_SCORE_IN'}
     assert generic_profile_gene('Tell me about gene INS in beta cells') is None
     assert generic_profile_gene('Tell me about gene INS and PTPN22') is None
 
@@ -541,3 +541,13 @@ def test_annotation_overview_does_not_claim_immune_specificity_ranking():
         'requested_scope':{'retrieval_selection':{'mode':'annotation_overview','ordering':'stable_identifiers'}}}]
     answer=fallback(catalogue(evidence))
     assert 'not a ranking by biological importance or immune specificity' in answer
+
+
+def test_overview_keeps_atac_while_comprehensive_profile_keeps_registered_fgsea():
+    from pankagent_vnext.investigations import expand_registered_profile
+    overview=expand_registered_profile('Tell me about PTPN22 in T1D','PTPN22')
+    comprehensive=expand_registered_profile('comprehensive gene profile for PTPN22','PTPN22')
+    types=lambda p:{r for s in p['steps'] for r in s['relation_types']}
+    assert 'GENE_ACTIVITY_SCORE_IN' in types(overview) and 'FGSEA_ENRICHED_IN' not in types(overview)
+    assert 'FGSEA_ENRICHED_IN' in types(comprehensive)
+    assert all(not s['depends_on'] for s in overview['steps'])
