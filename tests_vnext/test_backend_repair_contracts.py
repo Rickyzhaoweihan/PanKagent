@@ -413,3 +413,38 @@ def test_session_summary_is_one_sentence_without_changing_decimal_facts():
     summary=answer({'run_id':'earlier','status':'completed','evidence':{'steps':[e]}})
     assert '12.34567' in summary
     assert len(re.findall(r'[.!?](?=\s|$)',summary))==1
+
+
+def test_genetic_interaction_check_does_not_report_unqueried_physical_zero():
+    e=detection_evidence()['s1'];e['nodes'][1]['labels']=['Gene']
+    e['edges'][0]['type']='GENETIC_INTERACTION'
+    answer=fallback(catalogue([e]))
+    assert 'Genetic interaction' in answer
+    assert 'Physical interactions' not in answer
+
+
+def test_explicit_hirn_request_survives_partial_graph_answer():
+    from pankagent_vnext.literature_policy import apply_literature_policy
+    p=apply_literature_policy({'steps':[{'id':'s1'}]},'What PanKgraph and HIRN evidence connects IFIH1 to T1D?')
+    assert p['literature_intent']['reason']=='explicit_request'
+    assert literature_gate(p,{'steps':[{'status':'failed'}]},'')[0]
+    assert not apply_literature_policy({},'Use graph only; no HIRN')['literature']
+
+
+def test_independent_bundles_preserve_gene_disease_and_required_variant_input():
+    from pankagent_vnext.independent_checks import split
+    from pankagent_vnext.dependency_scope import compile_inputs
+    gene={'entity_type':'Gene','property':'id','value':'verified-gene','operator':'='}
+    disease={'entity_type':'disease','property':'id','value':'verified-disease','operator':'='}
+    p={'steps':[{'id':'signals','relation_types':['PART_OF_GWAS_SIGNAL','PART_OF_QTL_SIGNAL','SIGNAL_COLOC_WITH'],
+        'constraints':[gene,disease],'depends_on':[],'evidence_combination':'independent','complete':True}]}
+    r=compile_inputs(split(p,'Connect gene to T1D using separate evidence'))
+    byrel={s['relation_types'][0]:s for s in r['steps']}
+    assert len(r['steps'])==3
+    assert byrel['PART_OF_GWAS_SIGNAL']['depends_on']==[byrel['SIGNAL_COLOC_WITH']['id']]
+    assert byrel['PART_OF_GWAS_SIGNAL']['constraints']==[disease]
+    assert byrel['PART_OF_QTL_SIGNAL']['constraints']==[gene]
+    assert byrel['SIGNAL_COLOC_WITH']['constraints']==[gene,disease]
+    assert len(split(p,'Find the intersection of these signals')['steps'])==1
+    p['steps'][0]['constraints'].append({'property':'unknown','value':'must preserve'})
+    assert len(split(p,'Connect gene to T1D')['steps'])==1

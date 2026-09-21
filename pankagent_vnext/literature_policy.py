@@ -3,9 +3,9 @@
 import re
 
 
-POLICY_VERSION = "scientific-intent-v2"
+POLICY_VERSION = "scientific-intent-v3-hirn"
 _GRAPH = r"(?:pan\s*k\s*graph|knowledge\s+graph|graph|kg)"
-_LITERATURE = r"(?:literature|papers?|publications?|published\s+(?:studies|evidence)|external\s+(?:sources|evidence))"
+_LITERATURE = r"(?:hirn|literature|papers?|publications?|published\s+(?:studies|evidence)|external\s+(?:sources|evidence))"
 _OPTOUT = re.compile(
     rf"\b{_GRAPH}\s*[- ]\s*only\b|\bonly\s+(?:the\s+)?{_GRAPH}\s+(?:evidence|results|data)\b"
     rf"|\bonly\s+(?:use|query|consult|search|check)\s+(?:the\s+)?{_GRAPH}\b"
@@ -18,7 +18,7 @@ _OPTOUT = re.compile(
     rf"(?:(?:the|any|for|additional|external)\s+)*{_LITERATURE}\b",
     re.I,
 )
-_EXPLICIT = re.compile(r"\b(?:literature|papers?|publications?|pubmed|published\s+(?:studies|evidence|research))\b", re.I)
+_EXPLICIT = re.compile(r"\b(?:hirn|literature|papers?|publications?|pubmed|published\s+(?:studies|evidence|research))\b", re.I)
 _EXPLANATION = re.compile(r"\b(?:why|explain|explanation|mechanisms?|interpret|interpretation|biological\s+(?:meaning|significance)|conflicting\s+evidence|alternative\s+explanations?)\b", re.I)
 _BIOLOGY = re.compile(r"\b(?:express(?:ed|ion|ing)?|enrich(?:ed|ment)?|detect(?:ed|ion)?|genes?|cells?|tissues?|proteins?|markers?)\b", re.I)
 _SPECIFICITY = re.compile(r"\b(?:specific(?:ally|ity)?|selective(?:ly)?|exclusive(?:ly)?|unique(?:ly)?)\b", re.I)

@@ -162,8 +162,13 @@ class ClaudeGateway:
         from .genomic_scope import compile_genomic_scope, DIGEST as GENOMIC_SCOPE_DIGEST
         from .pattern_planning import compile_signal_plan, DIGEST as PATTERN_PLAN_DIGEST
         from .schema_drafting import compile_schema_draft, DIGEST as SCHEMA_DRAFT_DIGEST
+        from .independent_checks import DIGEST as INDEPENDENT_CHECKS_DIGEST
         def compile_scopes(proposal):
             proposal, issue = compile_property_owners(proposal, grounding, question=question)
+            if issue is None:
+                from .independent_checks import split
+                try: proposal = split(proposal, question)
+                except ValueError as exc: issue = str(exc)
             if issue is None:
                 proposal, issue = compile_requested_scope(question, grounding, proposal)
             if issue is None:
@@ -179,7 +184,7 @@ class ClaudeGateway:
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,INDEPENDENT_CHECKS_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:

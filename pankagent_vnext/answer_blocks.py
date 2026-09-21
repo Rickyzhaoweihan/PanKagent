@@ -120,7 +120,7 @@ def catalogue(evidence):
             add(eid, 'source_classification', 'Recorded source classifications: ' +
                 '; '.join(f'{text(k)}: {v} records' for k, v in sorted(distribution.items())) +
                 '. These are source labels, not independent proof of causality.', True)
-        interactions = [e for e in edges if e.get('type') in {'PHYSICAL_INTERACTION', 'GENETIC_INTERACTION'}]
+        interactions = [e for e in edges if e.get('type') == 'PHYSICAL_INTERACTION']
         if interactions:
             from .answer_facts import build_answer_facts
             full = build_answer_facts(step) or {}
