@@ -92,6 +92,8 @@ def generic_profile_gene(question):
     match=re.fullmatch(r'\s*(?:(?:give me|show|provide)\s+)?(?:a\s+)?comprehensive\s+(?:gene\s+)?(?:profile|overview|insights)\s+(?:of|for|on)\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)[.?!]?\s*',question,re.I)
     if match is None:
         match=re.fullmatch(r'\s*tell me about (?:the\s+)?gene\s+([A-Za-z][A-Za-z0-9_.-]{0,39}?)(?:\s+in\s+(?:T1D|type 1 diabetes))?[.?!]?\s*',question,re.I)
+    if match is None:
+        match=re.fullmatch(r'\s*(?i:tell me about)\s+([A-Z][A-Z0-9_.-]{0,39})\s+(?i:in (?:T1D|type 1 diabetes))[.?!]?\s*',question)
     return match.group(1) if match else None
 
 

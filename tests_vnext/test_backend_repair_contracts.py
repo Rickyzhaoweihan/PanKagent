@@ -498,6 +498,8 @@ def test_registered_profile_carries_t1d_scope_only_to_compatible_checks():
     from pankagent_vnext.investigations import generic_profile_gene, expand_registered_profile
     question='Tell me about the gene PTPN22 in T1D'
     assert generic_profile_gene(question)=='PTPN22'
+    assert generic_profile_gene('Tell me about PTPN22 in T1D')=='PTPN22'
+    assert generic_profile_gene('Tell me about stress in T1D') is None
     plan=expand_registered_profile(question,'PTPN22')
     assert len(plan['steps'])==12
     for step in plan['steps']:
