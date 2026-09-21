@@ -79,3 +79,10 @@ rotation fix. Record rollback code/configuration without restoring old budget
 ledgers. Do not bypass the earlier blocked external IGV script exception. Finish
 with exact commits, before/after outcomes, spend, remaining owners and rollback
 evidence. No document is sent to another team automatically.
+
+## Implementation evidence
+
+See the [validation report](backend-repair-validation-2026-09-21.md) and
+[case matrix](backend-repair-case-results-2026-09-21.md) for final code, exact
+replays, budget closure and unresolved release gates. The upstream-only
+[HIRN handoff](hirn-api-handoff-2026-09-20.md) is maintained separately.
