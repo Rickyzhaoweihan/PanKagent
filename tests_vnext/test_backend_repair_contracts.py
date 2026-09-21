@@ -533,3 +533,11 @@ def test_bounded_executed_empty_annotation_is_not_a_retrieval_failure():
     step['retrieval_execution']['completed']=False
     assert not executed_without_records(step)
     assert 'couldn’t retrieve' in outcome_message([step])
+
+
+def test_annotation_overview_does_not_claim_immune_specificity_ranking():
+    from pankagent_vnext.answer_blocks import catalogue, fallback
+    evidence=[{'evidence_id':'G1','status':'partial','nodes':[{'id':'g','labels':['Gene']}],
+        'requested_scope':{'retrieval_selection':{'mode':'annotation_overview','ordering':'stable_identifiers'}}}]
+    answer=fallback(catalogue(evidence))
+    assert 'not a ranking by biological importance or immune specificity' in answer

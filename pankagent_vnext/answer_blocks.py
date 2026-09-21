@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v3'
+VERSION = 'verified-answer-blocks-v4'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -104,6 +104,9 @@ def catalogue(evidence):
         else:
             add(eid, 'scope', f'{title}: {len(edges)} relationship records, {len(nodes)} entities and '
                 f'{len(rows)} result rows retained.' + suffix, True)
+        selection=(step.get('requested_scope') or {}).get('retrieval_selection') or {}
+        if selection.get('mode')=='annotation_overview' and selection.get('ordering')=='stable_identifiers':
+            add(eid,'annotation_selection','Annotation examples use stable-identifier ordering, not a ranking by biological importance or immune specificity. No ontology-depth or information-content ranking was computed.',True)
         index = {n['id']: n for n in nodes if isinstance(n, dict) and 'id' in n}
 
         def identity(identifier):
