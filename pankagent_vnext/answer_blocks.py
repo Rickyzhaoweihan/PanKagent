@@ -12,13 +12,13 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v1'
+VERSION = 'verified-answer-blocks-v2'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
-          'properties': {'fact_ids': {'type': 'array', 'maxItems': 24,
+          'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
           'required': ['fact_ids']}
 TOOL = {'name': 'select_answer_facts',
-        'description': 'Select relevant verified fact IDs. Never supply prose, numbers or new facts.',
+        'description': 'Select at most 24 relevant verified fact IDs. Never supply prose, numbers or new facts.',
         'input_schema': SCHEMA, 'strict': True}
 SYSTEM = ('Select the verified facts that directly answer the question, preserving each requested '
           'category and assay distinction. Use select_answer_facts. Mandatory facts are always '
@@ -38,7 +38,7 @@ CONTEXT = ('condition', 'tissue_name', 'tissue_id', 'data_source', 'data_version
 def text(value):
     # Recorded source strings are data, not Markdown/HTML or instructions.
     value = str(value).replace('\n', ' ').replace('\r', ' ')
-    return re.sub(r'([\\`*_<>{}\[\]|])', r'\\\1', value[:240])
+    return re.sub(r'([\\`*_<>{}\[\]|])', r'\\\1', value)
 
 
 def finite(value):

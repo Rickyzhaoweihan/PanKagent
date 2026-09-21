@@ -234,3 +234,49 @@ def test_referential_go_followup_carries_gene_but_explicit_replacement_does_not(
     assert grounding_question('focus only on insulin secretion GO terms',prior).endswith('gene: CFTR.')
     for question in ('What about gene INS?','Now inspect PTPN22','Show rs689 GWAS'):
         assert grounding_question(question,prior)==question
+
+
+def test_provider_schema_uses_supported_subset_and_local_length_guard():
+    from pankagent_vnext.answer_blocks import TOOL, text
+    assert 'maxItems' not in TOOL['input_schema']['properties']['fact_ids']
+    # Full provenance/identifiers must never be silently clipped for prose.
+    assert len(text('x' * 500)) == 500
+    facts = catalogue(detection_evidence())
+    with pytest.raises(ValueError): render({'fact_ids':[facts[0]['id']]*25},facts)
+
+
+def test_evidence_type_grammar_does_not_add_a_gene_alias():
+    from tests_vnext.test_preplanning_grounding import FakeGraph, make_index
+    graph = FakeGraph()
+    graph.rows['Gene'].append({'id':'gene-type','name':'TYPE','labels':['Gene']})
+    index = make_index(graph)
+    matches = index.match('Show the cell-type expression or enrichment evidence for CFTR. For each evidence type, explain the comparison.')
+    assert not any(m['state']=='resolved' and any(c['id']=='gene-type' for c in m['candidates']) for m in matches)
+    assert any(m['state']=='resolved' and any(c['id']=='gene-type' for c in m['candidates']) for m in index.match('Show gene TYPE'))
+
+
+def test_gwas_dependencies_preserve_exact_variants_and_disease():
+    from pankagent_vnext.query_templates import compile_variant_dependencies
+    from tests_vnext.test_query_templates import step, RELEASE
+    from pankagent_vnext.graph import validate_cypher
+    c={'entity_type':'disease','property':'id','operator':'=','value':'MONDO_0005147'}
+    s=step('PART_OF_GWAS_SIGNAL',[c],depends_on=['coloc'],resolved_entities=[{
+        'constraint_index':0,'requested':c,'state':'resolved','graph_version':RELEASE,
+        'entity_type':'disease','labels':['disease'],'id':c['value']}])
+    bindings={'dep_0':{'graph_version':RELEASE,'id_labels':{'rs123':['variants']}}}
+    query=compile_variant_dependencies(s,bindings)
+    assert query and 'a.id IN $dep_0' in query['cypher']
+    assert query['parameters']['template_0']==c['value']
+    assert validate_cypher(query['cypher'],s,{**query['parameters'],'dep_0':['rs123']},dependency_bindings=bindings)==[]
+    bindings['dep_0']['id_labels']={c['value']:['disease']}
+    assert compile_variant_dependencies(s,bindings) is None
+
+
+def test_credible_set_grammar_does_not_add_set_gene():
+    from tests_vnext.test_preplanning_grounding import FakeGraph, make_index
+    graph = FakeGraph()
+    graph.rows['Gene'].append({'id':'gene-set','name':'SET','labels':['Gene']})
+    index = make_index(graph)
+    matches = index.match('What T1D GWAS evidence is recorded for rs689? Report the credible set and lead-variant context.')
+    assert not any(m['state']=='resolved' and any(c['id']=='gene-set' for c in m['candidates']) for m in matches)
+    assert any(m['state']=='resolved' and any(c['id']=='gene-set' for c in m['candidates']) for m in index.match('Show gene SET'))

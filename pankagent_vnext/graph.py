@@ -1575,12 +1575,12 @@ class GraphAdapter:
         from .candidate_policy import CandidateBatch, retryable_generation_error, initial_request_count, grounded_prompt_variants
         grounded = getattr(self.settings, 'grounded_query_policy', False)
         from .planning_contract import VerifiedCache
-        from .query_templates import compile_query, DIGEST as TEMPLATE_DIGEST
+        from .query_templates import compile_query, compile_variant_dependencies, DIGEST as TEMPLATE_DIGEST
         key = VerifiedCache.key({k:v for k,v in step.items() if k != 'resolution_key'}, parameters, self.preview_identity(), TEMPLATE_DIGEST, CONTRACT_DIGEST)
         if not hasattr(self, '_query_cache'):
             self._query_cache = VerifiedCache()
         cached = self._query_cache.get(key) if grounded else None
-        template = compile_query(step) if grounded and not dependency_notes else None
+        template = (compile_variant_dependencies(step, dependency_bindings) if dependency_notes else compile_query(step)) if grounded else None
         routes = (['cache'] if cached else []) + (['template'] if template else [])
         routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         for route in routes:

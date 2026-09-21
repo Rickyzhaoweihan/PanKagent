@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import re
 
-VERSION = 'dependency-scope-v1'
+VERSION = 'dependency-scope-v2'
 OWNERS = {'PART_OF_QTL_SIGNAL': {'Gene', 'variants'},
           'PART_OF_GWAS_SIGNAL': {'variants', 'disease'},
           'SIGNAL_COLOC_WITH': {'Gene', 'disease'},
@@ -26,6 +26,14 @@ def normalize(plan):
         if known and step.get('depends_on') and not intersection and step.get('evidence_combination','independent')=='independent':
             step['dependency_scope']={'version':VERSION,'removed_unnecessary_dependencies':list(step['depends_on'])}
             step['depends_on']=[]
+        if relations == {'PART_OF_GWAS_SIGNAL'} and not intersection and len(step.get('depends_on', [])) > 1:
+            # Independent checks must not become an accidental intersection of
+            # QTL variants and coloc leads. Prefer the gene-scoped coloc input.
+            choices = [d for d in step['depends_on'] if by_id.get(d, {}).get('relation_types') == ['SIGNAL_COLOC_WITH']]
+            if len(choices) == 1:
+                step['dependency_scope'] = {'version':VERSION, 'selected_variant_input':choices[0],
+                    'removed_unnecessary_dependencies':[d for d in step['depends_on'] if d != choices[0]]}
+                step['depends_on'] = choices
         owners=set().union(*(OWNERS.get(r,set()) for r in relations))
         for dependency in step.get('depends_on',[]):
             parent=by_id.get(dependency,{})

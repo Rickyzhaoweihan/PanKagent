@@ -278,3 +278,28 @@ def compile_query(step):
                                   'all_paths_covered': selected_paths == paths,
                                   'all_requested_paths_covered': True,
                                   'scope_basis': 'resolved_tissue_identity' if selected_paths != paths else 'shared_registered_endpoint'}}
+
+
+def compile_variant_dependencies(step, dependency_bindings):
+    """Bind verified dependency variants to the source of a GWAS template.
+
+    Every dependency predicate remains present, including an explicitly requested
+    intersection. The existing validator still checks all filters and ownership.
+    """
+    from copy import deepcopy
+    if step.get('relation_types') != ['PART_OF_GWAS_SIGNAL'] or not step.get('depends_on'):
+        return None
+    names = ['dep_' + str(i) for i in range(len(step['depends_on']))]
+    for name in names:
+        binding = dependency_bindings.get(name, {})
+        labels = binding.get('id_labels', {})
+        if binding.get('graph_version') != REGISTRY['release'] or not labels or any('variants' not in v for v in labels.values()):
+            return None
+    plain = deepcopy(step)
+    plain['depends_on'] = []
+    query = compile_query(plain)
+    if not query or query['endpoint_coverage'].get('source') != 'variants':
+        return None
+    query['cypher'] = query['cypher'].replace('\nWHERE ', '\nWHERE ' + ' AND '.join('a.id IN $' + n for n in names) + ' AND ', 1)
+    query['template_id'] = 'verified_variant_dependency_gwas'
+    return query

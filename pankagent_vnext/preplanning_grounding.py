@@ -19,7 +19,7 @@ from .grounding_inventory import (build_inventory, inventory_identity, load_inve
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .genomic_scope import genomic_scope, load_coordinate_metadata, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = "preplanning-grounding-7"
+VERSION = "preplanning-grounding-8"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -57,6 +57,8 @@ _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta
 _REQUEST_VERBS = {"find", "show", "list", "count", "compare", "describe", "explain", "identify", "retrieve", "search", "get", "check", "tell", "give"}
 _SCHEMA_ROLE_PATTERNS = {
     "ontology_vocabulary": r"\b(?:GO|gene ontology)(?:\s+(?:term|annotation|evidence|biological|molecular|cellular|for|of))|\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\s+(?:GO|annotation|term)",
+    "signal_context_vocabulary": r"\b(?:credible[- ]sets?|lead[- ]variants?|fine[- ]mapping)\b",
+    "evidence_class_vocabulary": r"\b(?:evidence|measurement|assay|record|relationship)[- ]types?\b",
     "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",
     "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b",
     "analysis_vocabulary": r"\b(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\s+(?:evidence|signal|association|annotation|analysis|enrichment|data|record|support|for|of|in|with|between)|\b(?:evidence|signal|association|analysis|enrichment)\s+(?:from|for|of|in)?\s*(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\b",
