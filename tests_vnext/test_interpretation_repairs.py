@@ -11,7 +11,7 @@ BUNDLE = Path(__file__).resolve().parents[1] / 'pankagent_vnext/answer_skills'
 
 def test_active_bundle_preserves_original_sources_and_validates_all_checksums():
     router = AnswerSkillRouter(BUNDLE)
-    assert router.manifest['bundle_version'] == '1.10.0'
+    assert router.manifest['bundle_version'] == '1.10.1'
     original = {'sha256': {'upstream/schema_skill.json': 'f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3', 'upstream/functional_data_interpretation_skill.json': 'd5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80', 'upstream/general_interpretation.json': '04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668'}}
     for name, digest in router.manifest['sha256'].items():
         assert hashlib.sha256((BUNDLE / name).read_bytes()).hexdigest() == digest
@@ -82,7 +82,7 @@ def test_saved_qtl_negative_claims_have_source_specific_prompt_boundaries(monkey
             assert 'Repeated short suffixes such as credibleSet1' in matched
             body = json.loads(prepared.body)
             assert body['evidence'][0]['edges'] == edges
-            assert prepared.profile['bundle_version'] == '1.10.0'
+            assert prepared.profile['bundle_version'] == '1.10.1'
             assert prepared.profile['model_context']['mode'] == 'standard'
             assert evidence == original
             assert gateway.budget.snapshot()['calls'] == 0

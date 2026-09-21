@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v5'
+VERSION = 'verified-answer-blocks-v6-readable'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -41,6 +41,27 @@ def text(value):
     # Recorded source strings are data, not Markdown/HTML or instructions.
     value = str(value).replace('\n', ' ').replace('\r', ' ')
     return re.sub(r'([\\`*_<>{}\[\]|])', r'\\\1', value)
+
+
+FIELD_LABELS = {
+    'data_source': 'Source', 'data_version': 'Source version',
+    'condition': 'Condition', 'tissue_name': 'Tissue', 'tissue_id': 'Tissue ID',
+    'pubmed_id': 'PubMed ID', 'data_source_url': 'Source URL',
+    'ocr_gene_activity_score_mean': 'mean ATAC gene activity',
+    'ocr_gene_activity_score_median': 'median ATAC gene activity',
+    'total_cells': 'Total cells', 'n_donors': 'Donors',
+    'median_donor_log_cpm': 'Median donor log-CPM',
+    'median_donor_cpm': 'Median donor CPM',
+    'median_pct_cells_expressing': 'Median percentage of cells expressing',
+}
+
+
+def field_label(key):
+    # Only presentation changes; source values and metric distinctions stay intact.
+    for prefix, label in [('type_1_diabetes_', 'T1D '), ('non_diabetic_', 'Non-diabetic ')]:
+        if str(key).startswith(prefix):
+            return label + field_label(str(key)[len(prefix):])
+    return text(FIELD_LABELS.get(key, str(key).replace('_', ' ')))
 
 
 def finite(value):
@@ -103,8 +124,14 @@ def catalogue(evidence):
         if step.get('functional_metadata'):
             add(eid, 'scope', f'{title}: aggregate functional measurements are available for the recorded cohort.' + suffix, True)
         else:
-            add(eid, 'scope', f'{title}: {len(edges)} relationship records, {len(nodes)} entities and '
-                f'{len(rows)} result rows retained.' + suffix, True)
+            categories = list(dict.fromkeys(LABELS.get(e.get('type'), str(e.get('type', 'Recorded evidence')).replace('_', ' ').lower()) for e in edges))
+            heading = ', '.join(categories) if categories else 'Retrieved evidence'
+            counts = [f"{len(edges)} relationship record{'s' if len(edges) != 1 else ''}"]
+            if nodes:
+                counts.append(f"{len(nodes)} {'entity' if len(nodes) == 1 else 'entities'}")
+            if rows:
+                counts.append(f"{len(rows)} result row{'s' if len(rows) != 1 else ''}")
+            add(eid, 'scope', text(heading) + ': ' + ', '.join(counts) + ' retrieved.' + suffix, True)
         selection=(step.get('requested_scope') or {}).get('retrieval_selection') or {}
         if selection.get('mode')=='annotation_overview' and selection.get('ordering')=='stable_identifiers':
             add(eid,'annotation_selection','Annotation examples use stable-identifier ordering, not a ranking by biological importance or immune specificity. No ontology-depth or information-content ranking was computed.',True)
@@ -114,7 +141,7 @@ def catalogue(evidence):
             node = index.get(identifier, {})
             props = node.get('properties') or {}
             name = props.get('name') or props.get('hgnc_symbol') or identifier
-            roles = ', '.join(text(x) for x in node.get('labels', [])) or 'entity'
+            roles = ', '.join(text(str(x).replace('_', ' ')) for x in node.get('labels', [])) or 'entity'
             return f'{text(name)} ({roles})'
 
         # Distributions use all records; examples never determine totals.
@@ -135,14 +162,14 @@ def catalogue(evidence):
             methods = full.get('physical_interaction_methods') or {}
             for group in methods.get('groups', []):
                 fields = group['recorded_fields']
-                details = '; '.join(f'{text(k)}={text(v.get("value"))}' for k, v in fields.items())
+                details = '; '.join(f'{field_label(k)}: {text(v.get("value"))}' for k, v in fields.items())
                 add(eid, 'interaction_method', f"Recorded interaction assay group: {group['record_count']} relationship records; {details}.")
         for edge_index, edge in enumerate(edges):
             props = edge.get('properties') or {}
             relation = edge.get('type', 'recorded relationship')
-            details = [f'{text(k)}={text(v)}' for k, v in props.items()
+            details = [f'{field_label(k)}: {text(v)}' for k, v in props.items()
                        if finite(v) and not k.endswith('_id')][:12]
-            details += [f'{text(k)}={text(props[k])}' for k in CONTEXT if props.get(k) is not None]
+            details += [f'{field_label(k)}: {text(props[k])}' for k in CONTEXT if props.get(k) is not None]
             if edge_index < 6:
                 add(eid, 'relationship', f"{identity(edge.get('start_id'))} → {identity(edge.get('end_id'))}: "
                 f"{text(LABELS.get(relation, relation))}. " + '; '.join(details) + '.', edge_index == 0)
@@ -154,8 +181,8 @@ def catalogue(evidence):
                     nd = props.get('non_diabetic_' + metric)
                     if finite(nd):
                         direction = 'higher than' if value > nd else 'lower than' if value < nd else 'equal to'
-                        add(eid, 'comparison', f'{identity(edge.get("end_id"))}: recorded {text(metric)} '
-                            f'in T1D is {value}, {direction} ND ({nd}). This descriptive comparison '
+                        add(eid, 'comparison', f'{identity(edge.get("end_id"))}: recorded {field_label(metric)} '
+                            f'in T1D is {value}, {direction} non-diabetic samples ({nd}). This descriptive comparison '
                             'does not establish statistical significance or causality.')
         if len(edges) > 40:
             add(eid, 'context_omission', 'Detailed numerical comparisons are limited to 40 retained relationship records in this answer; all retrieved relationships remain in the result. This answer limit does not mean evidence is absent.', True)
@@ -185,7 +212,13 @@ def catalogue(evidence):
         if any(e.get('type') == 'GENE_ACTIVITY_SCORE_IN' for e in edges):
             add(eid, 'assay', 'ATAC gene activity is accessibility-derived, not RNA expression. Mean and median retain their recorded definitions.', True)
         if any(e.get('type') == 'GENE_DETECTED_IN' for e in edges):
-            add(eid, 'assay', 'RNA detection within the recorded condition does not establish a T1D-versus-control differential-expression result or cell-type specificity.', True)
+            specificity = re.search(r'\b(?:restricted|exclusive|exclusively|specific|specificity|only)\b',
+                                    str(step.get('question') or step.get('title') or ''), re.I)
+            if specificity:
+                add(eid, 'takeaway', 'The available RNA detection evidence cannot establish cell-type exclusivity. '
+                    'Missing detection records do not show that expression was measured and found absent in other cell types.', True)
+            add(eid, 'assay', 'RNA detection describes expression within the recorded condition; it is not a T1D-versus-control comparison.'
+                + ('' if specificity else ' It does not establish cell-type specificity.'), True)
         if any(e.get('type') == 'GENE_ENRICHED_IN' for e in edges):
             add(eid, 'assay', 'Enrichment retains its source-analysis comparison population; returned cell types do not redefine a recorded one-versus-rest comparison.', True)
         metadata = step.get('functional_metadata')
@@ -209,7 +242,7 @@ def catalogue(evidence):
             add(eid, 'trace_context', 'Applied filters: ' + text(json.dumps(metadata.get('filters', {}), sort_keys=True)) + '. Recorded stimulus intervals: ' + json.dumps(metadata.get('stimuli', []), ensure_ascii=False) + '. The cohort mean cannot establish individual variability or causality.', True)
         for row in rows[:4]:
             if isinstance(row, dict):
-                values = [f'{text(k)}={text(v)}' for k, v in row.items()
+                values = [f'{field_label(k)}: {text(v)}' for k, v in row.items()
                           if isinstance(v, (str, int, float)) and len(str(v)) <= 240]
                 if values:
                     add(eid, 'row', 'Recorded result: ' + '; '.join(values) + '.')
@@ -237,10 +270,32 @@ def render(selection, facts):
         raise ValueError('invalid_answer_fact_reference')
     # Every requested category and every mandatory limitation survives selection.
     chosen = set(selected) | {f['id'] for f in facts if f['mandatory']}
-    output = [fact['text'] + ' ' + ' '.join('['+eid+']' for eid in dict.fromkeys([fact['evidence_id'], *fact.get('supporting_evidence_ids', [])])) for fact in facts if fact['id'] in chosen]
-    if not output:
+    # Combine identical prose only; keep every supporting citation and never
+    # merge different values, scopes or execution outcomes.
+    grouped = {}
+    for fact in facts:
+        if fact['id'] not in chosen:
+            continue
+        entry = grouped.setdefault((fact['kind'], fact['text']), [])
+        for eid in [fact['evidence_id'], *fact.get('supporting_evidence_ids', [])]:
+            if eid not in entry:
+                entry.append(eid)
+    if not grouped:
         raise ValueError('empty_answer_blocks')
-    return '\n\n'.join(output)
+    lead, observations, context = [], [], []
+    for (kind, prose), citations in grouped.items():
+        line = prose + ' ' + ' '.join('[' + eid + ']' for eid in citations)
+        target = lead if kind == 'takeaway' else context if kind in {
+            'assay', 'limitation', 'annotation_selection', 'context_omission', 'input_scope'
+        } else observations
+        target.append(line)
+    # Short answers stay short; longer evidence lists get two useful signposts.
+    if len(grouped) > 5 and observations and context:
+        parts = lead + ['**Recorded evidence**', '\n\n'.join(observations),
+                        '**Interpretation and limits**', '\n\n'.join(context)]
+    else:
+        parts = lead + observations + context
+    return '\n\n'.join(parts)
 
 
 def fallback(facts):

@@ -24,7 +24,7 @@ def test_verified_direction_roles_and_invalid_selection():
         'non_diabetic_ocr_gene_activity_score_mean':52.9265, 'data_source':'audited-source'}
     facts = catalogue([step])
     answer = render({'fact_ids':[f['id'] for f in facts]}, facts)
-    assert '49.6068, lower than ND (52.9265)' in answer
+    assert '49.6068, lower than non-diabetic samples (52.9265)' in answer
     assert 'PLEKHM1 (Gene)' in answer and 'ATAC' in answer and '[G7]' in answer
     assert 'hormone' not in answer and 'median' not in answer.split('49.6068')[0].split('recorded')[-1]
     with pytest.raises(ValueError):render({'fact_ids':[facts[0]['id']], 'claim':'higher'},facts)
