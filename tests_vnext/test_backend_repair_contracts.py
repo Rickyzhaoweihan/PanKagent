@@ -448,3 +448,21 @@ def test_independent_bundles_preserve_gene_disease_and_required_variant_input():
     assert len(split(p,'Find the intersection of these signals')['steps'])==1
     p['steps'][0]['constraints'].append({'property':'unknown','value':'must preserve'})
     assert len(split(p,'Connect gene to T1D')['steps'])==1
+
+
+def test_independent_assay_bundle_preserves_tissue_and_source_without_rna_atac_join():
+    from pankagent_vnext.independent_checks import split
+    gene={'entity_type':'Gene','property':'id','operator':'=','value':'ENSG_FIXTURE'}
+    tissue={'entity_type':'anatomical_structure','property':'name','operator':'=','value':'beta cell'}
+    source={'relationship_type':'GENE_DETECTED_IN','property':'data_source','operator':'=','value':'audited_source'}
+    plan={'steps':[{'id':'s1','relation_types':['GENE_DETECTED_IN','GENE_ACTIVITY_SCORE_IN'],
+        'constraints':[gene,tissue,source],'depends_on':[],'evidence_combination':'independent'}]}
+    steps=split(plan,'Summarize RNA detection and ATAC activity')['steps']
+    assert len(steps)==2
+    assert steps[0]['constraints']==[gene,tissue,source]
+    assert steps[1]['constraints']==[gene,tissue]
+    assert steps[0]['relation_types']==['GENE_DETECTED_IN']
+    assert steps[1]['relation_types']==['GENE_ACTIVITY_SCORE_IN']
+    assert len(split(plan,'Find the intersection of RNA and ATAC evidence')['steps'])==1
+    plan['steps'][0]['constraints'].append({'entity_type':'anatomical_structure','property':'unknown_scope','value':'x'})
+    assert len(split(plan,'Summarize RNA and ATAC')['steps'])==1

@@ -5,16 +5,21 @@ import json
 from pathlib import Path
 import re
 
-VERSION='independent-gene-checks-v1'
+VERSION='independent-gene-checks-v2'
 DIGEST=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 SIGNALS={'PART_OF_GWAS_SIGNAL','PART_OF_QTL_SIGNAL','SIGNAL_COLOC_WITH'}
 CONTEXT={'PHYSICAL_INTERACTION','GENETIC_INTERACTION','FUNCTION_ANNOTATION','ASSOCIATED_WITH_GO'}
+EXPRESSION={'GENE_DETECTED_IN','GENE_ENRICHED_IN','MARKER_GENE_OF','GENE_ACTIVITY_SCORE_IN','T1D_DEG_IN'}
 OWNERS={'PART_OF_GWAS_SIGNAL':{'variants','disease'},'PART_OF_QTL_SIGNAL':{'variants','Gene'},
-        'SIGNAL_COLOC_WITH':{'Gene','disease'}, **{r:{'Gene'} for r in CONTEXT}}
+        'SIGNAL_COLOC_WITH':{'Gene','disease'}, **{r:{'Gene'} for r in CONTEXT},
+        **{r:{'Gene','anatomical_structure'} for r in EXPRESSION}}
 TITLES={'PART_OF_GWAS_SIGNAL':'Check GWAS association evidence','PART_OF_QTL_SIGNAL':'Check molecular-QTL evidence',
         'SIGNAL_COLOC_WITH':'Check colocalization evidence','PHYSICAL_INTERACTION':'Check physical interactions',
         'GENETIC_INTERACTION':'Check genetic interactions','FUNCTION_ANNOTATION':'Check pathway annotations',
-        'ASSOCIATED_WITH_GO':'Check GO annotations'}
+        'ASSOCIATED_WITH_GO':'Check GO annotations',
+        'GENE_DETECTED_IN':'Check RNA detection','GENE_ENRICHED_IN':'Check RNA enrichment',
+        'MARKER_GENE_OF':'Check marker-gene evidence','GENE_ACTIVITY_SCORE_IN':'Check ATAC gene activity',
+        'T1D_DEG_IN':'Check T1D differential expression'}
 
 
 def split(plan, question):
@@ -25,7 +30,7 @@ def split(plan, question):
     for step in original:
         relations=step.get('relation_types',[])
         if (len(relations)<2 or len(set(relations))!=len(relations)
-                or not (set(relations)<=SIGNALS or set(relations)<=CONTEXT)
+                or not (set(relations)<=SIGNALS or set(relations)<=CONTEXT or set(relations)<=EXPRESSION)
                 or step.get('evidence_combination','independent')!='independent'
                 or step.get('depends_on') or any(step['id'] in s.get('depends_on',[]) for s in original)
                 or any(step.get(k) for k in ('ranking_contract','ranking_issue','semantic_issues','schema_bindings'))):
@@ -35,10 +40,12 @@ def split(plan, question):
         if len(genes)!=1:
             rewritten.append(step);continue
         # Unknown ownership stays blocked by normal validation, never discarded.
-        if any(not (c.get('entity_type') in {'Gene','variants','disease'}
+        if any(not (c.get('entity_type') in ({'Gene','anatomical_structure'} if set(relations)<=EXPRESSION else {'Gene','variants','disease'})
                     and c.get('property') in {'id','name','hgnc_symbol'}
                     and c.get('operator','=')=='=' or c.get('relationship_type') in relations)
                for c in constraints):
+            rewritten.append(step);continue
+        if set(relations)<=EXPRESSION and any(c.get('entity_type') not in {None,'Gene','anatomical_structure'} for c in constraints):
             rewritten.append(step);continue
         if set(relations)<=CONTEXT and any(c.get('entity_type') not in {None,'Gene'} for c in constraints):
             rewritten.append(step);continue
