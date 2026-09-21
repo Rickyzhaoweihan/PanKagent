@@ -444,6 +444,30 @@ def compile_requested_scope(question, grounding, plan):
 
     from .planning_scope import _mentions, _direct_tissue, _shared_qtl_tissue
     words, mentions, _ = _mentions(question, grounding)
+    # A uniquely grounded disease applies to every compatible requested check,
+    # unless the user explicitly gives that evidence role unrestricted scope.
+    # Donor stage/diagnosis paths are deliberately excluded.
+    from .planning_scope import _compatible, _explicit_unrestricted_disease, _identity_present
+    diseases = {candidate['id']:(candidate, forms) for _,candidate,forms,_ in mentions
+                if candidate['entity_type'] == 'disease'}
+    if len(diseases) == 1:
+        candidate, forms = next(iter(diseases.values()))
+        for step in result.get('steps', []):
+            relations = step.get('relation_types', [])
+            if (not any(_compatible('disease', r) for r in relations)
+                    or set(relations) & {'HAS_DONOR','HAS_SAMPLE'}
+                    or _explicit_unrestricted_disease(question, step)):
+                continue
+            existing = [c for c in step.get('constraints', []) if c.get('entity_type') == 'disease']
+            if existing:
+                if not _identity_present(step, candidate, forms):
+                    return result, 'conflicting_requested_scope:disease'
+                continue
+            predicate = {'property':'id', 'entity_type':'disease', 'owner_kind':'node',
+                         'operator':'=', 'value':candidate['id']}
+            issue = bind(step, predicate, [], {'kind':'explicit_unique_disease', 'resolved_disease':deepcopy(candidate)})
+            if issue:
+                return result, issue
     tissues = [(candidate, spans) for _, candidate, _, spans in mentions
                if candidate['entity_type'] == 'anatomical_structure' and _direct_tissue(words, spans)]
     unique = {candidate['id']: (candidate, spans) for candidate, spans in tissues}

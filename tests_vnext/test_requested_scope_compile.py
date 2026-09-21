@@ -114,3 +114,15 @@ def test_recorded_source_values_are_required_and_negative_source_is_not_rewritte
     assert compile_requested_scope('Show Reactome pathways for GCLC', data, p)[1] == 'requested_source_inventory_unavailable:FUNCTION_ANNOTATION.data_source'
     p['steps'][0]['constraints'].append(field('data_source', 'KEGG', operator='!=', relationship_type='FUNCTION_ANNOTATION'))
     assert compile_requested_scope('Show Reactome pathways for GCLC', grounding(), p)[1] == 'conflicting_requested_scope:data_source'
+
+
+def test_unique_disease_is_carried_to_effector_without_adding_donor_diagnosis():
+    data=grounding();data['mentions'].append({'requested':'T1D','state':'resolved','candidates':[
+        {'id':'MONDO_0005147','name':'type 1 diabetes','entity_type':'disease','labels':['disease']}]})
+    p=plan(step('GCLC','EFFECTOR_GENE_OF'),{'id':'donors','relation_types':['HAS_SAMPLE'],'constraints':[],'depends_on':[]})
+    result,issue=compile_requested_scope('Show GCLC effector evidence in T1D',data,p)
+    assert issue is None
+    assert result['steps'][0]['constraints'][-1]['value']=='MONDO_0005147'
+    assert result['steps'][1]['constraints']==[]
+    p['steps'][0]['constraints'].append(field('id','different-disease','disease'))
+    assert compile_requested_scope('Show GCLC effector evidence in T1D',data,p)[1]=='conflicting_requested_scope:disease'

@@ -381,7 +381,7 @@ class Runtime:
                     plan['literature_intent'] = requested_literature['literature_intent']
                 if plan.get('plan_mode') == 'session_summary':
                     plan['literature'] = False
-                    plan['literature_intent'] = {'included':False,'reason':'reuse_session_summary','policy_version':'session-evidence-summary-v1'}
+                    plan['literature_intent'] = {'included':False,'reason':'reuse_session_summary','policy_version':plan.get('session_summary',{}).get('version','unknown')}
                 plan.pop("review_ready", None)
                 plan["contract_sha256"] = CONTRACT_DIGEST
                 plan["original_question"] = metadata.get("original_question", run["question"])
