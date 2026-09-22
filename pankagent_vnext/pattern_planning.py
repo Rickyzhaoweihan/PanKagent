@@ -13,7 +13,7 @@ import re
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .preplanning_grounding import phrase_tokens
 
-VERSION = 'grounded-signal-plan-patterns-v1'
+VERSION = 'grounded-signal-plan-patterns-v2-coloc-role-frame'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()
 
 _WORDS = set('''a an the for of in from to with and or does do is are has have
@@ -27,7 +27,7 @@ _CATEGORIES = {'coloc': 'SIGNAL_COLOC_WITH', 'gwas': 'PART_OF_GWAS_SIGNAL',
                'qtl': 'PART_OF_QTL_SIGNAL'}
 
 
-def _entities(question, grounding):
+def _entities(question, grounding, extra_words=()):
     words = list(phrase_tokens(question))
     remaining = list(words)
     entities = {}
@@ -61,9 +61,51 @@ def _entities(question, grounding):
                     matched = True
             if not matched:
                 return None
-    if any(word and word not in _WORDS for word in remaining):
+    allowed = _WORDS | set(extra_words)
+    if any(word and word not in allowed for word in remaining):
         return None
     return {kind: list(values.values()) for kind, values in entities.items()}
+
+
+def _coloc_signal_role_frame(question, grounding):
+    """Recognize one closed no-variant coloc question without broadening ``near``.
+
+    In this grammar GWAS and QTL name the two recorded signal roles stored on a
+    ``SIGNAL_COLOC_WITH`` relationship.  They do not request independent
+    disease-wide GWAS or gene-wide QTL inventories.  Generic proximity wording
+    remains outside the bounded recognizer because it would need a coordinate
+    window and a different graph contract.
+    """
+    words = list(phrase_tokens(question))
+    spans = []
+    for mention in grounding.get('mentions', []):
+        candidates = mention.get('candidates', [])
+        span = mention.get('normalized_token_span')
+        if (mention.get('state') != 'resolved' or len(candidates) != 1
+                or not isinstance(span, (list, tuple)) or len(span) != 2):
+            continue
+        candidate = candidates[0]
+        kind = candidate.get('entity_type')
+        if kind not in {'Gene', 'disease'}:
+            continue
+        start, end = span
+        if not (isinstance(start, int) and isinstance(end, int)
+                and 0 <= start < end <= len(words)):
+            return False
+        spans.append((start, end, '<gene>' if kind == 'Gene' else '<disease>'))
+    # Overlap would make the grammatical ownership ambiguous.  Replace spans
+    # from right to left so multi-token disease names retain one role marker.
+    spans.sort()
+    for previous, current in zip(spans, spans[1:]):
+        if current[0] < previous[1]:
+            return False
+    for start, end, marker in sorted(spans, reverse=True):
+        words[start:end] = [marker]
+    normalized = ' '.join(words)
+    pattern = (r'does (?:the |a )?<disease> (?:associated )?gwas signal near '
+               r'(?:the )?<gene>(?: gene)? colocali[sz]e(?:s)? with '
+               r'(?:a|the) (?:molecular )?qtl signal for (?:the )?<gene>(?: gene)?')
+    return bool(re.fullmatch(pattern, normalized))
 
 
 def _identity(candidate):
@@ -77,11 +119,45 @@ def _step(kind, identities, question, constraints=()):
             'complete': True, 'evidence_combination': 'independent'}
 
 
+def is_verified_local_coloc_step(step):
+    """Recognize the closed role-frame step after runtime preparation.
+
+    The marker comes only from this deterministic planner, while the structural
+    checks keep a stale or externally supplied marker from authorizing a
+    broader query.  This helper deliberately ignores preparation-only fields
+    such as resolved identities and retrieval budgets.
+    """
+    marker = step.get('query_compilation')
+    if marker != {'route': 'verified_local_template', 'version': VERSION,
+                  'digest': DIGEST}:
+        return False
+    if (step.get('relation_types') != ['SIGNAL_COLOC_WITH']
+            or step.get('depends_on') not in (None, [])
+            or step.get('complete', True) is not True
+            or step.get('evidence_combination') != 'independent'
+            or step.get('path_spec') is not None):
+        return False
+    constraints = step.get('constraints')
+    if not isinstance(constraints, list) or len(constraints) != 2:
+        return False
+    identities = sorted(
+        (constraint.get('entity_type'), constraint.get('property'),
+         constraint.get('operator', '='), constraint.get('value'))
+        for constraint in constraints if isinstance(constraint, dict)
+    )
+    return (len(identities) == 2
+            and [(kind, prop, operator) for kind, prop, operator, _ in identities]
+            == [('Gene', 'id', '='), ('disease', 'id', '=')]
+            and all(isinstance(value, str) and value for _, _, _, value in identities))
+
+
 def compile_signal_plan(question, grounding, history=None):
     """Return a full scoped proposal or None for the normal planner.
 
-    Signal linkage is three independent queries. It is never a mandatory
-    triangle join, and never assumes that a requested variant is a lead.
+    Named-variant signal linkage is three independent queries.  The closed
+    no-variant GWAS-near-gene/QTL role frame is one primary coloc query because
+    both signal identities are recorded relationship properties.  Neither path
+    uses a mandatory triangle join or assumes that a requested variant is a lead.
     """
     if (history or not grounding or grounding.get('status') != 'ready'
             or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']):
@@ -89,10 +165,10 @@ def compile_signal_plan(question, grounding, history=None):
     # Punctuation can encode a modifier even if tokenization drops it.
     if re.search(r'[<>!=]|\b(?:not|except|excluding|without|only|top|first|lead|causal|causality|expression|splicing|exon)\b', question, re.I):
         return None
-    entities = _entities(question, grounding)
+    coloc_role_frame = _coloc_signal_role_frame(question, grounding)
+    entities = _entities(question, grounding, {'near'} if coloc_role_frame else ())
     if not entities:
         return None
-    words = set(phrase_tokens(question))
     requested = {kind for kind, expression in [('coloc', r'\bcoloc(?:aliz\w*|alis\w*)?\b'),
                  ('gwas', r'\bgwas\b'), ('qtl', r'\bqtls?\b')] if re.search(expression, question, re.I)}
     genes, diseases, variants, tissues = (entities.get(kind, []) for kind in
@@ -102,14 +178,25 @@ def compile_signal_plan(question, grounding, history=None):
         if len(genes) != 1 or len(diseases) != 1 or len(variants) > 1 or tissues:
             return None
         gene, disease = genes[0], diseases[0]
-        steps.append(_step('coloc', [gene, disease],
-            f"Show recorded colocalization evidence between {gene['name']} and {disease['name']}."))
+        coloc_step = _step('coloc', [gene, disease],
+            f"Show recorded colocalization evidence between {gene['name']} and {disease['name']}.")
+        if coloc_role_frame and not variants:
+            coloc_step['query_compilation'] = {
+                'route': 'verified_local_template', 'version': VERSION,
+                'digest': DIGEST,
+            }
+        steps.append(coloc_step)
         if variants:
             variant = variants[0]
             steps.extend([
                 _step('gwas', [variant, disease], f"Show recorded GWAS signal membership of {variant['id']} for {disease['name']}."),
                 _step('qtl', [variant, gene], f"Show recorded molecular QTL signal membership of {variant['id']} for {gene['name']}."),
             ])
+        elif requested == {'coloc', 'gwas', 'qtl'} and coloc_role_frame:
+            # The exact coloc records already carry both signal identities and
+            # lead-variant roles.  A broad QTL inventory would add unrelated
+            # signals, while a gene-scoped GWAS lookup has no verified variant.
+            pass
         elif requested != {'coloc'}:
             # Generic multiple-evidence scope without a specified signal needs
             # the normal planner to decide independent discovery checks.

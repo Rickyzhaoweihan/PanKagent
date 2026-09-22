@@ -28,6 +28,7 @@ PLAN_SCHEMA = {
     'constraints':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{
      'property':{'type':'string'},'operator':{'type':'string','enum':['=','!=','<>','IN','CONTAINS','STARTS WITH','ENDS WITH','>','>=','<','<=']},
      'entity_type':{'type':['string','null']},
+     'owner_role':{'type':'string'},
      'value':VALUE_SCHEMA},'required':['property','operator','value','entity_type']}},
     'complete':{'type':'boolean'}},'required':['id','question','title','rationale','relation_types','depends_on','constraints','complete']}},
   'literature':{'type':'boolean'},'clarification':{'type':['string','null']}},
@@ -56,10 +57,13 @@ Release schema notes:
 '''
 
 from .graph_contract import planner_notes, RELATIONS, LABELS, independent_measurement_steps
+from .bounded_paths import PATH_SPEC_SCHEMA
 PLAN_SCHEMA['properties']['steps']['items']['properties']['relation_types']['items']['enum'] = list(RELATIONS)
 PLAN_SCHEMA['properties']['steps']['items']['properties']['evidence_combination'] = {'type': 'string', 'enum': ['independent', 'cooccurrence']}
+PLAN_SCHEMA['properties']['steps']['items']['properties']['path_spec'] = PATH_SPEC_SCHEMA
 PLAN_SCHEMA['properties']['steps']['items']['required'].append('evidence_combination')
 PLAN_SYSTEM += "\nRetrieve independent detection, enrichment and marker measurements in separate steps. Cooccurrence is only for a user explicitly requesting entities that satisfy multiple measurements together. For specificity/exclusivity, inspect other cell types too; a restriction to the named cell cannot establish exclusivity."
+PLAN_SYSTEM += "\nBounded paths: when the user explicitly asks for an ordered chain, path_spec may describe one connected fixed path of two to four node roles. List nodes in traversal order and one edge between each consecutive pair. Every path constraint must set owner_role to the exact node or edge role. Use direction=either only for physical or genetic interactions. Every bounded-path-v1 step uses evidence_combination=cooccurrence. Never use variable-length, branching, cyclic or disconnected paths."
 PLAN_SYSTEM += planner_notes() + "\nFor revision_context in history, apply its instruction to its parent plan and original question. Preserve unrelated constraints, return a standalone revised question, keep graph scope unchanged for literature-only instructions. A short revision is not a new question lacking an entity."
 
 # Keep the public plan shape, but stop generating duplicate display fields.
@@ -121,6 +125,10 @@ def plan_structure_issue(plan):
     for step in plan['steps']:
         if not step['id'] or step['id'] in seen or any(dependency not in seen for dependency in step['depends_on']):
             return 'invalid_plan_dependencies'
+        from .bounded_paths import plan_issue as bounded_path_issue
+        issue = bounded_path_issue(step)
+        if issue:
+            return 'unsupported_bounded_path_spec:' + issue
         seen.add(step['id'])
     return None
 
@@ -162,6 +170,8 @@ class ClaudeGateway:
         from .genomic_scope import compile_genomic_scope, DIGEST as GENOMIC_SCOPE_DIGEST
         from .pattern_planning import compile_signal_plan, DIGEST as PATTERN_PLAN_DIGEST
         from .schema_drafting import compile_schema_draft, DIGEST as SCHEMA_DRAFT_DIGEST
+        from .bounded_paths import (compile_hla_path_plan, is_hla_path_request,
+                                    DIGEST as BOUNDED_PATH_DIGEST)
         from .independent_checks import DIGEST as INDEPENDENT_CHECKS_DIGEST
         from .coloc_tissue_scope import compile_scope as compile_coloc_tissue, DIGEST as COLOC_TISSUE_DIGEST
         from .cohort_plan_scope import compile_scope as compile_cohort_scope, DIGEST as COHORT_SCOPE_DIGEST
@@ -185,12 +195,13 @@ class ClaudeGateway:
                 except ValueError as exc: issue = str(exc)
             return proposal, issue
         scope_question = (grounding or {}).get('session_scope_question') or question
+        reviewed_hla_request = not history and is_hla_path_request(question)
         cache_key = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
             user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
             system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,INDEPENDENT_CHECKS_DIGEST,COLOC_TISSUE_DIGEST,COHORT_SCOPE_DIGEST,schema,self.settings.model)
+            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,BOUNDED_PATH_DIGEST,INDEPENDENT_CHECKS_DIGEST,COLOC_TISSUE_DIGEST,COHORT_SCOPE_DIGEST,schema,self.settings.model)
             if not _repair and getattr(self.settings,'plan_cache_enabled',True):
                 cached=self.plan_cache.get(cache_key)
                 if cached is not None:
@@ -203,7 +214,9 @@ class ClaudeGateway:
                         return cached
                     provider_event('planning_cache_rejected', {'key':cache_key,'category':cache_issue})
             if not _repair:
-                matched = compile_signal_plan(question, grounding, history) or compile_schema_draft(question, grounding, history)
+                matched = (compile_signal_plan(question, grounding, history)
+                           or compile_hla_path_plan(question, grounding, history)
+                           or compile_schema_draft(question, grounding, history))
                 if matched is not None:
                     matched, pattern_issue = compile_scopes(matched)
                     pattern_issue = (pattern_issue or plan_structure_issue(matched)
@@ -217,6 +230,18 @@ class ClaudeGateway:
                         if cache_key:
                             self.plan_cache.put(cache_key, matched)
                         return matched
+                    if (matched.get('planning_route') or {}).get('kind') == 'verified_bounded_path':
+                        from .plan_recovery import mark_failure
+                        return mark_failure({'interpreted_question': question,
+                                             'proposal_issue': pattern_issue,
+                                             'planning_route': matched.get('planning_route')})
+        if reviewed_hla_request and not _repair:
+            from .plan_recovery import mark_failure
+            return mark_failure({'interpreted_question': question,
+                                 'proposal_issue': 'bounded_path_grounding_unavailable',
+                                 'planning_route': {'kind': 'verified_bounded_path',
+                                                    'version': 'bounded-path-v1',
+                                                    'claude_calls': 0}})
         provider_event('planning_cache', {'hit':False,'key':cache_key,'version':PLANNING_VERSION})
         if profile_gene:
             system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'

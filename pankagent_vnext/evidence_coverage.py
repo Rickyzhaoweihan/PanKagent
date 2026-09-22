@@ -173,6 +173,8 @@ def build_evidence_coverage(step, result, *, graph_version, query=None,
             'relations': list(step.get('relation_types') or []),
             'constraints': deepcopy(step.get('constraints') or []),
             'depends_on': list(step.get('depends_on') or []),
+            **({'path_spec': deepcopy(step['path_spec'])}
+               if step.get('path_spec') is not None else {}),
         },
         'result': {'state': status,
                    'nodes': len(result.get('nodes') or []),

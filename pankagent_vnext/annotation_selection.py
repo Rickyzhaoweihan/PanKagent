@@ -8,7 +8,7 @@ _EXPLICIT = re.compile(r'\b(?:all|every|entire|complete|exhaustive|count|counts|
 
 def apply_default(step, question):
     """Only a user-authored question can authorize the overview default."""
-    if (not question or _EXPLICIT.search(question) or step.get('ranking')
+    if (step.get('path_spec') or not question or _EXPLICIT.search(question) or step.get('ranking')
             or step.get('depends_on')
             or len(step.get('relation_types', [])) != 1
             or step['relation_types'][0] not in RELATIONS):
@@ -44,11 +44,20 @@ def validation_errors(query, step, parameters):
 def allocate_independent_budgets(plan, settings):
     """Partition hard materialization caps so concurrent checks cannot starve peers."""
     steps = plan.get('steps') or []
-    count = max(1, len(steps))
-    for step in steps:
-        step['retrieval_budget'] = {'max_bytes': getattr(settings, 'max_bytes', 2_000_000) // count,
-            'max_nodes': getattr(settings, 'max_nodes', 2000) // count, 'max_edges': getattr(settings, 'max_edges', 5000) // count,
-            'max_rows': getattr(settings, 'max_rows', 1000) // count}
+    # Fixed paths return one aggregate row, but a multi-edge path can contain
+    # many more unique nodes and relationships than either of its one-edge
+    # companion checks.  Weight by edge-count squared while retaining a hard
+    # run-wide cap: integer shares never sum above the configured limit.
+    weights = [max(1, len((step.get('path_spec') or {}).get('edges', [])) ** 2)
+               for step in steps]
+    total_weight = max(1, sum(weights))
+    for step, weight in zip(steps, weights):
+        step['retrieval_budget'] = {
+            'max_bytes': getattr(settings, 'max_bytes', 2_000_000) * weight // total_weight,
+            'max_nodes': getattr(settings, 'max_nodes', 2000) * weight // total_weight,
+            'max_edges': getattr(settings, 'max_edges', 5000) * weight // total_weight,
+            'max_rows': getattr(settings, 'max_rows', 1000) * weight // total_weight,
+        }
     # A gene mentioned in a GWAS question is not a variant/locus binding. Keep
     # the unavailable branch explicit instead of silently scanning a disease.
     genes = [entity for step in steps for entity in step.get('resolved_entities', [])

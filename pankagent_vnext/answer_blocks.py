@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v7-cohort-integrity'
+VERSION = 'verified-answer-blocks-v10-linked-coloc-records'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -117,6 +117,13 @@ def catalogue(evidence):
                       'kind': kind, 'text': prose, 'mandatory': mandatory})
         return facts[-1]
 
+    def names(values, limit=12):
+        ordered = sorted({text(value) for value in values if value is not None})
+        visible = ', '.join(ordered[:limit]) or 'none'
+        if len(ordered) > limit:
+            visible += f'; plus {len(ordered) - limit} additional recorded names'
+        return visible
+
     for step, eid in zip(steps, ids):
         title = text(step.get('title') or step.get('question') or 'Requested check')
         nodes, edges, rows = (step.get(k) or [] for k in ('nodes', 'edges', 'rows'))
@@ -139,6 +146,50 @@ def catalogue(evidence):
         if not isinstance(ledger, dict):
             ledger = build_answer_facts(step)
         classifications = _cohort_classification_counts(step, ledger)
+
+        signal_roles = ledger.get('signal_roles') if isinstance(ledger, dict) else None
+        coloc_counts = (signal_roles.get('coloc_signal_counts')
+                        if isinstance(signal_roles, dict) else None)
+        count_fields = ('record_count', 'gwas_signal_reference_count',
+            'distinct_recorded_gwas_signal_count', 'qtl_signal_reference_count',
+            'distinct_recorded_qtl_signal_count', 'unresolved_gwas_signal_reference_count',
+            'unresolved_qtl_signal_reference_count')
+        valid_coloc_counts = (isinstance(coloc_counts, dict)
+            and all(isinstance(coloc_counts.get(field), int)
+                    and not isinstance(coloc_counts[field], bool)
+                    and coloc_counts[field] >= 0 for field in count_fields))
+        if valid_coloc_counts and coloc_counts['record_count']:
+            records = coloc_counts['record_count']
+            gwas_refs = coloc_counts['gwas_signal_reference_count']
+            gwas_distinct = coloc_counts['distinct_recorded_gwas_signal_count']
+            qtl_refs = coloc_counts['qtl_signal_reference_count']
+            qtl_distinct = coloc_counts['distinct_recorded_qtl_signal_count']
+            unresolved_gwas = coloc_counts['unresolved_gwas_signal_reference_count']
+            unresolved_qtl = coloc_counts['unresolved_qtl_signal_reference_count']
+            unresolved = ''
+            if unresolved_gwas or unresolved_qtl:
+                unresolved = (f' {unresolved_gwas} GWAS and {unresolved_qtl} QTL row references lack a '
+                              'supported recorded signal ID and are not included in the distinct-ID counts.')
+            coloc_completeness = (step.get('colocalization_record_completeness')
+                or (signal_roles.get('colocalization_record_completeness')
+                    if isinstance(signal_roles, dict) else None) or {})
+            completeness_note = ''
+            if coloc_completeness.get('state') == 'partial':
+                completeness_note = (' Retrieval was partial, so these are retained relationship records '
+                    'and the counts are not exhaustive.')
+            add(eid, 'coloc_signal_counts',
+                f'Colocalization signal accounting: {records} recorded relationship row'
+                + ('s' if records != 1 else '')
+                + f'; {gwas_refs} GWAS signal reference'
+                + ('s' if gwas_refs != 1 else '')
+                + f' span {gwas_distinct} distinct recorded GWAS signal ID'
+                + ('s' if gwas_distinct != 1 else '')
+                + f'; {qtl_refs} QTL signal reference'
+                + ('s' if qtl_refs != 1 else '')
+                + f' span {qtl_distinct} distinct recorded QTL signal ID'
+                + ('s' if qtl_distinct != 1 else '')
+                + '. Repeated IDs across relationship rows refer to the same recorded signal and must not be counted as additional distinct signals.'
+                + unresolved + completeness_note, True)
 
         def add_classifications():
             for _field, (label, counts, omitted) in classifications.items():
@@ -172,6 +223,112 @@ def catalogue(evidence):
                 add(eid,'cohort',text(assay) + ': ' + str(counts['sample_count']) + ' assay/sample records linked to '
                     + str(counts['donor_count']) + ' unique donors. File availability has not been verified.',True)
             continue
+        chain = step.get('chain_facts')
+        if (isinstance(chain, dict)
+                and chain.get('version') == 'bounded-path-chain-facts-v1'
+                and isinstance(chain.get('records'), list)
+                and chain.get('record_count') == len(chain['records'])
+                and isinstance(chain.get('complete_for_requested_scope'), bool)
+                and isinstance(chain.get('truncated'), bool)):
+            from .bounded_paths import is_hla_path_request
+            original_question = (step.get('requested_scope') or {}).get('original_question')
+            if (chain.get('path_version') == 'bounded-path-v1'
+                    and is_hla_path_request(original_question)):
+                add(eid, 'limitation',
+                    'Antigen presentation and T1D are request context for these verified HLA-DRA paths. '
+                    'The executed paths do not establish an HLA-DRA-to-T1D or interaction-partner-to-T1D '
+                    'relationship unless a separate returned relationship records one.', True)
+            complete = chain['complete_for_requested_scope']
+            if not complete:
+                add(eid, 'limitation',
+                    f'{title}: bounded-path retrieval is incomplete. Retained paths must not be treated as '
+                    'an exhaustive partner or pathway list, and missing partner-to-process links must not be '
+                    'reported as absent.', True)
+            records = chain['records']
+            if chain['kind'] == 'direct_annotation' and records:
+                processes = {(item['process']['id'], item['process']['name']) for item in records}
+                add(eid, 'direct_path_annotation',
+                    f"Direct focal-gene pathway annotations: {len(records)} recorded path records across "
+                    f"{len(processes)} distinct KEGG/Reactome process nodes. Recorded processes: "
+                    + names(value for _identifier, value in processes) + '.', True)
+            elif chain['kind'] == 'interaction_partner' and records:
+                for relation, label in (('PHYSICAL_INTERACTION', 'Physical'),
+                                        ('GENETIC_INTERACTION', 'Genetic')):
+                    selected = [item for item in records
+                                if item['interaction']['type'] == relation]
+                    if not selected:
+                        continue
+                    partners = {(item['partner']['id'], item['partner']['name'])
+                                for item in selected}
+                    add(eid, 'interaction_path_partners',
+                        f"{label} interaction partners of the focal gene: {len(partners)} distinct partner "
+                        f"genes across {len(selected)} recorded relationship paths. Recorded partners: "
+                        + names(value for _identifier, value in partners) + '.', True)
+            elif chain['kind'] == 'partner_annotation' and records:
+                for relation, label in (('PHYSICAL_INTERACTION', 'physical-interaction'),
+                                        ('GENETIC_INTERACTION', 'genetic-interaction')):
+                    selected = [item for item in records
+                                if item['interaction']['type'] == relation]
+                    if not selected:
+                        continue
+                    partners = {(item['partner']['id'], item['partner']['name'])
+                                for item in selected}
+                    processes = {(item['process']['id'], item['process']['name'])
+                                 for item in selected}
+                    pairs = {(item['partner']['id'], item['process']['id']) for item in selected}
+                    examples = sorted({text(item['partner']['name']) + ' → '
+                                       + text(item['process']['name']) for item in selected})
+                    add(eid, 'joined_partner_annotations',
+                        f"Joined {label} partner pathway annotations from the same verified path records: "
+                        f"{len(selected)} path records link {len(partners)} distinct partner genes to "
+                        f"{len(processes)} distinct KEGG/Reactome process nodes across {len(pairs)} distinct "
+                        f"partner-process pairs. Recorded examples: {', '.join(examples[:8]) or 'none'}"
+                        + (f"; plus {len(examples) - 8} additional recorded pairs" if len(examples) > 8 else '')
+                        + '.', True)
+            elif records:
+                node_roles = chain.get('node_role_order')
+                edge_roles = chain.get('edge_role_order')
+                topology_ok = (isinstance(node_roles, list)
+                    and isinstance(edge_roles, list)
+                    and len(node_roles) == len(edge_roles) + 1
+                    and all(isinstance(role, str) and role for role in node_roles + edge_roles))
+                examples = []
+                if topology_ok:
+                    for item in records[:8]:
+                        if not isinstance(item, dict):
+                            continue
+                        parts, valid = [], True
+                        for index, role in enumerate(node_roles):
+                            node = item.get(role)
+                            if (not isinstance(node, dict)
+                                    or not isinstance(node.get('id'), str)
+                                    or not isinstance(node.get('name'), str)):
+                                valid = False
+                                break
+                            parts.append(role + '=' + text(node['name']) + ' [' + text(node['id']) + ']')
+                            if index < len(edge_roles):
+                                edge_role = edge_roles[index]
+                                edge = item.get(edge_role)
+                                if (not isinstance(edge, dict)
+                                        or not isinstance(edge.get('type'), str)
+                                        or not isinstance(edge.get('start_id'), str)
+                                        or not isinstance(edge.get('end_id'), str)):
+                                    valid = False
+                                    break
+                                parts.append('-[' + edge_role + ':' + text(edge['type'])
+                                    + '; ' + text(edge['start_id']) + '→'
+                                    + text(edge['end_id']) + ']-')
+                        if valid:
+                            examples.append(' '.join(parts))
+                omitted = max(0, len(records) - len(examples))
+                prose = (f'{title}: {len(records)} verified role-preserving fixed-path records were retrieved. '
+                         + ('Same-record path examples: ' + '; '.join(examples)
+                            if examples else 'No valid role-ordered path example is available.'))
+                if omitted:
+                    prose += f'; plus {omitted} additional verified path records not listed'
+                prose += ('.' if complete else
+                    '. The retained paths are incomplete and are not an exhaustive path list.')
+                add(eid, 'bounded_path_associations', prose, True)
         if not (nodes or edges or rows or step.get('functional_metadata')):
             verified_empty = (bool(step.get('queries')) and execution.get('completed') is True
                               and execution.get('cursor_exhausted') is True and not step.get('truncated'))
@@ -205,6 +362,79 @@ def catalogue(evidence):
             name = props.get('name') or props.get('hgnc_symbol') or identifier
             roles = ', '.join(text(str(x).replace('_', ' ')) for x in node.get('labels', [])) or 'entity'
             return f'{text(name)} ({roles})'
+
+        linked_coloc_records = step.get('colocalization_records')
+        if not isinstance(linked_coloc_records, list):
+            linked_coloc_records = [record for record in
+                ((signal_roles or {}).get('records') or [])
+                if isinstance(record, dict)
+                and record.get('relation') == 'SIGNAL_COLOC_WITH']
+        linked_coloc_records = [record for record in linked_coloc_records
+                                if isinstance(record, dict)
+                                and record.get('relation') == 'SIGNAL_COLOC_WITH']
+
+        def recorded_value(record, field):
+            value = record.get(field)
+            if isinstance(value, dict) and value.get('state') == 'recorded':
+                return value.get('value')
+            return None
+
+        for record_index, record in enumerate(linked_coloc_records[:20], 1):
+            gwas_signal = recorded_value(record, 'recorded_gwas_signal_id')
+            qtl_signal = recorded_value(record, 'recorded_qtl_signal_id')
+            dataset = recorded_value(record, 'recorded_coloc_dataset')
+            source = recorded_value(record, 'recorded_source')
+            source_version = recorded_value(record, 'recorded_source_version')
+            gwas_locus = recorded_value(record, 'recorded_gwas_locus_name')
+            qtl_locus = recorded_value(record, 'recorded_qtl_locus_name')
+            h4 = recorded_value(record, 'recorded_pp_h4_abf')
+            gwas_leads = record.get('gwas_lead_variant_ids')
+            qtl_leads = record.get('qtl_lead_variant_ids')
+            tissue = record.get('recorded_tissue_context') or {}
+            details = [
+                'GWAS signal ' + text(gwas_signal if gwas_signal is not None else 'not recorded'),
+                'GWAS lead variant' + ('s ' if isinstance(gwas_leads, list) and len(gwas_leads) != 1 else ' ')
+                    + (', '.join(text(value) for value in gwas_leads)
+                       if isinstance(gwas_leads, list) and gwas_leads else 'not recorded'),
+                'QTL signal ' + text(qtl_signal if qtl_signal is not None else 'not recorded'),
+                'QTL lead variant' + ('s ' if isinstance(qtl_leads, list) and len(qtl_leads) != 1 else ' ')
+                    + (', '.join(text(value) for value in qtl_leads)
+                       if isinstance(qtl_leads, list) and qtl_leads else 'not recorded'),
+                'dataset ' + text(dataset if dataset is not None else 'not recorded'),
+                'source ' + text(source if source is not None else 'not recorded')
+                    + ((' ' + text(source_version)) if source_version is not None else ''),
+                'recorded GWAS locus ' + text(gwas_locus if gwas_locus is not None else 'not recorded'),
+                'recorded QTL locus ' + text(qtl_locus if qtl_locus is not None else 'not recorded'),
+                'recorded H4 ' + text(h4 if h4 is not None else 'not recorded'),
+                ('tissue context unavailable because SIGNAL_COLOC_WITH has no registered tissue property'
+                 if tissue.get('state') == 'unavailable' else
+                 'tissue context ' + text(tissue.get('value') or 'not recorded')),
+                'record link ' + text(record.get('record_link') or record.get('record_sha256') or 'not available'),
+            ]
+            add(eid, 'coloc_record',
+                f'Colocalization row {record_index}: ' + '; '.join(details) + '.', True)
+        if len(linked_coloc_records) > 20:
+            add(eid, 'coloc_record_omission',
+                f'{len(linked_coloc_records) - 20} additional linked colocalization rows are retained in the evidence but not listed in the answer.',
+                True)
+        recorded_gwas_loci = {recorded_value(record, 'recorded_gwas_locus_name')
+                              for record in linked_coloc_records}
+        recorded_gwas_loci.discard(None)
+        focal_gene_names = set()
+        for record in linked_coloc_records:
+            node = index.get(record.get('source_id'), {})
+            props = node.get('properties') or {}
+            name = props.get('name') or props.get('hgnc_symbol')
+            if isinstance(name, str) and name:
+                focal_gene_names.add(name)
+        if (len(focal_gene_names) == 1 and recorded_gwas_loci
+                and {value.casefold() for value in recorded_gwas_loci}
+                != {value.casefold() for value in focal_gene_names}):
+            add(eid, 'coloc_locus_scope',
+                'The queried gene anchor is ' + text(next(iter(focal_gene_names)))
+                + ', while the colocalization rows record the GWAS locus as '
+                + ', '.join(text(value) for value in sorted(recorded_gwas_loci))
+                + '. The graph record must not be relabeled as a GWAS locus for the queried gene.', True)
 
         # Distributions use all records; examples never determine totals.
         from .answer_facts import source_classifications

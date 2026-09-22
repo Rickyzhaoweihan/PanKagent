@@ -803,7 +803,9 @@ def _unrequested_classification_projections(tokens, step):
     if not protected:
         return []
     bindings, _ = _pattern_bindings(tokens, graph_release=step.get('graph_version'))
-    donor_in_scope = any('donor' in labels for labels in bindings.values())
+    donor_variables = {variable for variable, labels in bindings.items()
+                       if 'donor' in labels}
+    donor_in_scope = bool(donor_variables)
     errors, clause = [], None
     for index, token in enumerate(tokens):
         if token.kind == 'WORD' and token.value.upper() in {
@@ -859,6 +861,11 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         return [str(exc)]
     if tokens and tokens[-1].value == ";" and tokens[-1].kind == "SYMBOL":
         tokens = tokens[:-1]
+    if step.get("path_spec") is not None:
+        from .bounded_paths import topology_errors as bounded_path_topology_errors
+        topology = bounded_path_topology_errors(tokens, step, parameters, tokenize)
+        if topology:
+            return list(dict.fromkeys(topology))
     forbidden = {"CREATE", "MERGE", "DELETE", "DETACH", "SET", "REMOVE", "DROP", "LOAD", "CALL", "FOREACH", "ALTER", "RENAME", "GRANT", "DENY", "REVOKE", "SHOW", "USE", "INSERT", "FINISH"}
     errors = []
     if any(t.kind == "SYMBOL" and t.value == ";" for t in tokens):
@@ -880,7 +887,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
                  and (tokens[i - 1].kind in {"WORD", "IDENT"} or tokens[i - 1].value in {"]", ")"})
                  and (tokens[i + 1].kind == "NUMBER" and i + 2 < len(tokens) and tokens[i + 2].value == ".."
                       or tokens[i + 1].value == "..") for i, t in enumerate(tokens))
-    if step.get("complete", True) and (slices or any(
+    if step.get("complete", True) and not step.get("path_spec") and (slices or any(
         t.kind == "WORD" and t.value.upper() in {"LIMIT", "SKIP", "RAND"} for t in tokens
     )):
         errors.append("incomplete_limit_or_slice")
@@ -894,7 +901,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
             except ValueError:
                 errors.append("invalid_constraint_list:" + str(constraint.get("property", "unknown")))
     dependencies = [name for name in parameters if name.startswith("dep_")]
-    if (constraints or dependencies) and any(_word(t, "OR") or _word(t, "XOR") or _word(t, "NOT") for t in tokens):
+    if (constraints or dependencies) and not step.get("path_spec") and any(
+            _word(t, "OR") or _word(t, "XOR") or _word(t, "NOT") for t in tokens):
         errors.append("ambiguous_constraint_boolean_logic")
     branches, branch = [], []
     for token in tokens:
@@ -1039,6 +1047,13 @@ def _node_id(node: Node) -> str:
     return str(node.get("id") if node.get("id") is not None else node.element_id)
 
 
+def _public_edge_fingerprint(edge: Mapping) -> str:
+    """Hash the durable public relationship shape, never a Neo4j element ID."""
+    encoded = json.dumps(edge, sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 class GraphAdapter:
     def __init__(self, settings):
         self.settings = settings
@@ -1090,7 +1105,16 @@ class GraphAdapter:
         manifest_hash = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
         from .semantic_registry import DIGEST as semantic_digest
         from .anatomy_scope import DIGEST as anatomy_scope_digest
+        from .bounded_paths import DIGEST as bounded_path_digest, VERSION as bounded_path_version
+        from .pattern_planning import DIGEST as pattern_plan_digest, VERSION as pattern_plan_version
+        from .coloc_records import DIGEST as coloc_record_digest, VERSION as coloc_record_version
         return {"record_comparison_contract": "recorded-signal-comparison-v1", "semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "qtl_tissue_binding": "qtl-tissue-owner-v2", "measurement_filter_contract": "requested-measurement-predicates-v1", "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
+                "bounded_path_version": bounded_path_version,
+                "bounded_path_sha256": bounded_path_digest,
+                "signal_pattern_version": pattern_plan_version,
+                "signal_pattern_sha256": pattern_plan_digest,
+                "colocalization_record_version": coloc_record_version,
+                "colocalization_record_sha256": coloc_record_digest,
                 "identity_verified": self.identity_verified,
                 **{key: getattr(self.settings, key, None) for key in (
                     "neo4j_uri", "neo4j_database", "cypher_url", "max_nodes", "max_edges", "max_rows",
@@ -1700,6 +1724,8 @@ class GraphAdapter:
             size += width
 
         def walk(value):
+            if truncated:
+                return None
             if isinstance(value, Node):
                 nid = _node_id(value)
                 put(nodes, nid, {"id": nid, "labels": sorted(value.labels), "properties": _safe_value(dict(value))}, self.settings.max_nodes, seen_nodes)
@@ -1709,12 +1735,14 @@ class GraphAdapter:
                 walk(value.end_node)
                 edge = {"start_id": _node_id(value.start_node), "end_id": _node_id(value.end_node),
                         "type": value.type, "properties": _safe_value(dict(value))}
+                fingerprint = _public_edge_fingerprint(edge)
                 if edge["start_id"] in nodes and edge["end_id"] in nodes:
                     # An internal ID deduplicates repeated result paths but is
                     # intentionally absent from the stable public edge shape.
                     put(edges, value.element_id, edge, self.settings.max_edges, seen_edges,
                         json.dumps(edge, sort_keys=True, separators=(",", ":")))
-                return {"edge": [edge["start_id"], edge["type"], edge["end_id"]]}
+                return {"edge": [edge["start_id"], edge["type"], edge["end_id"]],
+                        "fingerprint": fingerprint}
             if isinstance(value, Neo4jPath):
                 for node in value.nodes:
                     walk(node)
@@ -1722,9 +1750,19 @@ class GraphAdapter:
                     walk(edge)
                 return {"path": [_node_id(node) for node in value.nodes]}
             if isinstance(value, Mapping):
-                return {str(k): walk(v) for k, v in value.items()}
+                result = {}
+                for key, item in value.items():
+                    if truncated:
+                        break
+                    result[str(key)] = walk(item)
+                return result
             if isinstance(value, (list, tuple)):
-                return [walk(item) for item in value]
+                result = []
+                for item in value:
+                    if truncated:
+                        break
+                    result.append(walk(item))
+                return result
             return _safe_value(value)
 
         async with self._session() as session:
@@ -1760,6 +1798,8 @@ class GraphAdapter:
                      "relation_types": deepcopy(current.get("relation_types", [])),
                      "complete": current.get("complete", True),
                      "retrieval_selection": deepcopy(current.get("retrieval_selection"))}
+            if current.get("path_spec") is not None:
+                scope["path_spec"] = deepcopy(current["path_spec"])
             request = current.get("semantic_request") or {}
             if (request.get("source") == "user_request"
                     and isinstance(request.get("question"), str)):
@@ -1773,6 +1813,15 @@ class GraphAdapter:
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
                 "requested_scope": requested_scope(step),
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
+        if step.get("path_spec") is not None:
+            from .bounded_paths import plan_issue as bounded_path_plan_issue
+            issue = bounded_path_plan_issue(step)
+            if issue:
+                reason = "unsupported_bounded_path_spec:" + issue
+                base["validation"].append({"valid": False, "reasons": [reason]})
+                base["error"] = {"category": "unsupported_bounded_path_spec",
+                                 "message": "The requested bounded path is outside the verified fixed-path contract."}
+                return base
         if step.get('semantic_issues') or step.get('recovery'):
             base['validation'].append({'valid': False,
                 'reasons': ['semantic_scope_unresolved']})
@@ -1911,13 +1960,47 @@ class GraphAdapter:
         grounded = getattr(self.settings, 'grounded_query_policy', False)
         from .planning_contract import VerifiedCache
         from .query_templates import compile_query, compile_variant_dependencies, DIGEST as TEMPLATE_DIGEST
-        key = VerifiedCache.key({k:v for k,v in step.items() if k != 'resolution_key'}, parameters, self.preview_identity(), TEMPLATE_DIGEST, CONTRACT_DIGEST)
+        from .bounded_paths import (BoundedPathError, DIGEST as BOUNDED_PATH_DIGEST,
+                                    compile_query as compile_bounded_path)
+        from .pattern_planning import (DIGEST as PATTERN_PLAN_DIGEST,
+                                       is_verified_local_coloc_step)
+        path_requested = step.get("path_spec") is not None
+        local_coloc_required = is_verified_local_coloc_step(step)
+        key = VerifiedCache.key({k:v for k,v in step.items() if k != 'resolution_key'}, parameters,
+                                self.preview_identity(), TEMPLATE_DIGEST,
+                                BOUNDED_PATH_DIGEST, PATTERN_PLAN_DIGEST,
+                                CONTRACT_DIGEST)
         if not hasattr(self, '_query_cache'):
             self._query_cache = VerifiedCache()
-        cached = self._query_cache.get(key) if grounded else None
-        template = (compile_variant_dependencies(step, dependency_bindings) if dependency_notes else compile_query(step)) if grounded else None
+        cached = self._query_cache.get(key) if grounded or path_requested or local_coloc_required else None
+        try:
+            if path_requested:
+                if dependency_notes:
+                    raise BoundedPathError("bounded_path_dependencies_unsupported")
+                template = compile_bounded_path(step)
+            else:
+                template = ((compile_variant_dependencies(step, dependency_bindings)
+                             if dependency_notes else compile_query(step))
+                            if grounded or local_coloc_required else None)
+        except BoundedPathError as exc:
+            reason = "unsupported_bounded_path_spec:" + (str(exc) or "compile_failed")
+            base["validation"].append({"valid": False, "reasons": [reason]})
+            base["error"] = {"category": "unsupported_bounded_path_spec",
+                             "message": "The requested bounded path could not be compiled by the verified local route."}
+            return base
+        if local_coloc_required and not template and not cached:
+            base["validation"].append({
+                "valid": False,
+                "reasons": ["verified_local_coloc_template_unavailable"],
+            })
+            base["error"] = {
+                "category": "verified_local_coloc_template_unavailable",
+                "message": "The deterministic colocalization check could not be compiled by its verified local template.",
+            }
+            return base
         routes = (['cache'] if cached else []) + (['template'] if template else [])
-        routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
+        if not path_requested and not local_coloc_required:
+            routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         for route in routes:
             local_route = route in {'template', 'cache'}
             template_audit = None
@@ -2070,7 +2153,72 @@ class GraphAdapter:
                         base["query_route"] = route
                         if template_audit:
                             base["query_template"] = deepcopy(template_audit)
-                        if grounded and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
+                        if path_requested:
+                            from .bounded_paths import (MAX_PATH_RECORDS,
+                                derive_chain_facts, extract_path_records)
+                            raw_rows = base.get("rows") or []
+                            raw_records = (raw_rows[0].get("path_records")
+                                           if len(raw_rows) == 1 and isinstance(raw_rows[0], dict)
+                                           else None)
+                            overfetch = (isinstance(raw_records, list)
+                                         and len(raw_records) > MAX_PATH_RECORDS)
+                            if overfetch:
+                                retained = raw_records[:MAX_PATH_RECORDS]
+                                base["rows"] = [{"path_records": retained}]
+                                retained_node_ids = {
+                                    wrapper.get("node_id")
+                                    for record in retained if isinstance(record, dict)
+                                    for wrapper in (record.get("nodes") or [])
+                                    if isinstance(wrapper, dict) and isinstance(wrapper.get("node_id"), str)}
+                                retained_edge_fingerprints = {
+                                    wrapper.get("fingerprint")
+                                    for record in retained if isinstance(record, dict)
+                                    for wrapper in (record.get("edges") or [])
+                                    if isinstance(wrapper, dict) and isinstance(wrapper.get("fingerprint"), str)}
+                                base["nodes"] = [node for node in base.get("nodes") or []
+                                                 if str(node.get("id")) in retained_node_ids]
+                                filtered_edges, seen_fingerprints = [], set()
+                                for edge in base.get("edges") or []:
+                                    fingerprint = _public_edge_fingerprint(edge)
+                                    if (fingerprint in retained_edge_fingerprints
+                                            and fingerprint not in seen_fingerprints):
+                                        seen_fingerprints.add(fingerprint)
+                                        filtered_edges.append(edge)
+                                base["edges"] = filtered_edges
+                                base["status"], base["truncated"] = "partial", True
+                                base.setdefault("retrieval_execution", {}).update(
+                                    cursor_exhausted=False,
+                                    path_record_limit_reached=True,
+                                    retained_path_records=MAX_PATH_RECORDS)
+                                base["validation"].append({
+                                    "valid": True, "route": route,
+                                    "status": "partial",
+                                    "reasons": ["bounded_path_record_limit"],
+                                })
+                            try:
+                                path_records = extract_path_records(
+                                    step, base.get("rows") or [], base.get("nodes") or [])
+                            except BoundedPathError as exc:
+                                reason = "invalid_bounded_path_evidence:" + (str(exc) or "materialization_failed")
+                                base["status"] = "failed"
+                                base["validation"].append({"valid": False,
+                                                           "route": route,
+                                                           "reasons": [reason]})
+                                base["error"] = {"category": "invalid_bounded_path_evidence",
+                                                 "message": "The bounded path result did not preserve its verified node and relationship roles."}
+                                return base
+                            base["path_records"] = path_records
+                            if overfetch:
+                                base["retrieval_execution"]["exposed_path_records"] = len(path_records)
+                            base["chain_facts"] = derive_chain_facts(
+                                step, path_records, base.get("nodes") or [],
+                                status=base.get("status"),
+                                truncated=base.get("truncated", False))
+                            # The aggregate wrapper is an internal transport
+                            # record.  Preserve its materialization accounting,
+                            # but expose only role-preserving path evidence.
+                            base["rows"] = []
+                        if (grounded or path_requested or local_coloc_required) and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
                             cached_query = {"cypher":query,"parameters":candidate_parameters}
                             if template_audit:
                                 cached_query.update(deepcopy(template_audit))
@@ -2097,5 +2245,15 @@ class GraphAdapter:
                             step, base, graph_version=self.settings.graph_version,
                             query=query, parameters=candidate_parameters, validation_verified=True,
                         )
+                        from .coloc_records import derive_colocalization_records
+                        coloc = derive_colocalization_records(base)
+                        if coloc is not None:
+                            base["colocalization_record_version"] = coloc["version"]
+                            base["colocalization_records"] = coloc["records"]
+                            base["colocalization_record_links"] = coloc["record_links"]
+                            base["colocalization_signal_counts"] = coloc["counts"]
+                            base["colocalization_record_derivation"] = coloc["derivation"]
+                            base["colocalization_record_completeness"] = coloc["completeness"]
+                            base["colocalization_record_interpretation"] = coloc["interpretation"]
                         return base
         return base

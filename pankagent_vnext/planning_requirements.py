@@ -382,6 +382,11 @@ def _pathway_source_issue(question, grounding, plan):
         if not ids:
             continue
         predicates = _source_predicates(step)
+        if step.get('path_spec'):
+            from .bounded_paths import annotation_edge_role
+            role = annotation_edge_role(step)
+            if not role or any(predicate.get('owner_role') != role for predicate in predicates):
+                return f'missing_requested_source_scope:{step.get("id", "step")}:FUNCTION_ANNOTATION.data_source:path_role'
         positive = [set(_values(c)) for c in predicates if c.get('operator', '=') in {'=', 'IN'}]
         actual = set.intersection(*positive) if positive else set()
         excluded = {value for c in predicates if c.get('operator') in {'!=', '<>', 'NOT IN'} for value in _values(c)}
@@ -440,12 +445,16 @@ def compile_requested_scope(question, grounding, plan):
         if not ids:
             continue
         scopes = {sources[gene] for gene in ids}
-        if len(scopes) != 1 or step.get('relation_types') != ['FUNCTION_ANNOTATION']:
+        from .bounded_paths import annotation_edge_role
+        role = annotation_edge_role(step) if step.get('path_spec') else None
+        if len(scopes) != 1 or (step.get('relation_types') != ['FUNCTION_ANNOTATION'] and not role):
             return result, 'ambiguous_requested_source_scope:separate_annotation_checks'
         wanted = sorted(scopes.pop())
         predicate = {'property': 'data_source', 'entity_type': None, 'relationship_type': 'FUNCTION_ANNOTATION',
                      'owner_kind': 'relationship', 'operator': '=' if len(wanted) == 1 else 'IN',
                      'value': wanted[0] if len(wanted) == 1 else json.dumps(wanted)}
+        if role:
+            predicate['owner_role'] = role
         issue = bind(step, predicate, _source_predicates(step),
                      {'kind': 'explicit_recorded_pathway_source', 'gene_ids': sorted(ids), 'recorded_values': wanted})
         if issue:

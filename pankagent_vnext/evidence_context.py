@@ -234,6 +234,18 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
         # The linkage helper already bounds record/reference examples and keeps
         # authoritative full counts. Do not reclip away role or signal identity.
         entry["coloc_linkage"] = deepcopy(item["coloc_linkage"])
+    if isinstance(item.get("chain_facts"), Mapping):
+        chain = item["chain_facts"]
+        records = chain.get("records") or []
+        entry["chain_facts"] = {
+            key: deepcopy(chain[key]) for key in (
+                "version", "path_version", "kind", "node_role_order",
+                "edge_role_order", "record_count", "complete_for_requested_scope",
+                "truncated") if key in chain}
+        entry["chain_facts"]["selected_records"] = _bounded(
+            records[:min(20, limits.collection_items)], limits, changes)
+        entry["chain_facts"]["omitted_record_count"] = max(
+            0, len(records) - len(entry["chain_facts"]["selected_records"]))
     nodes, edges, rows = (item.get(key) or [] for key in ("nodes", "edges", "rows"))
     if not all(isinstance(values, list) for values in (nodes, edges, rows)):
         raise ValueError("invalid_evidence_collections")

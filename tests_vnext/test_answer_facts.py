@@ -236,6 +236,42 @@ class AnswerFactsTests(unittest.TestCase):
         self.assertIsNone(unknown['same_complete_lead_set'])
         self.assertIsNone(unknown['shared_recorded_lead_variant_ids'])
 
+    def test_coloc_counts_distinguish_row_references_from_distinct_signal_ids(self):
+        ns=[node('g','Gene'),node('d','disease'),node('rs-extra','variants')]
+        es=[
+            edge('g','d','SIGNAL_COLOC_WITH',gwas_signal_id='MAPT__credibleSet1__selected',
+                 qtl_signal_id='PLEKHM1__exon__credibleSet3', gwas_lead_vars='rs35327136',
+                 qtl_lead_vars='rs62064652', coloc_dataset='t1d_exonQTL-inspire_coloc'),
+            edge('g','d','SIGNAL_COLOC_WITH',gwas_signal_id='MAPT__credibleSet1__selected',
+                 qtl_signal_id='PLEKHM1__credibleSet1', gwas_lead_vars='rs35327136',
+                 qtl_lead_vars='rs62065450', coloc_dataset='t1d_eQTL-inspire_coloc'),
+            # A separate broad QTL inventory can contain another PLEKHM1 signal;
+            # it must not inflate counts derived from the two coloc records.
+            edge('rs-extra','g','PART_OF_QTL_SIGNAL',credible_set='PLEKHM1__other__credibleSet1'),
+        ]
+        counts=build_answer_facts(evidence(ns,es))['signal_roles']['coloc_signal_counts']
+        self.assertEqual(counts['record_count'],2)
+        self.assertEqual(counts['gwas_signal_reference_count'],2)
+        self.assertEqual(counts['distinct_recorded_gwas_signal_count'],1)
+        self.assertEqual(counts['recorded_gwas_signal_ids'],['MAPT__credibleSet1__selected'])
+        self.assertEqual(counts['qtl_signal_reference_count'],2)
+        self.assertEqual(counts['distinct_recorded_qtl_signal_count'],2)
+        self.assertEqual(counts['recorded_qtl_signal_ids'],[
+            'PLEKHM1__credibleSet1','PLEKHM1__exon__credibleSet3'])
+        self.assertEqual(counts['distinct_recorded_signal_pair_count'],2)
+        self.assertEqual(counts['unresolved_signal_pair_reference_count'],0)
+
+    def test_coloc_signal_counts_retain_unknown_identifiers_and_precede_excerpt_cap(self):
+        es=[edge('g','d','SIGNAL_COLOC_WITH',gwas_signal_id='shared',
+                 qtl_signal_id='qtl-'+str(index)) for index in range(3)]
+        es.append(edge('g','d','SIGNAL_COLOC_WITH',gwas_signal_id='shared'))
+        counts=build_answer_facts(evidence(edges=es),max_records=1)['signal_roles']['coloc_signal_counts']
+        self.assertEqual(counts['record_count'],4)
+        self.assertEqual(counts['distinct_recorded_gwas_signal_count'],1)
+        self.assertEqual(counts['distinct_recorded_qtl_signal_count'],3)
+        self.assertEqual(counts['unresolved_qtl_signal_reference_count'],1)
+        self.assertEqual(counts['unresolved_signal_pair_reference_count'],1)
+
     def test_go_codes_formal_and_only_recorded(self):
         ns=[node('g','Gene'),node('go1','GO_term',go_domain='molecular_function'),node('go2','GO_term',go_domain='biological_process')]
         es=[edge('g','go1','ASSOCIATED_WITH_GO',go_evidence_code='IDA'),edge('g','go1','ASSOCIATED_WITH_GO',go_evidence_code='TAS'),edge('g','go2','ASSOCIATED_WITH_GO',go_evidence_code='UNKNOWN')]

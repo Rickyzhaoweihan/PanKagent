@@ -15,6 +15,10 @@ def grounded(question, extra=None):
     return asyncio.run(ground_question(graph, question))
 
 
+PLEKHM1 = {'id': 'ENSG00000225190', 'name': 'PLEKHM1', 'labels': ['Gene'],
+           'hgnc_symbol': 'PLEKHM1'}
+
+
 @pytest.mark.parametrize('question', [
     'For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?',
     'For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?',
@@ -33,6 +37,45 @@ def test_three_signal_roles_compile_without_mandatory_join_or_lead_assumption(qu
     assert [c['entity_type'] for c in plan['steps'][0]['constraints']] == ['Gene', 'disease']
     assert all(c['property'] == 'id' for s in plan['steps'] for c in s['constraints'])
     assert data == original
+
+
+@pytest.mark.parametrize('question', [
+    'Does the T1D GWAS signal near the PLEKHM1 gene colocalize with a QTL signal for PLEKHM1?',
+    'Does the T1D GWAS signal near\u00a0PLEKHM1\u00a0colocalize with a QTL signal for PLEKHM1?',
+    'Does the type 1 diabetes GWAS signal near PLEKHM1 colocalise with a molecular QTL signal for PLEKHM1?',
+])
+def test_no_variant_coloc_signal_role_frame_is_one_complete_primary_check(question):
+    data = grounded(question, [PLEKHM1])
+    original = deepcopy(data)
+    plan = compile_signal_plan(question, data)
+    assert plan is not None
+    assert plan['interpreted_question'] == question
+    assert len(plan['steps']) == 1
+    step = plan['steps'][0]
+    assert step['relation_types'] == ['SIGNAL_COLOC_WITH']
+    assert step['depends_on'] == [] and step['complete']
+    assert step['constraints'] == [
+        {'property': 'id', 'operator': '=', 'value': 'ENSG00000225190', 'entity_type': 'Gene'},
+        {'property': 'id', 'operator': '=', 'value': 'MONDO_0005147', 'entity_type': 'disease'},
+    ]
+    assert step['query_compilation'] == {
+        'route': 'verified_local_template',
+        'version': plan['planning_route']['version'],
+        'digest': plan['planning_route']['digest'],
+    }
+    assert plan['planning_route']['kind'] == 'verified_signal_pattern'
+    assert plan['planning_route']['claude_calls'] == 0
+    assert data == original
+
+
+@pytest.mark.parametrize('question', [
+    'Show independent GWAS, QTL, and coloc evidence for PLEKHM1 and T1D.',
+    'Show QTL signals near PLEKHM1.',
+    'Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for CFTR?',
+    'Does the T1D GWAS signal within 50 kb of PLEKHM1 colocalize with a QTL signal for PLEKHM1?',
+])
+def test_coloc_role_frame_does_not_swallow_independent_or_spatial_scope(question):
+    assert compile_signal_plan(question, grounded(question, [PLEKHM1])) is None
 
 
 @pytest.mark.parametrize('modifier', ['in spleen', 'not in pancreas', 'with PIP > 0.9',
@@ -116,4 +159,90 @@ def test_gateway_pattern_admission_bypasses_provider_and_revalidates_cache():
         assert all(s['complete'] for s in result['steps'])
         assert await gateway.plan(question, [], grounding=data) == result
         assert not calls
+    asyncio.run(check())
+
+
+def test_no_variant_coloc_role_frame_bypasses_provider_and_reuses_verified_cache():
+    from test_planning_compiler_gateway import gateway_for
+    question = 'Does the T1D GWAS signal near the PLEKHM1 gene colocalize with a QTL signal for PLEKHM1?'
+    data = grounded(question, [PLEKHM1])
+    async def check():
+        gateway, calls = gateway_for(lambda _: {})
+        result = await gateway.plan(question, [], grounding=data)
+        assert not calls and result['planning_route']['claude_calls'] == 0
+        assert len(result['steps']) == 1
+        step = result['steps'][0]
+        assert step['relation_types'] == ['SIGNAL_COLOC_WITH']
+        assert {c['entity_type']: c['value'] for c in step['constraints']} == {
+            'Gene': 'ENSG00000225190', 'disease': 'MONDO_0005147'}
+        assert await gateway.plan(question, [], grounding=data) == result
+        assert not calls
+    asyncio.run(check())
+
+
+def test_no_variant_coloc_executes_local_template_with_grounded_policy_disabled():
+    from test_graph import FakeAdapter
+    from test_planning_compiler_gateway import gateway_for
+    from pankagent_vnext.release_schema import REGISTRY
+
+    question = 'Does the T1D GWAS signal near\u00a0PLEKHM1\u00a0colocalize with a QTL signal for PLEKHM1?'
+    data = grounded(question, [PLEKHM1])
+
+    async def check():
+        gateway, planning_calls = gateway_for(lambda _: {})
+        plan = await gateway.plan(question, [], grounding=data)
+        assert not planning_calls
+
+        graph = FakeAdapter([])
+        graph.settings.graph_version = REGISTRY['release']
+        graph.settings.grounded_query_policy = False
+        graph.release_relations = {'SIGNAL_COLOC_WITH'}
+        graph.answer = {
+            'nodes': [
+                {'id': 'ENSG00000225190', 'labels': ['Gene'],
+                 'properties': {'id': 'ENSG00000225190', 'name': 'PLEKHM1'}},
+                {'id': 'MONDO_0005147', 'labels': ['disease'],
+                 'properties': {'id': 'MONDO_0005147', 'name': 'type 1 diabetes'}},
+            ],
+            'edges': [
+                {'start_id': 'ENSG00000225190', 'end_id': 'MONDO_0005147',
+                 'type': 'SIGNAL_COLOC_WITH', 'properties': {
+                     'gwas_signal_id': 'MAPT__credibleSet1__selected',
+                     'qtl_signal_id': 'PLEKHM1__credibleSet1',
+                     'gwas_lead_vars': 'rs35327136', 'qtl_lead_vars': 'rs62065450',
+                     'gwas_locus_name': 'MAPT', 'qtl_locus_name': 'PLEKHM1',
+                     'coloc_dataset': 't1d_eQTL-inspire_coloc',
+                     'data_source': 'HIRN_T1D_QTL_GWAS', 'data_version': 'v1.0',
+                     'pp_h4_abf': 0.984}},
+                {'start_id': 'ENSG00000225190', 'end_id': 'MONDO_0005147',
+                 'type': 'SIGNAL_COLOC_WITH', 'properties': {
+                     'gwas_signal_id': 'MAPT__credibleSet1__selected',
+                     'qtl_signal_id': 'PLEKHM1__exon__credibleSet3',
+                     'gwas_lead_vars': 'rs35327136', 'qtl_lead_vars': 'rs62064652',
+                     'gwas_locus_name': 'MAPT', 'qtl_locus_name': 'PLEKHM1',
+                     'coloc_dataset': 't1d_exonQTL-inspire_coloc',
+                     'data_source': 'HIRN_T1D_QTL_GWAS', 'data_version': 'v1.0',
+                     'pp_h4_abf': 0.991}},
+            ],
+            'rows': [], 'status': 'complete', 'truncated': False,
+            'retrieval_execution': {'completed': True, 'cursor_exhausted': True},
+        }
+
+        prepared = await graph.prepare_plan(plan, lambda *_: None)
+
+        async def emit(*_):
+            pass
+
+        first = await graph.execute(prepared['steps'][0], {}, emit)
+        second = await graph.execute(prepared['steps'][0], {}, emit)
+        assert first['status'] == second['status'] == 'complete'
+        assert first['query_route'] == 'template'
+        assert second['query_route'] == 'cache'
+        assert graph.generated == []
+        assert first['colocalization_signal_counts']['record_count'] == 2
+        assert first['colocalization_signal_counts']['distinct_recorded_qtl_signal_count'] == 2
+        assert first['colocalization_signal_counts']['distinct_recorded_gwas_signal_count'] == 1
+        assert len(first['colocalization_record_links']) == 2
+        assert 'rs112550936' not in repr(first)
+
     asyncio.run(check())

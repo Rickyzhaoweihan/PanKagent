@@ -401,6 +401,11 @@ def compile_property_owners(plan, grounding, *, question=None):
         return result, exclusion
     for step in result.get('steps', []):
         relations = [_canonical(value, REGISTRY['relations']) or value for value in step.get('relation_types', [])]
+        path_spec = step.get('path_spec') or {}
+        path_node_roles = {node.get('role'): node for node in path_spec.get('nodes', [])
+                           if isinstance(node, dict)}
+        path_edge_roles = {edge.get('role'): edge for edge in path_spec.get('edges', [])
+                           if isinstance(edge, dict)}
         labels = {label for relation in relations for path in REGISTRY['relations'].get(relation, {}).get('paths', [])
                   for label in path['source'] + path['target']}
         sample_role = 'HAS_SAMPLE' in relations
@@ -431,6 +436,54 @@ def compile_property_owners(plan, grounding, *, question=None):
             if (entity and relation or entity and owner_kind == 'relationship'
                     or relation and owner_kind == 'node'):
                 return result, f'conflicting_property_owners:{step.get("id", "step")}:{prop}'
+            role = constraint.get('owner_role')
+            if path_spec:
+                if role not in path_node_roles and role not in path_edge_roles:
+                    return result, f'invalid_path_property_owner_role:{step.get("id", "step")}:{prop}'
+                if role in path_node_roles:
+                    node_types = path_node_roles[role].get('entity_types') or []
+                    if relation or owner_kind == 'relationship' or entity and entity not in node_types:
+                        return result, f'conflicting_path_property_owner:{step.get("id", "step")}:{prop}'
+                    domains = [entity] if entity else node_types
+                    if (not domains or any(kind not in REGISTRY['nodes'] for kind in domains)
+                            or prop not in set.intersection(*(set(REGISTRY['nodes'][kind]) for kind in domains))):
+                        return result, f'invalid_path_property_owner:{step.get("id", "step")}:{role}.{prop}'
+                    constraint.update(property=prop, entity_type=entity, owner_kind='node')
+                    constraint.pop('relationship_type', None)
+                else:
+                    edge_types = path_edge_roles[role].get('types_any') or []
+                    if entity or owner_kind == 'node' or relation and relation not in edge_types:
+                        return result, f'conflicting_path_property_owner:{step.get("id", "step")}:{prop}'
+                    if relation and len(edge_types) != 1:
+                        return result, f'ambiguous_path_property_owner:{step.get("id", "step")}:{role}.{prop}'
+                    domains = [relation] if relation else edge_types
+                    if (not domains or any(kind not in REGISTRY['relations'] for kind in domains)
+                            or prop not in set.intersection(*(set(REGISTRY['relations'][kind]['properties'])
+                                                            for kind in domains))):
+                        return result, f'invalid_path_property_owner:{step.get("id", "step")}:{role}.{prop}'
+                    constraint.update(property=prop, entity_type=None, owner_kind='relationship')
+                    if relation:
+                        constraint['relationship_type'] = relation
+                    else:
+                        constraint.pop('relationship_type', None)
+                if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:
+                    category_owner = domains[0] if len(domains) == 1 else None
+                    categories = (REGISTRY['categories'].get(str(category_owner) + '.' + str(prop))
+                                  if category_owner else None)
+                    try:
+                        constraint['value'] = list_value(constraint.get('value'), categories=categories)
+                    except ValueError:
+                        return result, f'invalid_constraint_list:{step.get("id", "step")}:{prop}:use_native_array'
+                if constraint != before:
+                    change = {'constraint_index': index, 'requested': before,
+                              'canonical_binding': deepcopy(constraint), 'version': VERSION,
+                              'source': 'verified bounded-path role ownership',
+                              'schema_digest': SCHEMA_DIGEST}
+                    if not any(existing.get('constraint_index') == index
+                               and existing.get('canonical_binding') == constraint
+                               for existing in changes):
+                        changes.append(change)
+                continue
             if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:
                 # Only an exact relationship/category owner in this verified
                 # release may disambiguate a legacy comma-list. In particular,

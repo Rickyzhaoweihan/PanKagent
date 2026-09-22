@@ -32,6 +32,7 @@ def split(plan, question):
         if (len(relations)<2 or len(set(relations))!=len(relations)
                 or not set(relations)<=set(OWNERS)
                 or step.get('evidence_combination','independent')!='independent'
+                or step.get('path_spec')
                 or step.get('depends_on') or any(step['id'] in s.get('depends_on',[]) for s in original)
                 or any(step.get(k) for k in ('ranking_contract','ranking_issue','semantic_issues','schema_bindings'))):
             rewritten.append(step);continue

@@ -330,6 +330,9 @@ def scope_issue(question, grounding, plan):
     if not steps:
         return None  # The separate structural validator handles empty plans.
     words, mentions, replacement_targets = _mentions(question, grounding)
+    route = plan.get('planning_route') or {}
+    context_only = (set(route.get('context_only_entity_ids') or [])
+                    if route.get('kind') == 'verified_bounded_path' else set())
     genes = {candidate['id'] for _, candidate, _, _ in mentions if candidate['entity_type'] == 'Gene'}
     diseases = {candidate['id'] for _, candidate, _, _ in mentions if candidate['entity_type'] == 'disease'}
     tissues = {candidate['id'] for _, candidate, _, spans in mentions
@@ -342,6 +345,8 @@ def scope_issue(question, grounding, plan):
                 return 'missing_gene_locus_input:' + step['id'] + ':GWAS needs the requested variant or verified variants from a gene-scoped check; do not search disease-wide'
     for mention, candidate, forms, spans in mentions:
         kind = candidate['entity_type']
+        if candidate.get('id') in context_only:
+            continue
         if kind == 'anatomical_structure':
             if not (_direct_tissue(words, spans) or any((candidate['id'], *span) in replacement_targets for span in spans)):
                 continue

@@ -14,7 +14,7 @@ import re
 
 from .release_schema import REGISTRY
 
-VERSION = 'full-record-answer-facts-v5-donor-classification-aliases'
+VERSION = 'full-record-answer-facts-v7-linked-coloc-records'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 GO_SOURCE = 'https://geneontology.org/docs/guide-go-evidence-codes/'
 # Formal names and categories verified against the official guide, 2026-09-09.
@@ -479,7 +479,7 @@ def _lead_ids(raw):
     return None
 
 
-def _signal_roles(edges, nodes, cap):
+def _signal_roles(edges, nodes, cap, coloc_summary=None):
     selected = [edge for edge in edges if edge.get('type') in {'SIGNAL_COLOC_WITH','PART_OF_GWAS_SIGNAL','PART_OF_QTL_SIGNAL'}]
     if not selected:
         return None
@@ -513,10 +513,59 @@ def _signal_roles(edges, nodes, cap):
             row['lead_role'] = ('recorded_lead' if raw == 'lead' and row['typed_endpoints_verified'] else 'recorded_nonlead' if raw == 'nonlead' and row['typed_endpoints_verified'] else 'not_established')
             row['interpretation'] = 'Membership is not lead status. Do not infer lead role from one indexed record, PIP or rank.'
         records.append(row)
-    return {'records':records[:cap], 'full_record_count':len(records), 'omitted_record_count':max(0,len(records)-cap),
+    coloc_records = [row for row in records if row['relation'] == 'SIGNAL_COLOC_WITH']
+
+    def recorded_values(field):
+        values = []
+        for row in coloc_records:
+            recorded = row.get(field)
+            value = recorded.get('value') if isinstance(recorded, Mapping) else None
+            if recorded and recorded.get('state') == 'recorded' and isinstance(value, str) and value:
+                values.append(value)
+        return values
+
+    gwas_signals = recorded_values('recorded_gwas_signal_id')
+    qtl_signals = recorded_values('recorded_qtl_signal_id')
+    pairs = [(row['recorded_gwas_signal_id']['value'], row['recorded_qtl_signal_id']['value'])
+             for row in coloc_records
+             if all(isinstance(row.get(field), Mapping)
+                    and row[field].get('state') == 'recorded'
+                    and isinstance(row[field].get('value'), str) and row[field]['value']
+                    for field in ('recorded_gwas_signal_id', 'recorded_qtl_signal_id'))]
+    coloc_counts = {
+        'counting_unit': 'retrieved_SIGNAL_COLOC_WITH_relationship_records',
+        'record_count': len(coloc_records),
+        'gwas_signal_reference_count': len(gwas_signals),
+        'distinct_recorded_gwas_signal_count': len(set(gwas_signals)),
+        'recorded_gwas_signal_ids': sorted(set(gwas_signals)),
+        'unresolved_gwas_signal_reference_count': len(coloc_records) - len(gwas_signals),
+        'qtl_signal_reference_count': len(qtl_signals),
+        'distinct_recorded_qtl_signal_count': len(set(qtl_signals)),
+        'recorded_qtl_signal_ids': sorted(set(qtl_signals)),
+        'unresolved_qtl_signal_reference_count': len(coloc_records) - len(qtl_signals),
+        'distinct_recorded_signal_pair_count': len(set(pairs)),
+        'unresolved_signal_pair_reference_count': len(coloc_records) - len(pairs),
+        'interpretation': ('Signal references are counted once per retrieved colocalization relationship. '
+            'Distinct signal counts deduplicate repeated identifiers across those records; they do not count '
+            'separately indexed QTL or GWAS membership edges, and they do not establish complete credible-set membership.'),
+    }
+    if isinstance(coloc_summary, Mapping):
+        derived_records = [record for record in coloc_summary.get('records') or []
+                           if isinstance(record, Mapping)]
+        records = ([row for row in records if row['relation'] != 'SIGNAL_COLOC_WITH']
+                   + derived_records)
+        coloc_counts = coloc_summary.get('counts') or coloc_counts
+    result = {'records':records[:cap], 'full_record_count':len(records), 'omitted_record_count':max(0,len(records)-cap),
             'interpretation':'GWAS lead, QTL lead and credible-set membership are separate roles. A shared coloc association '
                 'does not mean the same lead variant. Source and dataset labels belong to each record; do not invent '
                 'GTEx-style or other source qualifiers. Keep primary coloc evidence separate from exact variant linkage.'}
+    if coloc_records:
+        result['coloc_signal_counts'] = coloc_counts
+    if isinstance(coloc_summary, Mapping):
+        result['colocalization_record_version'] = coloc_summary.get('version')
+        result['colocalization_record_completeness'] = coloc_summary.get('completeness')
+        result['colocalization_record_derivation'] = coloc_summary.get('derivation')
+    return result
 
 
 def _go_facts(edges, nodes, cap):
@@ -595,7 +644,9 @@ def build_answer_facts(item, *, coverage=None, max_groups=30, max_records=20):
         result['physical_interaction_methods']['interpretation'] = ('Each group retains its recorded assay, throughput '
             'and source. Mixed groups cannot be summarized as all high throughput or as a single assay. An omitted '
             'group is still part of the full total; unknown throughput cannot be classified from the assay name.')
-    signals = _signal_roles(edges,nodes,max_records)
+    from .coloc_records import derive_colocalization_records
+    coloc_summary = derive_colocalization_records(item)
+    signals = _signal_roles(edges, nodes, max_records, coloc_summary)
     if signals is not None:
         result['signal_roles'] = signals
     go = _go_facts(edges,nodes,max_groups)

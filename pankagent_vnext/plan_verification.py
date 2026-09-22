@@ -16,7 +16,8 @@ def review_input(question, plan, preview):
     for step in plan.get('steps', []):
         result = outcomes.get(step['id'], {})
         checks.append({key: step[key] for key in ('id', 'question', 'relation_types', 'constraints',
-                      'depends_on', 'complete', 'purpose', 'sample_requirements', 'evidence_combination') if key in step} | {
+                      'depends_on', 'complete', 'purpose', 'sample_requirements', 'evidence_combination',
+                      'path_spec') if key in step} | {
             'execution_status': result.get('status', 'not_executed'),
             'node_count': len(result.get('nodes', [])), 'relationship_count': len(result.get('edges', [])),
             'query_scope': (result.get('evidence_coverage') or {}).get('query_scope'),

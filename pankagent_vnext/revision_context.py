@@ -4,7 +4,8 @@ from collections import Counter
 
 PLAN_FIELDS = ('interpreted_question', 'literature', 'literature_intent', 'clarification', 'include_context')
 STEP_FIELDS = ('id', 'question', 'title', 'rationale', 'relation_types', 'depends_on', 'constraints',
-               'complete', 'purpose', 'context_for', 'context_kind', 'evidence_combination', 'schema_bindings')
+               'complete', 'purpose', 'context_for', 'context_kind', 'evidence_combination', 'schema_bindings',
+               'path_spec')
 
 def parent_context(parent):
     plan = parent.get('plan') or {}
