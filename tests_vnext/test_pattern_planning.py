@@ -2,7 +2,10 @@ import asyncio
 from copy import deepcopy
 import pytest
 
-from pankagent_vnext.pattern_planning import compile_signal_plan
+from pankagent_vnext.pattern_planning import (
+    compile_signal_plan,
+    is_no_variant_coloc_role_frame,
+)
 from pankagent_vnext.schema_drafting import compile_schema_draft
 from pankagent_vnext.preplanning_grounding import ground_question
 from test_preplanning_grounding import FakeGraph
@@ -45,6 +48,7 @@ def test_three_signal_roles_compile_without_mandatory_join_or_lead_assumption(qu
     'Does the type 1 diabetes GWAS signal near PLEKHM1 colocalise with a molecular QTL signal for PLEKHM1?',
 ])
 def test_no_variant_coloc_signal_role_frame_is_one_complete_primary_check(question):
+    assert is_no_variant_coloc_role_frame(question)
     data = grounded(question, [PLEKHM1])
     original = deepcopy(data)
     plan = compile_signal_plan(question, data)
@@ -75,7 +79,44 @@ def test_no_variant_coloc_signal_role_frame_is_one_complete_primary_check(questi
     'Does the T1D GWAS signal within 50 kb of PLEKHM1 colocalize with a QTL signal for PLEKHM1?',
 ])
 def test_coloc_role_frame_does_not_swallow_independent_or_spatial_scope(question):
+    assert not is_no_variant_coloc_role_frame(question)
     assert compile_signal_plan(question, grounded(question, [PLEKHM1])) is None
+
+
+@pytest.mark.parametrize('question', [
+    'Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for CFTR?',
+    'Does the T1D GWAS signal within 50 kb of PLEKHM1 colocalize with a QTL signal for PLEKHM1?',
+    'Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1 in pancreas?',
+    'Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1 and rs123?',
+])
+def test_cold_grounding_hint_is_closed_to_mismatches_and_qualifiers(question):
+    assert not is_no_variant_coloc_role_frame(question)
+
+
+def test_only_closed_deterministic_grammars_receive_cold_grounding_window(monkeypatch):
+    from pankagent_vnext.graph import GraphAdapter
+    import pankagent_vnext.preplanning_grounding as grounding_module
+
+    calls = []
+
+    async def fake(_graph, question, *, timeout_seconds):
+        calls.append((question, timeout_seconds))
+        return {'status': 'unavailable'}
+
+    monkeypatch.setattr(grounding_module, 'ground_question', fake)
+    adapter = object.__new__(GraphAdapter)
+    coloc = 'Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?'
+    qualified = coloc[:-1] + ' in pancreas?'
+    hla = ('What pathways and interaction partners connect HLA-DRA to antigen '
+           'presentation in T1D?')
+
+    async def check():
+        await adapter.ground_question(coloc)
+        await adapter.ground_question(qualified)
+        await adapter.ground_question(hla)
+
+    asyncio.run(check())
+    assert [timeout for _question, timeout in calls] == [12.0, 3.0, 12.0]
 
 
 @pytest.mark.parametrize('modifier', ['in spleen', 'not in pancreas', 'with PIP > 0.9',

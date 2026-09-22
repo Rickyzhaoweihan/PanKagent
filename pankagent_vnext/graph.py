@@ -1156,7 +1156,18 @@ class GraphAdapter:
 
     async def ground_question(self, question):
         from .preplanning_grounding import ground_question
-        return await ground_question(self, question, timeout_seconds=3.0)
+        # Strict deterministic grammars must not fall through to a model plan
+        # merely because a fresh service is still constructing its public
+        # entity index.  The longer bound changes latency only: exact entity
+        # resolution and every normal admission/validation guard remain
+        # mandatory.  General questions retain the established 3 s deadline.
+        from .pattern_planning import is_no_variant_coloc_role_frame
+        from .bounded_paths import is_hla_path_request
+        timeout = 12.0 if (
+            is_no_variant_coloc_role_frame(question)
+            or is_hla_path_request(question)
+        ) else 3.0
+        return await ground_question(self, question, timeout_seconds=timeout)
 
     async def close(self):
         await self.http.aclose()

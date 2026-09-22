@@ -27,6 +27,28 @@ _CATEGORIES = {'coloc': 'SIGNAL_COLOC_WITH', 'gwas': 'PART_OF_GWAS_SIGNAL',
                'qtl': 'PART_OF_QTL_SIGNAL'}
 
 
+def is_no_variant_coloc_role_frame(question):
+    """Return whether text has the closed no-variant coloc grammar.
+
+    This is only a latency/admission hint used while the entity catalogue is
+    warming.  It never authorizes identities or a query: the ordinary grounded
+    recognizer still requires exactly one resolved gene and one disease before
+    compiling a plan.  Keeping the regex closed prevents unsupported qualifiers
+    from receiving special routing merely because they contain ``coloc``.
+    """
+    if not isinstance(question, str):
+        return False
+    gene = r'(?P<gene>[A-Za-z][A-Za-z0-9_.-]{0,63})'
+    pattern = (
+        r'\s*does\s+(?:the\s+|a\s+)?(?:T1D|type\s+1\s+diabetes)\s+'
+        r'(?:associated\s+)?GWAS\s+signal\s+near\s+(?:the\s+)?' + gene
+        + r'(?:\s+gene)?\s+colocali[sz]e(?:s)?\s+with\s+'
+        r'(?:a|the)\s+(?:molecular\s+)?QTL\s+signal\s+for\s+'
+        r'(?:the\s+)?(?P=gene)(?:\s+gene)?\s*[?!.]?\s*'
+    )
+    return bool(re.fullmatch(pattern, question, re.I))
+
+
 def _entities(question, grounding, extra_words=()):
     words = list(phrase_tokens(question))
     remaining = list(words)
