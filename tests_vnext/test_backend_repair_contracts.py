@@ -129,25 +129,18 @@ def test_hirn_error_allowlist_and_exact_compatible_request(category):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('valid',[True,False])
-def test_answer_yields_only_validated_canonical_text(monkeypatch,tmp_path,valid):
+def test_answer_streams_llm_formatter_text_without_fact_selection(monkeypatch,tmp_path):
     async def run():
-        gateway,fake,_=gateway_with_mock(monkeypatch,tmp_path,['UNVERIFIED PROSE MUST NOT DISPLAY'])
+        gateway,fake,_=gateway_with_mock(monkeypatch,tmp_path,['Formatted answer ', 'from the LLM. [G1]'])
         evidence=detection_evidence();prepared=gateway.prepare_answer('Show INS detection',evidence)
-        from tests_vnext.test_answer_synthesis import MockStream, USAGE
-        async def final(self):
-            self.owner.final_messages+=1
-            return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda:deepcopy(USAGE)),stop_reason='tool_use',
-                content=[SimpleNamespace(type='tool_use',name='select_answer_facts',
-                   input={'fact_ids':[f['id'] for f in prepared.facts]} if valid else {'fact_ids':['G99:fake']})])
-        monkeypatch.setattr(MockStream,'get_final_message',final)
         try:chunks=[v async for v in gateway.synthesize('Show INS detection',evidence,prepared=prepared)]
         finally:await gateway.close()
-        assert len(chunks)==1 and 'UNVERIFIED PROSE' not in chunks[0]
-        assert 'RNA detection' in chunks[0]
-        assert prepared.generation['answer_validation']['valid'] is valid
-        assert ('Partial answer' in chunks[0]) is (not valid)
+        assert chunks == ['Formatted answer ', 'from the LLM. [G1]']
+        assert prepared.generation['synthesis_mode'] == 'llm_formatter'
+        assert prepared.generation['streamed'] is True
         assert len(fake.stream_calls)==1 and fake.create_calls==[]
+        assert 'tools' not in fake.stream_calls[0]
+        assert fake.stream_calls[0]['messages'][0]['content'] == prepared.body
         assert gateway.budget.snapshot()['pending_calls']==0
     asyncio.run(run())
 

@@ -96,7 +96,8 @@ from .answer_facts import DIGEST as ANSWER_FACTS_DIGEST
 OVERSIZED_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/oversized_results.md').read_text()
 INDEPENDENT_RESULT_CONTRACT = (Path(__file__).parent/'answer_skills/bim/independent_results.md').read_text()
 ANSWER_CONTRACT += '\n' + INDEPENDENT_RESULT_CONTRACT
-STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+Path(__file__).with_name('answer_blocks.py').read_text()+Path(__file__).with_name('signal_comparison.py').read_text()+'\ngrounded-synthesis-v7').encode()).hexdigest()[:16]
+SYNTHESIS_CONTRACT_VERSION = 'llm-format-agent-v1-streamed'
+STYLE_VERSION = hashlib.sha256((SYNTHESIS_SYSTEM+'\n'+ANSWER_CONTRACT+'\n'+ANSWER_FACTS_DIGEST+'\n'+OVERSIZED_RESULT_CONTRACT+'\n'+INDEPENDENT_RESULT_CONTRACT+'\n'+SYNTHESIS_CONTRACT_VERSION).encode()).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -413,10 +414,8 @@ class ClaudeGateway:
             query_too_broad=node_only,
             steps=[{'evidence_id':item.get('evidence_id'), 'selected':item.get('context_counts',{}),
                     'omitted':item.get('context_dropped',{}), 'mode':item.get('context_compaction')} for item in compact])
-        from .answer_blocks import catalogue, VERSION as BLOCK_VERSION
-        facts = catalogue(evidence)
-        profile['answer_contract_version'] = BLOCK_VERSION
-        profile['verified_fact_catalogue'] = {'facts': len(facts), 'full_record_facts_before_sampling': True, 'legacy_excerpt_used_for_synthesis': False}
+        profile['answer_contract_version'] = SYNTHESIS_CONTRACT_VERSION
+        profile['synthesis_mode'] = 'llm_formatter'
         if node_only:
             profile['model_context']['exposed_node_fields']=['id','type','description','source']
             profile['model_context']['measurement_guidance_suppressed']=True
@@ -424,7 +423,7 @@ class ClaudeGateway:
                                      'primary_checks':sum(step.get('purpose') != 'context' for step in evidence.values())}
             return PreparedAnswer(body,[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}},
                 {'type':'text','text':ANSWER_CONTRACT},
-                {'type':'text','text':OVERSIZED_RESULT_CONTRACT}],profile, facts=facts)
+                {'type':'text','text':OVERSIZED_RESULT_CONTRACT}],profile)
         system=[{'type':'text','text':SYNTHESIS_SYSTEM,'cache_control':{'type':'ephemeral'}}]
         if routed.guidance:
             system.append({'type':'text','text':'Matched interpretation guidance (apply under the evidence and presentation rules above):\n'+routed.guidance,
@@ -439,34 +438,31 @@ class ClaudeGateway:
             system.append({'type':'text','text':'For this multi-check answer, cover every requested category concisely under at most three short headings. Use at most FOUR illustrative table rows in the ENTIRE answer, never a row for every returned cell or partner. Prefer one or two sentences per category with its source reference; aim for 350–450 words. Use authoritative full-result evidence_totals for counts. Never infer a total unique-partner count from visible example rows or from only start/end endpoint counts. Omit a count if its correct denominator is unavailable. Leave exhaustive records to the existing graph and downloads.'})
         if any(edge.get('type') == 'PART_OF_QTL_SIGNAL' for step in evidence.values() for edge in step.get('edges', [])):
             system.append({'type':'text','text':'QTL terminology for these records: a source name such as GTEx or INSPIRE alone is not a molecular-phenotype definition. Use molecular QTL unless an explicit recorded class or supplied verified subtype mapping identifies expression, splicing, or exon QTL. A generic slope does not establish an expression-unit effect. Do not label a generic QTL as eQTL in the opening sentence and then disclaim the subtype later.'})
-        from .answer_blocks import catalogue, VERSION as BLOCK_VERSION
-        facts = catalogue(evidence)
-        profile['answer_contract_version'] = BLOCK_VERSION
-        return PreparedAnswer(body,system,profile,facts=facts)
+        return PreparedAnswer(body,system,profile)
 
     async def synthesize(self,question,evidence,*,prepared=None):
-        from .answer_blocks import SYSTEM, TOOL, VERSION, catalogue, render, fallback
         if not self.settings.anthropic_key:
             raise RuntimeError('claude_key_not_configured')
         prepared = prepared or self.prepare_answer(question, evidence)
-        facts = prepared.facts
-        # Fact values and references are immutable inputs. The only generated
-        # output allowed by the schema is a bounded selection of their IDs.
-        body = json.dumps({'question': question, 'facts': facts}, ensure_ascii=False)
-        if len(body.encode()) > MAX_BYTES:
-            raise ValueError('answer_fact_catalogue_too_large')
-        system = [{'type': 'text', 'text': SYSTEM, 'cache_control': {'type': 'ephemeral'}}]
-        guidance = '\n'.join(block['text'] for block in prepared.system if block.get('text', '').startswith('Matched interpretation guidance'))
-        if guidance:
-            system.append({'type': 'text', 'text': 'Use this guidance only to select relevant fact IDs, never to add claims: ' + guidance})
+        body = prepared.body
         output_limit = prepared.profile.get('answer_budget', {}).get('max_output_tokens', 1600)
-        rid = await self._reserve('synthesis', json.dumps(system) + json.dumps(TOOL), body, output_limit)
+        rid = await self._reserve('synthesis', '\n'.join(block['text'] for block in prepared.system), body, output_limit)
+        # The node-only view deliberately withholds relationship/comparison
+        # evidence. Never reintroduce it through a full-evidence text rewrite.
+        node_only = prepared.profile.get('model_context', {}).get('mode') == NODE_ONLY_MODE
+        identity_ids = {item.get('evidence_id') for item in prepared.profile.get('model_context', {}).get('steps', [])
+                        if item.get('mode') == NODE_ONLY_MODE}
+        filter_evidence = {key: value for key, value in evidence.items()
+                           if value.get('evidence_id') not in identity_ids}
+        scope_filter = None if node_only else ScopeTextFilter(filter_evidence)
         try:
             async with self.client.messages.stream(model=self.settings.model, max_tokens=output_limit,
-                    system=system, messages=[{'role':'user','content':body}],
-                    tools=[TOOL], tool_choice={'type':'tool','name':TOOL['name']}, **self._options()) as stream:
-                # Nothing is shown or persisted until the complete selection is
-                # validated. Progress SSE events are owned by the runtime.
+                    system=prepared.system, messages=[{'role':'user','content':body}],
+                    **self._options()) as stream:
+                async for text in stream.text_stream:
+                    visible = text if scope_filter is None else scope_filter.feed(text)
+                    if visible:
+                        yield visible
                 final = await stream.get_final_message()
         except anthropic.APIStatusError as exc:
             if exc.status_code in (400,401,403,404,413,422,429):
@@ -474,24 +470,19 @@ class ClaudeGateway:
             raise
         await self.budget.asettle(rid, final.usage.model_dump())
         self.last_success = time.time()
-        validation = {'version': VERSION, 'scope': 'canonical_record_facts',
-                      'valid': True, 'application_fallback': False,
-                      'source_scientific_correctness_verified': False}
-        try:
-            blocks = [block for block in final.content if block.type == 'tool_use'
-                      and block.name == TOOL['name']]
-            if len(blocks) != 1 or final.stop_reason == 'max_tokens':
-                raise ValueError('invalid_answer_blocks')
-            answer = render(blocks[0].input, facts)
-        except (ValueError, TypeError, AttributeError) as exc:
-            validation.update(valid=False, application_fallback=True,
-                              error_category='invalid_answer_blocks')
-            answer = 'Partial answer: the generated fact selection could not be validated. '
-            answer += 'Verified evidence is summarized below.\n\n' + fallback(facts)
         prepared.generation.update(stop_reason=final.stop_reason, truncated=final.stop_reason=='max_tokens',
-                                   max_output_tokens=output_limit, answer_validation=validation)
+                                   max_output_tokens=output_limit,
+                                   synthesis_mode='llm_formatter', streamed=True,
+                                   answer_contract_version=SYNTHESIS_CONTRACT_VERSION)
         provider_event('answer_generation', dict(prepared.generation))
-        yield answer
+        tail = '' if scope_filter is None else scope_filter.feed('', final=True)
+        if tail:
+            yield tail
+        provider_event('answer_scope_validation', {
+            'scope': 'skipped_for_node_identity_only' if node_only else 'known_cell_search_contradictions_only',
+            'corrections': [] if scope_filter is None else scope_filter.corrections})
+        if final.stop_reason == 'max_tokens':
+            yield '\n\n[Answer reached its output limit.]'
 
     async def probe(self):
         if not self.settings.anthropic_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}

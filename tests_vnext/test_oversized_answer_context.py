@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from pankagent_vnext.evidence_context import MAX_BYTES, compact_evidence, node_only_evidence, scientific_excerpt
+from pankagent_vnext.evidence_context import MAX_BYTES, NODE_ONLY_MODE, compact_evidence, node_only_evidence, scientific_excerpt
 from tests_vnext.test_answer_synthesis import detection_evidence, gateway_with_mock
 
 
@@ -130,9 +130,10 @@ def test_node_only_stream_never_uses_full_evidence_text_rewrites(monkeypatch, tm
         try:
             prepared = gateway.prepare_answer('Tell me about this gene.', evidence)
             answer = ''.join([part async for part in gateway.synthesize('Tell me about this gene.', evidence, prepared=prepared)])
-            assert answer != text
-            assert "relationship records" in answer
-            assert prepared.facts
+            assert answer == text
+            assert prepared.profile['model_context']['mode'] == NODE_ONLY_MODE
+            assert prepared.profile['synthesis_mode'] == 'llm_formatter'
+            assert prepared.facts == []
             assert len(fake.stream_calls) == 1 and not fake.create_calls
         finally:
             await gateway.close()

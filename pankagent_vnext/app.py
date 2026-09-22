@@ -961,22 +961,20 @@ class Runtime:
                 visible = citation_filter.feed(token)
                 if visible:
                     answer += visible
-                    # Keep progress events live, but buffer the whole answer until
-                    # schema/fact and citation validation has finished.
+                    (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                    await self.emit(run_id, "graph_answer", {"text": visible, "delta": True})
             tail = citation_filter.feed("", final=True)
             (await self.io.call(self.check_active, run_id))
             if tail:
                 answer += tail
+                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
 
             if synthesis_started:
                 self.health.record_inference("claude", True)
             generation = getattr(options.get('prepared'), 'generation', {})
             if generation:
                 evidence['answer_generation'] = deepcopy(generation)
-            if generation.get('answer_validation'):
-                evidence['answer_validation'] = deepcopy(generation['answer_validation'])
-                if not generation['answer_validation']['valid']:
-                    synthesis_error = {'category': 'answer_validation', 'message': 'A validated partial evidence summary is shown because answer selection was invalid.'}
             if generation.get('truncated'):
                 synthesis_error = {'category':'answer_output_limit',
                                    'message':'The written answer reached its length limit before finishing. The retrieved evidence is preserved.'}
@@ -1011,6 +1009,8 @@ class Runtime:
                 footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
                 answer += footer
                 reference_validation["application_fallback"] = True
+                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
 
         evidence["follow_up_questions"] = [] if status_message else followup_questions(previous)
         evidence["answer_reference_validation"] = reference_validation
