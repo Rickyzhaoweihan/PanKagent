@@ -444,22 +444,29 @@ class Runtime:
                     self.metrics.count("plans_query_blocked")
                     return
                 plan = current["plan"]
-                if plan.get('planning_route', {}).get('kind') in {'verified_signal_pattern', 'verified_schema_pattern'} and hasattr(self.gateway, 'review_grounded_plan'):
+                if plan.get('planning_route', {}).get('kind') in {'verified_signal_pattern', 'verified_schema_pattern'}:
+                    from .plan_verification import review_verified_local_coloc
                     review_started = time.monotonic()
-                    await self.emit(run_id, 'progress', {'stage': 'verifying_plan'})
-                    claude_pending = True
-                    review = await asyncio.wait_for(self.gateway.review_grounded_plan(
-                        run['question'], plan, current['preview']), min(20, self.settings.plan_timeout))
-                    (await self.io.call(self.check_active, run_id))
-                    self.health.record_inference('claude', True)
-                    claude_pending = False
-                    self.metrics.observe('post_retrieval_plan_verification', time.monotonic() - review_started)
-                    (await self.io.call(self.store.audit_event, run_id, 'post_retrieval_plan_verification', review))
-                    if not review['approved']:
-                        reasons = ' '.join(str(item.get('reason', '')) for item in review.get('issues', [])[:2])
-                        (await self.io.call(self._terminal, run_id, 'failed', error={'category': 'plan_scope_verification_failed',
-                            'message': 'The prepared search did not pass its scope check. ' + reasons}))
-                        return
+                    review = review_verified_local_coloc(plan, current['preview'])
+                    if review is not None:
+                        await self.emit(run_id, 'progress', {'stage': 'verifying_plan'})
+                        self.metrics.count('local_plan_verification')
+                    elif hasattr(self.gateway, 'review_grounded_plan'):
+                        await self.emit(run_id, 'progress', {'stage': 'verifying_plan'})
+                        claude_pending = True
+                        review = await asyncio.wait_for(self.gateway.review_grounded_plan(
+                            run['question'], plan, current['preview']), min(20, self.settings.plan_timeout))
+                        (await self.io.call(self.check_active, run_id))
+                        self.health.record_inference('claude', True)
+                        claude_pending = False
+                    if review is not None:
+                        self.metrics.observe('post_retrieval_plan_verification', time.monotonic() - review_started)
+                        (await self.io.call(self.store.audit_event, run_id, 'post_retrieval_plan_verification', review))
+                        if not review['approved']:
+                            reasons = ' '.join(str(item.get('reason', '')) for item in review.get('issues', [])[:2])
+                            (await self.io.call(self._terminal, run_id, 'failed', error={'category': 'plan_scope_verification_failed',
+                                'message': 'The prepared search did not pass its scope check. ' + reasons}))
+                            return
                 plan["review_ready"] = True
                 (await self.io.call(self.store.update_if_active, run_id, plan=plan, status="awaiting_confirmation", stage="awaiting_confirmation"))
                 (await self.io.call(self.store.event_if_active, run_id, "plan_validated", {"plan_id": run["plan_id"], "plan": plan,
