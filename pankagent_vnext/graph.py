@@ -806,6 +806,70 @@ def _unrequested_classification_projections(tokens, step):
     donor_variables = {variable for variable, labels in bindings.items()
                        if 'donor' in labels}
     donor_in_scope = bool(donor_variables)
+
+    # Follow donor-derived aliases introduced by WITH without treating ordinary
+    # final collection transport as a disclosure.  For example, ``collect(d) AS
+    # y`` is harmless by itself, but ``properties(head(y))`` reconstructs a full
+    # donor property map under an otherwise untyped alias.
+    donor_aliases = set(donor_variables)
+    alias_clause = None
+    for index, token in enumerate(tokens):
+        if token.kind == 'WORD' and token.value.upper() in {
+                'MATCH', 'OPTIONAL', 'WHERE', 'WITH', 'RETURN', 'UNWIND',
+                'ORDER', 'LIMIT', 'SKIP'}:
+            alias_clause = token.value.upper()
+            continue
+        if (alias_clause != 'WITH' or not _word(token, 'AS')
+                or index + 1 >= len(tokens)
+                or tokens[index + 1].kind not in {'WORD', 'IDENT'}):
+            continue
+        depth = 0
+        start = index
+        for cursor in range(index - 1, -1, -1):
+            value = tokens[cursor].value
+            if value in {')', ']', '}'}:
+                depth += 1
+            elif value in {'(', '[', '{'}:
+                depth = max(0, depth - 1)
+            elif depth == 0 and (value == ',' or _word(tokens[cursor], 'WITH')):
+                start = cursor + 1
+                break
+            start = cursor
+        alias = tokens[index + 1].value
+        if any(item.kind in {'WORD', 'IDENT'} and item.value in donor_aliases
+               for item in tokens[start:index]):
+            donor_aliases.add(alias)
+
+    def donor_reference_between(start, end):
+        return any(item.kind in {'WORD', 'IDENT'} and item.value in donor_aliases
+                   for item in tokens[start:end])
+
+    def matching_close(start, opening='(', closing=')'):
+        depth = 0
+        for cursor in range(start, len(tokens)):
+            if tokens[cursor].value == opening:
+                depth += 1
+            elif tokens[cursor].value == closing:
+                depth -= 1
+                if depth == 0:
+                    return cursor
+        return None
+
+    def projected_expression_start(end):
+        depth = 0
+        start = end
+        for cursor in range(end - 1, -1, -1):
+            value = tokens[cursor].value
+            if value in {')', ']', '}'}:
+                depth += 1
+            elif value in {'(', '[', '{'}:
+                depth = max(0, depth - 1)
+            elif depth == 0 and (value == ',' or _word(tokens[cursor], 'WITH')
+                                 or _word(tokens[cursor], 'RETURN')):
+                return cursor + 1
+            start = cursor
+        return start
+
     errors, clause = [], None
     for index, token in enumerate(tokens):
         if token.kind == 'WORD' and token.value.upper() in {
@@ -839,10 +903,19 @@ def _unrequested_classification_projections(tokens, step):
                 and tokens[index + 2].kind in {'WORD', 'IDENT'}
                 and tokens[index + 3].value == ')'):
             errors.append('unrequested_donor_property_map_projection')
+        if (donor_in_scope and token.kind == 'WORD' and token.value.casefold() == 'properties'
+                and index + 1 < len(tokens) and tokens[index + 1].value == '('):
+            close = matching_close(index + 1)
+            if close is not None and donor_reference_between(index + 2, close):
+                errors.append('unrequested_donor_property_map_projection')
         # Node map projections such as ``d{.*}`` are another spelling of the
         # same full-property disclosure.
         if (donor_in_scope and token.value == '{' and index >= 1
                 and tokens[index - 1].kind in {'WORD', 'IDENT'}):
+            errors.append('unrequested_donor_property_map_projection')
+        if (donor_in_scope and token.value == '{' and index >= 1
+                and tokens[index - 1].value in {')', ']'}
+                and donor_reference_between(projected_expression_start(index), index)):
             errors.append('unrequested_donor_property_map_projection')
     return sorted(set(errors))
 

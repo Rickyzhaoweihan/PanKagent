@@ -268,6 +268,8 @@ def test_donor_inclusive_four_node_path_compiles_without_property_map_projection
     "WITH head([d]) AS y RETURN properties(y) AS leaked",
     "WITH head(collect(d)) AS y RETURN y{.*} AS leaked",
     "WITH coalesce(d,d) AS y RETURN properties(y) AS leaked",
+    "WITH collect(d) AS y RETURN properties(head(y)) AS leaked",
+    "WITH collect(d) AS y RETURN head(y){.*} AS leaked",
 ])
 def test_generated_queries_cannot_project_maps_from_concealed_donor_aliases(projection):
     step = {"id": "privacy", "question": "Return donors.", "relation_types": [],
