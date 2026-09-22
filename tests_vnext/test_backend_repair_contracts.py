@@ -67,6 +67,30 @@ def test_aggregate_projection_covers_reopening_edges_rows_and_strings():
     assert '1 unique donors and 1 assay/sample records' in fallback(catalogue([project(step)]))
 
 
+def test_nonaggregate_public_run_removes_unrequested_classifications_and_summary_aliases():
+    donor = {'id': 'HPAP-041', 'labels': ['donor'], 'properties': {
+        'diabetes_type': 'PRIVATE_TYPE',
+        'derived_diabetes_status': 'PRIVATE_STATUS',
+        't1d_stage': 'PRIVATE_STAGE',
+        'data_source': 'PRIVATE_SOURCE'}}
+    evidence = {'nodes': [donor], 'edges': [], 'rows': [],
+                'donor_summary': {'rows': [{'donor_id': 'HPAP-041',
+                                            'recorded_stage': 'PRIVATE_STAGE'}]},
+                'aggregate_cohort_facts': {
+                    'recorded_diabetes_type_counts': {'PRIVATE_TYPE': 1},
+                    'recorded_derived_diabetes_status_counts': {'PRIVATE_STATUS': 1},
+                    'recorded_stage_counts': {'PRIVATE_STAGE': 1},
+                    'recorded_source_counts': {'PRIVATE_SOURCE': 1}}}
+    run = {'question': 'List donor IDs.',
+           'plan': {'steps': [{'question': 'List donor IDs.', 'constraints': []}]},
+           'preview': {'evidence': evidence}}
+    visible = public_run(run)
+    encoded = json.dumps(visible)
+    assert 'HPAP-041' in encoded
+    for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
+        assert sentinel not in encoded
+
+
 def test_literature_only_confirmation_and_explicit_mixed_independence():
     question='What does the available HIRN literature say about beta-cell stress in T1D?'
     plan=normalize_plan(literature_request_plan(question))
@@ -257,16 +281,22 @@ def test_evidence_type_grammar_does_not_add_a_gene_alias():
 
 def test_gwas_dependencies_preserve_exact_variants_and_disease():
     from pankagent_vnext.query_templates import compile_variant_dependencies
-    from tests_vnext.test_query_templates import step, RELEASE
+    from tests_vnext.test_query_templates import _authorized, step, RELEASE
     from pankagent_vnext.graph import validate_cypher
     c={'entity_type':'disease','property':'id','operator':'=','value':'MONDO_0005147'}
     s=step('PART_OF_GWAS_SIGNAL',[c],depends_on=['coloc'],resolved_entities=[{
         'constraint_index':0,'requested':c,'state':'resolved','graph_version':RELEASE,
         'entity_type':'disease','labels':['disease'],'id':c['value']}])
     bindings={'dep_0':{'graph_version':RELEASE,'id_labels':{'rs123':['variants']}}}
+    s = _authorized(s)
     query=compile_variant_dependencies(s,bindings)
     assert query and 'a.id IN $dep_0' in query['cypher']
     assert query['parameters']['template_0']==c['value']
+    assert query['parameter_bindings']['dep_0'] == {
+        'dependency_index':0, 'owner':'variants', 'property':'id', 'operator':'IN',
+        'proof_source':'dependency_evidence',
+        'proof_kind':'current_graph_dependency_entities',
+        'graph_release':RELEASE, 'required_label':'variants'}
     assert validate_cypher(query['cypher'],s,{**query['parameters'],'dep_0':['rs123']},dependency_bindings=bindings)==[]
     bindings['dep_0']['id_labels']={c['value']:['disease']}
     assert compile_variant_dependencies(s,bindings) is None
@@ -379,17 +409,70 @@ def test_exact_signal_memberships_retain_cross_evidence_citations_and_tissue():
     assert fact['supporting_evidence_ids']==['G2'] and 'rs2' not in fact['text']
 
 
-def test_aggregate_cohort_retains_stage_source_and_assay_denominators():
+def test_aggregate_cohort_suppresses_unrequested_classifications_but_keeps_assay_denominators():
     step={'evidence_id':'G1','status':'complete','truncated':False,'nodes':[
-        {'id':'private-donor','labels':['donor'],'properties':{'t1d_stage':'Stage 1','data_source':'HPAP'}},
+        {'id':'private-donor','labels':['donor'],'properties':{
+            'diabetes_type':'Control Without Diabetes','derived_diabetes_status':'Prediabetes',
+            't1d_stage':'Stage 1','data_source':'HPAP'}},
         {'id':'private-sample-a','labels':['Sample_node'],'properties':{'data_modality':'scRNA-seq'}},
         {'id':'private-sample-b','labels':['Sample_node'],'properties':{'data_modality':'scRNA-seq'}}],
         'edges':[{'type':'HAS_SAMPLE','start_id':'private-donor','end_id':s} for s in ['private-sample-a','private-sample-b']]}
     visible=project(step);answer=fallback(catalogue([visible]))
-    assert 'Stage 1: 1 donors' in answer and 'HPAP: 1 donors' in answer
+    assert 'Control Without Diabetes' not in answer
+    assert 'Prediabetes' not in answer and 'Stage 1' not in answer
+    assert 'Recorded donor sources' not in answer
+    assert not any(key.startswith('recorded_') for key in visible['aggregate_cohort_facts'])
     assert '2 assay/sample records linked to 1 unique donors' in answer
     assert 'private-' not in json.dumps(visible) and 'private-' not in answer
     assert project(visible)['aggregate_cohort_facts']==visible['aggregate_cohort_facts']
+
+
+def test_model_evidence_context_suppresses_unrequested_donor_classifications():
+    from pankagent_vnext.evidence_context import compact_evidence
+    step = {'evidence_id': 'G1', 'question': 'Count spleen samples.',
+        'status': 'complete', 'truncated': False, 'nodes': [
+            {'id': 'donor-private', 'labels': ['donor'], 'properties': {
+                'diabetes_type': 'PRIVATE_DIABETES_SENTINEL',
+                'derived_diabetes_status': 'PRIVATE_DERIVED_SENTINEL',
+                't1d_stage': 'PRIVATE_STAGE_SENTINEL',
+                'data_source': 'PRIVATE_SOURCE_SENTINEL'}},
+            {'id': 'sample-private', 'labels': ['Sample_node'],
+             'properties': {'data_modality': 'scRNA-seq'}}],
+        'edges': [{'type': 'HAS_SAMPLE', 'start_id': 'donor-private',
+                   'end_id': 'sample-private'}], 'rows': [],
+        'requested_scope': {'original_question': 'Count spleen samples.',
+                            'constraints': [], 'relation_types': ['HAS_SAMPLE']}}
+    compact = compact_evidence([step])
+    serialized = json.dumps(compact)
+    assert 'PRIVATE_DIABETES_SENTINEL' not in serialized
+    assert 'PRIVATE_DERIVED_SENTINEL' not in serialized
+    assert 'PRIVATE_STAGE_SENTINEL' not in serialized
+    assert 'PRIVATE_SOURCE_SENTINEL' not in serialized
+
+
+def test_full_record_cohort_facts_are_mandatory_and_nd_mismatch_fails_closed():
+    from pankagent_vnext.answer_facts import build_answer_facts
+    from pankagent_vnext.release_schema import REGISTRY
+    step={'evidence_id':'G1','question':'How many HPAP spleen samples are ND/healthy (not type 1 diabetes)?',
+        'graph_version':REGISTRY['release'],'status':'complete','truncated':False,
+        'requested_scope':{'constraints':[],'relation_types':['HAS_SAMPLE']},
+        'nodes':[
+            {'id':'private-donor','labels':['donor'],'properties':{
+                'diabetes_type':'Diabetes (Type I)','derived_diabetes_status':'Diabetes',
+                't1d_stage':'Stage 3','data_source':'HPAP'}},
+            {'id':'private-sample','labels':['Sample_node'],'properties':{'data_modality':'snMultiomics'}}],
+        'edges':[{'type':'HAS_SAMPLE','start_id':'private-donor','end_id':'private-sample'}],
+        'rows':[]}
+    step['answer_facts']=build_answer_facts(step)
+    facts=catalogue([step])
+    assert all(fact['mandatory'] for fact in facts)
+    answer=render({'fact_ids':[]},facts)
+    assert 'Cohort integrity check failed' in answer
+    assert 'Diabetes (Type I): 1 donors' in answer
+    assert 'Stage 3: 1 donors' not in answer
+    assert 'Recorded derived diabetes classifications' not in answer
+    assert 'cannot be labeled as the requested cohort' in answer
+    assert 'private-donor' not in json.dumps(facts) and 'private-sample' not in json.dumps(facts)
 
 
 def test_tool_markup_clarification_is_planning_error_after_one_repair():

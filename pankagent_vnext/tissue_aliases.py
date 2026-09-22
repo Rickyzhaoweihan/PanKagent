@@ -7,9 +7,18 @@ PLN_ALIASES = ('PLN', 'pancreatic lymph node', 'pancreatic lymph nodes', 'pancre
 
 def matched_tissues(question, vocabulary, *, constraints=()):
     mentions = []
-    def add(name, record):
-        for match in re.finditer(r'(?<!\w)' + re.escape(name) + r'(?!\w)', question, re.I):
-            mentions.append((match.start(), match.end(), record))
+    def add(name, record, *, simple_plural=False):
+        pattern = re.escape(name)
+        if simple_plural:
+            words = re.findall(r'[A-Za-z0-9]+', name)
+            if words and len(words[-1]) >= 3 and not words[-1].casefold().endswith('s'):
+                prefix = name[:name.rfind(words[-1])]
+                pattern = re.escape(prefix) + re.escape(words[-1]) + 's?'
+        for match in re.finditer(r'(?<!\w)' + pattern + r'(?!\w)', question, re.I):
+            matched = dict(record)
+            if matched.get('requested_alias'):
+                matched['requested_alias'] = match.group(0)
+            mentions.append((match.start(), match.end(), matched))
     for tissue in vocabulary:
         if isinstance(tissue.get('name'), str):
             add(tissue['name'], tissue)
@@ -36,7 +45,8 @@ def matched_tissues(question, vocabulary, *, constraints=()):
         configured = ALIASES.get(tissue.get('id'))
         if configured and tissue.get('name') == configured[0] and tissue.get('id') != PLN_ID:
             for alias in configured[1]:
-                add(alias, {**tissue, 'requested_alias':alias, 'match_kind':'verified_alias'})
+                add(alias, {**tissue, 'requested_alias':alias, 'match_kind':'verified_alias'},
+                    simple_plural=True)
     proxy = next((t for t in vocabulary if t.get('id') == PLN_ID and t.get('name') == PLN_NAME), None)
     if proxy:
         for alias in PLN_ALIASES:

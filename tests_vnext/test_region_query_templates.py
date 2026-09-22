@@ -25,7 +25,10 @@ def region_step(kinds=()):
                        'relation_types': list(kinds), 'depends_on': [], 'constraints': []}]}
     plan, issue = compile_genomic_scope(QUESTION, grounding, plan)
     assert issue is None
-    return {**plan['steps'][0], 'graph_version': RELEASE}
+    from pankagent_vnext.semantic_registry import attach_request_authorizations
+    step = {**plan['steps'][0], 'graph_version': RELEASE,
+            'semantic_request': {'source': 'user_request', 'question': QUESTION}}
+    return attach_request_authorizations(step)
 
 
 @pytest.mark.parametrize('kinds', [(), ('T1D_DEG_IN',), ('PART_OF_QTL_SIGNAL',)])

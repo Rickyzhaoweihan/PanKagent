@@ -1,5 +1,6 @@
 import asyncio
 from copy import deepcopy
+from unittest.mock import patch
 from test_graph import FakeAdapter
 from pankagent_vnext.plan_recovery import recover_empty_plan
 
@@ -20,10 +21,16 @@ def adapter(batches):
     return value
 
 
+def gpu_only():
+    """These checks exercise generation/repair rather than template routing."""
+    return patch('pankagent_vnext.query_templates.compile_query', return_value=None)
+
+
 def test_unique_direction_is_corrected_without_resampling():
     async def check():
         graph=adapter([[GOOD.replace(')-[',')<-[').replace(']->(',']-(')]])
-        result=await graph.execute(deepcopy(STEP),{},emit)
+        with gpu_only():
+            result=await graph.execute(deepcopy(STEP),{},emit)
         assert result['status']=='complete'
         assert len(graph.generated)==1
         assert graph.retrieved[0][0]==GOOD
@@ -40,7 +47,8 @@ def test_gpu_retry_receives_error_and_rejected_query_then_claude_once():
             calls.append((failures,candidate))
             return [GOOD]
         graph.query_repair=repair
-        result=await graph.execute(deepcopy(STEP),{},emit)
+        with gpu_only():
+            result=await graph.execute(deepcopy(STEP),{},emit)
         assert result['status']=='complete'
         assert [n for q,n in graph.generated]==[1,1]
         assert 'Previous candidate to correct' in graph.generated[1][0]
@@ -57,7 +65,8 @@ def test_claude_repair_does_not_bypass_constraint_validation():
         graph=adapter([[bad],[bad]])
         async def repair(*args):return [bad]
         graph.query_repair=repair
-        result=await graph.execute(deepcopy(STEP),{},emit)
+        with gpu_only():
+            result=await graph.execute(deepcopy(STEP),{},emit)
         assert result['status']=='failed'
         assert not graph.retrieved
     asyncio.run(check())
@@ -66,8 +75,9 @@ def test_claude_repair_does_not_bypass_constraint_validation():
 def test_query_cache_revalidates_and_reads_again_without_inference():
     async def check():
         graph=adapter([[GOOD]])
-        first=await graph.execute(deepcopy(STEP),{},emit)
-        second=await graph.execute(deepcopy(STEP),{},emit)
+        with gpu_only():
+            first=await graph.execute(deepcopy(STEP),{},emit)
+            second=await graph.execute(deepcopy(STEP),{},emit)
         assert first['status']==second['status']=='complete'
         assert second['query_route']=='cache'
         assert len(graph.generated)==1

@@ -48,5 +48,6 @@ def compile_scope(question, grounding, plan):
                 'relationship_type':'SIGNAL_COLOC_WITH','property':'coloc_dataset','operator':'IN','value':datasets})
         step['coloc_tissue_scope']={'version':VERSION,'mapping_sha256':MAPPING_DIGEST,
             'graph_release':RELEASE,'tissue_ids':sorted(tissues),'datasets':datasets,
+            'request_sha256':hashlib.sha256(question.encode()).hexdigest(),
             'source':'reviewed colocalization dataset to QTL source/tissue registry'}
     return result,None

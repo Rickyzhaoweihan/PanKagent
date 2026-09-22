@@ -14,7 +14,9 @@ def prepared(q='Find HPAP stage 3 T1D donors with spleen scRNAseq data'):
 
 
 def query(p):
-    q="MATCH (c:disease)-[cd:HAS_DONOR]->(d:donor)"
+    disease = ('HAS_DONOR' in p.get('relation_types', [])
+               or any(c.get('entity_type') == 'disease' for c in p['constraints']))
+    q=("MATCH (c:disease)-[cd:HAS_DONOR]->(d:donor)" if disease else "MATCH (d:donor)")
     groups=p['sample_requirements']['modality_groups']
     for i,g in enumerate(groups):q+=f" MATCH (d)-[ds{i}:HAS_SAMPLE]->(s{i}:Sample_node)<-[a{i}:HAS_SAMPLE]-(t{i}:anatomical_structure)"
     conditions=[]
@@ -88,7 +90,7 @@ def test_summary_deduplicates_without_claiming_downloads():
 
 def test_map_property_wrong_owner_and_modality_node_equivalence():
     p=prepared();q=query(p)
-    assert validate_cypher(q.replace('(c:disease)','(c:disease {t1d_stage:"wrong"})'),p)
+    assert validate_cypher(q.replace('d.t1d_stage','c.t1d_stage'),p)
     q=q.replace(' WHERE ', ' MATCH (m:data_modality)-[:HAS_SAMPLE]->(s0) WHERE ').replace('s0.data_modality IN','m.id IN')
     assert validate_cypher(q,p)==[]
     assert validate_cypher(q.replace('->(s0) WHERE','->(unrelated:Sample_node) WHERE'),p)
@@ -127,7 +129,7 @@ def test_extra_tissue_string_filter_and_sample_join_rejected():
 
 
 def test_aliased_owner_keeps_type_and_connectivity():
-    p=prepared();q=query(p).replace(' WHERE ',' WITH c, d AS other, s0, t0 WHERE ').replace('d.t1d_stage','other.t1d_stage').replace('d.data_source','other.data_source')
+    p=prepared();q=query(p).replace(' WHERE ',' WITH d AS other, s0, t0 WHERE ').replace('d.t1d_stage','other.t1d_stage').replace('d.data_source','other.data_source')
     assert validate_cypher(q,p)==[]
 
 

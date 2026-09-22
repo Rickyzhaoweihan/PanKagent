@@ -247,6 +247,16 @@ def _pattern_bindings(tokens: list[Token], *, undirected_patterns=None, graph_re
             edges += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(edges) if old in (a,b)]
             if undirected_patterns is not None:
                 undirected_patterns += [(new if a==old else a, new if b==old else b, kinds) for a,b,kinds in list(undirected_patterns) if old in (a,b)]
+        # Preserve identity through the bounded singleton-list UNWIND form.
+        # Without this, ``UNWIND [d] AS x`` could erase d's donor type before
+        # projection/privacy validation.
+        elif (_word(token, "AS") and i >= 4 and tokens[i - 1].value == ']'
+                and tokens[i - 3].value == '[' and tokens[i - 2].value in nodes
+                and any(_word(item, 'UNWIND') for item in tokens[max(0, i - 6):i])):
+            old, new = tokens[i - 2].value, tokens[i + 1].value
+            nodes.setdefault(new, set()).update(nodes[old])
+            edges += [(new if a == old else a, new if b == old else b, kinds)
+                      for a, b, kinds in list(edges) if old in (a, b)]
     # Scalar aliases must not acquire a node type from a prior use of the
     # same variable name. Per-branch callers prevent UNION type leakage.
     for i, token in enumerate(tokens[1:-1], 1):
@@ -528,6 +538,167 @@ def _unrequested_measurement_filters(tokens, constraints, parameters, *, graph_r
     return errors
 
 
+def _unrequested_property_filters(tokens, constraints, parameters, *, graph_release=None):
+    """Reject generated property predicates absent from the prepared request.
+
+    Template/request proofs govern the prepared constraints, but the GPU route
+    can still invent a WHERE predicate after that boundary.  Every comparison
+    against a recorded node/relationship property must therefore match one of
+    the already prepared constraint choices (including verified entity and
+    modality alternatives) or a dependency ID set.  Projections and ORDER BY
+    remain unaffected.
+    """
+    from .release_schema import REGISTRY, relationship_bindings
+    known = {prop for values in REGISTRY.get('nodes', {}).values() for prop in values}
+    known.update(prop for spec in REGISTRY.get('relations', {}).values()
+                 for prop in spec.get('properties', []))
+    structural = [token for token in tokens if not _word(token, 'OPTIONAL')]
+    nodes, _ = _pattern_bindings(structural, graph_release=graph_release)
+    relationships = relationship_bindings(tokens)
+    scalar_alias_sources = {}
+    def expression_start(alias_index):
+        depth = 0
+        pairs = {')': '(', ']': '[', '}': '{'}
+        opens = set(pairs.values())
+        for position in range(alias_index - 1, -1, -1):
+            value = tokens[position].value
+            if value in pairs:
+                depth += 1
+            elif value in opens:
+                if depth:
+                    depth -= 1
+            elif depth == 0 and value == ',':
+                return position + 1
+            elif (depth == 0 and tokens[position].kind == 'WORD'
+                  and value.upper() in {'WITH', 'RETURN'}):
+                return position + 1
+        return 0
+    for index, token in enumerate(tokens):
+        if not (_word(token, 'AS') and index >= 3 and index + 1 < len(tokens)):
+            continue
+        start = expression_start(index)
+        property_inputs = {(tokens[position - 2].value, tokens[position].value)
+                           for position in range(max(2, start), index)
+                           if tokens[position - 1].value == '.'
+                           and tokens[position - 2].value in (nodes.keys() | relationships.keys())
+                           and tokens[position].value in known}
+        for part in tokens[start:index]:
+            property_inputs.update(scalar_alias_sources.get(part.value, set()))
+        if property_inputs:
+            # Track the complete transitive provenance set through wrappers
+            # and chained WITH clauses. A predicate on a multi-property alias
+            # cannot be equated to only its nearest input.
+            scalar_alias_sources[tokens[index + 1].value] = property_inputs
+    errors, clause = [], ''
+    comparisons = {'=', '<', '<=', '>', '>=', '<>', '!=', 'IN', 'CONTAINS',
+                   'STARTS WITH', 'ENDS WITH'}
+    boundaries = {'AND', 'OR', 'XOR', ')', ']', '}', ',', 'RETURN', 'WITH',
+                  'ORDER', 'MATCH', 'OPTIONAL', 'LIMIT', 'SKIP', ';'}
+    for index, token in enumerate(tokens):
+        if token.kind == 'WORD' and token.value.upper() in {
+                'MATCH', 'WHERE', 'RETURN', 'WITH', 'UNWIND', 'ORDER'}:
+            clause = token.value.upper()
+        previous = tokens[index - 1] if index else None
+        dynamic_lookup = bool(previous and (
+            (previous.kind in {'WORD', 'IDENT'}
+             and previous.value.upper() not in {
+                 'WHERE', 'RETURN', 'WITH', 'UNWIND', 'IN', 'AS', 'AND', 'OR'})
+            or previous.value in {')', ']'}))
+        numeric_index = (token.value == '[' and index + 2 < len(tokens)
+                         and tokens[index + 1].kind == 'NUMBER'
+                         and tokens[index + 2].value == ']')
+        if (clause == 'WHERE' and token.value == '[' and dynamic_lookup
+                and not numeric_index):
+            errors.append('unrequested_dynamic_property_filter')
+            continue
+        access = index >= 2 and tokens[index - 1].value == '.'
+        mapped = (index > 0 and index + 1 < len(tokens)
+                  and tokens[index - 1].value in {'{', ','}
+                  and tokens[index + 1].value == ':')
+        alias_sources = (scalar_alias_sources.get(token.value, set())
+                         if not access and not mapped else set())
+        if clause == 'WHERE' and len(alias_sources) > 1:
+            errors.append('unrequested_ambiguous_property_alias_filter')
+            continue
+        aliased = len(alias_sources) == 1
+        alias_source = next(iter(alias_sources)) if aliased else None
+        property_name = alias_source[1] if aliased else token.value
+        if (token.kind not in {'WORD', 'IDENT'} or property_name not in known
+                or not (access or mapped or aliased)):
+            continue
+        if not (clause == 'WHERE' and (access or aliased)
+                or clause == 'MATCH' and mapped):
+            continue
+        owner, prop = (alias_source if aliased
+                       else (_predicate_owner(tokens, index), token.value))
+        # Mixed-unit donor age has a dedicated expression parser and exact
+        # request-equivalence validator; a token-local generic check would
+        # misclassify its reviewed CASE expression.
+        if (prop == 'age' and any(
+                str(wanted.get('property', '')).split('.')[-1] == 'age'
+                for wanted in constraints)):
+            continue
+        at, transform = index + 1, None
+        if access and at < len(tokens) and tokens[at].value == ')' and index >= 4:
+            if tokens[index - 3].value == '(' and tokens[index - 4].value.casefold() in {
+                    'tolower', 'toupper', 'tofloat', 'tointeger'}:
+                transform = tokens[index - 4].value.casefold()
+                at += 1
+            elif tokens[index - 4].value.casefold() == 'exists':
+                errors.append('unrequested_property_filter:' + prop)
+                continue
+        operator = tokens[at].value.upper() if at < len(tokens) else ''
+        operator = '=' if mapped and operator == ':' else operator
+        value_at = at + 1
+        if operator in {'STARTS', 'ENDS'} and value_at < len(tokens) and _word(tokens[value_at], 'WITH'):
+            operator += ' WITH'
+            value_at += 1
+        if operator == 'IS':
+            errors.append('unrequested_property_filter:' + prop)
+            continue
+        actual, end = _value(tokens, value_at, parameters) if operator in comparisons else (None, value_at)
+        if operator not in comparisons or end == value_at:
+            # Recorded properties used in a WHERE predicate through an
+            # unsupported expression cannot be treated as harmless.
+            errors.append('unsupported_property_filter:' + prop)
+            continue
+        if end < len(tokens) and tokens[end].value.upper() not in boundaries:
+            errors.append('unsupported_property_filter:' + prop)
+            continue
+        allowed = False
+        for wanted in constraints:
+            if str(wanted.get('property', '')).split('.')[-1] != prop:
+                continue
+            kinds = relationships.get(owner, set())
+            if wanted.get('relationship_type') and wanted['relationship_type'] not in kinds:
+                continue
+            label = wanted.get('_entity_type') or wanted.get('entity_type')
+            if label and label not in nodes.get(owner, set()):
+                continue
+            wanted_operator = str(wanted.get('operator', '=')).upper()
+            expected = _normalized_expected(wanted.get('value'), actual, wanted_operator)
+            if transform in {'tolower', 'toupper'} and isinstance(expected, str):
+                expected = expected.lower() if transform == 'tolower' else expected.upper()
+            if ((wanted_operator == operator or {wanted_operator, operator} <= {'!=', '<>'})
+                    and _equal(actual, expected)):
+                allowed = True
+            elif (wanted_operator == '=' and operator == 'IN'
+                  and isinstance(actual, list) and len(actual) == 1
+                  and _equal(actual[0], expected)):
+                allowed = True
+            elif (wanted_operator == 'IN' and operator == '='
+                  and isinstance(expected, list)
+                  and any(_equal(actual, member) for member in expected)):
+                allowed = True
+        if (prop == 'id' and operator == 'IN'
+                and any(name.startswith('dep_') and _equal(actual, value)
+                        for name, value in parameters.items())):
+            allowed = True
+        if not allowed:
+            errors.append('unrequested_property_filter:' + prop)
+    return errors
+
+
 def _constraint_choices(step: dict, index: int, constraint: dict) -> list[dict]:
     """Equivalence is local to a graph-verified entity, never an ID allowlist."""
     for entity in step.get("resolved_entities") or []:
@@ -623,6 +794,57 @@ def _dependency_owner_errors(tokens, name, values, metadata, graph_release):
             and _predicate_present(tokens, wanted, {name: values}, {variable})]
 
 
+def _unrequested_classification_projections(tokens, step):
+    """Reject protected donor fields in projections regardless of aliases."""
+    from .answer_facts import (DONOR_CLASSIFICATION_FIELDS,
+                               requested_classification_fields)
+    allowed = requested_classification_fields(step)
+    protected = set(DONOR_CLASSIFICATION_FIELDS) - set(allowed)
+    if not protected:
+        return []
+    bindings, _ = _pattern_bindings(tokens, graph_release=step.get('graph_version'))
+    donor_in_scope = any('donor' in labels for labels in bindings.values())
+    errors, clause = [], None
+    for index, token in enumerate(tokens):
+        if token.kind == 'WORD' and token.value.upper() in {
+                'MATCH', 'OPTIONAL', 'WHERE', 'WITH', 'RETURN', 'UNWIND',
+                'ORDER', 'LIMIT', 'SKIP'}:
+            clause = token.value.upper()
+            continue
+        if (clause in {'WITH', 'RETURN'} and index >= 2
+                and tokens[index - 1].value == '.'
+                and token.kind in {'WORD', 'IDENT'}
+                and token.value in protected):
+            errors.append('unrequested_donor_classification_projection:' + token.value)
+        if clause not in {'WITH', 'RETURN'}:
+            continue
+        # Cypher map lookup can conceal a protected key behind an arbitrary
+        # alias (``d['t1d_stage'] AS foo``), defeating key-based answer
+        # sanitization.  Reject every dynamic donor lookup while any donor
+        # classification is unrequested; requested fields remain available via
+        # the ordinary, auditable ``d.field`` form above.
+        previous = tokens[index - 1] if index else None
+        dynamic_lookup = bool(previous and (
+            (previous.kind in {'WORD', 'IDENT'}
+             and previous.value.upper() not in {'RETURN', 'WITH', 'UNWIND', 'IN', 'AS'})
+            or previous.value in {')', ']'}))
+        if donor_in_scope and token.value == '[' and dynamic_lookup:
+            errors.append('unrequested_donor_dynamic_property_projection')
+        # ``properties(d)`` exposes the complete donor property map, including
+        # all protected fields, and can then be indexed under a harmless alias.
+        if (donor_in_scope and token.kind == 'WORD' and token.value.casefold() == 'properties'
+                and index + 3 < len(tokens) and tokens[index + 1].value == '('
+                and tokens[index + 2].kind in {'WORD', 'IDENT'}
+                and tokens[index + 3].value == ')'):
+            errors.append('unrequested_donor_property_map_projection')
+        # Node map projections such as ``d{.*}`` are another spelling of the
+        # same full-property disclosure.
+        if (donor_in_scope and token.value == '{' and index >= 1
+                and tokens[index - 1].kind in {'WORD', 'IDENT'}):
+            errors.append('unrequested_donor_property_map_projection')
+    return sorted(set(errors))
+
+
 def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, dependency_bindings=None) -> list[str]:
     parameters = parameters or {}
     from .metadata_guard import recovery as metadata_recovery
@@ -691,6 +913,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
     errors.extend(coloc_validation_errors(tokens, step, parameters))
     from .scientific_projection import validation_errors as projection_validation_errors
     errors.extend(projection_validation_errors(tokens, step, parameters))
+    errors.extend(_unrequested_classification_projections(tokens, step))
     choices = [_constraint_choices(step, index, constraint) for index, constraint in enumerate(constraints)]
     measurement_choices = [choice for group in choices for choice in group]
     ranking = step.get("ranking_contract") or {}
@@ -716,10 +939,32 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
                 errors.append("independent_measurements_require_separate_steps")
     for part in branches:
         _, paths = _pattern_bindings(part, graph_release=step.get("graph_version"))
+        # Every production step is normalized with an explicit relationship
+        # contract (including an explicit empty list).  Preserve compatibility
+        # for the old low-level validator API that omitted the key entirely,
+        # while fail-closing every generated mandatory join once the contract
+        # exists. OPTIONAL context is intentionally absent from ``paths``.
+        if 'relation_types' in step:
+            mandatory_relations = {kind for _, _, kinds in paths for kind in kinds}
+            allowed_relations = set(relations)
+            constraint_owners = {constraint.get('entity_type')
+                                 for constraint in step.get('constraints') or []}
+            # A donor/sample cohort with an explicit disease predicate needs
+            # the reviewed disease-HAS_DONOR->donor witness even when the
+            # primary requested relation is HAS_SAMPLE.  This narrow derived
+            # join is already enforced by cohort_scope; no donor-only request
+            # receives the same allowance.
+            if (allowed_relations <= {'HAS_DONOR', 'HAS_SAMPLE'}
+                    and 'disease' in constraint_owners):
+                allowed_relations.add('HAS_DONOR')
+            for relation in sorted(mandatory_relations - allowed_relations):
+                errors.append('unrequested_mandatory_relation:' + relation)
         errors.extend(_region_scope_errors(part, step, parameters))
         errors.extend(_enrichment_property_errors(part, step, parameters))
         errors.extend(_unrequested_measurement_filters(part, measurement_choices, parameters,
                                                        graph_release=step.get("graph_version")))
+        errors.extend(_unrequested_property_filters(part, measurement_choices, parameters,
+                                                    graph_release=step.get("graph_version")))
         from .numeric_predicates import validation_errors as numeric_validation_errors
         errors.extend(numeric_validation_errors(part, step, parameters))
         from .measurement_properties import validation_errors as detection_validation_errors
@@ -974,29 +1219,52 @@ class GraphAdapter:
             cache.pop(next(iter(cache)))
         return {**result, "requested": dict(constraint)}
 
-    async def semantic_vocabulary(self):
+    async def semantic_vocabulary(self, *, force=False):
         from .semantic_registry import DIGEST
         key=(self.settings.graph_version,DIGEST)
         if not hasattr(self, '_semantic_lock'): self._semantic_lock=asyncio.Lock()
         async with self._semantic_lock:
             cached=getattr(self,'_semantic_cache',None)
-            if cached and cached[0]==key and time.monotonic()-cached[1]<300:return cached[2]
+            if not force and cached and cached[0]==key and time.monotonic()-cached[1]<300:return cached[2]
             from .donor_categories import CATEGORICAL_FIELDS
             # Fixed schema fields, not user-supplied query text. This is the same
             # complete metadata scan as the stage/source inventory.
             categorical_columns = ''.join(', collect(DISTINCT d.' + field + ') AS category_' + field
                                           for field in CATEGORICAL_FIELDS)
-            rows=await self._small_query("MATCH (d:donor) RETURN collect(DISTINCT d.t1d_stage) AS stages, collect(DISTINCT d.data_source) AS sources" + categorical_columns)
-            modalities=await self._small_query("MATCH (s:Sample_node) RETURN collect(DISTINCT s.data_modality) AS modalities")
+            rows=await self._small_query("MATCH (d:donor) RETURN collect(DISTINCT d.t1d_stage) AS stages, collect(DISTINCT d.data_source) AS donor_sources" + categorical_columns)
+            modalities=await self._small_query("MATCH (s:Sample_node) RETURN collect(DISTINCT s.data_modality) AS modalities, collect(DISTINCT s.data_source) AS sample_sources")
             check=await self._small_query("MATCH (m:data_modality)-[:HAS_SAMPLE]->(s:Sample_node) RETURN count(CASE WHEN m.id <> s.data_modality OR s.data_modality IS NULL THEN 1 END) AS mismatches, count(*) AS links")
             tissues=await self._small_query("MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(:Sample_node) RETURN DISTINCT a.id AS id, a.name AS name LIMIT 2000")
+            diseases=await self._small_query("MATCH (x:disease)-[:HAS_DONOR]->(:donor) RETURN DISTINCT x.id AS id, x.name AS name, x.synonyms AS synonyms")
             value={'inventory_complete':True, 'tissues':tissues,**(rows[0] if rows else {}),**(modalities[0] if modalities else {}), 'modality_links_verified':bool(check and check[0]['links'] and check[0]['mismatches']==0)}
+            for field in ('stages', 'donor_sources', 'sample_sources', 'modalities'):
+                raw = value.get(field)
+                value[field] = sorted(raw) if isinstance(raw, list) and all(isinstance(item, str) for item in raw) else []
+            value['tissues'] = sorted((row for row in tissues
+                if isinstance(row, dict) and isinstance(row.get('id'), str)),
+                key=lambda row: (row.get('id', ''), str(row.get('name') or '')))
+            value['sources'] = sorted(set(value['donor_sources']) | set(value['sample_sources']))
+            value['donor_diseases'] = sorted(({
+                'id': row.get('id'), 'name': row.get('name'), 'synonyms': row.get('synonyms')}
+                for row in diseases if isinstance(row.get('id'), str) and row.get('id')),
+                key=lambda row: row['id'])
             value['donor_categories_complete'] = bool(rows) and all(
-                isinstance(rows[0].get('category_' + field), list) for field in CATEGORICAL_FIELDS)
-            value['donor_categorical_values'] = {field: rows[0]['category_' + field] for field in CATEGORICAL_FIELDS
-                                                if rows and isinstance(rows[0].get('category_' + field), list)}
+                isinstance(rows[0].get('category_' + field), list)
+                and all(isinstance(item, str) for item in rows[0]['category_' + field])
+                for field in CATEGORICAL_FIELDS)
+            value['donor_categorical_values'] = {field: sorted(rows[0]['category_' + field])
+                for field in CATEGORICAL_FIELDS if rows
+                and isinstance(rows[0].get('category_' + field), list)
+                and all(isinstance(item, str) for item in rows[0]['category_' + field])}
             assay_sources=await self._small_query("MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) RETURN s.data_modality AS modality, collect(DISTINCT coalesce(d.data_source, '<unknown>')) AS sources")
-            value['assay_donor_sources']={r['modality']:r['sources'] for r in assay_sources if r.get('modality')}
+            value['assay_donor_sources']={r['modality']:sorted(r['sources']) for r in assay_sources
+                if isinstance(r.get('modality'), str) and isinstance(r.get('sources'), list)
+                and all(isinstance(item, str) for item in r['sources'])}
+            value['inventory_sha256'] = hashlib.sha256(json.dumps({
+                key: value.get(key) for key in ('stages', 'donor_sources', 'sample_sources',
+                    'modalities', 'donor_categorical_values', 'donor_diseases', 'tissues',
+                    'assay_donor_sources', 'inventory_complete', 'donor_categories_complete')},
+                sort_keys=True, separators=(',', ':'), default=str).encode()).hexdigest()
             self._semantic_cache=(key,time.monotonic(),value)
             return value
 
@@ -1004,7 +1272,8 @@ class GraphAdapter:
         step = repair_step_constraints({key: value for key, value in source.items()
                                         if key not in {"resolution_key", "resolved_entities", "entity_resolution",
                                             "recovery", "semantic_issues", "resolved_constraints", "semantic_registry",
-                                            "sample_requirements", "semantic_summary"}})
+                                            "sample_requirements", "semantic_summary", "request_filter_bindings",
+                                            "runtime_binding_issues"}})
         from .release_schema import normalize_constraints
         step = normalize_constraints(step)
         from .measurement_scope import measurement_scope_recovery
@@ -1129,6 +1398,20 @@ class GraphAdapter:
                 for entry in entities:
                     entry["constraint_index"] = indexes[entry["constraint_index"]]
         step["resolved_entities"] = entities
+        from .semantic_registry import attach_request_authorizations
+        step = attach_request_authorizations(step)
+        from .query_templates import runtime_binding_errors
+        binding_issues = runtime_binding_errors(step)
+        if binding_issues:
+            # Planning and execution share one proof gate.  Surface a generic
+            # revision request before confirmation while retaining only the
+            # value-free reason codes needed for audit/debugging.
+            step['runtime_binding_issues'] = binding_issues
+            message = ('One or more requested filters need current graph '
+                       'resolution before this plan can run.')
+            if message not in (step.get('semantic_issues') or []):
+                step.setdefault('semantic_issues', []).append(message)
+        entities = step["resolved_entities"]
         unresolved = [item for item in entities if item["state"] not in {"resolved", "literal_predicate"}]
         unknown_relations = [kind for kind in step["relation_types"] if getattr(self, "release_relations", set()) and kind not in self.release_relations]
         step["entity_resolution"] = {"state": "needs_clarification" if unresolved or unknown_relations or step.get("semantic_issues") else "resolved" if entities else "not_required",
@@ -1183,6 +1466,12 @@ class GraphAdapter:
             if note.strip() not in interpretation:prepared['interpreted_question']=interpretation+note
         context = related_context_step(prepared)
         if context:
+            if (plan.get('original_question')
+                    and not isinstance(context.get('semantic_request'), dict)):
+                context = {**context, 'semantic_request': {
+                    'source': 'user_request', 'question': plan['original_question'],
+                    'revision_instruction': (plan.get('revision_trace') or {}).get(
+                        'instruction', '')}}
             prepared["steps"].append(await self._prepare_step(context, emit))
         issues = [{"step_id": step["id"], "entities": [item for item in step["resolved_entities"] if item["state"] not in {"resolved", "literal_predicate"}],
                    "unknown_relations": step["entity_resolution"]["unknown_relations"], "terminology":step.get("semantic_issues",[])}
@@ -1466,11 +1755,30 @@ class GraphAdapter:
         # Older confirmed plans may name a cell in prose but omit its predicate.
         # Recover only the narrow, verified entity constraint; guards stay strict.
         step = repair_step_constraints(step)
+        def requested_scope(current):
+            scope = {"constraints": deepcopy(current.get("constraints", [])),
+                     "relation_types": deepcopy(current.get("relation_types", [])),
+                     "complete": current.get("complete", True),
+                     "retrieval_selection": deepcopy(current.get("retrieval_selection"))}
+            request = current.get("semantic_request") or {}
+            if (request.get("source") == "user_request"
+                    and isinstance(request.get("question"), str)):
+                scope["original_question"] = request["question"]
+            clinical = (current.get("semantic_registry") or {}).get("clinical_intent")
+            if isinstance(clinical, dict):
+                scope["clinical_intent"] = deepcopy(clinical)
+            return scope
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
-                "requested_scope": {"constraints": step.get("constraints", []), "relation_types": step.get("relation_types", []), "complete": step.get("complete", True), "retrieval_selection": step.get("retrieval_selection")},
+                "requested_scope": requested_scope(step),
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
+        if step.get('semantic_issues') or step.get('recovery'):
+            base['validation'].append({'valid': False,
+                'reasons': ['semantic_scope_unresolved']})
+            if step.get('recovery'):
+                base['recovery'] = deepcopy(step['recovery'])
+            return base
         if step.get("gwas_scope_unavailable"):
             base["validation"].append({"valid": False, "reasons": ["gene_gwas_variant_scope_unresolved"]})
             base["error"] = {"category": "scope_unavailable", "message": "The requested gene has no verified variant or locus binding for this GWAS check. A disease-wide search was not substituted."}
@@ -1502,12 +1810,37 @@ class GraphAdapter:
             if health["state"] != "healthy":
                 base["validation"].append({"valid": False, "reasons": [health.get("error_category", "graph_unavailable")]})
                 return base
+        from .semantic_registry import semantic_intent
+        preparation_required = bool(
+            step.get('relation_types') or step.get('semantic_registry')
+            or step.get('semantic_issues') or step.get('recovery')
+            or semantic_intent(step)
+            or bool(step.get('constraints'))
+            or any(isinstance(constraint, dict) and (
+                constraint.get('entity_type') or constraint.get('owner_kind')
+                or constraint.get('relationship_type'))
+                for constraint in step.get('constraints') or []))
+        if preparation_required and not self._resolution_verified(step):
+            step = await self._prepare_step(step, emit)
         if "resolved_entities" in step:
-            if not self._resolution_verified(step):
-                step = await self._prepare_step(step, emit)
+            base["requested_scope"] = requested_scope(step)
             base["resolved_entities"] = step["resolved_entities"]
             if step["entity_resolution"]["state"] == "needs_clarification":
                 base["validation"].append({"valid": False, "reasons": ["unresolved_plan_entities"]})
+                return base
+        if step.get('semantic_issues') or step.get('recovery'):
+            base['validation'].append({'valid': False,
+                'reasons': ['semantic_scope_unresolved']})
+            if step.get('recovery'):
+                base['recovery'] = deepcopy(step['recovery'])
+            return base
+        proof_required = preparation_required or self._resolution_verified(step)
+        if proof_required and step.get('constraints'):
+            from .query_templates import runtime_binding_errors
+            binding_errors = runtime_binding_errors(step)
+            if binding_errors:
+                base["validation"].append({"valid": False,
+                    "reasons": ["query_binding_unverified", *binding_errors]})
                 return base
         parameters, dependency_notes, inherited_partial = {}, [], False
         dependency_bindings = {}
@@ -1587,6 +1920,7 @@ class GraphAdapter:
         routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         for route in routes:
             local_route = route in {'template', 'cache'}
+            template_audit = None
             if not local_route and question is None:
                 try:
                     question = generation_request(step, build_generation_question(step))
@@ -1613,7 +1947,13 @@ class GraphAdapter:
                 if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
                     correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
                 if step.get("semantic_registry") and not any(c.get("entity_type")=="disease" for c in step.get("constraints", [])):
-                    correction += " No disease identity or diagnosed-diabetes filter was requested. Do not constrain disease.id, disease.name or donor.diabetes_type. Use only the resolved donor stage/cohort and sample/tissue constraints."
+                    clinical = [c for c in step.get('constraints', []) if c.get('entity_type') == 'donor'
+                                and c.get('property') in {'diabetes_type', 'derived_diabetes_status'}]
+                    correction += " No disease-node identity filter was requested. Do not constrain disease.id or disease.name."
+                    correction += (" Apply the verified donor clinical predicates exactly as supplied."
+                                   if clinical else
+                                   " No diagnosed-diabetes donor predicate was requested; do not add donor.diabetes_type or donor.derived_diabetes_status.")
+                    correction += " Use only the resolved donor stage/cohort and sample/tissue constraints."
                 if len(question) + len(correction) <= 4000:
                     attempt_question += correction
             selected_parameters = parameters
@@ -1621,6 +1961,9 @@ class GraphAdapter:
             if route in {'template', 'cache'}:
                 prepared_query = template if route == 'template' else cached
                 selected_parameters = {**parameters, **prepared_query['parameters']}
+                template_audit = {key: deepcopy(prepared_query[key]) for key in
+                    ('template_id', 'version', 'sha256', 'schema_sha256',
+                     'endpoint_coverage', 'parameter_bindings') if key in prepared_query}
                 async def generate(_question, _n):
                     return [prepared_query['cypher']]
             elif route == 'gpu_repair':
@@ -1676,13 +2019,16 @@ class GraphAdapter:
                         from .cypher_repair import failure_categories
                         categories = failure_categories(reasons)
                         validation_ms = round((time.monotonic() - validation_started) * 1000, 3)
-                        base["validation"].append({"valid": not reasons, "n": n,
+                        validation_record = {"valid": not reasons, "n": n,
                             "attempt_index": outcome.attempt["attempt_index"],
                             "candidate_cypher": query, "original_candidate_cypher": original_query,
                             "schema_normalizations": normalizations, "categorical_normalizations": normalization,
                             "deterministic_repairs": repairs, "deterministic_repair_record": repaired,
                             "route": route, "validation_ms": validation_ms,
-                            "failure_categories": categories, "reasons": reasons})
+                            "failure_categories": categories, "reasons": reasons}
+                        if template_audit:
+                            validation_record["template_audit"] = deepcopy(template_audit)
+                        base["validation"].append(validation_record)
                         # Full candidates and repair provenance remain in this
                         # protected evidence record. Operational events contain
                         # only coarse failure classes and duration, never Cypher.
@@ -1707,7 +2053,11 @@ class GraphAdapter:
                             "max_step_rows": (step.get("retrieval_budget") or {}).get("max_rows", getattr(self.settings, "max_rows", 1000)),
                         }
                         retrieval_started = time.monotonic()
-                        base["queries"].append({"cypher": query, "parameters": candidate_parameters, "normalization": normalization})
+                        query_record = {"cypher": query, "parameters": candidate_parameters,
+                                        "normalization": normalization}
+                        if template_audit:
+                            query_record["template_audit"] = deepcopy(template_audit)
+                        base["queries"].append(query_record)
                         try:
                             result = await asyncio.wait_for(self._retrieve(query, candidate_parameters, limits), timeout=self.settings.graph_timeout + 1)
                         except Exception as exc:
@@ -1718,8 +2068,13 @@ class GraphAdapter:
                         base.update(result)
                         base["retrieval_ms"] = round((time.monotonic()-retrieval_started)*1000,3)
                         base["query_route"] = route
+                        if template_audit:
+                            base["query_template"] = deepcopy(template_audit)
                         if grounded and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
-                            self._query_cache.put(key, {"cypher":query,"parameters":candidate_parameters})
+                            cached_query = {"cypher":query,"parameters":candidate_parameters}
+                            if template_audit:
+                                cached_query.update(deepcopy(template_audit))
+                            self._query_cache.put(key, cached_query)
                         from .semantic_registry import donor_summary
                         base['resolved_constraints']=step.get('resolved_constraints',[])
                         base['semantic_registry']=step.get('semantic_registry')

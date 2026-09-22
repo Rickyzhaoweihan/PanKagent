@@ -7,6 +7,7 @@ VERSION = 'anatomy-resolution-3'
 RELEASE = 'PanKgraph_08_04'
 # Reviewed against current named records; an alias is active only if ID and name agree.
 ALIASES = {
+ 'UBERON_0001264': ('pancreas', ['pancreatic', 'pancreatic tissue']),
  'CL_0000171': ('alpha cell', ['alpha']),
  'CL_0000169': ('beta cell', ['beta']),
  'CL_0000173': ('delta cell', ['delta']),

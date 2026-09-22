@@ -1,14 +1,41 @@
 import asyncio
 from copy import deepcopy
+import hashlib
 
 import pytest
 
 from pankagent_vnext.coloc_scope import compile_comparisons, normalize_plan, summarize_linkage, RELEASE
 from pankagent_vnext.graph import validate_cypher
-from pankagent_vnext.query_templates import compile_query
+from pankagent_vnext.query_templates import compile_query as _compile_query
 from test_coloc_computed_operations import source_plan
 from test_coloc_scope import evidence, GENE, DISEASE
 from test_graph import FakeAdapter
+
+
+def _authorized(step):
+    """Attach the immutable-request proof required by low-level templates."""
+    prepared = deepcopy(step)
+    question = 'Colocalization template fixture: ' + '; '.join(
+        f"{constraint.get('entity_type') or constraint.get('relationship_type') or 'node'}."
+        f"{constraint.get('property')} {constraint.get('operator', '=')} "
+        f"{constraint.get('value')}"
+        for constraint in prepared.get('constraints') or [])
+    prepared['semantic_request'] = {'source': 'user_request', 'question': question}
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    prepared['request_filter_bindings'] = [{
+        'constraint_index': index,
+        'canonical_binding': deepcopy(constraint),
+        'authorization_kind': 'verified_request_filter',
+        'source': 'immutable_user_request',
+        'request_sha256': digest,
+        'graph_release': prepared.get('graph_version'),
+    } for index, constraint in enumerate(prepared.get('constraints') or [])]
+    return prepared
+
+
+def compile_query(step):
+    # Keep the normalized plan immutable while exercising the production gate.
+    return _compile_query(_authorized(step))
 
 
 def mixed_plan(question=None):

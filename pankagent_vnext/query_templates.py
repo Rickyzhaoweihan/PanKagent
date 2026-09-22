@@ -15,11 +15,13 @@ from pathlib import Path
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
 from .constraint_values import list_value, DIGEST as VALUE_DIGEST
+from .donor_categories import CATEGORICAL_FIELDS, DIGEST as DONOR_CATEGORY_DIGEST
 from .genomic_scope import DIGEST as GENOMIC_DIGEST
 
-VERSION = 'typed-relation-templates-v3'
+VERSION = 'typed-relation-templates-v5-request-authority'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()
-                       + VALUE_DIGEST.encode() + GENOMIC_DIGEST.encode()
+                       + VALUE_DIGEST.encode() + DONOR_CATEGORY_DIGEST.encode()
+                       + GENOMIC_DIGEST.encode()
                        + Path(__file__).with_name('annotation_selection.py').read_bytes()).hexdigest()
 _SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
                      'deletion', 'provenance'}
@@ -31,6 +33,11 @@ _NUMERIC_FIELDS = {kind: set(fields) - {'expression_call'}
 _NUMERIC_FIELDS.update({'PART_OF_QTL_SIGNAL': {'pip', 'rank', 'nominal_p'},
                         'PART_OF_GWAS_SIGNAL': {'pip', 'rank'}})
 _REGION_FIELDS = {'chr', 'assembly', 'genome_assembly', 'start_loc', 'end_loc'}
+_RUNTIME_INVENTORY_FIELDS = {('donor', field) for field in CATEGORICAL_FIELDS} | {
+    ('donor', 't1d_stage'),
+    ('Sample_node', 'data_source'),
+    ('Sample_node', 'data_modality'),
+}
 
 
 def _common_endpoint(paths, side):
@@ -61,9 +68,21 @@ def _value(value, operator, *, numeric=False):
     return value
 
 
+def _node_identity_constraint(constraint):
+    """Whether a predicate names a node that requires a current resolution."""
+    return (constraint.get('property') in {'id', 'name'}
+            and constraint.get('owner_kind') in (None, 'node')
+            and not constraint.get('relationship_type')
+            and (constraint.get('entity_type') is None
+                 or constraint.get('entity_type') in REGISTRY['nodes']))
+
+
 def _resolved_entity(step, index, constraint):
-    choices = [e for e in step.get('resolved_entities', []) if e.get('constraint_index') == index]
+    choices = [e for e in step.get('resolved_entities') or []
+               if isinstance(e, dict) and e.get('constraint_index') == index]
     if not choices:
+        if _node_identity_constraint(constraint):
+            raise ValueError('missing_identity_resolution')
         return None
     if len(choices) != 1:
         raise ValueError('duplicate_resolution')
@@ -73,14 +92,163 @@ def _resolved_entity(step, index, constraint):
             and entity.get('requested') == constraint):
         # No entity replacement occurs. The canonical, typed predicate below
         # remains exact, including verified QTL tissue property bindings.
+        if _node_identity_constraint(constraint):
+            raise ValueError('unverified_identity_resolution')
         return None
+    labels = entity.get('labels')
     if (entity.get('state') != 'resolved' or entity.get('graph_version') != step['graph_version']
             or entity.get('requested') != constraint or not isinstance(entity.get('id'), str)
-            or not entity['id'] or entity.get('entity_type') not in entity.get('labels', [])
+            or not entity['id'] or not isinstance(labels, list)
+            or entity.get('entity_type') not in labels
             or constraint.get('property') not in {'id', 'name'}
-            or constraint.get('operator', '=') != '='):
+            or constraint.get('operator', '=') != '='
+            or not isinstance(constraint.get('value'), str) or not constraint['value']
+            or constraint.get('property') == 'id' and constraint['value'] != entity['id']):
         raise ValueError('unverified_resolution')
     return entity
+
+
+def _runtime_inventory_binding(step, index, constraint):
+    """Return ``(proof, error)`` for one release-inventory predicate."""
+    field = (constraint.get('entity_type'), constraint.get('property'))
+    if field not in _RUNTIME_INVENTORY_FIELDS:
+        return None, None
+    reference = f'{index}:{field[0]}.{field[1]}'
+    registry = step.get('semantic_registry') or {}
+    digest = registry.get('inventory_sha256')
+    if not isinstance(digest, str) or not digest:
+        return None, 'missing_runtime_inventory_digest:' + reference
+    candidates = [match for match in step.get('resolved_constraints') or []
+                  if isinstance(match, dict)
+                  and match.get('canonical_binding') == constraint]
+    proofs = [match for match in candidates
+              if isinstance(match.get('match_kind'), str)
+              and match['match_kind'].startswith('verified_runtime_')
+              and match.get('graph_release') == step.get('graph_version')
+              and match.get('inventory_sha256') == digest]
+    if len(proofs) == 1:
+        return proofs[0], None
+    if len(proofs) > 1:
+        return None, 'duplicate_runtime_inventory_binding:' + reference
+    if candidates:
+        return None, 'stale_runtime_inventory_binding:' + reference
+    return None, 'missing_runtime_inventory_binding:' + reference
+
+
+def _request_authorization_binding(step, index, constraint):
+    """Return immutable-request authority independent of value existence."""
+    request = step.get('semantic_request') or {}
+    question = request.get('question')
+    reference = f'{index}:{constraint.get("entity_type") or "node"}.{constraint.get("property")}'
+    if request.get('source') != 'user_request' or not isinstance(question, str) or not question:
+        return None, 'missing_trusted_semantic_request:' + reference
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    candidates = [binding for binding in step.get('request_filter_bindings') or []
+                  if isinstance(binding, dict)
+                  and binding.get('constraint_index') == index
+                  and binding.get('canonical_binding') == constraint]
+    proofs = [binding for binding in candidates
+              if binding.get('source') == 'immutable_user_request'
+              and binding.get('request_sha256') == digest
+              and binding.get('graph_release') == step.get('graph_version')]
+    if len(proofs) == 1:
+        return proofs[0], None
+    if len(proofs) > 1:
+        return None, 'duplicate_request_authorization:' + reference
+    if candidates:
+        return None, 'stale_request_authorization:' + reference
+    return None, 'missing_request_authorization:' + reference
+
+
+def runtime_binding_errors(step):
+    """Report missing or stale runtime proofs without predicate values.
+
+    This public, side-effect-free check is shared by local compilation and the
+    execution gate so a generated query cannot bypass the same current-release
+    category/source and node-identity requirements that templates enforce.
+    """
+    errors = []
+    for index, constraint in enumerate(step.get('constraints') or []):
+        if not isinstance(constraint, dict):
+            continue
+        _, error = _runtime_inventory_binding(step, index, constraint)
+        if error:
+            errors.append(error)
+        _, request_error = _request_authorization_binding(step, index, constraint)
+        if request_error:
+            errors.append(request_error)
+        if _node_identity_constraint(constraint):
+            try:
+                _resolved_entity(step, index, constraint)
+            except ValueError as exc:
+                reason = str(exc)
+                request = step.get('semantic_request') or {}
+                question = request.get('question')
+                if (reason == 'unverified_identity_resolution'
+                        and request.get('source') == 'user_request'
+                        and isinstance(question, str) and question):
+                    # The anatomy normalizer may derive one exact canonical IN
+                    # set from the current release-scoped hierarchy. Revalidate
+                    # every digest, root, member and immutable-request surface;
+                    # a generic request authorization alone is insufficient.
+                    from .semantic_registry import _verified_anatomy_scope_derivation
+                    if (_verified_anatomy_scope_derivation(
+                            constraint, step, question)
+                            == 'verified_request_anatomy_scope'):
+                        continue
+                if reason not in {'missing_identity_resolution', 'duplicate_resolution',
+                                   'unverified_identity_resolution', 'unverified_resolution'}:
+                    reason = 'unverified_resolution'
+                owner = constraint.get('entity_type') or 'node'
+                errors.append(f'{reason}:{index}:{owner}.{constraint.get("property")}')
+    return errors
+
+
+def _runtime_inventory_proof(step, index, constraint):
+    """Return the unique current-inventory proof for a categorical predicate.
+
+    A reusable template may describe graph structure, but it must not decide
+    which recorded category or source a phrase means. Those values are eligible
+    only after the semantic resolver has matched the *final* constraint against
+    the current graph inventory. The digest ties that proof to the same runtime
+    snapshot used for every other parameter in this compiled query.
+    """
+    proof, error = _runtime_inventory_binding(step, index, constraint)
+    if error:
+        raise ValueError(error)
+    return proof
+
+
+def _parameter_binding(step, index, constraint, owner, prop, operator, resolved):
+    """Describe why a parameter is safe without copying its value to metadata."""
+    proof = _runtime_inventory_proof(step, index, constraint)
+    request_proof, request_error = _request_authorization_binding(step, index, constraint)
+    if request_error:
+        raise ValueError(request_error)
+    if resolved is not None:
+        source = 'resolved_entities'
+        kind = 'current_graph_entity_resolution'
+    elif proof is not None:
+        source = 'resolved_constraints'
+        kind = proof['match_kind']
+    elif request_proof is not None:
+        source = 'request_filter_bindings'
+        kind = request_proof['authorization_kind']
+    else:
+        source = 'prepared_constraint'
+        kind = 'typed_property_binding'
+    binding = {'constraint_index': index, 'owner': owner, 'property': prop,
+               'operator': operator, 'proof_source': source, 'proof_kind': kind,
+               'graph_release': step.get('graph_version')}
+    if proof is not None:
+        binding['inventory_sha256'] = proof['inventory_sha256']
+    if request_proof is not None:
+        binding['request_authorization'] = {
+            'source': request_proof['source'],
+            'authorization_kind': request_proof['authorization_kind'],
+            'request_sha256': request_proof['request_sha256'],
+        }
+    return binding
 
 
 def _sample_witness(step, paths):
@@ -95,7 +263,7 @@ def _sample_witness(step, paths):
         if not compatible or _common_endpoint(compatible, 'target') != 'Sample_node':
             return None
     variables = {'donor': 'd', 'anatomical_structure': 't', 'Sample_node': 's'}
-    filters, params, tissue_anchors, donor_predicates = [], {}, 0, 0
+    filters, params, parameter_bindings, tissue_anchors, donor_predicates = [], {}, {}, 0, 0
     try:
         for index, c in enumerate(step.get('constraints', [])):
             owner, prop, op, value = c.get('entity_type'), c.get('property'), c.get('operator', '='), c.get('value')
@@ -114,6 +282,8 @@ def _sample_witness(step, paths):
             donor_predicates += owner == 'donor'
             parameter = 'template_' + str(index)
             params[parameter] = _value(value, op)
+            parameter_bindings[parameter] = _parameter_binding(
+                step, index, c, owner, prop, op, resolved)
             cypher_op = '<>' if op == '!=' else op
             filters.append(f'{variables[owner]}.`{prop}` {cypher_op} ${parameter}')
     except (ValueError, TypeError, OverflowError):
@@ -124,7 +294,8 @@ def _sample_witness(step, paths):
              'WHERE ' + ' AND '.join(filters) + '\n'
              'RETURN collect(DISTINCT d) + collect(DISTINCT t) + collect(DISTINCT s) AS nodes, '
              'collect(DISTINCT rd) + collect(DISTINCT rt) AS edges')
-    return {'cypher': query, 'parameters': params, 'template_id': 'donor_tissue_same_sample_records',
+    return {'cypher': query, 'parameters': params, 'parameter_bindings': parameter_bindings,
+            'template_id': 'donor_tissue_same_sample_records',
             'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
             'endpoint_coverage': {'sources': ['donor', 'anatomical_structure'], 'target': 'Sample_node',
                 'registered_path_count': len(paths), 'all_paths_covered': False,
@@ -136,7 +307,7 @@ def _region_gene_records(step):
     from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
     if not has_verified_region_scope(step):
         return None
-    filters, params = [], {}
+    filters, params, parameter_bindings = [], {}, {}
     try:
         for index, constraint in enumerate(step.get('constraints', [])):
             prop, operator = constraint.get('property'), constraint.get('operator', '=')
@@ -156,13 +327,16 @@ def _region_gene_records(step):
                 return None
             parameter = 'template_' + str(index)
             params[parameter] = _value(value, operator, numeric=numeric)
+            parameter_bindings[parameter] = _parameter_binding(
+                step, index, constraint, 'Gene', prop, operator, resolved)
             cypher_operator = '<>' if operator == '!=' else operator
             filters.append(f'g.`{prop}` {cypher_operator} ${parameter}')
     except (ValueError, TypeError, OverflowError):
         return None
     query = ('MATCH (g:`Gene`)\nWHERE ' + ' AND '.join(filters)
              + '\nRETURN collect(DISTINCT g) AS nodes, [] AS edges')
-    return {'cypher': query, 'parameters': params, 'template_id': 'verified_gene_region_records',
+    return {'cypher': query, 'parameters': params, 'parameter_bindings': parameter_bindings,
+            'template_id': 'verified_gene_region_records',
             'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
             'endpoint_coverage': {'source': 'Gene', 'all_requested_paths_covered': True,
                                   'scope_basis': 'verified_complete_gene_interval'}}
@@ -212,7 +386,7 @@ def compile_query(step):
         return None
     from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
     region_scope = has_verified_region_scope(step)
-    filters, params, resolved_count = [], {}, 0
+    filters, params, parameter_bindings, resolved_count = [], {}, {}, 0
     try:
         for index, constraint in enumerate(step.get('constraints', [])):
             prop, owner = constraint.get('property', ''), constraint.get('entity_type')
@@ -259,6 +433,9 @@ def compile_query(step):
             value = _value(value, operator, numeric=numeric)
             param = 'template_' + str(index)
             params[param] = value
+            binding_owner = owner if variable != 'r' else relationship or kind
+            parameter_bindings[param] = _parameter_binding(
+                step, index, constraint, binding_owner, prop, operator, resolved)
             cypher_operator = '<>' if operator == '!=' else operator
             filters.append(f'{variable}.`{prop}` {cypher_operator} ${param}')
     except (ValueError, TypeError, OverflowError):
@@ -270,7 +447,8 @@ def compile_query(step):
     if bounded_annotation:
         query += '\nWITH a, b, r ORDER BY a.id, b.id, elementId(r) LIMIT 10'
     query += '\nRETURN collect(DISTINCT a) + collect(DISTINCT b) AS nodes, collect(DISTINCT r) AS edges'
-    return {'cypher': query, 'parameters': params, 'template_id': 'directed_relation_records',
+    return {'cypher': query, 'parameters': params, 'parameter_bindings': parameter_bindings,
+            'template_id': 'directed_relation_records',
             'version': VERSION, 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
             'endpoint_coverage': {'source': left, 'target': right,
                                   'registered_path_count': len(paths),
@@ -302,4 +480,16 @@ def compile_variant_dependencies(step, dependency_bindings):
         return None
     query['cypher'] = query['cypher'].replace('\nWHERE ', '\nWHERE ' + ' AND '.join('a.id IN $' + n for n in names) + ' AND ', 1)
     query['template_id'] = 'verified_variant_dependency_gwas'
+    for index, name in enumerate(names):
+        binding = dependency_bindings[name]
+        query.setdefault('parameter_bindings', {})[name] = {
+            'dependency_index': index,
+            'owner': 'variants',
+            'property': 'id',
+            'operator': 'IN',
+            'proof_source': 'dependency_evidence',
+            'proof_kind': 'current_graph_dependency_entities',
+            'graph_release': binding['graph_version'],
+            'required_label': 'variants',
+        }
     return query

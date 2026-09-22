@@ -14,7 +14,7 @@ import re
 
 from .release_schema import REGISTRY
 
-VERSION = 'full-record-answer-facts-v3-classifications'
+VERSION = 'full-record-answer-facts-v5-donor-classification-aliases'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 GO_SOURCE = 'https://geneontology.org/docs/guide-go-evidence-codes/'
 # Formal names and categories verified against the official guide, 2026-09-09.
@@ -79,6 +79,317 @@ def _distribution(records, fields, cap):
             'full_record_count':len(records), 'full_group_count':len(groups),
             'omitted_group_count':max(0, len(groups)-cap),
             'omitted_record_count':sum(groups[key] for key in ordered[cap:])}
+
+
+DONOR_CLASSIFICATION_FIELDS = (
+    'diabetes_type', 'derived_diabetes_status', 't1d_stage', 'data_source')
+
+# Public summaries use presentation-oriented names that do not necessarily
+# preserve the underlying graph property spelling.  Keep the mapping explicit:
+# a renamed key must not turn a protected donor classification into an
+# unclassified value at an outbound boundary.  ``recorded_source`` is
+# deliberately absent because it is also used for non-donor relationship
+# provenance; the donor aggregate alias is the narrower ``*_counts`` key.
+DONOR_CLASSIFICATION_KEY_ALIASES = {
+    'recorded_diabetes_type': 'diabetes_type',
+    'recorded_diabetes_types': 'diabetes_type',
+    'recorded_diabetes_type_counts': 'diabetes_type',
+    'recorded_derived_diabetes_status': 'derived_diabetes_status',
+    'recorded_derived_diabetes_statuses': 'derived_diabetes_status',
+    'recorded_derived_diabetes_status_counts': 'derived_diabetes_status',
+    'recorded_stage': 't1d_stage',
+    'recorded_stages': 't1d_stage',
+    'recorded_stage_counts': 't1d_stage',
+    'recorded_source_counts': 'data_source',
+}
+
+
+def _classification_stage_intent(question):
+    """Recognize requests for recorded T1D-stage marginals.
+
+    ``T1D`` often qualifies the stage field rather than independently asking
+    for the donor's diabetes-type field.  Keep those two intents separate so a
+    stage-only request does not disclose an unrelated classification.
+    """
+    stage_number = r'(?:\d+|I{1,3})'
+    return any(re.search(pattern, question, re.I) for pattern in (
+        rf'\bstages?\s*[-:]?\s*{stage_number}\b',
+        r'\bT1D(?:M)?[ _-]+stages?\b',
+        r'\b(?:by|across)\s+(?:T1D(?:M)?[ _-]+)?stages?\b',
+        r'\bstages?\s+(?:distribution|breakdown)\b',
+        r'\b(?:distribution|breakdown)\b[^.!?;]{0,80}\b(?:by|across|of)\s+'
+        r'(?:T1D(?:M)?[ _-]+)?stages?\b',
+    ))
+
+
+def _mask_stage_qualified_t1d(question):
+    """Mask only T1D tokens that are syntactically part of a stage phrase."""
+    masked = re.sub(r'\bT1D(?:M)?(?=[ _-]+stages?\b)', ' ', question, flags=re.I)
+    return re.sub(
+        r'(\bstages?(?:\s*[-:]?\s*(?:\d+|I{1,3}))?\s*(?:[-:/]\s*)?)'
+        r'T1D(?:M)?\b',
+        lambda match: match.group(1) + ' ', masked, flags=re.I)
+
+
+def requested_classification_fields(item):
+    """Return classification marginals needed by the immutable request.
+
+    Full marginals remain available to the private integrity check. Public
+    answers expose only fields the user used to define the cohort (or named
+    explicitly), so aggregate-only output does not reveal unrelated clinical
+    attributes of a small retrieved group.
+    """
+    scope = item.get('requested_scope') or {}
+    fields = {constraint.get('property') for constraint in scope.get('constraints') or []
+              if constraint.get('entity_type') == 'donor'
+              and constraint.get('property') in DONOR_CLASSIFICATION_FIELDS}
+    bindings = item.get('request_filter_bindings') or []
+    fields.update(constraint.get('property') for index, constraint in enumerate(
+        item.get('constraints') or [])
+        if constraint.get('entity_type') == 'donor'
+        and constraint.get('property') in DONOR_CLASSIFICATION_FIELDS
+        and any(binding.get('constraint_index') == index
+                and binding.get('canonical_binding') == constraint
+                and binding.get('source') == 'immutable_user_request'
+                for binding in bindings))
+    semantic_request = item.get('semantic_request') or {}
+    trusted_question = (semantic_request.get('question')
+                        if semantic_request.get('source') == 'user_request' else None)
+    question = str(scope.get('original_question') or trusted_question or item.get('question')
+                   or item.get('title') or '')
+    from .semantic_registry import control_cohort_polarity, scope_intent_text
+    question = scope_intent_text(question)
+    type_intent_question = _mask_stage_qualified_t1d(question)
+    diagnosed_t1d = re.search(
+        r'\b(?:diagnos(?:is|es|ed|tic|tics)(?:\s+(?:with|as|of))?\s+T[12]D(?:M)?'
+        r'|T[12]D(?:M)?\s+diagnos(?:is|es|ed|tic|tics))\b', question, re.I)
+    if (control_cohort_polarity(question)['positive']
+            or re.search(r'\b(?:diabetes[ _-]+type|T[12]D(?:M)?|type\s*(?:1|2|I|II)\s+diabetes)\b',
+                         type_intent_question, re.I)
+            or diagnosed_t1d):
+        fields.add('diabetes_type')
+    if re.search(r'\bderived(?:[ _-]+diabetes)?[ _-]+(?:status|classification)\b',
+                 question, re.I):
+        fields.add('derived_diabetes_status')
+    if _classification_stage_intent(question):
+        fields.add('t1d_stage')
+    if re.search(r'\b(?:data|dataset|donor|cohort)[ _-]+source\b', question, re.I):
+        fields.add('data_source')
+    return fields
+
+
+def sanitize_unrequested_classifications(value, allowed=frozenset()):
+    """Remove donor-classification values from any outbound nested payload.
+
+    Query rows are not guaranteed to preserve an owning node label.  Treat a
+    key whose normalized suffix is one of the protected fields as donor
+    classification data unless the immutable request explicitly needs it.
+    The full private evidence remains unchanged for integrity checks.
+    """
+    allowed = set(allowed)
+    if isinstance(value, Mapping):
+        result = {}
+        for key, item in value.items():
+            normalized = re.sub(r'[^a-z0-9]+', '_', str(key).casefold()).strip('_')
+            protected = DONOR_CLASSIFICATION_KEY_ALIASES.get(normalized)
+            if protected is None:
+                protected = next((field for field in DONOR_CLASSIFICATION_FIELDS
+                                  if normalized == field
+                                  or normalized.endswith('_' + field)), None)
+            if protected and protected not in allowed:
+                continue
+            result[key] = sanitize_unrequested_classifications(item, allowed)
+        return result
+    if isinstance(value, list):
+        return [sanitize_unrequested_classifications(item, allowed) for item in value]
+    if isinstance(value, tuple):
+        return tuple(sanitize_unrequested_classifications(item, allowed) for item in value)
+    return value
+
+
+def minimize_answer_facts_for_request(item, facts):
+    """Copy an answer ledger with unrequested donor marginals removed.
+
+    Local integrity checks run on the full ledger before this outbound/public
+    projection. The minimized copy is safe for synthesis context and display.
+    """
+    if not isinstance(facts, Mapping):
+        return facts
+    result = dict(facts)
+    summary = facts.get('donor_classifications')
+    if not isinstance(summary, Mapping):
+        return result
+    allowed = requested_classification_fields(item)
+    visible_fields = {field:value for field, value in (summary.get('fields') or {}).items()
+                      if field in allowed}
+    if visible_fields:
+        result['donor_classifications'] = {
+            **summary, 'fields':visible_fields,
+            'interpretation':'Only donor classification fields used by the requested cohort are included in answer context.'}
+    else:
+        result.pop('donor_classifications', None)
+    return result
+
+
+def _donor_classifications(records, cap):
+    """Return anonymous marginals over every unambiguous donor record.
+
+    These are deliberately four separate distributions. In particular,
+    ``t1d_stage`` is never used as a substitute for either diabetes field.
+    """
+    return {
+        'counting_unit':'unique_retrieved_donor_nodes',
+        'unique_retrieved_donors':len(records),
+        'fields':{field:_distribution(records, (field,), cap)
+                  for field in DONOR_CLASSIFICATION_FIELDS},
+        'individual_donor_identifiers_included':False,
+        'interpretation':'Recorded diabetes type, derived diabetes status and T1D stage are separate metadata. '
+            'A recorded stage must not be relabeled as ND/healthy, diabetes type or a diagnosis. '
+            'Source is provenance, not a clinical classification.'}
+
+
+def _field_values(summary, field):
+    distribution = ((summary or {}).get('fields') or {}).get(field) or {}
+    values = set()
+    for group in distribution.get('groups') or []:
+        prop = ((group.get('recorded_fields') or {}).get(field) or {})
+        value = prop.get('value') if prop.get('state') == 'recorded' else None
+        values.add(value)
+    return values
+
+
+def cohort_integrity_issues(item, facts=None):
+    """Pure fail-closed check between requested and retrieved donor cohorts.
+
+    The function never derives diabetes type from stage. It verifies explicit
+    donor categorical constraints and one high-confidence ND/healthy-control
+    wording pattern against anonymous full-record marginals.
+    """
+    facts = facts if isinstance(facts, Mapping) else build_answer_facts(item)
+    summary = (facts or {}).get('donor_classifications') or {}
+    scope = item.get('requested_scope') or {}
+    expected = defaultdict(set)
+    excluded = defaultdict(set)
+    for constraint in scope.get('constraints') or []:
+        if (constraint.get('entity_type') != 'donor'
+                or constraint.get('property') not in DONOR_CLASSIFICATION_FIELDS):
+            continue
+        operator = str(constraint.get('operator') or '=')
+        raw = constraint.get('value')
+        values = raw if operator == 'IN' and isinstance(raw, list) else None
+        if operator == 'IN' and isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except (TypeError, ValueError):
+                parsed = None
+            values = parsed if isinstance(parsed, list) else None
+        if values is None:
+            values = [raw]
+        if operator in {'=', 'IN'}:
+            expected[constraint['property']].update(str(value).casefold() for value in values
+                                                    if isinstance(value, str))
+        elif operator in {'!=', '<>', 'NOT IN'}:
+            excluded[constraint['property']].update(str(value).casefold() for value in values
+                                                    if isinstance(value, str))
+    semantic_request = item.get('semantic_request') or {}
+    trusted_question = (semantic_request.get('question')
+                        if semantic_request.get('source') == 'user_request' else None)
+    question = str(scope.get('original_question') or trusted_question
+                   or item.get('question') or item.get('title') or '')
+    clinical_intent = scope.get('clinical_intent') or {}
+    from .semantic_registry import control_cohort_polarity, scope_intent_text
+    question = scope_intent_text(question)
+    fallback_polarity = control_cohort_polarity(question)
+    def control_like(value):
+        normalized = re.sub(r'[^a-z0-9]+', ' ', value.casefold()).strip()
+        return (normalized in {'nd', 'healthy', 'healthy control', 'non diabetic',
+                               'control without diabetes', 'without diabetes'}
+                or 'control without diabetes' in normalized)
+    # The immutable original wording remains authoritative even if corrupted
+    # or stale structured metadata says otherwise.
+    explicit_control = (fallback_polarity['positive']
+                        or clinical_intent.get('control_cohort') is True
+                        and not fallback_polarity['negative'])
+    scope_issues = []
+    if (fallback_polarity['positive']
+            and clinical_intent
+            and clinical_intent.get('control_cohort') is not True):
+        scope_issues.append({
+            'field':'diabetes_type',
+            'expected':['raw ND/healthy control intent'],
+            'recorded':['contradictory structured clinical intent'],
+            'reason':'structured_clinical_intent_conflicts_with_original_question'})
+    if fallback_polarity['negative'] and (
+            clinical_intent.get('control_cohort') is True
+            or any(control_like(value) for value in expected.get('diabetes_type', set()))):
+        scope_issues.append({
+            'field':'diabetes_type',
+            'expected':['raw exclusion of ND/healthy control cohort'],
+            'recorded':['prepared positive control scope'],
+            'reason':'structured_clinical_intent_conflicts_with_original_question'})
+    negative_control = (fallback_polarity['negative']
+                        or clinical_intent.get('excluded_control_cohort') is True)
+    if negative_control:
+        bound_exclusions = excluded.get('diabetes_type', set())
+        valid_exclusions = {value for value in bound_exclusions if control_like(value)}
+        if not bound_exclusions or valid_exclusions != bound_exclusions:
+            scope_issues.append({
+                'field':'diabetes_type',
+                'expected':['runtime-resolved exclusion of ND/healthy control category'],
+                'recorded':sorted(bound_exclusions) if bound_exclusions else ['no prepared control exclusion'],
+                'reason':'requested_control_exclusion_not_bound'})
+        excluded['diabetes_type'] = valid_exclusions or {'control without diabetes'}
+    if explicit_control:
+        bound = expected.get('diabetes_type', set())
+        valid_bound = {value for value in bound if control_like(value)}
+        trusted_scope = ('original_question' in scope
+                         or clinical_intent.get('control_cohort') is True)
+        if trusted_scope and (not bound or valid_bound != bound):
+            scope_issues.append({'field':'diabetes_type',
+                'expected':['runtime-resolved ND/healthy control category'],
+                'recorded':sorted(bound) if bound else ['no prepared control constraint'],
+                'reason':'requested_control_scope_not_bound'})
+        # The trusted raw control intent is authoritative. A contradictory
+        # prepared category must never broaden the accepted set to include T1D.
+        expected['diabetes_type'] = valid_bound or {'control without diabetes'}
+    if not summary.get('unique_retrieved_donors'):
+        if not expected and not excluded:
+            return scope_issues
+        # A true empty graph result has no mismatching records. Scalar rows or
+        # returned samples without donor classifications cannot substantiate a
+        # clinical cohort count and therefore fail closed before synthesis.
+        if item.get('status') == 'empty' and not item.get('rows') and not item.get('nodes'):
+            return scope_issues
+        unavailable = [{'field':field, 'expected':sorted(wanted),
+                        'recorded':['donor classifications not returned'],
+                        'reason':'retrieved_donor_classification_unavailable_for_scope_verification'}
+                       for field, wanted in {**expected, **excluded}.items()]
+        return scope_issues + unavailable
+    issues = list(scope_issues)
+    for field, wanted in expected.items():
+        actual = _field_values(summary, field)
+        distribution = ((summary.get('fields') or {}).get(field) or {})
+        actual_text = {str(value).casefold() for value in actual if isinstance(value, str)}
+        has_unrecorded = None in actual
+        if (has_unrecorded or not actual_text or not actual_text.issubset(wanted)
+                or distribution.get('omitted_record_count')):
+            issues.append({'field':field, 'expected':sorted(wanted),
+                           'recorded':sorted(str(value) if value is not None else 'not recorded'
+                                             for value in actual),
+                           'reason':'retrieved_donor_classification_outside_requested_scope'})
+    for field, blocked in excluded.items():
+        actual = _field_values(summary, field)
+        distribution = ((summary.get('fields') or {}).get(field) or {})
+        actual_text = {str(value).casefold() for value in actual if isinstance(value, str)}
+        control_violation = (field == 'diabetes_type' and negative_control
+                             and any(control_like(value) for value in actual_text))
+        if (None in actual or not actual_text or actual_text.intersection(blocked)
+                or control_violation or distribution.get('omitted_record_count')):
+            issues.append({'field':field, 'expected':['exclude ' + value for value in sorted(blocked)],
+                           'recorded':sorted(str(value) if value is not None else 'not recorded'
+                                             for value in actual),
+                           'reason':'retrieved_donor_classification_inside_excluded_scope'})
+    return issues
 
 
 def _index(nodes):
@@ -272,6 +583,9 @@ def build_answer_facts(item, *, coverage=None, max_groups=30, max_records=20):
             'support a complete executed-scope claim. Do not invent source, method, causation, ambient RNA or '
             'aggregation explanations absent from the recorded evidence.'}
     result['source_classifications'] = {'counting_unit':'relationship records', 'distribution':source_classifications(edges), 'interpretation':'Source labels are not independent proof of causality.'}
+    donors = [node for node in nodes.values() if 'donor' in (node.get('labels') or [])]
+    if donors:
+        result['donor_classifications'] = _donor_classifications(donors, max_groups)
     sample = _sample_facts(item,nodes,edges,complete,max_groups)
     if sample is not None:
         result['sample_counts'] = sample

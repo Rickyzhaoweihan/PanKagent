@@ -180,12 +180,12 @@ def test_new_inventory_rebuilds_old_fieldless_cache_using_only_metadata_reads(tm
         graph.calls.clear()
         grounder = Grounder(graph, path)
         index = await grounder.warm()
-        assert index.identity['version'] == 'grounding-inventory-5'
+        assert index.identity['version'] == 'grounding-inventory-6-live-refresh'
         assert index.match('ADCY3')[0]['candidates'][0]['hgnc_symbol'] == 'ADCY3'
         assert graph.calls and all(query.startswith('MATCH ') and ' RETURN ' in query for query, _ in graph.calls)
         count = len(graph.calls)
         assert await grounder.warm() is index and len(graph.calls) == count
-        assert load_inventory(path, inventory_identity(graph))['identity']['version'] == 'grounding-inventory-5'
+        assert load_inventory(path, inventory_identity(graph))['identity']['version'] == 'grounding-inventory-6-live-refresh'
     asyncio.run(scenario())
 
 

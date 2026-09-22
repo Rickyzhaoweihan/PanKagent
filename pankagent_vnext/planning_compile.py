@@ -15,7 +15,7 @@ from .semantic_registry import ALIASES as ASSAY_ALIASES, dataset_source_owner
 from .constraint_values import list_value, DIGEST as VALUE_DIGEST
 from .anatomy_paths import REGISTRY as ANATOMY_REGISTRY, DIGEST as ANATOMY_DIGEST
 
-VERSION = 'preplanning-property-owners-v10-t1d-relation-context'
+VERSION = 'preplanning-property-owners-v11-runtime-relation-context'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + VALUE_DIGEST.encode() + ANATOMY_DIGEST.encode()).hexdigest()
 
 
@@ -224,31 +224,62 @@ def _cell_identity_alias(constraint, question, grounding, relations):
     return identifiers if str(constraint.get('operator', '=')).upper() == 'IN' else identifiers[0]
 
 
-def _t1d_endpoint_context(constraint, question, grounding, relations):
-    """Recover one grounded disease context mislabeled as an edge endpoint.
+def _t1d_relation_context(constraint, question, grounding, relations):
+    """Return the current grounded disease encoded by ``T1D_DEG_IN``.
 
-    T1D_DEG_IN encodes T1D in its relation type, while its endpoint is anatomy.
-    Only an exact positive disease ID on this relation is eligible. Bind it to
-    the existing disease identity normalization: the planner's owner annotation
-    does not make this a user-requested raw field. Raw requests, wrong owners,
-    other diseases and exclusions retain their meaning.
+    The relationship encodes the disease context while its endpoint is anatomy.
+    Accept either a misplaced edge endpoint or a redundant disease identity only
+    when the complete current-request grounding resolves that exact value.  The
+    ontology identifier comes from that runtime grounding; this reusable
+    compiler never recognizes a release-specific node ID.
     """
-    if (set(relations) != {'T1D_DEG_IN'} or constraint.get('property') != 'end_id'
-            or constraint.get('operator', '=') != '=' or constraint.get('value') != 'MONDO_0005147'
-            or constraint.get('entity_type')
-            or constraint.get('relationship_type') not in (None, 'T1D_DEG_IN')
-            or constraint.get('owner_kind') not in (None, 'relationship') or not question
+    if (set(relations) != {'T1D_DEG_IN'} or not question
             or grounding.get('catalog_complete') is not True
-            or re.search(r'\bend[\s_]*id\b|\b(?:end|target|endpoint)[\s_]+(?:id|identifier)\b'
-                         r'|\b(?:target|endpoint)\s+(?:node\s+)?(?:is|equals)\b', question, re.I)):
-        return False
+            or constraint.get('operator', '=') != '='):
+        return None
+    prop = constraint.get('property')
+    entity = constraint.get('entity_type')
+    relation = constraint.get('relationship_type')
+    owner_kind = constraint.get('owner_kind')
+    endpoint = (prop == 'end_id' and not entity
+                and relation in (None, 'T1D_DEG_IN')
+                and owner_kind in (None, 'relationship'))
+    disease_identity = (entity == 'disease' and prop in {'id', 'name'}
+                        and relation is None and owner_kind in (None, 'node'))
+    if not endpoint and not disease_identity:
+        return None
+    if endpoint and re.search(
+            r'\bend[\s_]*id\b|\b(?:end|target|endpoint)[\s_]+(?:id|identifier)\b'
+            r'|\b(?:target|endpoint)\s+(?:node\s+)?(?:is|equals)\b', question, re.I):
+        return None
+    if disease_identity and re.search(
+            r'\bdisease\s*\.\s*(?:id|name)\b|'
+            r'\bdisease\s+(?:node|id|identifier|name)\b|'
+            r'\b(?:id|identifier|name)\s+of\s+(?:the\s+)?disease\b', question, re.I):
+        # An explicitly requested disease node/property is an output role. It
+        # cannot be erased as redundant context for an anatomy-ended relation.
+        return None
     paths = REGISTRY['relations']['T1D_DEG_IN']['paths']
     if not paths or any('Gene' not in path['source'] or path['target'] != ['anatomical_structure'] for path in paths):
-        return False
+        return None
     from .planning_scope import _mentions
     _, mentions, _ = _mentions(question, grounding)
-    return any(candidate.get('entity_type') == 'disease' and candidate.get('id') == 'MONDO_0005147'
-               for _, candidate, _, _ in mentions)
+    matches = []
+    for mention, candidate, _, _ in mentions:
+        if candidate.get('entity_type') != 'disease' or not candidate.get('id'):
+            continue
+        semantic_forms = [mention.get('requested'), candidate.get('name')]
+        if not any(isinstance(value, str) and re.search(
+                r'\bT1D\b|\btype\s*(?:1|I)\s*diabetes\b'
+                r'|\bdiabetes(?:\s+mellitus)?\s+type\s*(?:1|I)\b', value, re.I)
+                for value in semantic_forms):
+            continue
+        expected = candidate['id'] if endpoint or prop == 'id' else candidate.get('name')
+        if (isinstance(expected, str) and isinstance(constraint.get('value'), str)
+                and expected.casefold() == constraint['value'].casefold()):
+            matches.append(candidate)
+    identities = {(candidate['entity_type'], candidate['id']): candidate for candidate in matches}
+    return next(iter(identities.values())) if len(identities) == 1 else None
 
 
 def _sample_tissue_identity(constraint, question, grounding):
@@ -381,6 +412,7 @@ def compile_property_owners(plan, grounding, *, question=None):
             for change in changes)
         for index, constraint in enumerate(step.get('constraints', [])):
             before = deepcopy(constraint)
+            relation_context = None
             prop = constraint.get('property')
             entity = constraint.get('entity_type')
             relation = constraint.get('relationship_type')
@@ -410,9 +442,18 @@ def compile_property_owners(plan, grounding, *, question=None):
                     constraint['value'] = list_value(constraint.get('value'), categories=categories)
                 except ValueError:
                     return result, f'invalid_constraint_list:{step.get("id", "step")}:{prop}:use_native_array'
-            if _t1d_endpoint_context({**constraint, 'property': prop, 'entity_type': entity,
-                    'relationship_type': relation}, question, grounding, relations):
+            context_entity = _t1d_relation_context(
+                {**constraint, 'property': prop, 'entity_type': entity,
+                 'relationship_type': relation}, question, grounding, relations)
+            if context_entity:
                 entity, relation, prop = 'disease', None, 'id'
+                constraint['value'] = context_entity['id']
+                relation_context = {
+                    'kind': 'verified_grounded_relation_context',
+                    'relation_type': 'T1D_DEG_IN',
+                    'entity_type': 'disease',
+                    'graph_release': grounding.get('identity', {}).get('graph_release'),
+                }
             cell = _cell_identity_alias({**constraint, 'property': prop, 'entity_type': entity,
                 'relationship_type': relation}, question, grounding, relations)
             if cell is not None:
@@ -447,6 +488,14 @@ def compile_property_owners(plan, grounding, *, question=None):
             if entity:
                 if prop not in REGISTRY['nodes'].get(entity, []):
                     return result, f'invalid_property_owner:{step.get("id", "step")}:{entity}.{prop}'
+                explicit_disease_endpoint = (set(relations) == {'T1D_DEG_IN'}
+                    and entity == 'disease' and prop in {'id', 'name'} and question
+                    and re.search(r'\bdisease\s*\.\s*(?:id|name)\b|'
+                                  r'\bdisease\s+(?:node|id|identifier|name)\b|'
+                                  r'\b(?:id|identifier|name)\s+of\s+(?:the\s+)?disease\b',
+                                  question, re.I))
+                if explicit_disease_endpoint and not relation_context:
+                    return result, f'invalid_constraint_endpoint:{step.get("id", "step")}:{entity}'
             elif relation:
                 if relation not in relations or prop not in REGISTRY['relations'].get(relation, {}).get('properties', []):
                     return result, f'invalid_property_owner:{step.get("id", "step")}:{relation}.{prop}'
@@ -492,11 +541,18 @@ def compile_property_owners(plan, grounding, *, question=None):
                 constraint['relationship_type'] = relation
             else:
                 constraint.pop('relationship_type', None)
-            if constraint != before:
-                changes.append({'constraint_index': index, 'requested': before,
-                                'canonical_binding': deepcopy(constraint), 'version': VERSION,
-                                'source': 'verified release ownership and resolved request role',
-                                'schema_digest': SCHEMA_DIGEST})
+            if constraint != before or relation_context:
+                change = {'constraint_index': index, 'requested': before,
+                          'canonical_binding': deepcopy(constraint), 'version': VERSION,
+                          'source': 'verified release ownership and resolved request role',
+                          'schema_digest': SCHEMA_DIGEST}
+                if relation_context:
+                    change['relation_context'] = relation_context
+                if not any(existing.get('constraint_index') == index
+                           and existing.get('canonical_binding') == constraint
+                           and existing.get('relation_context') == relation_context
+                           for existing in changes):
+                    changes.append(change)
         if cell_alias_bound:
             # A single endpoint cannot be two distinct cells. Do not turn a
             # model's separate '=' bindings into an invented union/comparison.

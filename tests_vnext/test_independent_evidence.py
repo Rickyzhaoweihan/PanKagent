@@ -1,13 +1,39 @@
 from copy import deepcopy
+import hashlib
 import json
 import pytest
 from pankagent_vnext.annotation_selection import apply_default
 from pankagent_vnext.evidence_context import compact_evidence
 from pankagent_vnext.evidence_status import synthesis_evidence
 from pankagent_vnext.graph import validate_cypher
-from pankagent_vnext.query_templates import compile_query
+from pankagent_vnext.query_templates import compile_query as _compile_query
 from test_query_templates import step
 from test_evidence_context import evidence, node, edge
+
+
+def _authorized(step):
+    """Attach exact immutable-request proofs without mutating the fixture."""
+    prepared = deepcopy(step)
+    question = 'Independent-evidence template fixture: ' + '; '.join(
+        f"{constraint.get('entity_type') or constraint.get('relationship_type') or 'node'}."
+        f"{constraint.get('property')} {constraint.get('operator', '=')} "
+        f"{constraint.get('value')}"
+        for constraint in prepared.get('constraints') or [])
+    prepared['semantic_request'] = {'source': 'user_request', 'question': question}
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    prepared['request_filter_bindings'] = [{
+        'constraint_index': index,
+        'canonical_binding': deepcopy(constraint),
+        'authorization_kind': 'verified_request_filter',
+        'source': 'immutable_user_request',
+        'request_sha256': digest,
+        'graph_release': prepared.get('graph_version'),
+    } for index, constraint in enumerate(prepared.get('constraints') or [])]
+    return prepared
+
+
+def compile_query(step):
+    return _compile_query(_authorized(step))
 
 
 @pytest.mark.parametrize('kind', ['FUNCTION_ANNOTATION', 'ASSOCIATED_WITH_GO'])
@@ -19,9 +45,10 @@ def test_annotation_limit_precedes_aggregation_and_preserves_constraints(kind):
     assert bounded['complete'] is False
     assert query and query['cypher'].index('LIMIT 10') < query['cypher'].index('RETURN collect')
     assert query['parameters'] == {'template_0': 'ENSG00000001626'}
-    assert validate_cypher(query['cypher'], bounded, query['parameters']) == []
+    assert validate_cypher(query['cypher'], _authorized(bounded), query['parameters']) == []
     bad = query['cypher'].replace(' LIMIT 10', '') + ' LIMIT 10'
-    assert 'annotation_overview_requires_bounded_template' in validate_cypher(bad, bounded, query['parameters'])
+    assert 'annotation_overview_requires_bounded_template' in validate_cypher(
+        bad, _authorized(bounded), query['parameters'])
 
 
 @pytest.mark.parametrize('question', ['How many GO terms?', 'List all annotations', '全部功能注释', '有多少个注释', 'Top 20 pathways', 'What proportion?', 'Count the pathways', 'Limit 5 terms'])
@@ -69,7 +96,7 @@ def test_annotation_edge_source_filter_is_preserved_for_mixed_target_labels():
     selected = apply_default(source, 'Explain the role of this gene')
     compiled = compile_query(selected)
     assert compiled and 'r.`data_source` = $template_1' in compiled['cypher']
-    assert validate_cypher(compiled['cypher'], selected, compiled['parameters']) == []
+    assert validate_cypher(compiled['cypher'], _authorized(selected), compiled['parameters']) == []
 
 
 def test_partitioned_caps_and_unbound_gene_gwas_do_not_starve_independent_checks():

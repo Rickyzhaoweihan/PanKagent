@@ -37,6 +37,23 @@ def compile_endpoint(constraint=None, *, question=QUESTION, data=None, relations
     return compile_property_owners(raw, data or grounding(), question=question)
 
 
+def test_changed_runtime_disease_id_supplies_relation_context_without_source_literal():
+    current = ('disease', 'CURRENT_RELEASE_T1D', 'T1D')
+    original = field('end_id', current[1])
+    result, issue = compile_endpoint(original, data=context(current, catalog_complete=True))
+    assert issue is None
+    step = result['steps'][0]
+    assert step['constraints'] == [field('id', current[1], 'disease', owner_kind='node')]
+    proof = step['constraint_compilation'][0]
+    assert proof['relation_context'] == {
+        'kind': 'verified_grounded_relation_context',
+        'relation_type': 'T1D_DEG_IN',
+        'entity_type': 'disease',
+        'graph_release': 'PanKgraph_08_04',
+    }
+    assert normalize_release_constraints(step)['constraints'] == []
+
+
 @pytest.mark.parametrize('original', ENDPOINT_FORMS)
 def test_grounded_t1d_context_uses_existing_disease_normalization(original):
     before = deepcopy(original)
