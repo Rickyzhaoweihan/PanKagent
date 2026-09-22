@@ -23,15 +23,24 @@ def adapter(batches):
 
 def step(graph, *, resolved=True):
     c = {'entity_type': 'Gene', 'property': 'name', 'operator': '=', 'value': 'ADCY3'}
-    s = {'id': 's1', 'question': 'Show ADCY3 colocalization evidence', 'graph_version': RELEASE,
+    question = 'Show ADCY3 colocalization evidence'
+    s = {'id': 's1', 'question': question, 'graph_version': RELEASE,
          'relation_types': ['SIGNAL_COLOC_WITH'], 'complete': True, 'constraints': [c]}
+    s['semantic_request'] = {'source': 'user_request', 'question': question}
     if resolved:
         s['resolved_entities'] = [{'constraint_index': 0, 'requested': deepcopy(c), 'state': 'resolved',
             'entity_type': 'Gene', 'graph_version': RELEASE, 'labels': ['Gene'],
             'id': 'ENSG00000138031', 'name': 'ADCY3'}]
         s['entity_resolution'] = {'state': 'resolved'}
+        from pankagent_vnext.semantic_registry import attach_request_authorizations
+        s = attach_request_authorizations(s)
         s['resolution_key'] = graph._resolution_signature(s)
     return s
+
+
+def gpu_only():
+    """Keep generator-pipeline tests independent of structural templates."""
+    return patch('pankagent_vnext.query_templates.compile_query', return_value=None)
 
 
 def test_template_does_not_need_gpu_prompt_or_spend():
@@ -50,9 +59,10 @@ def test_cache_can_be_revalidated_without_building_a_model_prompt():
     async def check():
         graph = adapter([[GOOD]])
         s = step(graph, resolved=False)
-        first = await graph.execute(s, {}, emit)
-        with patch.object(graph_module, 'generation_request', side_effect=AssertionError('No model prompt on cache hit')):
-            second = await graph.execute(s, {}, emit)
+        with gpu_only():
+            first = await graph.execute(s, {}, emit)
+            with patch.object(graph_module, 'generation_request', side_effect=AssertionError('No model prompt on cache hit')):
+                second = await graph.execute(s, {}, emit)
         assert first['status'] == second['status'] == 'complete'
         assert second['query_route'] == 'cache' and len(graph.generated) == 1
         assert len(graph.retrieved) == 2
@@ -66,7 +76,8 @@ def test_full_repair_provenance_is_private_and_event_has_no_query_or_entities():
         events = []
         token = recorder.set(lambda kind, payload: events.append((kind, payload)))
         try:
-            result = await graph.execute(step(graph, resolved=False), {}, emit)
+            with gpu_only():
+                result = await graph.execute(step(graph, resolved=False), {}, emit)
         finally:
             recorder.reset(token)
         audit = result['validation'][0]['deterministic_repair_record']
@@ -83,7 +94,8 @@ def test_full_repair_provenance_is_private_and_event_has_no_query_or_entities():
 def test_rejections_get_coarse_failure_category_and_original_reason():
     async def check():
         graph = adapter([[GOOD + ' LIMIT 1'], [GOOD]])
-        result = await graph.execute(step(graph, resolved=False), {}, emit)
+        with gpu_only():
+            result = await graph.execute(step(graph, resolved=False), {}, emit)
         rejected = result['validation'][0]
         assert rejected['failure_categories'] and rejected['reasons']
         assert all(':' not in value for value in rejected['failure_categories'])
@@ -116,7 +128,7 @@ def test_oversized_full_repair_context_skips_blind_gpu_resampling():
             return [GOOD]
         graph.query_repair = repair
         prompt = 'Grounded request ' + 'x' * 3900
-        with patch.object(graph_module, 'generation_request', return_value=prompt):
+        with patch.object(graph_module, 'generation_request', return_value=prompt), gpu_only():
             result = await graph.execute(step(graph, resolved=False), {}, emit)
         assert result['status'] == 'complete'
         assert len(graph.generated) == 1

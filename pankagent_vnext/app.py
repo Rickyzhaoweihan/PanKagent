@@ -48,14 +48,35 @@ class PlanRequest(RevisionRequest):
     session_id: str | None = Field(default=None, max_length=100)
 
 
+def public_payload(value, *, context=None):
+    """Return one public copy for REST snapshots and live/replayed events.
+
+    Stored evidence remains private and complete for integrity checks.  Every
+    public transport uses this same boundary so replaying an older raw event
+    cannot bypass the current donor-classification policy.
+    """
+    from .output_scope import aggregate_only, enabled, project
+    source = context if isinstance(context, dict) else value if isinstance(value, dict) else {}
+    aggregate = enabled(source) or aggregate_only(str(source.get('question') or ''))
+    if aggregate:
+        return project(value, context=source)
+    # Record-level output may keep requested identifiers, but unrelated donor
+    # classifications never become public merely because they were present on
+    # a returned node.
+    from .answer_facts import (requested_classification_fields,
+                               sanitize_unrequested_classifications)
+    allowed = requested_classification_fields(source)
+    for step in ((source.get('plan') or {}).get('steps') or []):
+        allowed.update(requested_classification_fields(step))
+    return sanitize_unrequested_classifications(value, allowed)
+
+
 def public_run(run: dict) -> dict:
     result={key: value for key, value in run.items() if key not in {"created_epoch", "preview_cache"}}
-    from .semantic_registry import donor_intent
     plan=run.get('plan') or {}
     if plan.get('contract_sha256')!=CONTRACT_DIGEST and plan.get('steps'):
         result['rerun_advisory']='This saved result predates corrected terminology and relationship-path checks. Rerun the question before using its conclusion.'
-    from .output_scope import enabled, project
-    return project(result) if enabled(run) else result
+    return public_payload(result, context=run)
 
 
 def safe_error(exc: BaseException) -> dict:
@@ -261,8 +282,7 @@ class Runtime:
         stage = payload.get("stage") if event_type == "progress" else None
         if stage in {"planning", "resolving_entities", "preparing_preview", "preparing_execution", "reusing_preview", "generating_cypher", "validating", "querying_graph", "writing_answer", "searching_literature", "queued"}:
             (await self.io.call(self.store.update_if_active, run_id, stage=stage))
-        from .output_scope import enabled, project
-        if enabled(run): payload = project(payload, context=run)
+        payload = public_payload(payload, context=run)
         (await self.io.call(self.store.event_if_active, run_id, event_type, payload))
 
     async def heartbeat(self, run_id: str):
@@ -1337,9 +1357,8 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                 batch = (await runtime.io.call(runtime.store.events_after, run_id, cursor))
                 for event in batch:
                     cursor = event["sequence"]
-                    from .output_scope import enabled, project
                     snapshot = await runtime.io.call(runtime.store.get, run_id)
-                    if enabled(snapshot): event = project(event, context=snapshot)
+                    event = public_payload(event, context=snapshot)
                     yield sse_event_bytes(event)
                 if not batch and (await runtime.io.call(runtime.store.get, run_id))["status"] in TERMINAL:
                     return

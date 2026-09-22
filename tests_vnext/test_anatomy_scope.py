@@ -4,8 +4,12 @@ import json
 import time
 from types import SimpleNamespace
 
-from pankagent_vnext.anatomy_scope import DIGEST, normalize_plan
+import pytest
+
+from pankagent_vnext.anatomy_scope import DIGEST, _request_surfaces, normalize_plan
 from pankagent_vnext.graph import GraphAdapter, validate_cypher
+from pankagent_vnext.query_templates import runtime_binding_errors
+from pankagent_vnext.semantic_registry import attach_request_authorizations
 
 RELEASE = 'PanKgraph_08_04'
 ROOT = {'entity_type': 'anatomical_structure', 'property': 'name', 'operator': '=', 'value': 'pancreas'}
@@ -14,15 +18,24 @@ ROOT = {'entity_type': 'anatomical_structure', 'property': 'name', 'operator': '
 async def resolve(constraint, index, step):
     if constraint.get('operator') == 'IN':
         return {'constraint_index': index, 'requested': copy.deepcopy(constraint), 'state': 'literal_predicate', 'graph_version': RELEASE}
-    lookup = {'pancreas': 'UBERON_0001264', 'UBERON_0001264': 'UBERON_0001264', 'islet': 'UBERON_0000006', 'beta cell': 'CL_0000169'}
+    lookup = {
+        'pancreas': ('UBERON_0001264', 'pancreas'),
+        'UBERON_0001264': ('UBERON_0001264', 'pancreas'),
+        'islet': ('UBERON_0000006', 'pancreatic islet (islet of Langerhans)'),
+        'UBERON_0000006': ('UBERON_0000006', 'pancreatic islet (islet of Langerhans)'),
+        'beta cell': ('CL_0000169', 'beta cell'),
+    }
     if constraint.get('value') in lookup:
+        identifier, name = lookup[constraint['value']]
         return {'constraint_index': index, 'requested': copy.deepcopy(constraint), 'state': 'resolved', 'graph_version': RELEASE,
-                'id': lookup[constraint['value']], 'name': constraint['value'], 'entity_type': 'anatomical_structure', 'labels': ['anatomical_structure']}
+                'id': identifier, 'name': name, 'entity_type': 'anatomical_structure', 'labels': ['anatomical_structure']}
     return {'constraint_index': index, 'requested': copy.deepcopy(constraint), 'state': 'not_found'}
 
 
 def plan():
-    return {'steps': [{'id': 's1', 'question': 'What are the major pancreatic cell types and their key genetic markers?',
+    question = 'What are the major pancreatic cell types and their key genetic markers?'
+    return {'original_question': question,
+            'steps': [{'id': 's1', 'question': question,
                        'relation_types': ['HAS_CELL_TYPE', 'MARKER_GENE_OF'], 'depends_on': [], 'complete': True,
                        'constraints': [copy.deepcopy(ROOT)]}], 'clarification': None,
             'display_groups': [{'id': 'g1', 'step_ids': ['s1']}], 'include_context': False}
@@ -47,6 +60,37 @@ def test_one_combined_check_becomes_cell_lookup_and_markers_with_original_proven
     assert markers['anatomy_scope']['original_root_constraint'] == ROOT
     assert markers['anatomy_scope']['membership']['requested_root']['id'] == 'UBERON_0001264'
     assert result['display_groups'][0]['step_ids'] == [cells['id'], 's1']
+
+
+@pytest.mark.parametrize(('question', 'terms', 'surface'), [
+    ('Show the major cell types in islets.', ['islet'], 'islets'),
+    ('Show pancreatic cell types.', ['pancreatic'], 'pancreatic'),
+    ('Show cell types in PLN.', ['PLN'], 'PLN'),
+])
+def test_reviewed_anatomy_aliases_preserve_exact_request_surfaces(question, terms, surface):
+    assert _request_surfaces(question, terms) == [surface]
+
+
+def test_canonical_islet_root_keeps_plural_request_authority_for_generated_cell_set():
+    question = 'What are the major islets cell types and their key genetic markers?'
+    source = plan()
+    source['original_question'] = question
+    source['steps'][0]['question'] = question
+    source['steps'][0]['constraints'][0] = {
+        'entity_type': 'anatomical_structure', 'property': 'id',
+        'operator': '=', 'value': 'UBERON_0000006'}
+    result = normalized(source)
+    assert len(result['steps']) == 2
+    for generated in result['steps']:
+        assert generated['anatomy_scope']['request_terms'] == ['islets']
+        prepared = attach_request_authorizations({
+            **generated, 'graph_version': RELEASE, 'resolved_entities': [],
+            'semantic_request': {'source': 'user_request', 'question': question},
+        })
+        assert prepared['semantic_issues'] == []
+        assert [binding['authorization_kind']
+                for binding in prepared['request_filter_bindings']] == [
+                    'verified_request_anatomy_scope']
 
 
 def test_existing_cell_check_is_reused_with_marker_dependency_and_gene_filter_preserved():
@@ -146,8 +190,11 @@ def test_prepare_hook_signs_membership_and_returns_specific_cap_recovery_offline
         prepared = await adapter.prepare_plan(plan(), emit)
         assert len(prepared['steps']) == 2
         assert prepared['entity_resolution']['state'] == 'resolved'
+        assert all(runtime_binding_errors(step) == [] for step in prepared['steps'])
         assert adapter.preview_identity()['anatomy_scope'] == DIGEST
         assert all(adapter._resolution_verified(s) for s in prepared['steps'])
         prepared['steps'][0]['anatomy_scope']['membership']['cell_ids'].clear()
+        assert runtime_binding_errors(prepared['steps'][0]) == [
+            'unverified_identity_resolution:0:anatomical_structure.id']
         assert not adapter._resolution_verified(prepared['steps'][0])
     asyncio.run(work())

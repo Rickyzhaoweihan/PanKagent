@@ -11,11 +11,40 @@ import json
 import re
 
 from .anatomy_membership import DIGEST as MEMBERSHIP_DIGEST, REGISTRY, resolve_cell_membership
+from .anatomy_resolution import ALIASES
 
 VERSION = 'anatomy-scope-1'
 DIGEST = hashlib.sha256((VERSION + MEMBERSHIP_DIGEST).encode()).hexdigest()
 HIERARCHY = {'HAS_CELL_TYPE', 'PART_OF', 'SUBCLASS_OF'}
 ANATOMY_TYPES = {'anatomical_structure', 'tissue', 'cell_type', 'cell'}
+
+
+def _request_surfaces(question, terms):
+    """Return exact request surfaces for reviewed canonical names/aliases.
+
+    Matching is token-bounded and separator-normalized.  The only inflection
+    accepted is a trailing plural ``s`` on the final token, mirroring the
+    conservative anatomy resolver (for example ``islet`` -> ``islets``).
+    The returned value is always the user's exact surface, never the canonical
+    alias used to locate it.
+    """
+    if not isinstance(question, str):
+        return []
+    surfaces = []
+    for term in terms:
+        if not isinstance(term, str) or not term:
+            continue
+        words = re.findall(r'[A-Za-z0-9]+', term)
+        if not words:
+            continue
+        final = re.escape(words[-1])
+        if len(words[-1]) >= 3 and not words[-1].casefold().endswith('s'):
+            final += 's?'
+        pattern = (r'(?<!\w)' + r'[\s_-]+'.join(
+            [*(re.escape(word) for word in words[:-1]), final]) + r'(?!\w)')
+        for match in re.finditer(pattern, question, re.I):
+            surfaces.append(match.group(0))
+    return list(dict.fromkeys(surfaces))
 
 
 def _recovery(plan, reason, release):
@@ -146,9 +175,30 @@ async def normalize_plan(plan: dict, graph_release: str, resolve_constraint, max
                 'value': list(scope['membership']['cell_ids'])}
 
     def metadata(scope, source):
+        raw_question = result.get('original_question')
+        resolved = scope['resolved']
+        request_terms = []
+        if isinstance(raw_question, str):
+            candidates = [resolved.get('id'), resolved.get('name')]
+            requested = resolved.get('requested') or {}
+            if isinstance(requested, dict):
+                candidates.append(requested.get('value'))
+            original = source.get('constraints', [])[scope['root_index']] if scope['root_index'] is not None else {}
+            if isinstance(original, dict):
+                candidates.append(original.get('value'))
+            configured = ALIASES.get(resolved.get('id'))
+            if configured and configured[0] == resolved.get('name'):
+                candidates.extend(configured[1])
+            request_terms = _request_surfaces(raw_question, candidates)
         return {'version': VERSION, 'digest': DIGEST, 'role': scope['kind'],
                 'original_root_constraint': copy.deepcopy(source['constraints'][scope['root_index']]) if scope['root_index'] is not None else copy.deepcopy(scope['resolved'].get('requested')),
-                'canonical_cell_binding': binding(scope), 'membership': copy.deepcopy(scope['membership'])}
+                'canonical_cell_binding': binding(scope),
+                'resolved_root': {key: copy.deepcopy(resolved.get(key))
+                                  for key in ('id', 'name', 'entity_type', 'labels', 'requested')},
+                'request_terms': sorted(set(request_terms)),
+                'request_sha256': (hashlib.sha256(raw_question.encode()).hexdigest()
+                                   if isinstance(raw_question, str) else None),
+                'membership': copy.deepcopy(scope['membership'])}
 
     def cell_step(identifier, source, scope):
         title = scope['resolved'].get('name') or scope['root']

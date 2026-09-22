@@ -4,7 +4,7 @@ import pytest
 
 from pankagent_vnext.graph import validate_cypher
 from pankagent_vnext.query_templates import compile_query
-from test_sample_path_templates import sample_step
+from test_sample_path_templates import sample_step, add_runtime_proof
 
 
 PARAMS = {'source': 'HPAP', 'tissue': 'UBERON_0015865', 'assay': 'snMultiomics'}
@@ -18,6 +18,7 @@ def donor_sample_step():
     step = sample_step(assay='snMultiomics')
     step['semantic_registry']['donor_required'] = True
     step['constraints'].append({'entity_type': 'donor', 'property': 'data_source', 'operator': '=', 'value': 'HPAP'})
+    add_runtime_proof(step, len(step['constraints']) - 1, 'verified_runtime_source')
     step['sample_requirements']['modality_groups'] = [['snMultiomics']]
     return step
 

@@ -1,5 +1,7 @@
 """Offline safety and behavior tests; no shared API calls or credentials."""
 import asyncio
+from copy import deepcopy
+import hashlib
 import json
 import logging
 import tempfile
@@ -12,6 +14,7 @@ import httpx
 from neo4j.graph import Graph, Node
 
 from pankagent_vnext.graph import GraphAdapter, schema_fingerprint, suppress_driver_query_logging, validate_cypher
+from pankagent_vnext.release_schema import REGISTRY
 
 
 def step(**changes):
@@ -110,6 +113,30 @@ class GuardTests(unittest.TestCase):
         for invalid in [query.replace("b.name", "a.name"), query.replace("GENE_B", "UNREQUESTED")]:
             self.assertIn("missing_required_filter:name", validate_cypher(invalid, spec))
 
+    def test_unrequested_mandatory_relationships_cannot_narrow_a_complete_query(self):
+        spec = step(question='Find all physical interaction partners of CFTR.',
+                    relation_types=['PHYSICAL_INTERACTION'],
+                    constraints=[{'entity_type': 'Gene', 'property': 'name',
+                                  'operator': '=', 'value': 'CFTR'}])
+        prefix = ("MATCH (a:Gene)-[:PHYSICAL_INTERACTION]-(b:Gene) "
+                  "WHERE a.name='CFTR' ")
+        queries = {
+            'GENETIC_INTERACTION': ("MATCH (a:Gene)-[:PHYSICAL_INTERACTION]-(b:Gene)"
+                                    "-[:GENETIC_INTERACTION]-(c:Gene) "
+                                    "WHERE a.name='CFTR' RETURN a,b,c"),
+            'ASSOCIATED_WITH_GO': ("MATCH (a:Gene)-[:PHYSICAL_INTERACTION]-(b:Gene)"
+                                   "-[:ASSOCIATED_WITH_GO]->(go:GO_term) "
+                                   "WHERE a.name='CFTR' RETURN a,b,go"),
+        }
+        for relation, query in queries.items():
+            with self.subTest(relation=relation):
+                self.assertIn('unrequested_mandatory_relation:' + relation,
+                              validate_cypher(query, spec))
+        optional = (prefix
+                    + "OPTIONAL MATCH (b)-[:ASSOCIATED_WITH_GO]->(go:GO_term) "
+                    "RETURN a,b,go")
+        self.assertEqual(validate_cypher(optional, spec), [])
+
     def test_distributed_constraint_must_appear_in_every_union_arm(self):
         spec = step(constraints=[{"property": "name", "operator": "IN", "value": '["A", "B"]'}])
         query = "MATCH (a)--(b) WHERE a.name='A' AND b.name='B' RETURN a,b UNION MATCH (a)--(b) WHERE a.name='A' RETURN a,b"
@@ -143,6 +170,52 @@ class FakeAdapter(GraphAdapter):
         self.answer = {"nodes": [{"id": "a", "labels": ["gene"], "properties": {"data_source": "paper"}}],
                        "edges": [], "rows": [], "status": "complete", "truncated": False}
         self.explain_errors = []
+
+    async def _prepare_step(self, source, emit):
+        """Create a signed offline fixture without pretending to query Neo4j.
+
+        Execution tests exercise generator retries and validation, not live
+        entity lookup. Production uses GraphAdapter._prepare_step; this test
+        double supplies the same proof-shaped boundary explicitly.
+        """
+        prepared = deepcopy(source)
+        prepared['graph_version'] = self.settings.graph_version
+        question = ((prepared.get('semantic_request') or {}).get('question')
+                    or prepared.get('question') or 'Offline execution fixture')
+        prepared['semantic_request'] = {'source': 'user_request', 'question': question}
+        digest = hashlib.sha256(question.encode()).hexdigest()
+        prepared['request_filter_bindings'] = [{
+            'constraint_index': index,
+            'canonical_binding': deepcopy(constraint),
+            'authorization_kind': 'verified_test_request_filter',
+            'source': 'immutable_user_request',
+            'request_sha256': digest,
+            'graph_release': self.settings.graph_version,
+        } for index, constraint in enumerate(prepared.get('constraints') or [])]
+        entities = deepcopy(prepared.get('resolved_entities') or [])
+        resolved_indexes = {entry.get('constraint_index') for entry in entities
+                            if isinstance(entry, dict)}
+        for index, constraint in enumerate(prepared.get('constraints') or []):
+            if index in resolved_indexes or constraint.get('property') not in {'id', 'name'}:
+                continue
+            value = str(constraint.get('value') or '')
+            entity_type = constraint.get('entity_type')
+            if not entity_type:
+                entity_type = ('Gene' if value.casefold() == 'cftr'
+                               else 'anatomical_structure' if 'cell' in value.casefold()
+                               else 'disease')
+            entities.append({
+                'constraint_index': index, 'requested': deepcopy(constraint),
+                'state': 'resolved', 'graph_version': self.settings.graph_version,
+                'entity_type': entity_type, 'labels': [entity_type],
+                'id': value, 'name': value,
+            })
+        prepared['resolved_entities'] = entities
+        prepared['entity_resolution'] = {'state': 'resolved' if entities else 'not_required',
+                                         'graph_version': self.settings.graph_version,
+                                         'unknown_relations': []}
+        prepared['resolution_key'] = self._resolution_signature(prepared)
+        return prepared
 
     async def _generate(self, question, n):
         self.generated.append((question, n))
@@ -201,6 +274,22 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(adapter.retrieved, [])
         self.assertEqual(len(adapter.generated), 2)
+
+    async def test_unrequested_mandatory_relationship_never_reaches_explain_or_retrieval(self):
+        query = ("MATCH (a:Gene)-[:PHYSICAL_INTERACTION]-(b:Gene)"
+                 "-[:GENETIC_INTERACTION]-(c:Gene) "
+                 "WHERE a.name='CFTR' RETURN a,b,c")
+        requested = step(question='Find all physical interaction partners of CFTR.',
+                         relation_types=['PHYSICAL_INTERACTION'],
+                         constraints=[{'entity_type': 'Gene', 'property': 'name',
+                                       'operator': '=', 'value': 'CFTR'}])
+        adapter = FakeAdapter([[query], [query]])
+        result = await adapter.execute(requested, {}, self.emit)
+        self.assertEqual(result['status'], 'failed')
+        self.assertTrue(all('unrequested_mandatory_relation:GENETIC_INTERACTION'
+                            in check['reasons'] for check in result['validation']))
+        self.assertFalse(adapter.explained)
+        self.assertFalse(adapter.retrieved)
 
     async def test_candidate_filtering_ignores_nonempty_size_ranking(self):
         adapter = FakeAdapter([["MATCH (n) RETURN n", VALID]])
@@ -322,6 +411,52 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         result = await adapter.execute(step(), {}, self.emit)
         self.assertEqual(result["status"], "failed")
         self.assertFalse(adapter.generated)
+
+    async def test_missing_runtime_binding_proof_blocks_every_generation_route(self):
+        adapter = FakeAdapter([])
+        clinical = step(
+            question='Count matching donors.', relation_types=['HAS_DONOR'],
+            constraints=[{'entity_type':'donor', 'property':'diabetes_type',
+                          'operator':'=', 'value':'runtime category'}],
+            semantic_registry={'inventory_sha256':'current-inventory'},
+            resolved_constraints=[])
+        result = await adapter.execute(clinical, {}, self.emit)
+        self.assertEqual(result['status'], 'failed')
+        self.assertFalse(adapter.generated)
+        self.assertFalse(adapter.retrieved)
+        self.assertEqual(result['validation'][0]['reasons'], [
+            'query_binding_unverified',
+            'missing_runtime_inventory_binding:0:donor.diabetes_type'])
+
+    async def test_selected_template_audit_metadata_survives_query_and_cache(self):
+        adapter = FakeAdapter([])
+        adapter.settings.graph_version = REGISTRY['release']
+        adapter.settings.grounded_query_policy = True
+        constraint = {'entity_type':'Gene', 'property':'name', 'operator':'=', 'value':'CFTR'}
+        resolved = {'constraint_index':0, 'requested':deepcopy(constraint),
+                    'state':'resolved', 'graph_version':REGISTRY['release'],
+                    'entity_type':'Gene', 'labels':['Gene'],
+                    'id':'ENSG00000001626', 'name':'CFTR'}
+        prepared = {'id':'template-step', 'question':'Find CFTR enrichment records.',
+                    'depends_on':[], 'constraints':[constraint], 'complete':True,
+                    'relation_types':['GENE_ENRICHED_IN'],
+                    'graph_version':REGISTRY['release'],
+                    'resolved_entities':[resolved],
+                    'entity_resolution':{'state':'resolved'}}
+        prepared = await adapter._prepare_step(prepared, self.emit)
+        first = await adapter.execute(deepcopy(prepared), {}, self.emit)
+        self.assertEqual(first['query_route'], 'template')
+        audit = first['query_template']
+        self.assertEqual(audit['template_id'], 'directed_relation_records')
+        self.assertEqual(audit, first['queries'][0]['template_audit'])
+        self.assertEqual(audit, first['validation'][-1]['template_audit'])
+        encoded = json.dumps(audit, sort_keys=True)
+        self.assertNotIn('CFTR', encoded)
+        self.assertNotIn('ENSG00000001626', encoded)
+
+        second = await adapter.execute(deepcopy(prepared), {}, self.emit)
+        self.assertEqual(second['query_route'], 'cache')
+        self.assertEqual(second['query_template'], audit)
 
 
 class FakeResult:

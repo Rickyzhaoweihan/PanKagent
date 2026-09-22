@@ -5,6 +5,7 @@ import pytest
 
 from pankagent_vnext.planning_requirements import compile_requested_scope, requirements_issue
 from pankagent_vnext.planning_scope import scope_issue
+from pankagent_vnext.semantic_registry import attach_request_authorizations
 
 
 def grounding():
@@ -126,3 +127,58 @@ def test_unique_disease_is_carried_to_effector_without_adding_donor_diagnosis():
     assert result['steps'][1]['constraints']==[]
     p['steps'][0]['constraints'].append(field('id','different-disease','disease'))
     assert compile_requested_scope('Show GCLC effector evidence in T1D',data,p)[1]=='conflicting_requested_scope:disease'
+
+
+def test_existing_canonical_disease_id_gets_grounded_alias_compile_proof():
+    question = 'Show GCLC effector evidence in T1D'
+    data = grounding()
+    data['mentions'].append({'requested':'T1D','state':'resolved','candidates':[
+        {'id':'MONDO_0005147','name':'type 1 diabetes','entity_type':'disease',
+         'labels':['disease']}]})
+    original = plan(step('GCLC', 'EFFECTOR_GENE_OF',
+                         field('id', 'MONDO_0005147', 'disease', owner_kind='node')))
+    result, issue = compile_requested_scope(question, data, original)
+    assert issue is None
+    prepared = result['steps'][0]
+    proof = prepared['requested_scope_compilation'][0]
+    assert proof['canonical_binding'] == prepared['constraints'][1]
+    assert proof['proof']['kind'] == 'explicit_unique_disease'
+    assert proof['proof']['requested_terms'] == ['T1D']
+    again, issue = compile_requested_scope(question, data, result)
+    assert issue is None and again == result
+
+    executable = deepcopy(prepared)
+    executable.update(graph_version='PanKgraph_08_04',
+                      semantic_request={'source':'user_request','question':question},
+                      resolved_entities=[{
+                          'constraint_index':0, 'requested':deepcopy(prepared['constraints'][0]),
+                          'state':'resolved', 'graph_version':'PanKgraph_08_04',
+                          'id':'ENSG00000001084', 'name':'GCLC',
+                          'entity_type':'Gene', 'labels':['Gene']}])
+    authorized = attach_request_authorizations(executable)
+    assert authorized['semantic_issues'] == []
+    assert [binding['authorization_kind']
+            for binding in authorized['request_filter_bindings']] == [
+                'verified_request_entity', 'verified_request_disease_compilation']
+
+
+@pytest.mark.parametrize(('question', 'data', 'proposal', 'proof_kind'), [
+    ('Show KEGG pathways for GCLC', grounding(),
+     plan(step('GCLC', 'FUNCTION_ANNOTATION',
+               field('data_source', 'KEGG', relationship_type='FUNCTION_ANNOTATION',
+                     owner_kind='relationship'))),
+     'explicit_recorded_pathway_source'),
+    ('Show GCLC QTL in pancreas', grounding(),
+     plan(step('GCLC', 'PART_OF_QTL_SIGNAL',
+               field('tissue_id', 'UBERON_0001264',
+                     relationship_type='PART_OF_QTL_SIGNAL', owner_kind='relationship'))),
+     'explicit_unique_qtl_tissue'),
+])
+def test_existing_exact_compiled_scope_still_gets_one_deduplicated_audit(
+        question, data, proposal, proof_kind):
+    first, issue = compile_requested_scope(question, data, proposal)
+    assert issue is None
+    assert [record['proof']['kind'] for record in
+            first['steps'][0]['requested_scope_compilation']] == [proof_kind]
+    second, issue = compile_requested_scope(question, data, first)
+    assert issue is None and second == first

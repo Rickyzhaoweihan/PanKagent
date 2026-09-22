@@ -1,10 +1,37 @@
 from copy import deepcopy
+import hashlib
 import pytest
 from pankagent_vnext.graph import validate_cypher
-from pankagent_vnext.query_templates import compile_query
+from pankagent_vnext.query_templates import compile_query as _compile_query
 from pankagent_vnext.release_schema import REGISTRY
 
 RELEASE = REGISTRY['release']
+
+
+def _authorized(value):
+    """Give low-level template fixtures the request proof production requires."""
+    prepared = deepcopy(value)
+    question = 'Template unit fixture: ' + '; '.join(
+        f"{constraint.get('entity_type') or constraint.get('relationship_type') or 'node'}."
+        f"{constraint.get('property')} {constraint.get('operator', '=')} "
+        f"{constraint.get('value')}"
+        for constraint in prepared.get('constraints') or [])
+    prepared['semantic_request'] = {'source': 'user_request', 'question': question}
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    prepared['request_filter_bindings'] = [{
+        'constraint_index': index,
+        'canonical_binding': deepcopy(constraint),
+        'authorization_kind': 'verified_test_request_filter',
+        'source': 'immutable_user_request',
+        'request_sha256': digest,
+        'graph_release': prepared.get('graph_version'),
+    } for index, constraint in enumerate(prepared.get('constraints') or [])]
+    return prepared
+
+
+def compile_query(value):
+    # Compile a copy so the existing immutability assertion remains meaningful.
+    return _compile_query(_authorized(value))
 
 
 def step(kind='GENE_ENRICHED_IN', constraints=None, **kw):
@@ -92,13 +119,42 @@ def test_invalid_numeric_values_are_not_silently_cast(value):
     assert compile_query(s) is None
 
 
-def test_lists_preserve_each_constraint_member_and_are_not_mutated():
+@pytest.mark.parametrize(('prop', 'value'), [
+    ('id', '["CL_0002079","CL_0002079_MUC5B"]'),
+    ('name', ['pancreatic alpha cell', 'pancreatic beta cell']),
+])
+def test_identity_lists_without_per_member_resolution_keep_the_general_route(prop, value):
     s = step()
-    s['constraints'].append({'entity_type': 'anatomical_structure', 'property': 'id', 'operator': 'IN', 'value': '["CL_0002079","CL_0002079_MUC5B"]'})
+    constraint = {'entity_type': 'anatomical_structure', 'property': prop,
+                  'operator': 'IN', 'value': value}
+    s['constraints'].append(constraint)
+    original = deepcopy(s)
+    assert compile_query(s) is None
+    # The existing resolver can record only that the list remains a literal;
+    # it cannot prove every member as one unique current graph entity.
+    s['resolved_entities'].append({'constraint_index': 1, 'requested': deepcopy(constraint),
+        'state': 'literal_predicate', 'graph_version': RELEASE, 'labels': []})
+    assert compile_query(s) is None
+    assert original['constraints'] == s['constraints']
+
+
+@pytest.mark.parametrize(('prop', 'value', 'identifier'), [
+    ('id', 'CL_0002079', 'CL_0002079'),
+    ('name', 'pancreatic alpha cell', 'CL_0000171'),
+])
+def test_each_scalar_node_identity_requires_current_resolution(prop, value, identifier):
+    constraint = {'entity_type': 'anatomical_structure', 'property': prop,
+                  'operator': '=', 'value': value}
+    s = step()
+    s['constraints'].append(constraint)
+    assert compile_query(s) is None
+    s['resolved_entities'].append({'constraint_index': 1, 'requested': deepcopy(constraint),
+        'state': 'resolved', 'graph_version': RELEASE,
+        'entity_type': 'anatomical_structure', 'labels': ['anatomical_structure'],
+        'id': identifier, 'name': 'pancreatic alpha cell'})
     result = compile_query(s)
-    assert result['parameters']['template_1'] == ['CL_0002079', 'CL_0002079_MUC5B']
-    assert 'b.`id` IN $template_1' in result['cypher']
-    assert isinstance(s['constraints'][1]['value'], str)
+    assert result and result['parameters']['template_1'] == identifier
+    assert 'b.`id` = $template_1' in result['cypher']
 
 
 @pytest.mark.parametrize('change', [
@@ -158,17 +214,14 @@ def test_numeric_looking_identifiers_stay_strings():
 
 
 @pytest.mark.parametrize('operator', ['!=', '<>'])
-def test_scalar_inequality_keeps_typed_owner_value_and_operator(operator):
+def test_identity_inequality_without_resolved_literal_contract_keeps_general_route(operator):
     s = step()
-    s['constraints'].append({'entity_type': 'anatomical_structure', 'property': 'id', 'operator': operator, 'value': 'CL_0000171'})
-    result = compile_query(s)
-    assert result and 'b.`id` <> $template_1' in result['cypher']
-    assert result['parameters']['template_1'] == 'CL_0000171'
-    assert validate_cypher(result['cypher'], s, result['parameters']) == []
-    assert validate_cypher(result['cypher'].replace('b.`id` <>', 'b.`id` ='), s, result['parameters'])
-    wrong = deepcopy(s)
-    wrong['constraints'][-1]['entity_type'] = 'Gene'
-    assert validate_cypher(result['cypher'], wrong, result['parameters'])
+    constraint = {'entity_type': 'anatomical_structure', 'property': 'id',
+                  'operator': operator, 'value': 'CL_0000171'}
+    s['constraints'].append(constraint)
+    s['resolved_entities'].append({'constraint_index': 1, 'requested': deepcopy(constraint),
+        'state': 'literal_predicate', 'graph_version': RELEASE, 'labels': []})
+    assert compile_query(s) is None
 
 
 def test_scalar_inequality_numeric_values_remain_numbers_not_strings():

@@ -85,7 +85,8 @@ def test_explicit_user_diagnosis_filter_is_not_lost_after_stage_normalization():
     raw = 'Find HPAP donors diagnosed with T1D who have recorded stage 3.'
     p = resolve({'question': 'Find HPAP donors with T1D stage 3.', 'relation_types': ['HAS_DONOR'], 'constraints': [],
                  'semantic_request': {'source': 'user_request', 'question': raw}}, VOCAB, 'PanKgraph_08_04')
-    assert any(c['entity_type'] == 'disease' and c['value'] == 'MONDO_0005147' for c in p['constraints'])
+    assert any(c['entity_type'] == 'disease' and c['property'] == 'name'
+               and c['value'].casefold() == 't1d' for c in p['constraints'])
 
 
 @pytest.mark.parametrize('value', ['spleen', 'Spleen', 'UBERON_0002106'])
@@ -156,7 +157,9 @@ def test_positive_source_is_not_substituted_for_a_typed_exclusion():
     p = resolve(raw, VOCAB, 'PanKgraph_08_04')
     assert next(c for c in p['constraints'] if c['property'] == 'data_source')['operator'] == '!='
     raw['constraints'] = []
-    assert resolve(raw, VOCAB, 'PanKgraph_08_04')['semantic_issues']
+    rebuilt = resolve(raw, VOCAB, 'PanKgraph_08_04')
+    assert not rebuilt['semantic_issues']
+    assert next(c for c in rebuilt['constraints'] if c['property'] == 'data_source')['operator'] == '!='
 
 
 def test_molecular_questions_do_not_trigger_sample_inventory_semantics():
@@ -218,7 +221,8 @@ def test_explicit_revision_adds_clinical_filter_without_loosening_recorded_stage
     result=resolve({'question':q,'relation_types':['HAS_DONOR'],'constraints':[],
         'semantic_request':{'source':'user_request','question':q,'revision_instruction':'Also require recorded diagnosed T1D.'}},VOCAB,'PanKgraph_08_04')
     assert not result['semantic_issues']
-    assert any(c['entity_type']=='disease' and c['value']=='MONDO_0005147' for c in result['constraints'])
+    assert any(c['entity_type']=='disease' and c['property']=='name'
+               and c['value'].casefold()=='t1d' for c in result['constraints'])
     assert any(c['property']=='t1d_stage' and c['value']==STAGES['3'] for c in result['constraints'])
     assert result['semantic_registry']['diagnosis_intent']=={'explicit':True,'source':'revision_add_clinical_filter'}
 

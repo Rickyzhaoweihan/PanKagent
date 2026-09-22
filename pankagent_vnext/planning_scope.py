@@ -83,7 +83,9 @@ def _mentions(question, grounding):
         if mention.get('state') != 'resolved' or mention.get('identity_complete') is False or len(candidates) != 1:
             continue
         candidate = candidates[0]
-        if candidate.get('entity_type') not in {'Gene', 'variants', 'disease', 'anatomical_structure'} or not candidate.get('id'):
+        if candidate.get('entity_type') not in {
+                'Gene', 'variants', 'disease', 'anatomical_structure',
+                'GO_term', 'kegg', 'reactome'} or not candidate.get('id'):
             continue
         requested = phrase_tokens(mention.get('requested', ''))
         if not requested:
@@ -258,7 +260,8 @@ def _assay_scope_issue(question, grounding, plan):
             exact_assays.add(assay)
     exact = bool(exact_assays - excluded)
     allowed = positive - excluded
-    if not excluded and not (exact and allowed):
+    coverage_required = len(allowed) > 1
+    if not excluded and not (exact and allowed) and not coverage_required:
         return None
     interpreted = str(plan.get('interpreted_question', ''))
     donor_exclusion = r'\bexclud(?:e|ing)\s+donors?\s+(?:who|whose|with|having)\b'
@@ -271,6 +274,7 @@ def _assay_scope_issue(question, grounding, plan):
         return ('changed_requested_scope:assay_exclusion_is_not_donor_exclusion: '
                 'Exclude the named assay records, not donors who also have other assays. '
                 'Keep the original donor and tissue filters; do not add a positive excluded-assay check.')
+    covered_positive = set()
     for step in plan.get('steps', []):
         if not isinstance(step, dict) or 'HAS_SAMPLE' not in step.get('relation_types', []):
             continue
@@ -285,6 +289,9 @@ def _assay_scope_issue(question, grounding, plan):
             if operator in {'!=', '<>', 'NOT IN'}:
                 equivalent = {**constraint, 'operator': 'IN' if operator == 'NOT IN' else '='}
                 excluded_values.update(aliases.get(key(value), str(value)) for value in _values(equivalent))
+            elif step.get('purpose') != 'context':
+                covered_positive.update(
+                    aliases.get(key(value), str(value)) for value in _values(constraint))
         forbidden = values & excluded
         if forbidden or (exact and allowed and values - allowed):
             return ('unrequested_assay_scope:' + str(step.get('id', 'step')) + ': '
@@ -299,6 +306,10 @@ def _assay_scope_issue(question, grounding, plan):
         if exact and allowed and not values:
             return ('missing_requested_scope:exact_assay:' + str(step.get('id', 'step')) + ': '
                     'Bind the exact requested recorded assay on this sample check; do not leave its modality unrestricted.')
+    if coverage_required and not allowed <= covered_positive:
+        return ('missing_requested_scope:assay_coverage: '
+                'Preserve every explicitly requested recorded assay across the complete answer steps. '
+                'Separate checks or one exact IN predicate are both valid; context-only checks and duplicates do not cover a missing alternative.')
     return None
 
 

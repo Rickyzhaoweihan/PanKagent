@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 
-VERSION = 'pankgraph-08-04-intent-v9-grounded-identity'
+VERSION = 'pankgraph-08-04-intent-v10-runtime-identity'
 RELATIONS = {
     'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
     'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Recorded measurements include median_donor_log_cpm, median_donor_cpm, median_pct_cells_expressing, total_cells, expression_call and condition. There is no generic rank or id property on this relationship; do not ORDER BY nonexistent fields or invent a ranking. Return recorded measurements without invented significance cutoffs.',
@@ -38,7 +38,7 @@ LABELS = ['Gene', 'disease', 'anatomical_structure', 'GO_term', 'reactome', 'keg
           'regulatory_elements', 'ontology', 'sequence_variant', 'snv', 'deletion',
           'indel', 'insertion', 'provenance']
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST
-from .release_schema import DIGEST as SCHEMA_DIGEST
+from .release_schema import REGISTRY as RELEASE_REGISTRY, DIGEST as SCHEMA_DIGEST
 from .anatomy_paths import DIGEST as ANATOMY_PATH_DIGEST
 from .numeric_predicates import DIGEST as NUMERIC_PREDICATE_DIGEST
 from .metadata_guard import DIGEST as METADATA_GUARD_DIGEST
@@ -107,7 +107,13 @@ def generation_request(step, base_question):
         requirements=step.get('sample_requirements',{})
         samples=bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
         disease_requested=any(c.get('entity_type')=='disease' for c in step.get('constraints',[]))
-        paths='disease -HAS_DONOR-> donor' if disease_requested else 'donor (all recorded disease groups; no disease identity filter was requested)'
+        donor_cohort = [c for c in step.get('constraints', [])
+                        if c.get('entity_type') == 'donor'
+                        and c.get('property') in {'diabetes_type', 'derived_diabetes_status'}]
+        paths=('disease -HAS_DONOR-> donor' if disease_requested else
+               'donor filtered by the verified recorded donor cohort predicates; no disease-node identity filter was requested'
+               if donor_cohort else
+               'donor; no disease-node identity or recorded donor cohort filter was requested')
         if samples:paths+='; donor -HAS_SAMPLE-> Sample_node; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
         text=base_question+'\nUse these verified bindings (replace shorthand values in the question): '+'; '.join(bindings)+'.'
         text+='\nRequired connected schema paths: '+paths+'.'
@@ -183,19 +189,32 @@ def independent_measurement_steps(plan):
 
 
 def normalize_release_constraints(step):
-    """Bind two verified release concepts without changing generated Cypher."""
+    """Bind verified release concepts without changing generated Cypher."""
     from copy import deepcopy
     result = deepcopy(step)
     kinds = set(result.get('relation_types') or [])
     constraints, mappings = [], list(result.get('schema_bindings') or [])
-    for constraint in result.get('constraints', []):
+    compiled = result.get('constraint_compilation') or []
+    for index, constraint in enumerate(result.get('constraints', [])):
         c = dict(constraint)
         if kinds == {'ASSOCIATED_WITH_GO'} and c.get('property') in ('namespace', 'ontology_namespace', 'go_domain') and c.get('entity_type') in (None, 'GO_term'):
             if c.get('property') != 'go_domain' or c.get('entity_type') != 'GO_term':
                 mappings.append({'from': deepcopy(c), 'to': 'GO_term.go_domain', 'contract': VERSION})
             c.update(property='go_domain', entity_type='GO_term')
-        if kinds == {'T1D_DEG_IN'} and c.get('entity_type') == 'disease' and c.get('operator', '=') == '=' and (c.get('property'), c.get('value')) in (('id', 'MONDO_0005147'), ('name', 'type 1 diabetes')):
-            mappings.append({'from': deepcopy(c), 'to': 'required relationship T1D_DEG_IN', 'contract': VERSION})
+        relation_contexts = [binding.get('relation_context') for binding in compiled
+            if binding.get('constraint_index') == index
+            and binding.get('canonical_binding') == c
+            and binding.get('schema_digest') == SCHEMA_DIGEST]
+        encoded = [context for context in relation_contexts
+                   if isinstance(context, dict)
+                   and context.get('kind') == 'verified_grounded_relation_context'
+                   and context.get('relation_type') in kinds
+                   and context.get('entity_type') == c.get('entity_type')
+                   and context.get('graph_release') == RELEASE_REGISTRY['release']]
+        if len(encoded) == 1:
+            relation_type = encoded[0]['relation_type']
+            mappings.append({'from': deepcopy(c), 'to': 'required relationship ' + relation_type,
+                             'contract': VERSION})
             continue
         constraints.append(c)
     result['constraints'] = constraints

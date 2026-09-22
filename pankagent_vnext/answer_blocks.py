@@ -12,7 +12,7 @@ import re
 
 from .evidence_identity import validate_ids
 
-VERSION = 'verified-answer-blocks-v6-readable'
+VERSION = 'verified-answer-blocks-v7-cohort-integrity'
 SCHEMA = {'type': 'object', 'additionalProperties': False,
           'properties': {'fact_ids': {'type': 'array',
                                       'items': {'type': 'string'}}},
@@ -68,6 +68,40 @@ def finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+_COHORT_CLASSIFICATION_LABELS = (
+    ('diabetes_type', 'Recorded donor diabetes types', 'recorded_diabetes_type_counts'),
+    ('derived_diabetes_status', 'Recorded derived diabetes classifications',
+     'recorded_derived_diabetes_status_counts'),
+    ('t1d_stage', 'Recorded T1D stages', 'recorded_stage_counts'),
+    ('data_source', 'Recorded donor sources', 'recorded_source_counts'),
+)
+
+
+def _cohort_classification_counts(step, ledger):
+    """Read anonymous marginals without consulting selected donor examples."""
+    from .answer_facts import requested_classification_fields
+    requested = requested_classification_fields(step)
+    aggregate = step.get('aggregate_cohort_facts') or {}
+    summary = (ledger or {}).get('donor_classifications') or {}
+    fields = summary.get('fields') or {}
+    result = {}
+    for field, label, aggregate_key in _COHORT_CLASSIFICATION_LABELS:
+        if field not in requested:
+            continue
+        if isinstance(aggregate.get(aggregate_key), dict) and aggregate[aggregate_key]:
+            result[field] = (label, dict(aggregate[aggregate_key]), 0)
+            continue
+        distribution = fields.get(field) or {}
+        counts = Counter()
+        for group in distribution.get('groups') or []:
+            prop = ((group.get('recorded_fields') or {}).get(field) or {})
+            value = prop.get('value') if prop.get('state') == 'recorded' else 'not recorded'
+            counts[str(value)] += int(group.get('record_count') or 0)
+        if counts:
+            result[field] = (label, dict(counts), int(distribution.get('omitted_record_count') or 0))
+    return result
+
+
 def catalogue(evidence):
     steps = list(evidence.values()) if isinstance(evidence, dict) else list(evidence)
     ids = validate_ids(steps)
@@ -86,6 +120,10 @@ def catalogue(evidence):
     for step, eid in zip(steps, ids):
         title = text(step.get('title') or step.get('question') or 'Requested check')
         nodes, edges, rows = (step.get(k) or [] for k in ('nodes', 'edges', 'rows'))
+        from .answer_facts import (requested_classification_fields,
+                                   sanitize_unrequested_classifications)
+        rows = sanitize_unrequested_classifications(
+            rows, requested_classification_fields(step))
         reasons = [str(r) for v in step.get('validation', []) for r in v.get('reasons', [])]
         skipped = step.get('execution_status') == 'skipped_empty_dependency' or any(
             r.startswith('empty_dependency:') for r in reasons)
@@ -96,6 +134,31 @@ def catalogue(evidence):
         if step.get('status') in {'failed', 'blocked', 'unavailable', 'interrupted'}:
             add(eid, 'scope', f'{title}: evidence could not be retrieved; this does not establish absence.', True)
             continue
+        from .answer_facts import build_answer_facts, cohort_integrity_issues
+        ledger = step.get('answer_facts')
+        if not isinstance(ledger, dict):
+            ledger = build_answer_facts(step)
+        classifications = _cohort_classification_counts(step, ledger)
+
+        def add_classifications():
+            for _field, (label, counts, omitted) in classifications.items():
+                detail = '; '.join(text(value) + ': ' + str(count) + ' donors'
+                                   for value, count in sorted(counts.items()))
+                if omitted:
+                    detail += '; ' + str(omitted) + ' donors in omitted recorded-value groups'
+                add(eid, 'cohort_classification', label + ': ' + detail + '.', True)
+            if classifications:
+                add(eid, 'cohort_classification', 'Diabetes type, derived diabetes status and T1D stage are '
+                    'separate recorded metadata; stage is not a diagnosis or an ND/healthy classification.', True)
+
+        integrity_issues = cohort_integrity_issues(step, ledger) if isinstance(ledger, dict) else []
+        if integrity_issues:
+            fields = ', '.join(sorted({field_label(issue['field']) for issue in integrity_issues}))
+            add(eid, 'cohort_integrity', 'Cohort integrity check failed: retrieved donor classifications do not '
+                'satisfy the requested cohort filter for ' + fields + '. These records cannot be labeled as the '
+                'requested cohort or used to answer its count.', True)
+            add_classifications()
+            continue
         execution = step.get('retrieval_execution') or {}
         aggregate = step.get('aggregate_record_counts')
         if aggregate:
@@ -104,9 +167,7 @@ def catalogue(evidence):
                 + ('These are retrieved-record totals.' if aggregate.get('complete') else 'Retrieval is incomplete; these are retained-record counts only.')
                 + ' Recorded stage is distinct from diagnosis; assay records are not donors.', True)
             cohort = step.get('aggregate_cohort_facts') or {}
-            for key,label in [('recorded_stage_counts','Recorded stages'), ('recorded_source_counts','Recorded donor sources')]:
-                if cohort.get(key):
-                    add(eid,'cohort',label + ': ' + '; '.join(text(k) + ': ' + str(v) + ' donors' for k,v in sorted(cohort[key].items())) + '.',True)
+            add_classifications()
             for assay,counts in sorted(cohort.get('assays',{}).items()):
                 add(eid,'cohort',text(assay) + ': ' + str(counts['sample_count']) + ' assay/sample records linked to '
                     + str(counts['donor_count']) + ' unique donors. File availability has not been verified.',True)
@@ -132,6 +193,7 @@ def catalogue(evidence):
             if rows:
                 counts.append(f"{len(rows)} result row{'s' if len(rows) != 1 else ''}")
             add(eid, 'scope', text(heading) + ': ' + ', '.join(counts) + ' retrieved.' + suffix, True)
+        add_classifications()
         selection=(step.get('requested_scope') or {}).get('retrieval_selection') or {}
         if selection.get('mode')=='annotation_overview' and selection.get('ordering')=='stable_identifiers':
             add(eid,'annotation_selection','Annotation examples use stable-identifier ordering, not a ranking by biological importance or immune specificity. No ontology-depth or information-content ranking was computed.',True)

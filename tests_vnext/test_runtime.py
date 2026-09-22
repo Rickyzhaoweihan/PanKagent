@@ -237,6 +237,42 @@ def test_graph_answer_precedes_early_literature_and_heartbeats(tmp_path):
     asyncio.run(scenario())
 
 
+def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tmp_path):
+    async def scenario():
+        async with service(tmp_path) as (client, runtime, *_):
+            run = runtime.store.create('List donor IDs.')
+            run_id = run['run_id']
+            runtime.store.update(run_id, plan={'steps': [
+                {'id': 's1', 'question': 'List donor IDs.', 'constraints': []}]})
+            raw = {'nodes': [{'id': 'HPAP-041', 'labels': ['donor'], 'properties': {
+                'diabetes_type': 'PRIVATE_TYPE',
+                'derived_diabetes_status': 'PRIVATE_STATUS',
+                't1d_stage': 'PRIVATE_STAGE',
+                'data_source': 'PRIVATE_SOURCE'}}],
+                'donor_summary': {'rows': [{'donor_id': 'HPAP-041',
+                                            'recorded_stage': 'PRIVATE_STAGE'}]},
+                'aggregate_cohort_facts': {
+                    'recorded_stage_counts': {'PRIVATE_STAGE': 1}}}
+
+            # Live emission is sanitized before durable storage.
+            await runtime.emit(run_id, 'graph_step', raw)
+            stored = runtime.store.events_after(run_id, 0)[0]
+            assert 'HPAP-041' in json.dumps(stored)
+            assert not any(sentinel in json.dumps(stored) for sentinel in (
+                'PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'))
+
+            # A historical/raw stored event is also sanitized during replay.
+            legacy = runtime.store.event(run_id, 'preview_step', raw)
+            assert 'PRIVATE_STAGE' in json.dumps(legacy)
+            runtime.store.update(run_id, status='completed', stage='completed')
+            response = await client.get(f'/v2/runs/{run_id}/events')
+            assert response.status_code == 200
+            assert 'HPAP-041' in response.text
+            for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
+                assert sentinel not in response.text
+    asyncio.run(scenario())
+
+
 def test_literature_failure_preserves_graph_and_health_is_independent(tmp_path):
     async def scenario():
         gateway = Gateway(plan={**PLAN, "literature": True})

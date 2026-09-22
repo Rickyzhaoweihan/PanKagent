@@ -1,5 +1,6 @@
 import pytest
 import unittest
+from unittest.mock import patch
 from pankagent_vnext.semantic_registry import resolve, RELEASE
 from pankagent_vnext.categorical_bindings import bind_verified_categories
 from pankagent_vnext.graph import tokenize, validate_cypher
@@ -10,6 +11,7 @@ STAGE = 'Stage 2: two or more autoantibodies, dysglycemia (e.g., HbA1c ‚â• 
 ISLET = {'id':'UBERON_0000006','name':'pancreatic islet (islet of Langerhans)'}
 VOCAB = {'stages':[STAGE],'sources':['HPAP'],'modalities':['scRNA-seq','snMultiomics'],
          'tissues':[ISLET], 'assay_donor_sources':{'snMultiomics':['HPAP']}, 'inventory_complete':True}
+VOCAB['inventory_sha256'] = 'current-stability-fixture'
 
 def step(q='Find T1D stage 2 donors scRNAseq islet sample'):
  return resolve({'id':'s1','question':q,'relation_types':['HAS_SAMPLE'],'constraints':[
@@ -152,13 +154,31 @@ def test_suggestions_use_actual_ambiguous_entity_candidates():
 
 
 class CategoricalExecutionTests(unittest.IsolatedAsyncioTestCase):
+ def prepared_step(self, adapter):
+  from copy import deepcopy
+  value=step()
+  question=value['question']
+  value['semantic_request']={'source':'user_request','question':question}
+  value=resolve(value,VOCAB,RELEASE)
+  value['graph_version']=RELEASE
+  index=next(i for i,c in enumerate(value['constraints'])
+             if c.get('entity_type')=='anatomical_structure')
+  constraint=deepcopy(value['constraints'][index])
+  value['resolved_entities']=[{'constraint_index':index,'requested':constraint,
+      'state':'resolved','graph_version':RELEASE,'entity_type':'anatomical_structure',
+      'labels':['anatomical_structure'],'id':constraint['value'],'name':ISLET['name']}]
+  value['entity_resolution']={'state':'resolved'}
+  value['resolution_key']=adapter._resolution_signature(value)
+  return value
+
  async def test_exact_category_parameters_reach_explain_retrieval_and_evidence(self):
   from tests_vnext.test_graph import FakeAdapter
   q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage='Stage 2: corrected typography' AND a.id='UBERON_0000006' AND s.data_modality IN ['scRNA-seq','snMultiomics'] RETURN d,s,a"
   adapter=FakeAdapter([[q]])
   adapter.settings.graph_version=RELEASE
   async def emit(*args): pass
-  result=await adapter.execute(step(),{},emit)
+  with patch('pankagent_vnext.query_templates.compile_query', return_value=None):
+   result=await adapter.execute(self.prepared_step(adapter),{},emit)
   self.assertEqual(result['status'],'complete')
   self.assertEqual(len(adapter.retrieved),1)
   generated,params=adapter.retrieved[0]
@@ -175,7 +195,8 @@ class CategoricalExecutionTests(unittest.IsolatedAsyncioTestCase):
   adapter=FakeAdapter([["MATCH (d:donor) WHERE d.t1d_stage='Stage 2: unclosed"],[q]])
   adapter.settings.graph_version=RELEASE
   async def emit(*args): pass
-  result=await adapter.execute(step(),{},emit)
+  with patch('pankagent_vnext.query_templates.compile_query', return_value=None):
+   result=await adapter.execute(self.prepared_step(adapter),{},emit)
   self.assertEqual(result['status'],'complete')
   self.assertEqual([n for _,n in adapter.generated],[1,8])
   self.assertEqual(len(adapter.retrieved),1)

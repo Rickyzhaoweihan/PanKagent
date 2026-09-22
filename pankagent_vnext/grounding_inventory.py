@@ -1,23 +1,32 @@
-"""Read-only, release-scoped public metadata catalog for pre-planning grounding.
+"""Read-only, release-scoped metadata catalog for pre-planning grounding.
 
-Inventory building is an explicit warm-up/offline operation. No donor attributes,
-individual sample records, model calls, or answer queries are collected. Schema
-observations are diagnostic until reviewed; they never silently replace the
-release registry used by validation.
+Inventory building is an explicit warm-up/offline operation. It stores public
+entity records plus aggregate sample/donor terminology (recorded stage, source,
+and assay vocabularies), never donor rows, individual sample records, or donor
+identifiers. The cache is protected mode 0600. Clinical donor-category values
+used for execution stay in the live local semantic resolver and are not copied
+into model grounding. Schema observations are diagnostic until reviewed; they
+never silently replace the release registry used by validation.
 """
 import asyncio
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
+import math
 import os
 import re
+import stat
 from pathlib import Path
 import tempfile
+import inspect
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST, CAPABILITIES, SOURCE
 
-VERSION = "grounding-inventory-5"
+VERSION = "grounding-inventory-6-live-refresh"
+ENVELOPE_DIGEST_VERSION = "grounding-inventory-envelope-v1"
+DEFAULT_CACHE_TTL_SECONDS = 300.0
 PUBLIC_CATALOG_LABELS = (
     "Gene", "anatomical_structure", "disease", "GO_term", "kegg", "reactome", "data_modality",
 )
@@ -28,6 +37,50 @@ ANNOTATION_SOURCE_QUERY = (
 
 def stable_digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+def inventory_envelope_digest(inventory):
+    """Detect accidental partial edits across cache metadata and content.
+
+    This is an unkeyed consistency digest, not an authenticity mechanism. File
+    permissions and rebuilding from the selected graph are the trust boundary.
+    """
+    return stable_digest({
+        "version": ENVELOPE_DIGEST_VERSION,
+        "content_digest": inventory.get("content_digest"),
+        "built_at": inventory.get("built_at"),
+        "identity": inventory.get("identity"),
+    })
+
+
+def inventory_age_seconds(inventory, *, now=None):
+    """Return the age of a timestamped inventory or reject an invalid clock value."""
+    raw = inventory.get("built_at") if isinstance(inventory, dict) else None
+    if not isinstance(raw, str) or not raw:
+        raise ValueError("invalid_grounding_inventory_built_at")
+    try:
+        built_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("invalid_grounding_inventory_built_at") from exc
+    if built_at.tzinfo is None:
+        raise ValueError("invalid_grounding_inventory_built_at")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        raise ValueError("invalid_grounding_inventory_clock")
+    age = (current.astimezone(timezone.utc) - built_at.astimezone(timezone.utc)).total_seconds()
+    # A future timestamp must not extend cache lifetime indefinitely when a
+    # clock or persisted file is wrong. Normal builds always timestamp before
+    # they are published.
+    if age < 0:
+        raise ValueError("invalid_grounding_inventory_built_at")
+    return age
+
+
+def validated_cache_ttl(value):
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(float(value)) or value < 0):
+        raise ValueError("invalid_grounding_inventory_ttl")
+    return float(value)
 
 
 def inventory_identity(graph):
@@ -141,9 +194,12 @@ async def build_inventory(graph, *, include_schema_observations=False):
     records = [record for _, items in loaded for record in items]
     # A duplicated ID across collections remains separate for ambiguity review.
     records.sort(key=lambda record: (record["entity_type"], record["id"], record["name"]))
-    vocabulary = await graph.semantic_vocabulary()
+    semantic = graph.semantic_vocabulary
+    parameters = inspect.signature(semantic).parameters
+    vocabulary = await semantic(force=True) if 'force' in parameters else await semantic()
     terminology = {key: vocabulary.get(key) for key in
-                   ("stages", "sources", "modalities", "assay_donor_sources", "inventory_complete")}
+                   ("stages", "sources", "donor_sources", "sample_sources", "modalities",
+                    "assay_donor_sources", "inventory_complete")}
     recorded_stages = vocabulary.get("stages")
     stage_values = recorded_stages if isinstance(recorded_stages, list) else []
     valid_stages = [value for value in stage_values if isinstance(value, str)
@@ -178,6 +234,7 @@ async def build_inventory(graph, *, include_schema_observations=False):
     if include_schema_observations:
         value["schema_observations"] = await observe_schema(graph)
     value["content_digest"] = stable_digest({key: item for key, item in value.items() if key != "built_at"})
+    value["envelope_digest"] = inventory_envelope_digest(value)
     return value
 
 
@@ -212,15 +269,50 @@ def write_inventory(path, inventory):
             os.unlink(name)
 
 
-def load_inventory(path, identity):
-    value = json.loads(Path(path).read_text())
+def load_inventory(path, identity, *, max_age_seconds=DEFAULT_CACHE_TTL_SECONDS):
+    path = Path(path)
+    fd = None
+    try:
+        # Validate the same inode that is read.  lstat rejects a cache-path
+        # symlink, O_NOFOLLOW closes the replacement race where supported, and
+        # the inode comparison is the portable fallback for that race.
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
+            raise ValueError("stale_or_invalid_grounding_inventory")
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags)
+        opened = os.fstat(fd)
+        if ((opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+                or not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.geteuid()
+                or opened.st_mode & 0o077):
+            raise ValueError("stale_or_invalid_grounding_inventory")
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = None
+            value = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("stale_or_invalid_grounding_inventory") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
     expected = value.get("content_digest")
-    body = {key: val for key, val in value.items() if key not in {"content_digest", "built_at"}}
+    expected_envelope = value.get("envelope_digest")
+    body = {key: val for key, val in value.items()
+            if key not in {"content_digest", "built_at", "envelope_digest"}}
     if (value.get("identity") != identity or not value.get("catalog_complete")
             or expected != stable_digest(body)
+            or not isinstance(expected_envelope, str)
+            or not hmac.compare_digest(expected_envelope, inventory_envelope_digest(value))
             or value.get("catalog_labels") != list(PUBLIC_CATALOG_LABELS)
             or not isinstance(value.get("sample_terminology"), dict)
             or not isinstance(value.get("public_categories"), dict)):
+        raise ValueError("stale_or_invalid_grounding_inventory")
+    ttl_seconds = validated_cache_ttl(max_age_seconds)
+    try:
+        age_seconds = inventory_age_seconds(value)
+    except ValueError as exc:
+        raise ValueError("stale_or_invalid_grounding_inventory") from exc
+    if age_seconds > ttl_seconds:
         raise ValueError("stale_or_invalid_grounding_inventory")
     return value
 

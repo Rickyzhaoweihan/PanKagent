@@ -14,12 +14,15 @@ import time
 from pathlib import Path
 
 from .anatomy_resolution import ALIASES as ANATOMY_ALIASES, RELEASE as ANATOMY_RELEASE
-from .grounding_inventory import (build_inventory, inventory_identity, load_inventory,
-                                 stable_digest, write_inventory)
+from .grounding_inventory import (DEFAULT_CACHE_TTL_SECONDS, build_inventory,
+                                 inventory_age_seconds, inventory_identity,
+                                 load_inventory, stable_digest,
+                                 validated_cache_ttl, write_inventory)
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .genomic_scope import genomic_scope, load_coordinate_metadata, DIGEST as GENOMIC_SCOPE_DIGEST
+from .semantic_registry import identity_authorization_text, scope_incidental_spans, scope_intent_text
 
-VERSION = "preplanning-grounding-9"
+VERSION = "preplanning-grounding-10-live-refresh"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
 RELATION_TERMS = {
@@ -157,6 +160,7 @@ def _requested_relations(question):
 class EntityIndex:
     def __init__(self, inventory):
         self.identity = inventory["identity"]
+        self.built_at = inventory["built_at"]
         self.content_digest = inventory["content_digest"]
         self.counts = inventory["counts"]
         self.sample_terminology = deepcopy(inventory.get("sample_terminology", {}))
@@ -274,12 +278,27 @@ class EntityIndex:
         role_spans = [(kind, *_span(question, match.start(), match.end()))
                       for kind, pattern in _SCHEMA_ROLE_PATTERNS.items()
                       for match in re.finditer(pattern, question, re.I)]
+        authorization_question = identity_authorization_text(question)
+        incidental_spans = [(_span(question, match.start(), match.end()),
+                             'property_operand')
+                            for match in re.finditer(r'\s+', authorization_question)
+                            if any(not char.isspace()
+                                   for char in question[match.start():match.end()])]
+        incidental_spans.extend([(_span(question, start, end), kind)
+                                  for start, end, kind in scope_incidental_spans(question)])
         region = genomic_scope(question)
         locus_spans = [_span(question, *label['span']) for label in region.get('locus_labels', [])] if region else []
         cohort_context = bool(re.search(r"\b(?:donors?|samples?|cohort|assays?|multiome|multiomics)\b", question, re.I))
         for mention in mentions:
             start, end = mention["normalized_token_span"]
             candidates = mention["candidates"]
+            incidental = next((kind for (first, last), kind in incidental_spans
+                               if first <= start and end <= last), None)
+            if incidental:
+                _retain_context(
+                    mention, [], incidental,
+                    rule="This catalog wording is the literal value of another typed property or a requested projection; it is not an entity, cohort, tissue, stage, source, or assay filter.")
+                continue
             if region and region['collection_scope'] and any(first <= start and end <= last for first, last in locus_spans):
                 # These names describe the requested locus. They are useful
                 # metadata, but are not the complete set of genes in its span.
@@ -367,7 +386,20 @@ class EntityIndex:
         if self.identity["graph_release"] == REGISTRY["release"]:
             for match in re.finditer(r"\bpancreatic\s+(?:(?:e|s|exon)?QTL)\b", question, re.I):
                 start, end = _span(question, match.start(), match.start() + len("pancreatic"))
-                if any(m["normalized_token_span"][0] <= start < m["normalized_token_span"][1] for m in mentions):
+                overlapping = [m for m in mentions
+                               if m["normalized_token_span"][0] <= start
+                               < m["normalized_token_span"][1]]
+                exact = [m for m in overlapping
+                         if tuple(m.get("normalized_token_span") or ()) == (start, end)
+                         and len(m.get("candidates") or []) == 1
+                         and m["candidates"][0].get("entity_type") == "anatomical_structure"
+                         and m["candidates"][0].get("name", "").casefold() == "pancreas"]
+                if len(exact) == 1:
+                    _retain_context(exact[0], exact[0]["candidates"],
+                        "qtl_tissue_adjective", canonical_tissue="Pancreas",
+                        rule="The adjective directly modifies QTL; preserve this as a relationship tissue filter, not an islet or lymph-node alias.")
+                    continue
+                if overlapping:
                     continue
                 candidates = self.first.get("pancreas", {}).get(("pancreas",), {}).values()
                 selected = [deepcopy(c) for c in candidates if c["entity_type"] == "anatomical_structure" and c["name"].casefold() == "pancreas"]
@@ -409,23 +441,29 @@ def relevant_schema(question, mentions, *, max_relations=12):
 
 
 class Grounder:
-    def __init__(self, graph, cache_path=None):
+    def __init__(self, graph, cache_path=None, *, ttl_seconds=DEFAULT_CACHE_TTL_SECONDS):
         self.graph = graph
         self.cache_path = Path(cache_path) if cache_path else None
+        self.ttl_seconds = validated_cache_ttl(ttl_seconds)
         self.index = None
+        self.index_expires_at = None
         self.lock = asyncio.Lock()
         self.last_error = None
 
     async def warm(self, force=False):
         async with self.lock:
             identity = inventory_identity(self.graph)
-            if not force and self.index and self.index.identity == identity:
+            if (not force and self.index and self.index.identity == identity
+                    and self.index_expires_at is not None
+                    and time.monotonic() < self.index_expires_at):
                 return self.index
             await self.graph._ensure_identity()
             inventory = None
             if not force and self.cache_path and self.cache_path.is_file():
                 try:
-                    inventory = await asyncio.to_thread(load_inventory, self.cache_path, identity)
+                    inventory = await asyncio.to_thread(
+                        load_inventory, self.cache_path, identity,
+                        max_age_seconds=self.ttl_seconds)
                 except (ValueError, OSError, TypeError, KeyError):
                     inventory = None
             if inventory is None:
@@ -437,19 +475,25 @@ class Grounder:
             if identity != inventory_identity(self.graph):
                 raise ValueError("grounding_identity_changed_during_build")
             self.index = index
+            # Use the persisted build time for the remaining lifetime so
+            # loading an almost-expired disk snapshot cannot restart a full
+            # in-memory TTL window.
+            remaining = max(0.0, self.ttl_seconds - inventory_age_seconds(inventory))
+            self.index_expires_at = time.monotonic() + remaining
             return index
 
     async def resolve(self, question):
         start = time.monotonic()
         index = await self.warm()
+        scope_question = identity_authorization_text(question)
         mentions = index.match(question)
         # Variant catalogs are very large; verify explicit identifiers in one
         # parameterized read. No clinical donor attributes are indexed.
-        identifiers = sorted(set(re.findall(r"\brs\d+\b|\bHPAP-\d+\b", question, re.I)))
+        identifiers = sorted(set(re.findall(r"\brs\d+\b|\bHPAP-\d+\b", scope_question, re.I)))
         lookups = []
         if identifiers:
             queries = [("variants", [value.lower() for value in identifiers if value.lower().startswith("rs")]),
-                       ("donor", [value.upper() for value in identifiers if value.upper().startswith("hpap-")])]
+                       ("donor", [value.upper() for value in identifiers if value.upper().startswith("HPAP-")])]
             for label, values in queries:
                 if not values:
                     continue
@@ -465,12 +509,12 @@ class Grounder:
                                     "candidates": candidates, "lookup_complete": True})
             mentions.extend(lookups)
         vocabulary = None
-        if re.search(r"donor|sample|\bhpap\b|\bstage\b|multiom|scrna|atac|perifusion", question, re.I):
+        if re.search(r"donor|sample|\bhpap\b|\bstage\b|multiom|scrna|atac|perifusion", scope_question, re.I):
             vocabulary = deepcopy(index.sample_terminology)
         value = {"version": VERSION, "grounding_digest": DIGEST, "state": "ready", "status": "ready",
                  "identity": deepcopy(index.identity), "catalog_digest": index.content_digest,
                  "catalog_complete": True, "mentions": mentions,
-                 "schema": relevant_schema(question, mentions),
+                 "schema": relevant_schema(scope_question, mentions),
                  "rules": ["Only unique exact or verified aliases are resolved automatically.",
                            "Ambiguous, qualified and unmatched wording remains part of the original question; a qualified candidate is not a fully resolved identity.",
                            "Schema and metadata matches are not retrieved scientific evidence.",
@@ -488,7 +532,7 @@ class Grounder:
         if vocabulary is not None:
             # Aggregated categorical values only; never donor/sample rows.
             value["sample_terminology"] = vocabulary
-            stage = re.search(r"\bstage\s*[-:]?\s*(\d+|iii|ii|i)\b", question, re.I)
+            stage = re.search(r"\bstage\s*[-:]?\s*(\d+|iii|ii|i)\b", scope_question, re.I)
             if stage:
                 number = {"i": "1", "ii": "2", "iii": "3"}.get(stage[1].lower(), stage[1])
                 matches = [item for item in vocabulary.get("stages") or [] if isinstance(item, str)
