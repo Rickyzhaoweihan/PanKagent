@@ -451,3 +451,22 @@ def test_donor_index_download_retains_all_unique_donors_and_no_file_claim(tmp_pa
             assert 'image_url' not in result['resources_tabs']['empirical_evidence']
         finally:await m.close()
     asyncio.run(scenario())
+
+
+def test_audited_gwas_source_remains_unmapped_without_guessed_download(tmp_path):
+    async def scenario():
+        requests=[]
+        def handler(request):
+            requests.append(request)
+            raise AssertionError('Unverified GWAS mapping must not trigger a guessed download')
+        instance=await manager(tmp_path,handler)
+        try:
+            result=await instance.resolve(evidence(source='GWAS_finemapping_V1',relation='PART_OF_GWAS_SIGNAL'))
+            group=result['resource_groups'][0]
+            assert group['error_category']=='source_or_credible_set_unmapped'
+            assert group['unavailable_reason']=='source_not_registered'
+            assert group['mapping_verification']=='unavailable'
+            assert requests==[]
+        finally:
+            await instance.close()
+    run(scenario())

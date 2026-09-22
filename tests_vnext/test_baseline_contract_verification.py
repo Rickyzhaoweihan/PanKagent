@@ -83,8 +83,9 @@ def test_duplicate_confirmation_and_reconnect_do_not_duplicate_enabled_literatur
             assert graph.calls == gateway.plans == gateway.syntheses == literature.calls == 1
             followup = await new_plan(client, 'What about GCG?', session_id=created['session_id'])
             assert followup['run_id'] != created['run_id']
-            assert gateway.histories[-1] == [{'role': 'user', 'content': 'Which cell types express INS?'},
-                                            {'role': 'assistant', 'content': run['graph_answer']}]
+            assert gateway.histories[-1][0] == {'role':'user', 'content':'Which cell types express INS?'}
+            assert gateway.histories[-1][1]['content'].startswith(run['graph_answer'])
+            assert 'A supported mechanism' in gateway.histories[-1][1]['content']
     asyncio.run(scenario())
 
 

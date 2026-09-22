@@ -24,7 +24,7 @@ def test_literature_only_revision_uses_no_planner_call(tmp_path):
             response=await client.post(f'/v2/plans/{initial["plan_id"]}/revise',json={'question':'disable literature','revision_instruction':'disable literature','revision_mode':'instruction'})
             child=await wait_state(client,response.json()['run_id'],{'awaiting_confirmation'})
             assert gateway.plans==count
-            assert child['plan']['literature'] is True
+            assert child['plan']['literature'] is False
             assert child['plan']['steps']==parent['plan']['steps']
     asyncio.run(check())
 

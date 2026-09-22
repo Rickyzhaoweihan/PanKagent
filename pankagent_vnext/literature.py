@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
@@ -38,6 +39,7 @@ PROGRESS = {
     "audit": "Checking literature relevance and references",
     "retrying": "Refining literature searches",
 }
+UPSTREAM_ERRORS = frozenset({'timeout', 'rerank_timeout', 'retrieval_timeout', 'rate_limit', 'rate_limited', 'authentication', 'authorization', 'upstream_unavailable', 'budget_exhausted', 'invalid_request', 'no_evidence'})
 MAX_STREAM_BYTES = 8 * 1024 * 1024
 MAX_EVENT_BYTES = 4 * 1024 * 1024
 
@@ -204,7 +206,7 @@ class LiteratureAdapter:
             **values,
         }
 
-    async def _consume(self, question: str, conversation: list, emit: Emit) -> dict[str, Any]:
+    async def _consume(self, question: str, conversation: list, emit: Emit, diagnostics=None) -> dict[str, Any]:
         self._check_configuration()
         # Match the current strict wrapper request schema; keep answer/ref units together.
         history, turns, pending_question = [], [], None
@@ -212,7 +214,7 @@ class LiteratureAdapter:
             if isinstance(turn, dict) and turn.get("role") == "user":
                 pending_question = turn.get("content")
             elif isinstance(turn, dict) and turn.get("role") == "assistant" and pending_question:
-                turns.append({"question": pending_question, "response": turn.get("content"), "references": []})
+                turns.append({"question": pending_question, "response": turn.get("content"), "references": turn.get("references", [])})
                 pending_question = None
             else:
                 turns.append(turn)
@@ -224,7 +226,12 @@ class LiteratureAdapter:
             if isinstance(prior_question, str) and prior_question.strip() and isinstance(answer, str) and answer.strip():
                 history.append({"question": prior_question[:6000], "response": answer[:30000],
                                 "references": _references(turn.get("references", []))[:30]})
-        async with self.client.stream("POST", f"{self.url}/stream", headers={"Accept": "text/event-stream"},
+        encoded_history = json.dumps(history, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        if diagnostics is not None:
+            diagnostics.update(question_sha256=hashlib.sha256(question.encode()).hexdigest(),
+                               history_sha256=hashlib.sha256(encoded_history.encode()).hexdigest(),
+                               history_turn_count=len(history), version='hirn-request-diagnostics-v1')
+        async with self.client.stream("POST", f"{self.url}/stream", headers={"Accept": "text/event-stream", "X-Request-ID": (diagnostics or {}).get("request_id", str(uuid.uuid4()))},
                                       json={"question": question, "conversation": history}) as response:
             response.raise_for_status()
             if "text/event-stream" not in response.headers.get("content-type", ""):
@@ -237,7 +244,16 @@ class LiteratureAdapter:
                     await emit("literature_progress", {"stage": "searching_literature", "status": "running",
                                                        "message": PROGRESS[event_name]})
                 elif event_name == "error":
-                    raise LiteratureContractError("upstream_error")
+                    try:
+                        payload = json.loads("\n".join(data))
+                    except (ValueError, TypeError):
+                        payload = {}
+                    category = payload.get('error_category', payload.get('category')) if isinstance(payload, dict) else None
+                    if not category and isinstance(payload, dict) and isinstance(payload.get('error'), dict):
+                        category = payload['error'].get('category')
+                    if not category and isinstance(payload, dict) and isinstance(payload.get('error'), str) and payload['error'] in UPSTREAM_ERRORS:
+                        category = payload['error']
+                    raise LiteratureContractError(category if isinstance(category, str) and category in UPSTREAM_ERRORS else 'upstream_error')
                 elif event_name == "complete":
                     try:
                         value = json.loads("\n".join(data))
@@ -271,15 +287,16 @@ class LiteratureAdapter:
 
     async def search(self, question: str, conversation: list, emit: Emit) -> dict[str, Any]:
         started = time.monotonic()
+        diagnostics = {'request_id': str(uuid.uuid4())}
         try:
-            final = await asyncio.wait_for(self._consume(question, conversation, emit), timeout=self.timeout)
+            final = await asyncio.wait_for(self._consume(question, conversation, emit, diagnostics), timeout=self.timeout)
             perspectives = _normalize_legacy(final)
             self.last_success, self.last_error = _utcnow(), None
             for perspective in perspectives:
                 await emit("literature_perspective", perspective)
             status = "complete" if all(p["status"] in {"complete", "no_evidence"} for p in perspectives) else "partial"
             usage = final.get("usage_status")
-            result = self._result(status, perspectives=perspectives, elapsed_ms=round((time.monotonic() - started) * 1000))
+            result = self._result(status, request_diagnostics=diagnostics, perspectives=perspectives, elapsed_ms=round((time.monotonic() - started) * 1000))
             if isinstance(usage, dict):
                 result["upstream_usage"]["service_cumulative_snapshot"] = {
                     key: value for key, value in usage.items()
@@ -298,7 +315,7 @@ class LiteratureAdapter:
         except LiteratureContractError as error:
             category = str(error)  # Only fixed categories generated in this module.
         self.last_error = category
-        return self._result("unavailable", error_category=category,
+        return self._result("unavailable", error_category=category, request_diagnostics=diagnostics,
                             elapsed_ms=round((time.monotonic() - started) * 1000))
 
     async def probe(self) -> dict[str, Any]:

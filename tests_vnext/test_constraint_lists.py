@@ -1,5 +1,6 @@
 """Regression for replay QTL/condition list encodings without network calls."""
 from copy import deepcopy
+import hashlib
 
 import pytest
 
@@ -7,13 +8,38 @@ from pankagent_vnext.constraint_values import VALUE_SCHEMA, list_value
 from pankagent_vnext.graph import validate_cypher
 from pankagent_vnext.planning_compile import compile_property_owners
 from pankagent_vnext.planning_output import matches_schema
-from pankagent_vnext.query_templates import compile_query
+from pankagent_vnext.query_templates import compile_query as _compile_query
 
 
 RELEASE = 'PanKgraph_08_04'
 GROUNDING = {'status': 'ready', 'identity': {'graph_release': RELEASE}, 'mentions': []}
 QTL_QUERY = ("MATCH (v:variants)-[r:PART_OF_QTL_SIGNAL]->(g:Gene) "
              "WHERE g.id='ENSG00000225190' AND r.tissue_name IN ['Pancreas','Islet'] RETURN v,r,g")
+
+
+def _authorized(step):
+    """Attach exact request proofs to a copy of a template-unit fixture."""
+    prepared = deepcopy(step)
+    question = 'Constraint-list template fixture: ' + '; '.join(
+        f"{constraint.get('entity_type') or constraint.get('relationship_type') or 'node'}."
+        f"{constraint.get('property')} {constraint.get('operator', '=')} "
+        f"{constraint.get('value')}"
+        for constraint in prepared.get('constraints') or [])
+    prepared['semantic_request'] = {'source': 'user_request', 'question': question}
+    digest = hashlib.sha256(question.encode()).hexdigest()
+    prepared['request_filter_bindings'] = [{
+        'constraint_index': index,
+        'canonical_binding': deepcopy(constraint),
+        'authorization_kind': 'verified_request_filter',
+        'source': 'immutable_user_request',
+        'request_sha256': digest,
+        'graph_release': prepared.get('graph_version'),
+    } for index, constraint in enumerate(prepared.get('constraints') or [])]
+    return prepared
+
+
+def compile_query(step):
+    return _compile_query(_authorized(step))
 
 
 def source(value, *, prop='tissue_name', relation='PART_OF_QTL_SIGNAL', operator='IN'):

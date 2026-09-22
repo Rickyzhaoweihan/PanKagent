@@ -4,6 +4,7 @@ import re
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from pankagent_vnext.graph import GraphAdapter, validate_cypher
 from pankagent_vnext.plan_constraints import build_generation_question
@@ -20,7 +21,9 @@ def plan(include_context=False, **step_changes):
             "constraints": [{"property": "name", "operator": "=", "value": "CFTR", "entity_type": "Gene"},
                             {"property": "name", "operator": "=", "value": "ductal cell", "entity_type": "anatomical_structure"}],
             "relation_types": ["GENE_ENRICHED_IN"], "depends_on": [], "complete": True, **step_changes}
-    return {"steps": [step], "include_context": include_context, "literature": False, "clarification": None}
+    return {"original_question": step["question"], "steps": [step],
+            "include_context": include_context, "literature": False,
+            "clarification": None}
 
 
 class ResolverGraph(GraphAdapter):
@@ -128,7 +131,10 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(source, before)
         self.assertEqual(len(prepared["steps"]), 2)
         self.assertEqual(prepared["steps"][1]["purpose"], "context")
-        result = await self.graph.execute(primary, {}, self.emit)
+        # This assertion is about the canonical GPU prompt; structural-template
+        # routing is covered separately in test_query_templates.py.
+        with patch('pankagent_vnext.query_templates.compile_query', return_value=None):
+            result = await self.graph.execute(primary, {}, self.emit)
         self.assertEqual(result["status"], "complete")
         self.assertEqual(self.graph.generated[0][1], 1)
         self.assertTrue(self.graph.generated[0][0].startswith(expected))
@@ -283,14 +289,19 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["steps"]), 1)
         self.assertEqual(missing.generated, [])
 
-    async def test_non_equality_entity_predicates_keep_original_strict_validation(self):
+    async def test_non_equality_identity_lists_fail_closed_without_per_member_resolution(self):
         source = plan(constraints=[{"property": "name", "operator": "IN", "value": '["CFTR","INS"]', "entity_type": "Gene"}],
-                      question="Find the genes CFTR and INS.", relation_types=[])
+                      question='Find genes where Gene.name IN ["CFTR", "INS"].', relation_types=[])
         result = await self.graph.prepare_plan(source, self.emit)
-        self.assertIsNone(result["clarification"])
+        self.assertIsNotNone(result["clarification"])
         step = result["steps"][0]
         self.assertEqual(step["resolved_entities"][0]["state"], "literal_predicate")
+        self.assertTrue(step["semantic_issues"])
+        self.assertEqual(step['runtime_binding_issues'], [
+            'unverified_identity_resolution:0:Gene.name'])
         self.assertEqual(self.graph.reads, [])
+        # Exact predicate validation stays strict, but the execution gate will
+        # not run it until every list member has a current entity proof.
         self.assertEqual(validate_cypher("MATCH (g:Gene) WHERE g.name IN ['CFTR','INS'] RETURN g", step), [])
         self.assertTrue(validate_cypher("MATCH (g:Gene) WHERE g.name='CFTR' RETURN g", step))
 

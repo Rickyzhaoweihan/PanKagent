@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from .evidence_coverage import coverage_for_answer
+from .evidence_identity import evidence_id
 
 
 TARGET_BYTES = 75_000
 MAX_BYTES = 100_000
 NODE_ONLY_MODE = "node_identity_only"
-_SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary")
+_SUMMARY_FIELDS = ("step_id", "status", "execution_status", "retrieval_execution", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary", "functional_metadata")
 
 
 @dataclass(frozen=True)
@@ -104,13 +105,19 @@ def _bounded(value: Any, limits: _Limits, changes: Counter, depth: int = 0) -> A
     return _bounded(str(value), limits, changes, depth + 1)
 
 
-def _compact_node(node: Mapping, limits: _Limits, changes: Counter) -> dict:
+def _compact_node(node: Mapping, limits: _Limits, changes: Counter,
+                  visible_classifications=frozenset()) -> dict:
     # Stable identifiers and type labels are never shortened. An unexpectedly
     # huge identity therefore fails the total-size gate instead of changing IDs.
+    properties = dict(node.get("properties") or {})
+    if 'donor' in (node.get('labels') or []):
+        from .answer_facts import DONOR_CLASSIFICATION_FIELDS
+        for field in set(DONOR_CLASSIFICATION_FIELDS) - set(visible_classifications):
+            properties.pop(field, None)
     return {
         "id": str(node["id"]),
         "labels": list(node.get("labels") or []),
-        "properties": _bounded(node.get("properties") or {}, limits, changes),
+        "properties": _bounded(properties, limits, changes),
     }
 
 
@@ -218,7 +225,7 @@ def _interaction_totals(item: Mapping, edges: list, node_index: dict, coverage: 
 def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict) -> dict:
     changes = Counter()
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
-    entry["evidence_id"] = "G" + str(index + 1)
+    entry["evidence_id"] = evidence_id(item, index)
     entry["validation"] = _validation(item.get("validation"), limits, changes)
     # Record full query/source scope before sampling. Never clip scope filters or
     # turn excerpt omissions into a retrieval limit. The total-size gate remains.
@@ -235,11 +242,19 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     if any(not isinstance(edge, Mapping) or "start_id" not in edge or "end_id" not in edge for edge in edges):
         raise ValueError("invalid_evidence_edge")
 
+    from .answer_facts import (requested_classification_fields,
+                               sanitize_unrequested_classifications)
+    visible_classifications = requested_classification_fields(item)
+    if 'donor_summary' in entry:
+        entry['donor_summary'] = sanitize_unrequested_classifications(
+            entry['donor_summary'], visible_classifications)
     sampled_nodes, dropped_nodes = _sample(nodes, limits.nodes, _node_type)
     sampled_edges, dropped_edges = _sample(edges, limits.edges, _edge_type)
-    entry["nodes"] = [_compact_node(node, limits, changes) for node in sampled_nodes]
+    entry["nodes"] = [_compact_node(node, limits, changes, visible_classifications)
+                      for node in sampled_nodes]
     entry["edges"] = [_compact_edge(edge, limits, changes) for edge in sampled_edges]
-    entry["rows"] = [_bounded(row, limits, changes) for row in rows[:limits.rows]]
+    entry["rows"] = [_bounded(sanitize_unrequested_classifications(
+        row, visible_classifications), limits, changes) for row in rows[:limits.rows]]
     full_node_index = {str(node["id"]): node for node in nodes}
     visible_ids = {node["id"] for node in entry["nodes"]}
     stubs, missing_endpoints, cross_step_endpoints = 0, 0, 0
@@ -279,11 +294,22 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
             "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
             for kind in sorted({e.get("type") or "unknown" for e in edges})},
     }
-    from .answer_facts import build_answer_facts
-    answer_facts = build_answer_facts(item, coverage=entry["evidence_coverage"],
-                                      max_groups=min(30, limits.collection_items), max_records=min(20, limits.edges))
+    from .answer_facts import build_answer_facts, minimize_answer_facts_for_request
+    # Aggregate projection intentionally removes private donor/sample nodes.
+    # Reuse the full-record anonymous ledger computed immediately before that
+    # projection; rebuilding from the redacted node list would erase correct
+    # sample/assay totals.  Only the versioned aggregate boundary authorizes
+    # this path, and the request-specific classification minimizer still runs.
+    projected_facts = (item.get('answer_facts')
+                       if (item.get('output_scope') or {}).get('mode') == 'aggregate_only'
+                       else None)
+    answer_facts = (deepcopy(projected_facts) if isinstance(projected_facts, Mapping)
+                    else build_answer_facts(
+                        item, coverage=entry["evidence_coverage"],
+                        max_groups=min(30, limits.collection_items),
+                        max_records=min(20, limits.edges)))
     if answer_facts is not None:
-        entry["answer_facts"] = answer_facts
+        entry["answer_facts"] = minimize_answer_facts_for_request(item, answer_facts)
     from .signal_membership import summarize_signal_membership
     signal_membership = summarize_signal_membership(item, max_records=min(20, limits.edges))
     if signal_membership:
@@ -370,7 +396,7 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
             continue
         budget = max(1000, max_bytes - size([item for i, item in enumerate(result) if i != index]) - 100)
         result[index] = node_only_evidence([steps[index]], max_bytes=budget)[0]
-        result[index]['evidence_id'] = f'G{index + 1}'
+        result[index]['evidence_id'] = evidence_id(steps[index], index)
         identity.add(index)
     if size(result) > max_bytes:
         raise ValueError('evidence_step_envelope_too_large')
@@ -393,8 +419,10 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
         nodes = step.get("nodes") or []
         if any(not isinstance(n, Mapping) or "id" not in n for n in nodes):
             raise ValueError("invalid_evidence_node")
+        from .answer_facts import requested_classification_fields
+        visible_classifications = requested_classification_fields(step)
         entry = {
-            "evidence_id": f"G{index + 1}",
+            "evidence_id": evidence_id(step, index),
             "status": step.get("status") if step.get("status") in
                 {"complete", "partial", "empty", "failed", "blocked", "skipped"} else "unknown",
             "truncated": bool(step.get("truncated")),
@@ -434,6 +462,9 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
                 description = None
             source = {}
             for key in ("source", "data_source", "data_source_url", "data_version"):
+                if ('donor' in (node.get('labels') or []) and key == 'data_source'
+                        and 'data_source' not in visible_classifications):
+                    continue
                 value = properties.get(key)
                 if key in {"data_source_url", "data_version"} and isinstance(value, str) and len(value) > limits.string_chars:
                     changes["omitted_oversized_source_identities"] += 1

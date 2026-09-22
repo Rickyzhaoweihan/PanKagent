@@ -2,7 +2,9 @@ import copy
 import json
 import unittest
 
-from pankagent_vnext.answer_facts import build_answer_facts, GO_CODES
+from pankagent_vnext.answer_facts import (
+    build_answer_facts, cohort_integrity_issues, GO_CODES,
+    requested_classification_fields, sanitize_unrequested_classifications)
 from pankagent_vnext.evidence_context import compact_evidence, scientific_excerpt
 from pankagent_vnext.release_schema import REGISTRY
 
@@ -27,6 +29,56 @@ def proven(item):
 
 
 class AnswerFactsTests(unittest.TestCase):
+    def test_public_classification_aliases_share_the_canonical_visibility_rule(self):
+        payload = {
+            'donor_summary': {'rows': [{'donor_id': 'HPAP-041',
+                                        'recorded_stage': 'PRIVATE_STAGE'}]},
+            'recorded_diabetes_type_counts': {'PRIVATE_TYPE': 1},
+            'recorded_derived_diabetes_status_counts': {'PRIVATE_STATUS': 1},
+            'recorded_stage_counts': {'PRIVATE_STAGE': 1},
+            'recorded_source_counts': {'PRIVATE_SOURCE': 1},
+            # Relationship provenance is not the donor-source aggregate alias.
+            'recorded_source': {'value': 'PUBLIC_RELATION_SOURCE'},
+        }
+        hidden = sanitize_unrequested_classifications(payload)
+        self.assertEqual(hidden, {
+            'donor_summary': {'rows': [{'donor_id': 'HPAP-041'}]},
+            'recorded_source': {'value': 'PUBLIC_RELATION_SOURCE'},
+        })
+        stage_visible = sanitize_unrequested_classifications(payload, {'t1d_stage'})
+        self.assertEqual(stage_visible['donor_summary']['rows'][0]['recorded_stage'],
+                         'PRIVATE_STAGE')
+        self.assertEqual(stage_visible['recorded_stage_counts'], {'PRIVATE_STAGE': 1})
+        self.assertNotIn('recorded_diabetes_type_counts', stage_visible)
+
+    def test_stage_requests_do_not_expose_diabetes_type_from_the_stage_qualifier(self):
+        questions = [
+            'Show donor counts by T1D stage.',
+            'Show donor counts across T1D stages.',
+            'Show the T1D stage distribution.',
+            'Show the distribution of donors by stage.',
+            'How many donors have stage 1?',
+            'Compare stages 1, 2, and 3.',
+            'Count recorded stage-3 T1D donors.',
+        ]
+        for question in questions:
+            with self.subTest(question=question):
+                item = evidence(question=question)
+                self.assertEqual(requested_classification_fields(item), {'t1d_stage'})
+
+    def test_stage_and_explicit_diabetes_type_intents_remain_independent(self):
+        cases = {
+            'Show T1D donors.': {'diabetes_type'},
+            'Show donors diagnosed with T1D stage 3.': {'diabetes_type', 't1d_stage'},
+            'Compare diabetes type by T1D stage.': {'diabetes_type', 't1d_stage'},
+            'Compare healthy controls by T1D stage.': {'diabetes_type', 't1d_stage'},
+            'Compare T1D stages among donors with T1D.': {'diabetes_type', 't1d_stage'},
+        }
+        for question, expected in cases.items():
+            with self.subTest(question=question):
+                item = evidence(question=question)
+                self.assertEqual(requested_classification_fields(item), expected)
+
     def test_counts_all_samples_before_excerpt_with_distinct_assays_and_histogram(self):
         ns=[node('d1','donor'),node('d2','donor')]
         ns += [node('s'+str(i),'Sample_node',data_modality='snMultiomics' if i<100 else 'CITE-seq Protein',data_source='Lab') for i in range(144)]
@@ -40,11 +92,105 @@ class AnswerFactsTests(unittest.TestCase):
         self.assertEqual(hist['distinct_donor_sample_pairs'],144)
         self.assertEqual(hist['donor_sample_link_records'],145)
         self.assertTrue(hist['complete_for_executed_scope'])
-        self.assertNotIn('d1',json.dumps(result));self.assertNotIn('s143',json.dumps(result))
+        self.assertNotIn('"d1"',json.dumps(result));self.assertNotIn('"s143"',json.dumps(result))
         self.assertEqual(item,original)
         compact=compact_evidence([item])[0]
         self.assertLess(len(compact['nodes']),len(ns))
         self.assertEqual(compact['answer_facts']['sample_counts']['unique_retrieved_samples'],144)
+
+    def test_anonymous_donor_classifications_use_all_donors_and_keep_stage_separate(self):
+        ns=[
+            node('private-donor-a','donor',diabetes_type='Control Without Diabetes',
+                 derived_diabetes_status='Normal',t1d_stage='At risk',data_source='HPAP'),
+            node('private-donor-b','donor',diabetes_type='Control Without Diabetes',
+                 derived_diabetes_status='Prediabetes',t1d_stage='Stage 1',data_source='HPAP'),
+            node('private-sample-a','Sample_node',data_modality='snMultiomics'),
+            node('private-sample-b','Sample_node',data_modality='snMultiomics')]
+        es=[edge('private-donor-a','private-sample-a','HAS_SAMPLE'),
+            edge('private-donor-b','private-sample-b','HAS_SAMPLE')]
+        item=evidence(ns,es,question='How many HPAP ND/healthy donor samples are available?')
+        summary=build_answer_facts(item)['donor_classifications']
+        self.assertEqual(summary['unique_retrieved_donors'],2)
+        fields=summary['fields']
+        def counts(field):
+            return {g['recorded_fields'][field]['value']:g['record_count']
+                    for g in fields[field]['groups']}
+        self.assertEqual(counts('diabetes_type'),{'Control Without Diabetes':2})
+        self.assertEqual(counts('derived_diabetes_status'),{'Normal':1,'Prediabetes':1})
+        self.assertEqual(counts('t1d_stage'),{'At risk':1,'Stage 1':1})
+        self.assertEqual(counts('data_source'),{'HPAP':2})
+        self.assertFalse(cohort_integrity_issues(item,build_answer_facts(item)))
+        encoded=json.dumps(summary)
+        self.assertNotIn('private-donor-a',encoded);self.assertNotIn('private-donor-b',encoded)
+
+    def test_nd_wording_rejects_type_one_records_even_when_stage_is_present(self):
+        item=evidence([
+            node('private-donor','donor',diabetes_type='Diabetes (Type I)',
+                 derived_diabetes_status='Diabetes',t1d_stage='Stage 3',data_source='HPAP'),
+            node('private-sample','Sample_node',data_modality='snMultiomics')],
+            [edge('private-donor','private-sample','HAS_SAMPLE')],
+            question='How many HPAP donor samples are recorded as ND/healthy (not type 1 diabetes)?')
+        issues=cohort_integrity_issues(item,build_answer_facts(item))
+        self.assertEqual([issue['field'] for issue in issues],['diabetes_type'])
+        self.assertEqual(issues[0]['recorded'],['Diabetes (Type I)'])
+
+    def test_trusted_control_intent_rejects_a_contradictory_prepared_category(self):
+        item=evidence([
+            node('private-donor','donor',diabetes_type='Diabetes (Type I)',
+                 derived_diabetes_status='Diabetes',t1d_stage='Stage 3'),
+            node('private-sample','Sample_node',data_modality='snMultiomics')],
+            [edge('private-donor','private-sample','HAS_SAMPLE')],
+            question='Count matching samples.')
+        item['requested_scope']={
+            'original_question':'How many HPAP ND/healthy donor samples are available?',
+            'clinical_intent':{'control_cohort':True, 'excluded_control_cohort':False},
+            'relation_types':['HAS_SAMPLE'],
+            'constraints':[{'entity_type':'donor','property':'diabetes_type',
+                            'operator':'=','value':'Diabetes (Type I)'}]}
+        issues=cohort_integrity_issues(item,build_answer_facts(item))
+        self.assertIn('requested_control_scope_not_bound',
+                      {issue['reason'] for issue in issues})
+        self.assertIn('retrieved_donor_classification_outside_requested_scope',
+                      {issue['reason'] for issue in issues})
+
+    def test_raw_control_intent_cannot_be_disabled_by_false_structured_metadata(self):
+        item=evidence([
+            node('private-donor','donor',diabetes_type='Diabetes (Type I)',
+                 derived_diabetes_status='Diabetes',t1d_stage='Stage 3'),
+            node('private-sample','Sample_node',data_modality='snMultiomics')],
+            [edge('private-donor','private-sample','HAS_SAMPLE')],
+            question='Count matching samples.')
+        item['requested_scope']={
+            'original_question':'How many HPAP donors are recorded as ND/healthy (not type 1 diabetes)?',
+            'clinical_intent':{'control_cohort':False, 'excluded_control_cohort':False},
+            'relation_types':['HAS_SAMPLE'],
+            'constraints':[]}
+        reasons={issue['reason'] for issue in cohort_integrity_issues(
+            item,build_answer_facts(item))}
+        self.assertIn('structured_clinical_intent_conflicts_with_original_question',reasons)
+        self.assertIn('requested_control_scope_not_bound',reasons)
+        self.assertIn('retrieved_donor_classification_outside_requested_scope',reasons)
+
+    def test_scalar_clinical_count_without_donor_marginals_fails_closed(self):
+        item=evidence(rows=[{'matching_samples':10}], question='Count matching samples.')
+        item['requested_scope']={
+            'original_question':'How many HPAP ND/healthy donor samples are available?',
+            'clinical_intent':{'control_cohort':True, 'excluded_control_cohort':False},
+            'relation_types':['HAS_SAMPLE'],
+            'constraints':[{'entity_type':'donor','property':'diabetes_type',
+                            'operator':'=','value':'Control Without Diabetes'}]}
+        issues=cohort_integrity_issues(item,build_answer_facts(item))
+        self.assertEqual(issues,[{
+            'field':'diabetes_type', 'expected':['control without diabetes'],
+            'recorded':['donor classifications not returned'],
+            'reason':'retrieved_donor_classification_unavailable_for_scope_verification'}])
+
+    def test_serialized_in_constraint_uses_each_verified_category(self):
+        item=evidence([node('private-donor','donor',derived_diabetes_status='Prediabetes')])
+        item['requested_scope']['constraints']=[{
+            'entity_type':'donor','property':'derived_diabetes_status','operator':'IN',
+            'value':'["Normal","Prediabetes"]'}]
+        self.assertFalse(cohort_integrity_issues(item,build_answer_facts(item)))
 
     def test_unknown_assay_is_not_assigned_from_neighbor_or_example(self):
         item=evidence([node('d','donor'),node('s1','Sample_node',data_modality='BCR-seq'),node('s2','Sample_node')],

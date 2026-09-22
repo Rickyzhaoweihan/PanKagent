@@ -1,4 +1,5 @@
 from copy import deepcopy
+import hashlib
 import pytest
 
 from pankagent_vnext.graph import validate_cypher
@@ -7,8 +8,32 @@ from pankagent_vnext.release_schema import REGISTRY
 from pankagent_vnext.semantic_registry import resolve
 
 RELEASE = REGISTRY['release']
+INVENTORY_SHA256 = 'fixture-live-inventory-sha256'
 VOCAB = {'modalities': ['scRNA-seq', 'scATAC-seq', 'snMultiomics', 'CITE-seq Protein'],
          'sources': ['HPAP'], 'assay_donor_sources': {'snMultiomics': ['HPAP']}}
+
+
+def add_runtime_proof(step, index, match_kind='verified_runtime_assay'):
+    constraint = deepcopy(step['constraints'][index])
+    step.setdefault('resolved_constraints', []).append({
+        'canonical_binding': constraint,
+        'match_kind': match_kind,
+        'graph_release': step['graph_version'],
+        'inventory_sha256': step['semantic_registry']['inventory_sha256'],
+    })
+    add_request_proof(step, index, match_kind)
+
+
+def add_request_proof(step, index, authorization_kind='test_request_authority'):
+    question = step['semantic_request']['question']
+    step.setdefault('request_filter_bindings', []).append({
+        'constraint_index': index,
+        'canonical_binding': deepcopy(step['constraints'][index]),
+        'authorization_kind': authorization_kind,
+        'source': 'immutable_user_request',
+        'request_sha256': hashlib.sha256(question.encode()).hexdigest(),
+        'graph_release': step['graph_version'],
+    })
 
 
 @pytest.mark.parametrize('wording', ['data modality scRNA-seq', 'data_modality = scRNAseq',
@@ -49,14 +74,19 @@ def test_negative_field_label_never_becomes_positive_assay_requirement(operator)
 
 def sample_step(tissue='UBERON_0015865', assay='scRNA-seq', operator='='):
     c = {'entity_type': 'anatomical_structure', 'property': 'id', 'operator': '=', 'value': tissue}
-    return {'id': 's1', 'question': 'Count matching tissue samples', 'complete': True,
+    result = {'id': 's1', 'question': 'Count matching tissue samples', 'complete': True,
             'graph_version': RELEASE, 'relation_types': ['HAS_SAMPLE'],
             'constraints': [c, {'entity_type': 'Sample_node', 'property': 'data_modality', 'operator': operator, 'value': assay}],
             'resolved_entities': [{'constraint_index': 0, 'requested': deepcopy(c), 'state': 'resolved',
                 'graph_version': RELEASE, 'entity_type': 'anatomical_structure',
                 'labels': ['anatomical_structure'], 'id': tissue}],
-            'semantic_registry': {'donor_required': False},
+            'semantic_registry': {'donor_required': False, 'inventory_sha256': INVENTORY_SHA256},
+            'semantic_request': {'source': 'user_request',
+                                 'question': 'Count the explicitly requested tissue and assay samples.'},
             'sample_requirements': {'paired': False, 'separate_bindings': False}}
+    add_request_proof(result, 0, 'current_graph_entity_resolution')
+    add_runtime_proof(result, 1)
+    return result
 
 
 @pytest.mark.parametrize('tissue', ['UBERON_0015865', 'UBERON_0002106'])
@@ -96,6 +126,9 @@ def test_donor_and_tissue_template_uses_one_filtered_sample(assay):
         {'entity_type': 'donor', 'property': 'data_source', 'operator': '=', 'value': 'HPAP'},
         {'entity_type': 'donor', 'property': 't1d_stage', 'operator': '=', 'value': 'Stage 3: presence of clinical symptoms'},
         {'entity_type': 'Sample_node', 'property': 'data_modality', 'operator': '!=', 'value': 'CITE-seq Protein'}])
+    add_runtime_proof(s, 2, 'verified_runtime_source')
+    add_runtime_proof(s, 3, 'verified_runtime_stage')
+    add_runtime_proof(s, 4)
     out = compile_query(s)
     assert out and out['template_id'] == 'donor_tissue_same_sample_records'
     assert validate_cypher(out['cypher'], s, out['parameters']) == []

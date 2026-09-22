@@ -411,14 +411,23 @@ def compile_requested_scope(question, grounding, plan):
     def bind(step, predicate, existing, proof):
         if any(c.get('operator', '=') not in {'=', 'IN'} for c in existing):
             return 'conflicting_requested_scope:' + predicate['property']
-        if len(existing) == 1 and existing[0] == predicate:
-            return None
         original = deepcopy(existing)
-        step['constraints'] = [c for c in step.get('constraints', []) if c not in existing] + [predicate]
-        step.setdefault('requested_scope_compilation', []).append({
+        if not (len(existing) == 1 and existing[0] == predicate):
+            step['constraints'] = [c for c in step.get('constraints', [])
+                                   if c not in existing] + [predicate]
+        audit = {
             'version': VERSION, 'graph_release': REGISTRY['release'], 'schema_digest': SCHEMA_DIGEST,
             'raw_question': question, 'original_predicates': original,
-            'canonical_binding': deepcopy(predicate), 'proof': proof})
+            'canonical_binding': deepcopy(predicate), 'proof': proof}
+        compiled = step.setdefault('requested_scope_compilation', [])
+        if not any(record.get('version') == audit['version']
+                   and record.get('graph_release') == audit['graph_release']
+                   and record.get('schema_digest') == audit['schema_digest']
+                   and record.get('raw_question') == audit['raw_question']
+                   and record.get('canonical_binding') == audit['canonical_binding']
+                   and record.get('proof') == audit['proof']
+                   for record in compiled):
+            compiled.append(audit)
         return None
 
     sources, issue = _pathway_sources(question, grounding)
@@ -444,14 +453,93 @@ def compile_requested_scope(question, grounding, plan):
 
     from .planning_scope import _mentions, _direct_tissue, _shared_qtl_tissue
     words, mentions, _ = _mentions(question, grounding)
-    tissues = [(candidate, spans) for _, candidate, _, spans in mentions
+    # A uniquely grounded disease applies to every compatible requested check,
+    # unless the user explicitly gives that evidence role unrestricted scope.
+    # Donor stage/diagnosis paths are deliberately excluded.
+    from .planning_scope import _compatible, _explicit_unrestricted_disease, _identity_present
+    diseases = {candidate['id']:(mention, candidate, forms)
+                for mention, candidate, forms, _ in mentions
+                if candidate['entity_type'] == 'disease'}
+    if len(diseases) == 1:
+        mention, candidate, forms = next(iter(diseases.values()))
+        for step in result.get('steps', []):
+            relations = step.get('relation_types', [])
+            if (not any(_compatible('disease', r) for r in relations)
+                    or set(relations) & {'HAS_DONOR','HAS_SAMPLE'}
+                    or _explicit_unrestricted_disease(question, step)):
+                continue
+            existing = [c for c in step.get('constraints', []) if c.get('entity_type') == 'disease']
+            if existing:
+                if not _identity_present(step, candidate, forms):
+                    return result, 'conflicting_requested_scope:disease'
+            predicate = {'property':'id', 'entity_type':'disease', 'owner_kind':'node',
+                         'operator':'=', 'value':candidate['id']}
+            issue = bind(step, predicate, existing, {
+                'kind': 'explicit_unique_disease',
+                'resolved_disease': deepcopy(candidate),
+                'requested_terms': [mention['requested']],
+            })
+            if issue:
+                return result, issue
+
+    # Preserve a positive, grounding-backed authorization for ontology-domain
+    # aliases (for example "biological-process" -> biological_process).  The
+    # downstream execution gate has no access to the transient grounding
+    # index, so it accepts only this exact current-version compile record.
+    domain_terms = {}
+    recorded_domains = set(grounding.get('schema', {}).get('categories', {}).get(
+        'GO_term.go_domain', []))
+    for mention in grounding.get('mentions', []):
+        role = mention.get('context_role') or {}
+        binding = role.get('canonical_binding') or {}
+        value = binding.get('value')
+        if (role.get('kind') == 'ontology_domain'
+                and role.get('resolution_state') == 'resolved'
+                and binding.get('entity_type') == 'GO_term'
+                and binding.get('property') == 'go_domain'
+                and value in recorded_domains
+                and isinstance(mention.get('requested'), str)):
+            domain_terms.setdefault(value, set()).add(mention['requested'])
+    domains = set(domain_terms)
+    if domains and _domain_issue(question, grounding, result, domains, None) is None:
+        for step in result.get('steps', []):
+            if 'ASSOCIATED_WITH_GO' not in step.get('relation_types', []):
+                continue
+            for constraint in step.get('constraints', []):
+                if (constraint.get('entity_type') != 'GO_term'
+                        or constraint.get('property') != 'go_domain'
+                        or str(constraint.get('operator', '=')).upper() not in {'=', 'IN'}):
+                    continue
+                values = _values(constraint)
+                if not values or not set(values) <= domains:
+                    continue
+                audit = {
+                    'version': VERSION, 'graph_release': REGISTRY['release'],
+                    'schema_digest': SCHEMA_DIGEST, 'raw_question': question,
+                    'original_predicates': [deepcopy(constraint)],
+                    'canonical_binding': deepcopy(constraint),
+                    'proof': {
+                        'kind': 'explicit_grounded_go_domain',
+                        'recorded_values': list(values),
+                        'requested_terms': sorted({term for value in values
+                                                   for term in domain_terms[value]}),
+                    },
+                }
+                compiled = step.setdefault('requested_scope_compilation', [])
+                if not any(existing.get('canonical_binding') == constraint
+                           and (existing.get('proof') or {}).get('kind')
+                           == 'explicit_grounded_go_domain'
+                           for existing in compiled):
+                    compiled.append(audit)
+    tissues = [(mention, candidate, spans) for mention, candidate, _, spans in mentions
                if candidate['entity_type'] == 'anatomical_structure' and _direct_tissue(words, spans)]
-    unique = {candidate['id']: (candidate, spans) for candidate, spans in tissues}
+    unique = {candidate['id']: (mention, candidate, spans)
+              for mention, candidate, spans in tissues}
     gene_starts = [start for _, c, _, spans in mentions if c['entity_type'] == 'Gene' for start, _ in spans]
     gene_ids = {c['id'] for _, c, _, _ in mentions if c['entity_type'] == 'Gene'}
     if len(unique) != 1 or not gene_ids or not re.search(r'\b(?:e|s|exon)?qtls?\b', question, re.I):
         return result, None
-    candidate, spans = next(iter(unique.values()))
+    mention, candidate, spans = next(iter(unique.values()))
     if (candidate['id'] not in REGISTRY['categories'].get('PART_OF_QTL_SIGNAL.tissue_id', [])
             or len(gene_ids) > 1 and not _shared_qtl_tissue(words, spans, gene_starts)
             or re.search(r'\b(?:not|except|excluding|without|other than)\b', question, re.I)):
@@ -466,7 +554,12 @@ def compile_requested_scope(question, grounding, plan):
                     or (c.get('entity_type') == 'anatomical_structure' and c.get('property') in {'id', 'name'})]
         predicate = {'property': 'tissue_id', 'entity_type': None, 'relationship_type': 'PART_OF_QTL_SIGNAL',
                      'owner_kind': 'relationship', 'operator': '=', 'value': candidate['id']}
-        issue = bind(step, predicate, existing, {'kind': 'explicit_unique_qtl_tissue', 'resolved_tissue': deepcopy(candidate)})
+        issue = bind(step, predicate, existing, {
+            'kind': 'explicit_unique_qtl_tissue',
+            'resolved_tissue': deepcopy(candidate),
+            'requested_terms': [mention['requested']],
+        })
         if issue:
             return result, issue
+
     return result, None

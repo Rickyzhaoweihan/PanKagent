@@ -35,7 +35,10 @@ async def emit(*args):
 
 
 def source(prop='id', value='UBERON_0001264', kinds=None):
-    return {'id': 's1', 'question': 'Show GCLC QTL in pancreas', 'complete': True,
+    question = 'Show GCLC QTL in pancreas with pip >= 0.1'
+    return {'id': 's1', 'question': question,
+            'semantic_request': {'source': 'user_request', 'question': question},
+            'complete': True,
             'relation_types': kinds or ['PART_OF_QTL_SIGNAL'],
             'constraints': [
                 {'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'ENSG00000001084'},
@@ -119,6 +122,8 @@ def test_wrong_release_disables_tissue_remapping():
 def test_generic_tissue_category_and_duplicate_gene_identity_compile_without_inference(value, expected):
     async def check():
         raw = source()
+        raw['question'] = f'Show GCLC QTL in {value}'
+        raw['semantic_request']['question'] = raw['question']
         raw['constraints'] = [
             {'entity_type': 'Gene', 'property': 'name', 'operator': '=', 'value': 'GCLC'},
             {'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'ENSG00000001084'},
@@ -150,10 +155,35 @@ def test_generic_tissue_category_and_duplicate_gene_identity_compile_without_inf
     asyncio.run(check())
 
 
+def test_grounded_generic_islet_category_retains_plural_request_authority():
+    async def check():
+        raw = source()
+        raw['question'] = 'Show GCLC QTL in islets'
+        raw['semantic_request']['question'] = raw['question']
+        raw['constraints'] = [
+            {'entity_type': 'Gene', 'property': 'name', 'operator': '=', 'value': 'GCLC'},
+            {'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'ENSG00000001084'},
+            {'entity_type': None, 'property': 'tissue', 'operator': '=', 'value': 'ISLET'},
+        ]
+        prepared = await ResolvedGraph()._prepare_step(raw, emit)
+        assert prepared['entity_resolution']['state'] == 'resolved'
+        assert prepared['semantic_issues'] == []
+        assert prepared['constraints'][-1] == {
+            'entity_type': None, 'property': 'tissue_name', 'operator': '=',
+            'value': 'Islet', 'owner_kind': 'relationship',
+            'relationship_type': 'PART_OF_QTL_SIGNAL'}
+        assert prepared['request_filter_bindings'][-1]['authorization_kind'] == (
+            'verified_request_qtl_tissue_category')
+        assert compile_query(prepared) is not None
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize('value', ['pancreatic organ', 'other', 'Pancreas or Islet'])
 def test_unverified_generic_tissue_never_substitutes_recorded_category(value):
     async def check():
         raw = source()
+        raw['question'] = f'Show GCLC QTL in {value}'
+        raw['semantic_request']['question'] = raw['question']
         raw['constraints'] = [{'entity_type': None, 'property': 'tissue', 'operator': '=', 'value': value}]
         prepared = await ResolvedGraph()._prepare_step(raw, emit)
         assert prepared['constraints'] == raw['constraints']

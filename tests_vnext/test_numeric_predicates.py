@@ -118,10 +118,13 @@ def test_grouping_does_not_approve_changed_numeric_or_boolean_meaning(predicate)
     assert validate_cypher(query,step())
 
 
-def test_live_donor_cohort_shape_preserves_both_typed_filters():
-    query=("MATCH (disease:disease)-[r:HAS_DONOR]->(donor:donor) WHERE donor.gender = 'Female' AND ("
-           +expression('donor')+") < 100.0 WITH DISTINCT disease,r,donor "
-           "ORDER BY disease.id,donor.id WITH collect(DISTINCT disease)+collect(DISTINCT donor) AS nodes, "
-           "collect(DISTINCT r) AS edges RETURN nodes,edges")
+def test_donor_only_filter_rejects_unrequested_disease_membership_join():
+    joined=("MATCH (disease:disease)-[r:HAS_DONOR]->(donor:donor) WHERE donor.gender = 'Female' AND ("
+            +expression('donor')+") < 100.0 WITH DISTINCT disease,r,donor "
+            "ORDER BY disease.id,donor.id WITH collect(DISTINCT disease)+collect(DISTINCT donor) AS nodes, "
+            "collect(DISTINCT r) AS edges RETURN nodes,edges")
     current=step();current['constraints'].append({'entity_type':'donor','property':'gender','operator':'=','value':'Female'})
-    assert validate_cypher(query,current)==[]
+    assert 'unrequested_mandatory_relation:HAS_DONOR' in validate_cypher(joined,current)
+    direct=("MATCH (donor:donor) WHERE donor.gender = 'Female' AND ("
+            +expression('donor')+") < 100.0 RETURN donor")
+    assert validate_cypher(direct,current)==[]

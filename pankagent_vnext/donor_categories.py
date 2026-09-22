@@ -7,9 +7,10 @@ import hashlib
 import json
 from pathlib import Path
 
-VERSION = 'donor-categorical-case-v1'
+VERSION = 'donor-categorical-runtime-v2'
 CATEGORICAL_FIELDS = ('gender', 'sex_at_birth', 'race', 'donation_type',
-                      'aab_state', 'hla_status')
+                      'aab_state', 'hla_status', 'diabetes_type',
+                      'derived_diabetes_status', 'data_source')
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
@@ -51,12 +52,15 @@ def resolve_categories(constraints, vocabulary, properties, release):
             if len(candidates) != 1:
                 break
             mapped.append(candidates[0])
-        if len(mapped) != len(wanted) or mapped == wanted:
+        if len(mapped) != len(wanted):
             continue
         original = deepcopy(c)
         c['value'] = (json.dumps(mapped) if isinstance(raw, str) else mapped) if is_list else mapped[0]
         matches.append({'requested': original, 'canonical_binding': deepcopy(c),
-                        'match_kind': 'verified_case_alias', 'registry_version': VERSION,
-                        'source': 'complete distinct donor categorical inventory',
-                        'graph_release': release})
+                        'match_kind': ('verified_runtime_exact_category' if mapped == wanted
+                                       else 'verified_runtime_case_category'),
+                        'registry_version': VERSION,
+                        'source': 'current complete distinct donor categorical inventory',
+                        'graph_release': release,
+                        'inventory_sha256': vocabulary.get('inventory_sha256')})
     return result, matches

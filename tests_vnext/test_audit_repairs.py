@@ -125,15 +125,55 @@ def test_release_go_domain_mapping_preserves_filter_and_owner():
 def test_t1d_context_maps_to_required_relation_without_dropping_other_diseases():
     from pankagent_vnext.plan_constraints import repair_step_constraints
     from pankagent_vnext.graph import validate_cypher
-    original={'question':'T1D differential expression', 'relation_types':['T1D_DEG_IN'], 'constraints':[{'property':'id','entity_type':'disease','operator':'=','value':'MONDO_0005147'}]}
-    step=repair_step_constraints(original)
+    from pankagent_vnext.planning_compile import compile_property_owners
+    current_t1d = 'CURRENT_RELEASE_T1D'
+    grounding = {'status':'ready', 'identity':{'graph_release':'PanKgraph_08_04'},
+        'catalog_complete':True, 'mentions':[{'requested':'T1D', 'state':'resolved',
+            'candidates':[{'entity_type':'disease', 'id':current_t1d,
+                           'name':'type 1 diabetes'}]}]}
+    original={'id':'s1', 'question':'T1D differential expression',
+        'relation_types':['T1D_DEG_IN'], 'constraints':[
+            {'property':'id','entity_type':'disease','operator':'=','value':current_t1d}]}
+    compiled, issue = compile_property_owners(
+        {'steps':[original]}, grounding, question=original['question'])
+    assert issue is None
+    step=repair_step_constraints(compiled['steps'][0])
     assert step['constraints'] == []
-    assert step['schema_bindings'][0]['from'] == original['constraints'][0]
+    assert step['constraint_compilation'][0]['requested'] == original['constraints'][0]
+    assert step['schema_bindings'][0]['from'] == {
+        **original['constraints'][0], 'owner_kind':'node'}
     assert 'missing_required_relation:T1D_DEG_IN' in validate_cypher('MATCH (g:Gene) RETURN g',step)
     assert 'measurement_endpoint_schema_mismatch' in validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(d:disease) RETURN g,r,d',step)
     assert validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(c:anatomical_structure) RETURN g,r,c',step) == []
-    original['constraints'][0]['value']='MONDO_0005148'
-    assert repair_step_constraints(original)['constraints'] == original['constraints']
+    other = {**original, 'question':'T2D differential expression', 'constraints':[
+        {**original['constraints'][0], 'value':'CURRENT_RELEASE_T2D'}]}
+    other_grounding = {**grounding, 'mentions':[{'requested':'T2D', 'state':'resolved',
+        'candidates':[{'entity_type':'disease', 'id':'CURRENT_RELEASE_T2D',
+                       'name':'type 2 diabetes'}]}]}
+    compiled, issue = compile_property_owners(
+        {'steps':[other]}, other_grounding, question=other['question'])
+    assert issue is None
+    assert repair_step_constraints(compiled['steps'][0])['constraints'] == compiled['steps'][0]['constraints']
+
+
+def test_explicit_t1d_disease_node_request_is_not_erased_as_relation_context():
+    from pankagent_vnext.planning_compile import compile_property_owners
+    current_t1d = 'CURRENT_RELEASE_T1D'
+    question = ('For T1D_DEG_IN, return the T1D disease node with disease id '
+                + current_t1d + '.')
+    grounding = {'status': 'ready',
+        'identity': {'graph_release': 'PanKgraph_08_04'},
+        'catalog_complete': True,
+        'mentions': [{'requested': 'T1D', 'state': 'resolved',
+            'candidates': [{'entity_type': 'disease', 'id': current_t1d,
+                            'name': 'type 1 diabetes'}]}]}
+    plan = {'steps': [{'id': 's1', 'question': question,
+        'relation_types': ['T1D_DEG_IN'], 'constraints': [
+            {'property': 'id', 'entity_type': 'disease',
+             'operator': '=', 'value': current_t1d}]}]}
+    compiled, issue = compile_property_owners(plan, grounding, question=question)
+    assert issue == 'invalid_constraint_endpoint:s1:disease'
+    assert compiled['steps'][0]['constraints'] == plan['steps'][0]['constraints']
 
 
 def test_measurement_endpoint_check_allows_undirected_gene_cell_match():

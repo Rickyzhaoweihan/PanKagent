@@ -566,7 +566,10 @@ class ResourceManager:
             credible = props.get("credible_set") or props.get("credibleset") or props.get("credible_set_id")
             if not source or not credible:
                 groups.append({"status": "unavailable", "error_category": "source_or_credible_set_unmapped",
-                    "data_source": props.get("data_source"), "credible_set": credible})
+                    "data_source": props.get("data_source"), "credible_set": credible,
+                    "unavailable_reason": "source_not_registered" if not source else "credible_set_missing",
+                    "mapping_verification": "unavailable",
+                    "message": "No verified source-to-object mapping is available; no bucket path was guessed." if not source else "The record does not supply a credible-set object identifier."})
                 continue
             if ("GWAS" in edge_type) != (source.kind == "GWAS"):
                 groups.append({"status": "unavailable", "error_category": "source_relation_mismatch"})

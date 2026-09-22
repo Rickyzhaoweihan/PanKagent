@@ -21,13 +21,14 @@ def test_verified_case_binding_preserves_original_and_owner():
     assert matches[0]['requested']['entity_type'] is None
     assert matches[-1]['requested']['value']=='female'
     assert matches[-1]['canonical_binding']['value']=='Female'
+    assert matches[-1]['match_kind']=='verified_runtime_case_category'
 
 @pytest.mark.parametrize('c', [constraint('Female','disease'), constraint('F'),
     constraint('female','donor','sex_at_birth'), constraint('femle'), constraint('female',op='CONTAINS')])
 def test_no_wrong_owner_cross_field_fuzzy_or_operator_substitution(c):
     resolved, matches=normalize(c)
     assert resolved[0]['value']==c['value']
-    assert not any(m['match_kind']=='verified_case_alias' for m in matches)
+    assert not any(m['match_kind']=='verified_runtime_case_category' for m in matches)
 
 @pytest.mark.parametrize('values', [['Female','FEMALE'], [None], 'Female'])
 def test_ambiguous_or_invalid_inventory_is_not_an_alias(values):

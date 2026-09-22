@@ -33,7 +33,7 @@ from .resource_registry import REGISTRY_VERSION
 from .resources import ResourceManager, ResourceError
 from .store import ResultStore
 
-RESULT_VERSION = "results-2-audit-repair"
+RESULT_VERSION = "results-3-audit-repair"
 
 
 class PrefixMiddleware:
@@ -183,10 +183,13 @@ class ResultsRuntime:
         started = time.monotonic()
         try:
             if evidence.get("functional_filters"):
-                raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", {**evidence["functional_filters"], "result_page":"Yes"})
+                if (evidence.get('output_scope') or {}).get('mode') == 'aggregate_only':
+                    raw = await asyncio.to_thread(functional.aggregate_plot, evidence)
+                else:
+                    raw, media = await functional.fetch(self.http, "api/charts/cohort-traces.png", {**evidence["functional_filters"], "result_page":"Yes"})
                 self.check_owner()
                 if not raw.startswith(b"\x89PNG\r\n\x1a\n"): raise ValueError("invalid_functional_plot")
-                asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps({**evidence["functional_filters"], "result_page":"Yes", "adapter_version":functional.VERSION},sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
+                asset = await asyncio.to_thread(self.resources._save_asset, raw, kind="functional_trace", identity=json.dumps({**evidence["functional_filters"], "result_page":"Yes", "adapter_version":functional.VERSION, "aggregate_only":(evidence.get("output_scope") or {}).get("mode")=="aggregate_only"},sort_keys=True), media_type="image/png", download_name="functional-cohort-traces.png", extra={"source":functional.BASE,"filters":evidence["functional_filters"],"adapter_version":functional.VERSION})
                 resources = {"status":"available", "resources_tabs":{"empirical_evidence":{"title":"Selected cohort functional response", "description":"Recorded hormone-response measurements for the selected filters.","status":"available","image_url":asset["url"],"download_url":asset["url"],"link":asset["url"],"link_text":"Download plot","legend":"View"}}}
             else:
                 resources = await asyncio.wait_for(self.resources.resolve(evidence), 30)
@@ -223,7 +226,7 @@ class ResultsRuntime:
             question = source["question"] + ("\nEvidence scope: " + evidence["scope_note"] if evidence.get("scope_note") else "")
             steps = {step.get("step_id", str(index)): step for index, step in enumerate(evidence.get("steps", []), 1)}
             async with asyncio.timeout(25):
-                prepared = None
+                prepared = self.gateway.prepare_answer(question, steps) if hasattr(self.gateway, "prepare_answer") else None
                 if source.get("template_id") == "functional_traces":
                     prepared = self.gateway.prepare_answer(question, steps)
                     from dataclasses import replace
@@ -232,7 +235,6 @@ class ResultsRuntime:
                     prepared.system.append({"type":"text", "text":"Interpret only the supplied functional measurements. Do not infer individual donor variability from cohort means. Verified functional context: " + json.dumps([step.get("functional_metadata",{}) for step in steps.values()]) + ". Apply these measurement definitions: " + json.dumps({k:rules[k] for k in ("core_rules","global_terms")})})
                 async for chunk in self.gateway.synthesize(question, steps, **({"prepared":prepared} if prepared else {})):
                     text += citations.feed(chunk)
-                    await self.update(rid, answer=text)
             text += citations.feed("", final=True)
             if not text.strip():
                 raise ValueError("empty_answer")
@@ -241,8 +243,9 @@ class ResultsRuntime:
                 supplied = [f"[G{index}]" for index, step in enumerate(steps.values(), 1) if any(step.get(kind) for kind in ("nodes", "edges", "rows"))]
                 if supplied:
                     text += "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
-            await self.update(rid, answer=text, component_status={"answer": "partial" if citations.invalid else "available"},
-                answer_validation={"valid": not citations.invalid, "scope": "reference_ids_only", "evidence_references": sorted(citations.seen), "invalid_references_removed": citations.invalid, "application_fallback": fallback})
+            validation = (getattr(prepared, 'generation', {}) or {}).get('answer_validation') or {"valid": not citations.invalid, "scope": "reference_ids_only", "application_fallback": fallback}
+            await self.update(rid, answer=text, component_status={"answer": "partial" if citations.invalid or not validation['valid'] else "available"},
+                answer_validation={**validation, "evidence_references": sorted(citations.seen), "invalid_references_removed": citations.invalid})
             self.health.record("synthesis", "healthy", time.monotonic() - started)
             self.health.count("synthesis_completed")
         except Exception as exc:

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundle_version": "1.9.3",
+  "bundle_version": "1.10.1",
   "source": {
     "repository": "https://github.com/RingoMao/PanKagent-BIM-skills",
     "commit": "40cb7f5b08a2082a4f67ae7198591d92fa0c175d",
@@ -13,13 +13,13 @@
   },
   "sha256": {
     "upstream/schema_skill.json": "f5e817a481c45cd2f59f9a8634a26cbea03e4caee24f8fcaa8d2c951dbe37ac3",
-    "bim/schema_skill.json": "441e25871cdf9f89015bf1eb04a674b162bd33632db015badf1e85a585c64bb6",
+    "bim/schema_skill.json": "58562ab3855f796ef678e3f679ca8b49fff3948a8ae78a6e6250260beee14c88",
     "upstream/functional_data_interpretation_skill.json": "d5abc065f9990bcb07be5c189c84d54167195f2d72abe18adb96d99d84218b80",
     "bim/functional_data_interpretation_skill.json": "163a5e1a1146ab5384a324a1d3b4daa52a23636343411fcba30de6eb99dd2591",
     "upstream/general_interpretation.json": "04cbefac55095f2fa652c8ce2c0ad2ee89b09400268bdab81277eb3c32c92668",
     "bim/general_interpretation.json": "717738584e7ab1cfef0538c7553ef0209b609dcf84514ce12feab5885c0fb6e1",
     "bim/evidence_glossary.json": "5587f2e9dbb64bb312540d07da583cd5b6585a00ea4b2aede0f0e1bbed406211",
-    "bim/common_caveats.md": "d1371be9e1d8541691a89c47d1a6deec46448cb78c3688c0d7fac046c9994b6e",
+    "bim/common_caveats.md": "650a23be2f20d83937837d67cdd44bccfe4425bb2bb3dd6da980d0269cef16c9",
     "bim/oversized_results.md": "ab94b8e58e0a157cf07e350c0ec649d5417fc69369f1072d3c45795106f0393f",
     "bim/independent_results.md": "fd991531da8f2707b278ee8aa02afb89be506b9ad9f3f74262e192904351c351"
   },
@@ -735,7 +735,15 @@
     ],
     "sources": [
       "https://geneontology.org/docs/guide-go-evidence-codes/"
-    ]
+    ],
+    "verified_factual_blocks": {
+      "version": "1.10.0",
+      "reason": "Validate canonical factual blocks before display; preserve assay/entity/counting roles; no unrecorded hormone, cognate-cell, artifact or threshold assurances."
+    },
+    "readability": {
+      "version": "1.10.1",
+      "reason": "Plain-language uncertainty, readable field labels and citation-preserving deduplication; no change to evidence or provider."
+    }
   },
   "oversized_result_contract": {
     "path": "bim/oversized_results.md",

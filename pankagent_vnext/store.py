@@ -306,16 +306,31 @@ class Store:
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def latest_answered_run(self, session_id):
+        with self.lock:
+            row = self.db.execute("SELECT run_id FROM runs WHERE session_id=? AND status IN ('completed','partial') ORDER BY created_epoch DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
+        return self.get(row[0]) if row else None
+
     def history(self, session_id: str, limit: int = 3) -> list[dict]:
         with self.lock:
             rows = self.db.execute(
-                "SELECT question,graph_answer FROM runs WHERE session_id=? AND graph_answer IS NOT NULL "
+                "SELECT question,graph_answer,literature FROM runs WHERE session_id=? AND (graph_answer IS NOT NULL OR literature IS NOT NULL) "
                 "AND status IN ('completed','partial') ORDER BY created_epoch DESC LIMIT ?",
                 (session_id, limit),
             ).fetchall()
         result = []
         for row in reversed(rows):
-            result.extend([{"role": "user", "content": row[0]}, {"role": "assistant", "content": row[1][:12000]}])
+            answer = row[1] or ''
+            references = []
+            literature = json.loads(row[2]) if row[2] else {}
+            for perspective in literature.get('perspectives', []):
+                if isinstance(perspective, dict) and isinstance(perspective.get('answer'), str):
+                    answer += '\n\nLiterature (' + str(perspective.get('status', 'unknown')) + '): ' + perspective['answer']
+                    refs = perspective.get('references') or []
+                    references.extend(refs)
+                    answer += '\nReferences: ' + json.dumps(refs, ensure_ascii=False)
+            if answer.strip():
+                result.extend([{"role": "user", "content": row[0]}, {"role": "assistant", "content": answer[:30000], **({"references":references[:30]} if references else {})}])
         return result
 
     def interrupt_active(self, started_graph_checks=None, *, recovery=False) -> list[str]:

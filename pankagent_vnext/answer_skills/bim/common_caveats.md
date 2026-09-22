@@ -1,4 +1,4 @@
-# Common caveats — version 2
+# Common caveats — version 4
 
 Write for a biologist who does not know the database schema. Choose zero to two relevant caveats below; do not force a caveat when it adds no useful information. Adapt placeholders only from verified metadata. Never hide an actual retrieval failure, unresolved constraint or material scientific limitation just because it is absent from this list.
 
@@ -37,3 +37,9 @@ A complete zero-match search is a useful database answer, not an execution failu
 Recorded colocalization is primary evidence. Use coloc_linkage and its supporting references to identify exact GWAS/QTL signal matches. Shared gene or disease membership alone does not establish a match. Distinguish a requested variant recorded as a non-lead credible-set member from a lead variant of another signal. An empty separate QTL/GWAS lookup does not remove a recorded colocalization finding. Report unsupported linkage as not verified, not as proof that colocalization is absent. Repeated metadata for the same colocalization records is not independent evidence.
 
 Full-result interpretation: use computed record totals and distributions, not selected examples, to describe coverage. Do not add speculative technical artifacts (ambient RNA, dropout, doublets or aggregation) unless requested or explicitly reported by the source. Different GWAS and QTL lead variants do not invalidate recorded colocalization, and colocalization does not imply the lead variants are identical.
+
+Only schema-validated fact selections are displayed. Recorded source classifications are labels, not proof of causality. Skipped dependency checks did not execute a search. Context omission cannot establish missing interaction or measurement evidence. Invalid selections use a deterministic partial evidence summary without a model judge.
+
+## Readability without changing evidence
+
+Lead uncertainty questions with “The available evidence cannot establish…” when the result is inconclusive; do not open with “No” if that could be read as a negative biological finding. State a relevant limitation once, in plain language, and retain its citations. Use readable assay/measurement labels rather than raw relationship or property names. Keep exact values, units, source labels, mean/median distinctions and execution scope. A complete database query does not establish complete experimental coverage. Do not invent detection thresholds or tested-negative populations. Keep detailed provenance in the evidence instead of repeating the same caveat in the overview, table and interpretation.

@@ -50,8 +50,8 @@ class AnswerRouterTests(unittest.TestCase):
              edge("GENE_ENRICHED_IN", condition="ND", padj=0.02)],
         )])
         self.assertTrue({"edge.t1d_deg_in", "edge.gene_detected_in", "edge.gene_enriched_in"} <= selected(result))
-        for caveat in ("RNA differential expression", "pseudobulk scRNA-seq detection",
-                       "ND-only one-vs-rest enrichment", "ambient RNA", "Avoid absolute absence"):
+        for caveat in ("RNA differential expression", "recorded RNA detection",
+                       "recorded cell-type enrichment", "thresholds only when present", "Do not assure absence of contamination"):
             self.assertIn(caveat, result.guidance)
         self.assertFalse(any(rule.startswith("composite.rna_atac") for rule in selected(result)))
         self.assertNotIn("clinical.recorded_t1d_stage", selected(result))
@@ -116,7 +116,7 @@ class AnswerRouterTests(unittest.TestCase):
         rules = {rule["id"]: rule for rule in result.profile["selected_rules"]}
         self.assertIn("composite.rna_atac.activity", rules)
         self.assertEqual(rules["composite.rna_atac.peak"]["shared_guidance_with"], "composite.rna_atac.activity")
-        self.assertEqual(result.guidance.count("Discordant RNA and ATAC signals are not contradictions by themselves."), 1)
+        self.assertEqual(result.guidance.count("Cross-assay directions need not agree and do not establish regulatory causality."), 1)
         self.assertIn("not RNA expression and not direct transcription rate", result.guidance)
         self.assertIn("not proof that the linked region regulates a specific gene", result.guidance)
         for kinds in (["GENE_ACTIVITY_SCORE_IN", "OCR_PEAK_IN"], ["GENE_DETECTED_IN", "T1D_DEG_IN"]):
@@ -403,8 +403,8 @@ class CommonCaveatContractTests(unittest.TestCase):
         source=Path(__file__).resolve().parents[1]/"pankagent_vnext/answer_skills"
         schema=json.loads((source/"bim/schema_skill.json").read_text())
         guidance=schema["edge_skill"]["gene_enriched_in"]
-        self.assertIn("remaining cell types in the source analysis",guidance)
-        self.assertIn("irrespective of which records the query returns",guidance)
+        self.assertIn("source population",guidance)
+        self.assertIn("irrespective of the query subset",guidance)
 
     def test_matched_population_and_missing_rank_contrast_guidance_is_routed(self):
         router = AnswerSkillRouter()

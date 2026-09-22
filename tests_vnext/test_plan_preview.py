@@ -135,22 +135,23 @@ def test_preview_precedes_confirmation_and_reuses_validated_results(tmp_path):
     asyncio.run(scenario())
 
 
-def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_path):
+@pytest.mark.parametrize("question", ["Which cell types express INS?", "Which cell types express INS in PanKgraph? Include HIRN literature."])
+def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_path, question):
     async def scenario():
         graph = PreviewGraph()
         async with service(tmp_path, graph=graph, gateway=BiologicalGateway(plan={**PLAN, "literature": True})) as (client, runtime, gateway, graph, literature):
-            initial = await new_plan(client, "Which cell types express INS?")
+            initial = await new_plan(client, question)
             parent = (await client.get(initial["plan_url"])).json()
             response = await client.post(f'/v2/plans/{parent["plan_id"]}/revise', json={
                 "question": "Disable literature", "revision_instruction": "Disable literature", "revision_mode": "instruction"})
             revised = await wait_state(client, response.json()["run_id"], {"awaiting_confirmation"})
             assert revised["plan"]["steps"] == parent["plan"]["steps"]
-            assert revised["plan"]["literature"] is True
+            assert revised["plan"]["literature"] is False
             assert graph.calls == 1
             assert runtime.metrics.counts["revision_preview_reused"] == 1
             await client.post(f'/v2/plans/{revised["plan_id"]}/confirm', json={})
             done = await wait_state(client, revised["run_id"], {"completed", "partial"})
-            assert graph.calls == 1 and literature.calls == 1
+            assert graph.calls == 1 and literature.calls == 0
             assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s1"]
     asyncio.run(scenario())
 

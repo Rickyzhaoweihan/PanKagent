@@ -175,7 +175,7 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
     asyncio.run(scenario())
 
 
-def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path):
+def test_literature_explicit_optout_without_changing_graph_scope(tmp_path):
     async def scenario():
         question = "Is KRT19 selectively expressed in ductal cells? Use graph evidence only."
         plan = json.loads(json.dumps(PLAN))
@@ -184,11 +184,11 @@ def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path)
         async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
             created = await new_plan(client, question)
             saved = runtime.store.get(created["run_id"])
-            assert saved["plan"]["literature"] is True
-            assert saved["plan"]["literature_intent"]["reason"] == "always_enabled"
+            assert saved["plan"]["literature"] is False
+            assert saved["plan"]["literature_intent"]["reason"] == "explicit_opt_out"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             completed = await wait_state(client, created["run_id"], {"completed"})
-            assert completed["literature"]["status"] == "complete" and literature.calls == 1
+            assert literature.calls == 0
             assert gateway.plans == gateway.syntheses == graph.calls == 1
     asyncio.run(scenario())
 
@@ -214,7 +214,9 @@ def test_confirmation_replay_and_followup_are_idempotent(tmp_path):
             assert graph.calls == gateway.syntheses == gateway.plans == 1
             followup = await new_plan(client, "What about GCG?", session_id=created["session_id"])
             assert followup["run_id"] != created["run_id"]
-            assert gateway.histories[-1] == [{"role": "user", "content": "Which cell types express INS?"}, {"role": "assistant", "content": run["graph_answer"]}]
+            assert gateway.histories[-1][0] == {"role":"user", "content":"Which cell types express INS?"}
+            assert gateway.histories[-1][1]["content"].startswith(run["graph_answer"])
+            assert "A supported mechanism" in gateway.histories[-1][1]["content"]
     asyncio.run(scenario())
 
 
@@ -232,6 +234,42 @@ def test_graph_answer_precedes_early_literature_and_heartbeats(tmp_path):
             assert any(event["type"] == "heartbeat" for event in events)
             assert not any("percent" in json.dumps(event) for event in events)
             assert run["literature"]["perspectives"][0]["references"][0]["pmid"] == "123"
+    asyncio.run(scenario())
+
+
+def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tmp_path):
+    async def scenario():
+        async with service(tmp_path) as (client, runtime, *_):
+            run = runtime.store.create('List donor IDs.')
+            run_id = run['run_id']
+            runtime.store.update(run_id, plan={'steps': [
+                {'id': 's1', 'question': 'List donor IDs.', 'constraints': []}]})
+            raw = {'nodes': [{'id': 'HPAP-041', 'labels': ['donor'], 'properties': {
+                'diabetes_type': 'PRIVATE_TYPE',
+                'derived_diabetes_status': 'PRIVATE_STATUS',
+                't1d_stage': 'PRIVATE_STAGE',
+                'data_source': 'PRIVATE_SOURCE'}}],
+                'donor_summary': {'rows': [{'donor_id': 'HPAP-041',
+                                            'recorded_stage': 'PRIVATE_STAGE'}]},
+                'aggregate_cohort_facts': {
+                    'recorded_stage_counts': {'PRIVATE_STAGE': 1}}}
+
+            # Live emission is sanitized before durable storage.
+            await runtime.emit(run_id, 'graph_step', raw)
+            stored = runtime.store.events_after(run_id, 0)[0]
+            assert 'HPAP-041' in json.dumps(stored)
+            assert not any(sentinel in json.dumps(stored) for sentinel in (
+                'PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'))
+
+            # A historical/raw stored event is also sanitized during replay.
+            legacy = runtime.store.event(run_id, 'preview_step', raw)
+            assert 'PRIVATE_STAGE' in json.dumps(legacy)
+            runtime.store.update(run_id, status='completed', stage='completed')
+            response = await client.get(f'/v2/runs/{run_id}/events')
+            assert response.status_code == 200
+            assert 'HPAP-041' in response.text
+            for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
+                assert sentinel not in response.text
     asyncio.run(scenario())
 
 

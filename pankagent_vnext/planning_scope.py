@@ -15,7 +15,7 @@ from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .semantic_registry import ALIASES as ASSAY_ALIASES
 from .genomic_scope import region_scope_issue, DIGEST as GENOMIC_SCOPE_DIGEST
 
-VERSION = 'grounded-requested-scope-v6'
+VERSION = 'grounded-requested-scope-v7-locus-context'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 _GENETIC = {'SIGNAL_COLOC_WITH', 'PART_OF_QTL_SIGNAL', 'PART_OF_GWAS_SIGNAL'}
 _TISSUE_PATHS = {'PART_OF_QTL_SIGNAL', 'HAS_SAMPLE'}
@@ -83,7 +83,9 @@ def _mentions(question, grounding):
         if mention.get('state') != 'resolved' or mention.get('identity_complete') is False or len(candidates) != 1:
             continue
         candidate = candidates[0]
-        if candidate.get('entity_type') not in {'Gene', 'variants', 'disease', 'anatomical_structure'} or not candidate.get('id'):
+        if candidate.get('entity_type') not in {
+                'Gene', 'variants', 'disease', 'anatomical_structure',
+                'GO_term', 'kegg', 'reactome'} or not candidate.get('id'):
             continue
         requested = phrase_tokens(mention.get('requested', ''))
         if not requested:
@@ -258,7 +260,8 @@ def _assay_scope_issue(question, grounding, plan):
             exact_assays.add(assay)
     exact = bool(exact_assays - excluded)
     allowed = positive - excluded
-    if not excluded and not (exact and allowed):
+    coverage_required = len(allowed) > 1
+    if not excluded and not (exact and allowed) and not coverage_required:
         return None
     interpreted = str(plan.get('interpreted_question', ''))
     donor_exclusion = r'\bexclud(?:e|ing)\s+donors?\s+(?:who|whose|with|having)\b'
@@ -271,6 +274,7 @@ def _assay_scope_issue(question, grounding, plan):
         return ('changed_requested_scope:assay_exclusion_is_not_donor_exclusion: '
                 'Exclude the named assay records, not donors who also have other assays. '
                 'Keep the original donor and tissue filters; do not add a positive excluded-assay check.')
+    covered_positive = set()
     for step in plan.get('steps', []):
         if not isinstance(step, dict) or 'HAS_SAMPLE' not in step.get('relation_types', []):
             continue
@@ -285,6 +289,9 @@ def _assay_scope_issue(question, grounding, plan):
             if operator in {'!=', '<>', 'NOT IN'}:
                 equivalent = {**constraint, 'operator': 'IN' if operator == 'NOT IN' else '='}
                 excluded_values.update(aliases.get(key(value), str(value)) for value in _values(equivalent))
+            elif step.get('purpose') != 'context':
+                covered_positive.update(
+                    aliases.get(key(value), str(value)) for value in _values(constraint))
         forbidden = values & excluded
         if forbidden or (exact and allowed and values - allowed):
             return ('unrequested_assay_scope:' + str(step.get('id', 'step')) + ': '
@@ -299,6 +306,10 @@ def _assay_scope_issue(question, grounding, plan):
         if exact and allowed and not values:
             return ('missing_requested_scope:exact_assay:' + str(step.get('id', 'step')) + ': '
                     'Bind the exact requested recorded assay on this sample check; do not leave its modality unrestricted.')
+    if coverage_required and not allowed <= covered_positive:
+        return ('missing_requested_scope:assay_coverage: '
+                'Preserve every explicitly requested recorded assay across the complete answer steps. '
+                'Separate checks or one exact IN predicate are both valid; context-only checks and duplicates do not cover a missing alternative.')
     return None
 
 
@@ -324,6 +335,11 @@ def scope_issue(question, grounding, plan):
     tissues = {candidate['id'] for _, candidate, _, spans in mentions
                if candidate['entity_type'] == 'anatomical_structure' and
                (_direct_tissue(words, spans) or any((candidate['id'], *span) in replacement_targets for span in spans))}
+    if genes and not any(c['entity_type'] == 'variants' for _, c, _, _ in mentions):
+        for step in steps:
+            if (step.get('relation_types') == ['PART_OF_GWAS_SIGNAL'] and not step.get('depends_on')
+                    and not any(c.get('entity_type') == 'variants' and c.get('property') in {'id','name'} for c in step.get('constraints', []))):
+                return 'missing_gene_locus_input:' + step['id'] + ':GWAS needs the requested variant or verified variants from a gene-scoped check; do not search disease-wide'
     for mention, candidate, forms, spans in mentions:
         kind = candidate['entity_type']
         if kind == 'anatomical_structure':
@@ -370,6 +386,13 @@ def scope_issue(question, grounding, plan):
             return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
         # Gene/variant questions must not be replaced by a different family
         # merely because an unrelated independently planned step is executable.
+        if kind == 'Gene' and not compatible and all(set(s.get('relation_types', [])) == {'PART_OF_GWAS_SIGNAL'} for s in steps):
+            near = re.search(r'\b(?:near|nearby|at the)\s+' + re.escape(mention['requested']) + r'\b', question, re.I)
+            variants = [(c, f) for _, c, f, _ in mentions if c['entity_type'] == 'variants']
+            if near and variants and all(any(_identity_present(s, c, f) for c, f in variants) for s in steps):
+                # The supplied variant owns GWAS membership; the named nearby
+                # gene is locus context, not a fabricated Gene->GWAS edge.
+                continue
         if kind in {'Gene', 'variants'} and not compatible:
             return 'missing_requested_scope:' + kind + ':' + str(mention['requested'])
     return None
