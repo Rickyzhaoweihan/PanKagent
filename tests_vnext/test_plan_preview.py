@@ -76,7 +76,7 @@ class PreviewGraph(Graph):
         return {"step_id": step["id"], "status": status, "graph_version": self.identity["graph_version"],
                 "nodes": [{"id": gene, "labels": ["Gene"], "properties": {"name": gene}}] if status not in {"failed", "empty"} else [],
                 "edges": [], "rows": [], "queries": [{"cypher": "MATCH (g:Gene {name:$gene}) RETURN g", "parameters": {"gene": gene}}],
-                "validation": [{"valid": status != "failed"}], "truncated": status == "partial"}
+                "validation": [{"valid": status != "failed"}], "truncated": status == "partial", "retrieval_execution": {"completed": status != "failed", "cursor_exhausted": status != "partial"}}
 
 
 def multi_plan(dependent=False):
@@ -135,22 +135,23 @@ def test_preview_precedes_confirmation_and_reuses_validated_results(tmp_path):
     asyncio.run(scenario())
 
 
-def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_path):
+@pytest.mark.parametrize("question", ["Which cell types express INS?", "Which cell types express INS in PanKgraph? Include HIRN literature."])
+def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_path, question):
     async def scenario():
         graph = PreviewGraph()
         async with service(tmp_path, graph=graph, gateway=BiologicalGateway(plan={**PLAN, "literature": True})) as (client, runtime, gateway, graph, literature):
-            initial = await new_plan(client, "Which cell types express INS?")
+            initial = await new_plan(client, question)
             parent = (await client.get(initial["plan_url"])).json()
             response = await client.post(f'/v2/plans/{parent["plan_id"]}/revise', json={
                 "question": "Disable literature", "revision_instruction": "Disable literature", "revision_mode": "instruction"})
             revised = await wait_state(client, response.json()["run_id"], {"awaiting_confirmation"})
             assert revised["plan"]["steps"] == parent["plan"]["steps"]
-            assert revised["plan"]["literature"] is True
+            assert revised["plan"]["literature"] is False
             assert graph.calls == 1
             assert runtime.metrics.counts["revision_preview_reused"] == 1
             await client.post(f'/v2/plans/{revised["plan_id"]}/confirm', json={})
             done = await wait_state(client, revised["run_id"], {"completed", "partial"})
-            assert graph.calls == 1 and literature.calls == 1
+            assert graph.calls == 1 and literature.calls == 0
             assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s1"]
     asyncio.run(scenario())
 
@@ -160,12 +161,20 @@ def test_successful_preflight_outcome_is_reused_without_completeness_upgrade(tmp
     async def scenario():
         graph = PreviewGraph(outcomes={"s1": [status]})
         async with service(tmp_path, graph=graph) as (client, runtime, gateway, *_):
-            created = await new_plan(client)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            done = await wait_state(client, created["run_id"], {"partial" if status == "partial" else "completed"})
+            created = await new_plan(client, expected_status="failed" if status == "partial" else "awaiting_confirmation")
+            response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            if status == "partial":
+                assert response.status_code == 409
+                assert gateway.syntheses == 0
+                done = runtime.store.get(created['run_id'])
+                assert done['preview']['evidence']['steps'][0]['status'] == 'partial'
+                assert done['preview']['evidence']['truncated'] is True
+            else:
+                assert response.status_code == 202
+                done = await wait_state(client, created["run_id"], {"completed"})
+                assert done["evidence"]["steps"][0]["status"] == status
+                assert done["evidence"]["completeness"] == status
             assert graph.calls == 1
-            assert done["evidence"]["steps"][0]["status"] == status
-            assert done["evidence"]["completeness"] == status
     asyncio.run(scenario())
 
 
@@ -194,32 +203,35 @@ def test_preview_reuse_requires_exact_fresh_plan_graph_and_access(tmp_path, chan
                 preview = run["preview"]
                 preview["evidence"]["steps"][0]["validation"] = [{"valid": False}]
                 runtime.store.update(run["run_id"], preview=preview)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            done = await wait_state(client, run["run_id"], {"completed"})
-            assert graph.calls == 2
-            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == []
-            assert done["evidence"]["preview_reuse"]["retrieved_step_ids"] == ["s1"]
+            response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            assert response.status_code == 409
+            done = await wait_state(client, run["run_id"], {"failed"})
+            assert graph.calls == 1
+            assert done["graph_answer"] is None
+            assert done["error"]["recovery"]["category"] == "preview_revalidation_required"
             assert "PRIVATE_NEW_ACCESS_SENTINEL" not in json.dumps(done)
     asyncio.run(scenario())
 
 
-def test_failed_preview_retries_once_and_invalidates_dependent_reuse(tmp_path):
+def test_failed_preview_requires_explicit_retry_and_preserves_dependencies(tmp_path):
     async def scenario():
         graph = PreviewGraph(outcomes={"s1": [ConnectionError("PRIVATE_FAILURE"), "complete"]})
         async with service(tmp_path, graph=graph, gateway=Gateway(plan=multi_plan(dependent=True))) as (client, runtime, gateway, *_):
-            created = await new_plan(client)
-            ready = (await client.get(created["plan_url"])).json()
-            assert ready["preview"]["status"] == "partial"
-            assert ready["preview"]["evidence"]["steps"][0]["status"] == "failed"
-            assert "PRIVATE_FAILURE" not in json.dumps(ready)
+            created = await new_plan(client, expected_status="failed")
+            failed = (await client.get(created["plan_url"])).json()
+            assert failed["preview"]["evidence"]["steps"][0]["status"] == "failed"
+            assert "PRIVATE_FAILURE" not in json.dumps(failed)
             assert runtime.health.inference["claude"]["state"] == "healthy"
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            done = await wait_state(client, created["run_id"], {"completed"})
-            assert graph.step_calls == {"s1": 2, "s2": 2, "s3": 1}
-            assert graph.previous[-1]["s1"]["status"] == "complete"
-            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s3"]
-            assert done["evidence"]["preview_reuse"]["unreused_reasons"]["s2"] == "dependency_changed"
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
+            assert graph.step_calls == {"s1": 1, "s3": 1}
+            assert gateway.syntheses == 0
+            retried = await new_plan(client)
+            await client.post(f'/v2/plans/{retried["plan_id"]}/confirm')
+            done = await wait_state(client, retried["run_id"], {"completed"})
+            assert graph.step_calls == {"s1": 2, "s2": 1, "s3": 2}
+            assert done["evidence"]["preview_reuse"]["retrieved_step_ids"] == []
+            assert set(done["evidence"]["preview_reuse"]["reused_step_ids"]) == {"s1", "s2", "s3"}
+            await client.post(f'/v2/plans/{retried["plan_id"]}/confirm')
             assert graph.calls == 5 and gateway.syntheses == 1
     asyncio.run(scenario())
 
@@ -230,7 +242,7 @@ def test_preview_timeout_preserves_successes_and_claude_health(tmp_path):
         plan["steps"] = plan["steps"][:2]
         graph = PreviewGraph(block_step="s2")
         async with service(tmp_path, graph=graph, gateway=Gateway(plan=plan), preview_timeout=0.03) as (client, runtime, gateway, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             ready = (await client.get(created["plan_url"])).json()
             assert ready["preview"]["status"] == "partial"
             assert [step["status"] for step in ready["preview"]["evidence"]["steps"]] == ["complete", "failed"]
@@ -238,11 +250,9 @@ def test_preview_timeout_preserves_successes_and_claude_health(tmp_path):
             assert ready["preview"]["evidence"]["nodes"]
             assert gateway.syntheses == 0
             assert runtime.health.inference["claude"]["state"] == "healthy"
-            graph.block_step = None
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            done = await wait_state(client, created["run_id"], {"completed"})
-            assert graph.step_calls == {"s1": 1, "s2": 2}
-            assert done["evidence"]["preview_reuse"]["reused_step_ids"] == ["s1"]
+            assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
+            assert graph.step_calls == {"s1": 1, "s2": 1}
+            assert ready['error']['recovery']['retryable'] is True
     asyncio.run(scenario())
 
 
@@ -255,7 +265,13 @@ def test_cancel_or_revision_stops_preflight_even_when_upstream_suppresses_cancel
         async with service(tmp_path, graph=graph, gateway=BiologicalGateway(plan=plan)) as (client, runtime, gateway, *_):
             created = (await client.post("/v2/plans", json={"question": "Which cell types express INS?"})).json()
             await asyncio.wait_for(graph.blocked.wait(), 1)
-            before = runtime.store.get(created["run_id"])["preview"]
+            async def saved_preview():
+                while True:
+                    value = (await runtime.io.call(runtime.store.get, created["run_id"]))["preview"]
+                    if value is not None:
+                        return value
+                    await asyncio.sleep(0.005)
+            before = await asyncio.wait_for(saved_preview(), 1)
             assert before["evidence"]["nodes"] and before["pending_step_ids"] == ["s2"]
             if supersede:
                 graph.block_step = None
@@ -360,7 +376,7 @@ def test_prepare_plan_error_is_visible_without_claude_failure(tmp_path):
         graph = PreviewGraph()
         graph.preparation_error = ConnectionError("PRIVATE_RESOLUTION_ERROR")
         async with service(tmp_path, graph=graph) as (client, runtime, gateway, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             ready = (await client.get(created["plan_url"])).json()
             assert ready["preview"]["status"] == "failed"
             assert ready["preview"]["evidence"]["steps"][0]["status"] == "failed"
@@ -371,7 +387,7 @@ def test_prepare_plan_error_is_visible_without_claude_failure(tmp_path):
     asyncio.run(scenario())
 
 
-def test_retried_step_cannot_push_independent_cached_evidence_over_run_budget(tmp_path):
+def test_primary_failure_cannot_be_retried_after_confirmation_to_change_run_budget(tmp_path):
     class BudgetedGraph(PreviewGraph):
         async def execute(self, step, previous, emit):
             result = await super().execute(step, previous, emit)
@@ -387,13 +403,13 @@ def test_retried_step_cannot_push_independent_cached_evidence_over_run_budget(tm
         plan["steps"] = plan["steps"][:2]
         graph = BudgetedGraph(outcomes={"s1": ["failed", "complete"]})
         async with service(tmp_path, graph=graph, gateway=Gateway(plan=plan), max_bytes=10) as (client, runtime, *_):
-            created = await new_plan(client)
-            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
-            run = await wait_state(client, created["run_id"], {"partial"})
-            assert graph.step_calls == {"s1": 2, "s2": 2}
-            assert run["evidence"]["preview_reuse"]["unreused_reasons"]["s2"] == "materialization_budget_changed"
-            assert sum(step["materialized_bytes"] for step in run["evidence"]["steps"]) <= 10
-            assert run["evidence"]["steps"][1]["status"] == "partial"
+            created = await new_plan(client, expected_status="failed")
+            assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
+            run = await wait_state(client, created["run_id"], {"failed"})
+            assert graph.step_calls == {"s1": 1, "s2": 1}
+            assert sum(step["materialized_bytes"] for step in run["preview"]["evidence"]["steps"]) <= 10
+            assert run['preview']['confirmation_eligible'] is False
+            assert run['graph_answer'] is None
     asyncio.run(scenario())
 
 
@@ -448,4 +464,41 @@ def test_legacy_unconfirmed_plan_requires_explicit_revision_before_validation(tm
             assert (await client.post(f'/v2/plans/{ready["plan_id"]}/confirm')).status_code == 202
             await wait_state(client, ready["run_id"], {"completed"})
             assert graph.calls == gateway.syntheses == 1
+    asyncio.run(scenario())
+
+
+def test_grouped_failed_primary_preview_has_final_recovery_without_active_popup(tmp_path):
+    async def scenario():
+        graph = PreviewGraph(outcomes={'s1': ['failed'], 's2': ['failed']})
+        async with service(tmp_path, graph=graph, gateway=Gateway(plan=multi_plan())) as (client, runtime, *_):
+            created = await new_plan(client, expected_status="failed")
+            ready = (await client.get(created['plan_url'])).json()
+            preview = ready['preview']
+            assert preview['status'] == 'partial'
+            assert preview['pending_step_ids'] == []
+            assert preview['preparation_complete'] is True
+            assert preview['confirmation_eligible'] is False
+            assert ready['error']['recovery']['category'] == 'query_validation'
+            events = runtime.store.events_after(created['run_id'], 0)
+            active_previews = [event['payload']['preview'] for event in events if event['type'] == 'preview_step']
+            assert active_previews
+            assert all(item['preparation_complete'] is False and 'recovery' not in item for item in active_previews)
+            assert events[-1]['type'] == 'terminal'
+            assert events[-1]['payload']['error']['recovery'] == ready['error']['recovery']
+            assert not any(event['type'] in ('plan_ready', 'plan_validated') for event in events)
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('successful_status', ['empty', 'complete', 'partial'])
+def test_final_recovery_keeps_success_but_blocks_a_failed_required_primary(tmp_path, successful_status):
+    async def scenario():
+        graph = PreviewGraph(outcomes={'s1': ['failed'], 's2': [successful_status]})
+        async with service(tmp_path, graph=graph, gateway=Gateway(plan=multi_plan())) as (client, *_):
+            created = await new_plan(client, expected_status="failed")
+            preview = (await client.get(created['plan_url'])).json()['preview']
+            assert preview['status'] == 'partial'
+            assert preview['confirmation_eligible'] is False
+            assert preview['preparation_complete'] is True
+            assert preview['evidence']['nodes'] or successful_status == 'empty'
+            assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
     asyncio.run(scenario())

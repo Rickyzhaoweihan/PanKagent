@@ -46,6 +46,7 @@ def detection_evidence():
             "rows": [],
             "queries": [{"cypher": "PRIVATE_QUERY_SENTINEL", "parameters": {"private": "PRIVATE_PARAMETER_SENTINEL"}}],
             "validation": [{"valid": True, "n": 1}],
+            "retrieval_execution": {"completed": True, "cursor_exhausted": True},
         },
     }
 
@@ -72,9 +73,13 @@ class MockStream:
 
     async def get_final_message(self):
         self.owner.final_messages += 1
+        body = json.loads(self.owner.stream_calls[-1]['messages'][0]['content'])
+        selection = {'fact_ids': [f['id'] for f in body['facts']][:24]}
+        if '[G99]' in ''.join(self.owner.tokens): selection = {'fact_ids': ['G99:unknown']}
+        content = [SimpleNamespace(type='tool_use', name='select_answer_facts', input=selection)] if self.owner.tokens else []
         return SimpleNamespace(
             usage=SimpleNamespace(model_dump=lambda: deepcopy(USAGE)),
-            stop_reason="end_turn",
+            stop_reason="tool_use", content=content,
         )
 
 
@@ -155,15 +160,17 @@ def test_prepared_bim_answer_uses_one_stream_and_settles_actual_cost(monkeypatch
             reserved_during_stream = []
             fake.on_enter = lambda: reserved_during_stream.append(gateway.budget.snapshot())
             answer = "".join([text async for text in gateway.synthesize(QUESTION, evidence, prepared=prepared)])
-            assert answer == "".join(tokens)
+            assert "RNA detection" in answer and "12.34567" in answer
+            assert prepared.generation["answer_validation"]["valid"] is True
             assert len(fake.stream_calls) == fake.final_messages == 1
             assert fake.create_calls == []
             call = fake.stream_calls[0]
             assert call["model"] == "claude-sonnet-5"
             assert call["thinking"] == {"type": "disabled"}
-            assert not {"temperature", "top_p", "top_k", "tools", "tool_choice"} & call.keys()
-            assert call["system"] == prepared.system
-            assert call["messages"] == [{"role": "user", "content": prepared.body}]
+            assert not {"temperature", "top_p", "top_k"} & call.keys()
+            assert call["tool_choice"] == {"type":"tool", "name":"select_answer_facts"}
+            assert 'select_answer_facts' in call['system'][0]['text']
+            assert json.loads(call['messages'][0]['content']) == {'question':QUESTION, 'facts':prepared.facts}
             assert reserved_during_stream[0]["pending_calls"] == 1
             assert reserved_during_stream[0]["reserved_usd"] > 0
             settled = gateway.budget.snapshot()
@@ -206,13 +213,14 @@ def test_preparation_routes_full_schema_before_bounded_context(monkeypatch, tmp_
             assert prepared.profile["matched_schema"]["edges"] == ["GENE_DETECTED_IN", "PHYSICAL_INTERACTION"]
             assert prepared.profile["clinical_fields"] == ["t1d_stage"]
             assert prepared.profile["context_sampled"] is True
-            assert compact["context_sampled"] is True
+            assert compact["answer_evidence_scope"]["individual_records_are_selected_examples"] is True
+            assert "context_sampled" not in compact
             assert compact["truncated"] is False
             assert compact["status"] == "complete"
             assert "synthetic-gene-64" not in {node["id"] for node in compact["nodes"]}
             rare = [edge for edge in compact["edges"] if edge["type"] == "PHYSICAL_INTERACTION"]
             assert rare == [original["s1"]["edges"][-1]]
-            assert compact["context_dropped"]["edges_by_type"]["GENE_DETECTED_IN"] > 0
+            assert prepared.profile["model_context"]["steps"][0]["omitted"]["edges_by_type"]["GENE_DETECTED_IN"] > 0
             assert evidence == original
             assert fake.stream_calls == fake.create_calls == []
         finally:
@@ -243,9 +251,10 @@ def test_matched_functional_clinical_guidance_keeps_evidence_priority(monkeypatc
                 "none alone proves causality",
                 "Co-occurring types anywhere in a result are not a joined mechanism",
                 "Preserve ng versus pg, rate versus AUC, SI versus II",
-                "Never assign T1D or Stage 3 from hyperglycemia alone",
-                "override a recorded T2D classification",
-                "context_sampled or context_content_omissions",
+                "Clinical stage is recorded metadata",
+                "without deriving a clinical criterion or diagnosing/reclassifying a donor",
+                "Different metadata classifications do not alone establish a contradiction",
+                "model-context sampling and graph display omissions do not",
             ):
                 assert requirement in style
             assert "[functional.feature:INS-basal (ng/100 IEQs/min)]" in prepared.system[1]["text"]
@@ -272,7 +281,7 @@ def test_empty_and_failed_steps_remain_visible_without_unmatched_bim_guidance(mo
             assert sum("cache_control" in block for block in prepared.system) == 1
             assert "cache_control" not in prepared.system[-1]
             assert "answer summary only, without follow-up questions" in prepared.system[-1]["text"]
-            assert "Empty results mean no matching evidence was retrieved, not biological absence" in prepared.system[0]["text"]
+            assert "A validated, complete query with zero matches means PanKgraph has no matching record" in prepared.system[0]["text"]
             assert "Failed validation or queries cannot support a biological conclusion" in prepared.system[0]["text"]
         finally:
             await gateway.close()
@@ -381,14 +390,15 @@ def test_answer_profile_persists_and_replays_once_with_citation_filter(monkeypat
                 assert profile["style_version"]
                 assert profile["source_commit"]
                 assert profile["context_sampled"] is False
-                assert run["evidence"]["answer_reference_validation"]["valid"] is not invalid_reference
+                assert run["evidence"]["answer_reference_validation"]["valid"] is True
+                assert run["evidence"]["answer_validation"]["valid"] is not invalid_reference
                 assert run["evidence"]["answer_reference_validation"]["model_references_present"] is True
                 assert run["evidence"]["answer_reference_validation"]["application_fallback"] is False
                 assert "Graph evidence supplied:" not in run["graph_answer"]
                 assert "[G1]" in run["graph_answer"]
                 assert "[G99]" not in run["graph_answer"]
                 if invalid_reference:
-                    assert "[unverified reference]" in run["graph_answer"]
+                    assert "Partial answer" in run["graph_answer"]
 
                 events = sse_events(await client.get(created["events_url"]))
                 profiles = [event for event in events if event["type"] == "answer_profile"]
@@ -401,7 +411,7 @@ def test_answer_profile_persists_and_replays_once_with_citation_filter(monkeypat
                 assert profile_event["sequence"] < graph_events[0]["sequence"]
                 assert graph_events[-1]["payload"]["evidence"]["answer_profile"] == profile
                 deltas = "".join(event["payload"]["text"] for event in graph_events if event["payload"].get("delta"))
-                assert deltas == run["graph_answer"]
+                assert deltas == ""  # Validate before display: only the final answer event is public.
                 assert "[G99]" not in deltas
                 assert events[-1]["type"] == "terminal"
 
@@ -490,8 +500,10 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
     class MultiStepGateway(RuntimeGateway):
         async def plan(self, question, history):
             plan = await super().plan(question, history)
-            plan["steps"] = [{"id": f"s{index}", "question": question, "depends_on": [], "constraints": [], "complete": True}
-                             for index in range(1, len(statuses) + 1)]
+            plan["steps"] = [{"id": f"s{index}", "question": question, "depends_on": [], "constraints": [],
+                              "complete": status != "partial",
+                              "purpose": "context" if status == "failed" and any(s != "failed" for s in statuses) else "primary"}
+                             for index, status in enumerate(statuses, 1)]
             return plan
 
     class MultiStepGraph(RuntimeGraph):
@@ -513,7 +525,7 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 response = await client.post("/v2/plans", json={"question": QUESTION})
                 assert response.status_code == 202
                 created = response.json()
-                await await_state(client, created["run_id"], {"awaiting_confirmation"})
+                await await_state(client, created["run_id"], {"failed" if all(status == "failed" for status in statuses) else "awaiting_confirmation"})
                 response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
                 if all(status == "failed" for status in statuses):
                     assert response.status_code == 409
@@ -529,25 +541,38 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
                 assert gateway.budget.snapshot()["pending_calls"] == 0
                 validation = run["evidence"]["answer_reference_validation"]
                 assert validation["scope"] == "reference_ids_only"
-                assert validation["model_references_present"] is False
-                assert validation["application_fallback"] is bool(expected_ids)
+                assert validation["model_references_present"] is bool(expected_calls)
+                assert validation["application_fallback"] is False
                 events = sse_events(await client.get(created["events_url"]))
                 graph_events = [event for event in events if event["type"] == "graph_answer"]
-                deltas = [event["payload"]["text"] for event in graph_events if event["payload"].get("delta")]
-                if expected_ids:
-                    footer = "\n\nGraph evidence supplied: " + ", ".join(f"[G{index}]" for index in expected_ids) + "."
-                    assert run["graph_answer"] == "".join(tokens) + footer
-                    assert deltas[-1] == footer
-                    assert "".join(deltas) == run["graph_answer"]
-                    assert validation["valid"] is True
-                else:
-                    assert "Graph evidence supplied:" not in run["graph_answer"]
-                    assert not any("Graph evidence supplied:" in delta for delta in deltas)
-                assert graph_events[-1]["payload"]["answer"] == run["graph_answer"]
-                assert graph_events[-1]["payload"]["evidence"]["answer_reference_validation"] == validation
-                if "[G99]" in "".join(tokens):
-                    assert validation["valid"] is False
-                    assert validation["invalid_references_removed"] is True
-                    assert "[unverified reference]" in run["graph_answer"]
+                assert len(graph_events) == 1
+                assert graph_events[0]["payload"]["delta"] is False
+                assert graph_events[0]["payload"]["answer"] == run["graph_answer"]
+                assert "Graph evidence supplied:" not in run["graph_answer"]
+                if expected_calls:
+                    assert "RNA detection" in run["graph_answer"]
+                    valid_selection = bool(tokens) and "[G99]" not in "".join(tokens)
+                    assert run["evidence"]["answer_validation"]["valid"] is valid_selection
+                assert "[G99]" not in run["graph_answer"]
                 assert app.state.runtime.store.get(created["run_id"])["graph_answer"] == run["graph_answer"]
+    asyncio.run(scenario())
+
+
+def test_count_question_omits_incidental_functional_sample_details(monkeypatch, tmp_path):
+    async def scenario():
+        gateway, _, _ = gateway_with_mock(monkeypatch, tmp_path, [])
+        evidence = {'s1': {'step_id': 's1', 'status': 'complete', 'truncated': False, 'graph_version': 'PanKgraph_08_04',
+            'nodes': [{'id': 'private-sample-example', 'labels': ['Sample_node'],
+                       'properties': {'INS-basal (ng/100 IEQs/min)': 0.1234567,
+                                      'contact': 'private-contact'}}], 'edges': [], 'rows': []}}
+        try:
+            prepared = gateway.prepare_answer('How many samples are recorded?', evidence)
+            assert prepared.profile['functional_features']
+            assert not prepared.profile['model_context']['individual_donor_details_requested']
+            assert 'private-sample-example' not in prepared.body
+            assert 'private-contact' not in prepared.body
+            assert json.loads(prepared.body)['evidence'][0]['answer_facts']['sample_counts']['unique_retrieved_samples'] == 1
+            assert evidence['s1']['nodes'][0]['id'] == 'private-sample-example'
+        finally:
+            await gateway.close()
     asyncio.run(scenario())

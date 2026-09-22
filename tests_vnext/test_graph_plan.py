@@ -4,6 +4,7 @@ import re
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from pankagent_vnext.graph import GraphAdapter, validate_cypher
 from pankagent_vnext.plan_constraints import build_generation_question
@@ -20,7 +21,9 @@ def plan(include_context=False, **step_changes):
             "constraints": [{"property": "name", "operator": "=", "value": "CFTR", "entity_type": "Gene"},
                             {"property": "name", "operator": "=", "value": "ductal cell", "entity_type": "anatomical_structure"}],
             "relation_types": ["GENE_ENRICHED_IN"], "depends_on": [], "complete": True, **step_changes}
-    return {"steps": [step], "include_context": include_context, "literature": False, "clarification": None}
+    return {"original_question": step["question"], "steps": [step],
+            "include_context": include_context, "literature": False,
+            "clarification": None}
 
 
 class ResolverGraph(GraphAdapter):
@@ -37,14 +40,30 @@ class ResolverGraph(GraphAdapter):
 
     async def _small_query(self, query, params=None):
         self.reads.append((query, params))
+        if query == "MATCH (n:anatomical_structure) RETURN n.id AS id,n.name AS name,labels(n) AS labels":
+            self.assert_no_parameters(params)
+            # Anatomy resolution builds its complete release vocabulary once;
+            # this inventory must not inherit the three-candidate lookup limit.
+            return copy.deepcopy([row for row in self.rows if "anatomical_structure" in row["labels"]])
         label = re.search(r"MATCH \(n:`([^`]+)`\)", query)
         prop = "id" if "n.`id`" in query else "name"
         rows = [row for row in self.rows if label is None or label[1] in row["labels"]]
+        if "WHERE n.name IS NOT NULL RETURN n.name AS name ORDER BY n.name LIMIT 2000" in query:
+            self.assert_no_parameters(params)
+            return [{"name": row["name"]} for row in sorted(rows, key=lambda row: row.get("name") or "")
+                    if row.get("name") is not None][:2000]
+        if not params or set(params) != {"value"} or "$value" not in query:
+            raise AssertionError("ResolverGraph received an unsupported metadata query")
         if "toLower" in query:
             rows = [row for row in rows if str(row[prop]).casefold() == params["value"].casefold()]
         else:
             rows = [row for row in rows if row[prop] == params["value"]]
         return copy.deepcopy(rows[:3])
+
+    @staticmethod
+    def assert_no_parameters(params):
+        if params:
+            raise AssertionError("Complete vocabulary reads must not be filtered by an input value")
 
     async def _generate(self, question, n):
         self.generated.append((question, n))
@@ -70,6 +89,15 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
 
     async def prepared(self, **changes):
         return (await self.graph.prepare_plan(plan(**changes), self.emit))["steps"][0]
+
+    async def test_fresh_resolution_clears_only_derived_stale_scope_recovery(self):
+        source=plan()
+        source['recovery']={'category':'scope_needs_clarification','message':'old unresolved entity'}
+        source['clarification']='old unresolved entity'
+        updated=await self.graph.prepare_plan(source,self.emit)
+        self.assertIsNone(updated.get('clarification'))
+        self.assertNotIn('recovery',updated)
+        self.assertEqual(source['clarification'],'old unresolved entity')
 
     async def test_live_failed_parenthetical_shape_accepts_verified_cell_id(self):
         source = plan()
@@ -97,11 +125,16 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
                     "with their properties, without LIMIT or list slices.")
         self.assertEqual(build_generation_question(primary), expected)
         self.assertEqual(primary["question"], question)
-        self.assertEqual(primary["constraints"], before["steps"][0]["constraints"])
+        self.assertEqual(primary["constraints"], [before["steps"][0]["constraints"][0],
+                         {**before["steps"][0]["constraints"][1], "property": "id", "value": CELL["id"]}])
+        self.assertEqual(primary["resolved_entities"][1]["original_requested"], before["steps"][0]["constraints"][1])
         self.assertEqual(source, before)
         self.assertEqual(len(prepared["steps"]), 2)
         self.assertEqual(prepared["steps"][1]["purpose"], "context")
-        result = await self.graph.execute(primary, {}, self.emit)
+        # This assertion is about the canonical GPU prompt; structural-template
+        # routing is covered separately in test_query_templates.py.
+        with patch('pankagent_vnext.query_templates.compile_query', return_value=None):
+            result = await self.graph.execute(primary, {}, self.emit)
         self.assertEqual(result["status"], "complete")
         self.assertEqual(self.graph.generated[0][1], 1)
         self.assertTrue(self.graph.generated[0][0].startswith(expected))
@@ -161,18 +194,34 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["validation"][1]["candidate_cypher"], bad)
         self.assertFalse(result["validation"][1]["valid"])
         self.assertIn("unrequested_measurement_filter:adjusted_p_value", result["validation"][1]["reasons"])
-        self.assertEqual(result["queries"], [{"cypher": corrected, "parameters": {}}])
+        self.assertEqual(result["queries"], [{"cypher": corrected, "parameters": {}, "normalization": []}])
 
-    async def test_resolution_is_typed_parameterized_bounded_and_reuses_identity_reads(self):
+    async def test_resolution_caches_complete_anatomy_inventory_and_bounded_typed_identity_reads(self):
         self.graph.rows.append({"id": "donor-CFTR", "name": "CFTR", "labels": ["donor"]})
         await self.prepared()
         self.assertEqual(len(self.graph.reads), 2)
-        for query, parameters in self.graph.reads:
-            self.assertIn("LIMIT 3", query)
-            self.assertIn("$value", query)
-            self.assertNotIn(parameters["value"], query)
-            self.assertIn("labels(n)[..16]", query)
+        lookup = [(query, parameters) for query, parameters in self.graph.reads if parameters]
+        inventory = [(query, parameters) for query, parameters in self.graph.reads if parameters is None]
+        self.assertEqual(len(lookup), 1)
+        query, parameters = lookup[0]
+        self.assertIn("MATCH (n:`Gene`)", query)
+        self.assertIn("LIMIT 3", query)
+        self.assertIn("$value", query)
+        self.assertNotIn(parameters["value"], query)
+        self.assertIn("labels(n)[..16]", query)
+        self.assertEqual(inventory, [("MATCH (n:anatomical_structure) RETURN n.id AS id,n.name AS name,labels(n) AS labels", None)])
         await self.prepared()
+        self.assertEqual(len(self.graph.reads), 2)
+
+    async def test_anatomy_inventory_resolves_beyond_three_records_without_untyped_decoys(self):
+        rows = [GENE, {"id": "donor-CFTR", "name": "CFTR", "labels": ["donor"]}]
+        rows += [{"id": "synthetic-cell-" + str(index), "name": "synthetic cell " + str(index),
+                  "labels": ["anatomical_structure"]} for index in range(5)]
+        self.graph = ResolverGraph(rows + [CELL])
+        prepared = await self.prepared()
+        self.assertEqual(prepared["resolved_entities"][0]["id"], GENE["id"])
+        self.assertEqual(prepared["resolved_entities"][1]["id"], CELL["id"])
+        self.assertEqual(len(self.graph._anatomy_inventory[2]), 6)
         self.assertEqual(len(self.graph.reads), 2)
 
     async def test_id_request_can_use_graph_verified_name_on_same_typed_node(self):
@@ -240,14 +289,19 @@ class GraphPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["steps"]), 1)
         self.assertEqual(missing.generated, [])
 
-    async def test_non_equality_entity_predicates_keep_original_strict_validation(self):
+    async def test_non_equality_identity_lists_fail_closed_without_per_member_resolution(self):
         source = plan(constraints=[{"property": "name", "operator": "IN", "value": '["CFTR","INS"]', "entity_type": "Gene"}],
-                      question="Find the genes CFTR and INS.", relation_types=[])
+                      question='Find genes where Gene.name IN ["CFTR", "INS"].', relation_types=[])
         result = await self.graph.prepare_plan(source, self.emit)
-        self.assertIsNone(result["clarification"])
+        self.assertIsNotNone(result["clarification"])
         step = result["steps"][0]
         self.assertEqual(step["resolved_entities"][0]["state"], "literal_predicate")
+        self.assertTrue(step["semantic_issues"])
+        self.assertEqual(step['runtime_binding_issues'], [
+            'unverified_identity_resolution:0:Gene.name'])
         self.assertEqual(self.graph.reads, [])
+        # Exact predicate validation stays strict, but the execution gate will
+        # not run it until every list member has a current entity proof.
         self.assertEqual(validate_cypher("MATCH (g:Gene) WHERE g.name IN ['CFTR','INS'] RETURN g", step), [])
         self.assertTrue(validate_cypher("MATCH (g:Gene) WHERE g.name='CFTR' RETURN g", step))
 

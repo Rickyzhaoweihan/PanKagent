@@ -1,30 +1,14 @@
 {
-  "T1D_stage_definitions": {
-    "source": "ADA/JDRF presymptomatic T1D staging standard",
-    "review": "Stage definitions reviewed by islet expert",
-    "autoantibodies": [
-      "GADA",
-      "IA2",
-      "IAA",
-      "ZNT8"
-    ],
-    "stages": {
-      "Stage 1": {
-        "definition": "Two or more positive islet autoantibodies with normal glucose metabolism",
-        "key_rules": "AAB >= 2; glucose normal; no clinical symptoms",
-        "agent_interpretation": "Early presymptomatic T1D"
-      },
-      "Stage 2": {
-        "definition": "Two or more positive islet autoantibodies with dysglycemia",
-        "key_rules": "AAB >= 2; dysglycemia present; no clinical symptoms",
-        "agent_interpretation": "Presymptomatic T1D with metabolic progression"
-      },
-      "Stage 3": {
-        "definition": "Clinical T1D diagnosis and/or diagnostic hyperglycemia",
-        "key_rules": "T1D diagnosis or diagnostic hyperglycemia is sufficient evidence",
-        "agent_interpretation": "Clinical T1D",
-        "aab_note": "Positive AAB supports autoimmune T1D; negative or missing AAB should be flagged but does not override Stage 3 when diagnosis/hyperglycemia is present"
-      }
-    }
+  "recorded_metadata_guardrails": {
+    "classification_scope": "Recorded stage, diagnosis category and derived status describe different classifications. Different labels do not alone establish a contradiction.",
+    "stage_1_and_2": "Do not call Stage 1 or Stage 2 alongside Control Without Diabetes, Normal or Prediabetes a metadata conflict solely on those labels. Preserve each recorded field; do not add a diagnosed-T1D restriction to a stage-based cohort.",
+    "clinical_limit": "Report source metadata without making a new diagnosis or claiming external clinical guideline verification. Historical staging definitions remain archived in upstream/general_interpretation.json; they are not clinical instructions for the active answer."
+  },
+  "recorded_stage_reporting": {
+    "source": "The exact stage wording returned in the current graph evidence.",
+    "rule": "Report t1d_stage as recorded metadata. Do not state that a clinical stage requires particular laboratory findings, that a measurement is sufficient for diagnosis, or that a donor qualifies on independent clinical criteria. Quote a returned stage description only when useful for the question.",
+    "external_definition": "Explain a clinical definition only when the user asks and a separately verified external source is supplied; preserve its scope and distinguish it from the recorded classification.",
+    "clinical_details": "Cohort counts and sample discovery do not require individual clinical examples or reconciliation of antibody, HbA1c or C-peptide findings.",
+    "excerpt_limit": "Model-selected examples, endpoint stubs and omitted properties do not establish missing Neo4j metadata."
   }
 }

@@ -80,7 +80,7 @@ class Graph:
             raise self.error
         await emit("progress", {"stage": "validating"})
         await emit("progress", {"stage": "querying_graph"})
-        return {"step_id": step["id"], "status": "complete", "nodes": [{"id": "INS", "name": "INS"}], "edges": [], "rows": [], "queries": [{"cypher": "MATCH (n:Gene {name:'INS'}) RETURN n"}], "validation": [{"valid": True}], "graph_version": "test-release", "truncated": False}
+        return {"step_id": step["id"], "status": "complete", "nodes": [{"id": "INS", "name": "INS"}], "edges": [], "rows": [], "queries": [{"cypher": "MATCH (n:Gene {name:'INS'}) RETURN n"}], "validation": [{"valid": True}], "graph_version": "test-release", "truncated": False, "retrieval_execution": {"completed": True, "cursor_exhausted": True}}
 
     async def probe(self):
         return {"state": "healthy", "identity_verified": True, "graph_version": "test-release"}
@@ -133,11 +133,11 @@ async def wait_state(client, run_id, states):
     raise AssertionError(f"Run never reached {states}: {run}")
 
 
-async def new_plan(client, question="Which cell types express INS?", **options):
+async def new_plan(client, question="Which cell types express INS?", *, expected_status="awaiting_confirmation", **options):
     response = await client.post("/v2/plans", json={"question": question, **options})
     assert response.status_code == 202
     created = response.json()
-    await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+    await wait_state(client, created["run_id"], {expected_status})
     return created
 
 
@@ -175,7 +175,7 @@ def test_cell_constraint_is_persisted_before_confirmation(tmp_path):
     asyncio.run(scenario())
 
 
-def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path):
+def test_literature_explicit_optout_without_changing_graph_scope(tmp_path):
     async def scenario():
         question = "Is KRT19 selectively expressed in ductal cells? Use graph evidence only."
         plan = json.loads(json.dumps(PLAN))
@@ -184,11 +184,11 @@ def test_literature_policy_always_enabled_without_changing_graph_scope(tmp_path)
         async with service(tmp_path, gateway=Gateway(plan=plan)) as (client, runtime, gateway, graph, literature):
             created = await new_plan(client, question)
             saved = runtime.store.get(created["run_id"])
-            assert saved["plan"]["literature"] is True
-            assert saved["plan"]["literature_intent"]["reason"] == "always_enabled"
+            assert saved["plan"]["literature"] is False
+            assert saved["plan"]["literature_intent"]["reason"] == "explicit_opt_out"
             await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             completed = await wait_state(client, created["run_id"], {"completed"})
-            assert completed["literature"]["status"] == "complete" and literature.calls == 1
+            assert literature.calls == 0
             assert gateway.plans == gateway.syntheses == graph.calls == 1
     asyncio.run(scenario())
 
@@ -214,7 +214,9 @@ def test_confirmation_replay_and_followup_are_idempotent(tmp_path):
             assert graph.calls == gateway.syntheses == gateway.plans == 1
             followup = await new_plan(client, "What about GCG?", session_id=created["session_id"])
             assert followup["run_id"] != created["run_id"]
-            assert gateway.histories[-1] == [{"role": "user", "content": "Which cell types express INS?"}, {"role": "assistant", "content": run["graph_answer"]}]
+            assert gateway.histories[-1][0] == {"role":"user", "content":"Which cell types express INS?"}
+            assert gateway.histories[-1][1]["content"].startswith(run["graph_answer"])
+            assert "A supported mechanism" in gateway.histories[-1][1]["content"]
     asyncio.run(scenario())
 
 
@@ -232,6 +234,42 @@ def test_graph_answer_precedes_early_literature_and_heartbeats(tmp_path):
             assert any(event["type"] == "heartbeat" for event in events)
             assert not any("percent" in json.dumps(event) for event in events)
             assert run["literature"]["perspectives"][0]["references"][0]["pmid"] == "123"
+    asyncio.run(scenario())
+
+
+def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tmp_path):
+    async def scenario():
+        async with service(tmp_path) as (client, runtime, *_):
+            run = runtime.store.create('List donor IDs.')
+            run_id = run['run_id']
+            runtime.store.update(run_id, plan={'steps': [
+                {'id': 's1', 'question': 'List donor IDs.', 'constraints': []}]})
+            raw = {'nodes': [{'id': 'HPAP-041', 'labels': ['donor'], 'properties': {
+                'diabetes_type': 'PRIVATE_TYPE',
+                'derived_diabetes_status': 'PRIVATE_STATUS',
+                't1d_stage': 'PRIVATE_STAGE',
+                'data_source': 'PRIVATE_SOURCE'}}],
+                'donor_summary': {'rows': [{'donor_id': 'HPAP-041',
+                                            'recorded_stage': 'PRIVATE_STAGE'}]},
+                'aggregate_cohort_facts': {
+                    'recorded_stage_counts': {'PRIVATE_STAGE': 1}}}
+
+            # Live emission is sanitized before durable storage.
+            await runtime.emit(run_id, 'graph_step', raw)
+            stored = runtime.store.events_after(run_id, 0)[0]
+            assert 'HPAP-041' in json.dumps(stored)
+            assert not any(sentinel in json.dumps(stored) for sentinel in (
+                'PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'))
+
+            # A historical/raw stored event is also sanitized during replay.
+            legacy = runtime.store.event(run_id, 'preview_step', raw)
+            assert 'PRIVATE_STAGE' in json.dumps(legacy)
+            runtime.store.update(run_id, status='completed', stage='completed')
+            response = await client.get(f'/v2/runs/{run_id}/events')
+            assert response.status_code == 200
+            assert 'HPAP-041' in response.text
+            for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
+                assert sentinel not in response.text
     asyncio.run(scenario())
 
 
@@ -276,6 +314,7 @@ def test_health_polling_no_inference_and_dependency_failures(tmp_path):
             runtime.health.observations["claude"]["checked_epoch"] = time.time() - 4000
             assert (await client.get("/health/ready")).status_code == 503
             gateway.budget.remaining = 0
+            await runtime.health.refresh_persistence()
             health = (await client.get("/health/components")).json()
             assert health["components"]["runtime"]["error_category"] == "budget_exhausted"
     asyncio.run(scenario())
@@ -340,12 +379,13 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
         graph = Graph()
         graph.error = ConnectionError("a token is SECRET_VALUE")
         async with service(tmp_path, gateway=Gateway(plan=plan), graph=graph) as (client, runtime, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             assert response.status_code == 409
-            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            run = await wait_state(client, created["run_id"], {"failed"})
             assert run["preview"]["evidence"]["steps"][0]["status"] == "failed"
-            assert graph.previous[1]["s1"]["status"] == "failed"
+            assert len(graph.previous) == 1  # a failed dependency blocks its child without an unrestricted query
+            assert run["plan"]["steps"][1]["depends_on"] == ["s1"]
             assert "SECRET_VALUE" not in json.dumps(run)
     asyncio.run(scenario())
 
@@ -353,10 +393,10 @@ def test_step_errors_are_visible_sanitized_and_dependencies_passed(tmp_path):
 def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
     async def scenario():
         async with service(tmp_path, graph=Graph(delay=5), preview_timeout=0.03, run_timeout=0.03) as (client, runtime, *_):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             response = await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
             assert response.status_code == 409
-            run = await wait_state(client, created["run_id"], {"awaiting_confirmation"})
+            run = await wait_state(client, created["run_id"], {"failed"})
             assert run["preview"]["error"]["category"] == "timeout"
             assert run["preview"]["evidence"]["completeness"] == "partial"
     asyncio.run(scenario())
@@ -365,7 +405,7 @@ def test_timeout_preserves_partial_evidence_and_stops_waiting(tmp_path):
 def test_clarification_cannot_be_confirmed(tmp_path):
     async def scenario():
         async with service(tmp_path, gateway=Gateway(plan={**PLAN, "steps": [], "clarification": "Which gene?"})) as (client, runtime, gateway, graph, literature):
-            created = await new_plan(client)
+            created = await new_plan(client, expected_status="failed")
             assert (await client.post(f'/v2/plans/{created["plan_id"]}/confirm')).status_code == 409
             assert graph.calls == 0
     asyncio.run(scenario())
@@ -453,4 +493,20 @@ def test_stale_inference_is_distinct_from_fresh_access_probe(tmp_path):
             assert health["components"]["claude"]["state"] == "healthy"
             assert health["components"]["claude"]["recent_inference"]["state"] == "unknown"
             assert health["components"]["claude"]["recent_inference"]["stale"] is True
+    asyncio.run(scenario())
+
+
+def test_empty_primary_answer_never_starts_literature(tmp_path):
+    class EmptyGraph(Graph):
+        async def execute(self, step, previous, emit):
+            evidence = await super().execute(step, previous, emit)
+            return {**evidence, 'status':'empty', 'nodes':[], 'edges':[], 'rows':[]}
+    async def scenario():
+        async with service(tmp_path, graph=EmptyGraph()) as (client, runtime, gateway, graph, literature):
+            created = await new_plan(client)
+            await client.post(f'/v2/plans/{created["plan_id"]}/confirm')
+            run = await wait_state(client, created['run_id'], {'completed','partial'})
+            assert literature.calls == 0
+            assert run['literature']['status'] == 'not_requested'
+            assert run['literature']['reason'] == 'no_usable_graph_evidence'
     asyncio.run(scenario())

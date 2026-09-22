@@ -12,7 +12,7 @@ def test_failure_is_not_biological_absence_or_justified_by_context():
     assert 'retrieval failure' in outcome_message({'a': failed, 'b': context})
     assert not confirmation_eligible({}, {'evidence': {'steps': [failed, context]}})
     assert 'No matching records' in outcome_message({'a': {'status': 'empty'}})
-    assert confirmation_eligible({}, {'evidence': {'steps': [{'status': 'empty'}]}})
+    assert not confirmation_eligible({}, {'evidence': {'steps': [{'status': 'empty'}]}})  # no query/execution proof
 
 
 def test_generation_preserves_unrecognized_modifiers_and_explicit_filters():
@@ -78,9 +78,14 @@ def test_followups_only_describe_returned_measurement_types():
 
 def test_scope_guard_does_not_stream_a_known_false_query_scope():
     from pankagent_vnext.scope_guard import ScopeTextFilter, broad_cell_search
-    evidence = {'s': {'status': 'complete', 'queries': [{'cypher': 'validated'}], 'requested_scope': {
-        'complete': True, 'relation_types': ['GENE_ENRICHED_IN'],
-        'constraints': [{'entity_type': 'Gene', 'property': 'name', 'value': 'INS'}]}}}
+    from pankagent_vnext.evidence_coverage import build_evidence_coverage
+    query = 'MATCH (g:Gene)-[r:GENE_ENRICHED_IN]->(c:anatomical_structure) WHERE g.name = "INS" RETURN g,r,c'
+    scope = {'complete': True, 'relation_types': ['GENE_ENRICHED_IN'],
+             'constraints': [{'entity_type': 'Gene', 'property': 'name', 'value': 'INS'}]}
+    evidence = {'s': {'status': 'complete', 'truncated': False, 'graph_version': 'PanKgraph_08_04', 'queries': [{'cypher': query}],
+                      'requested_scope': scope}}
+    evidence['s']['evidence_coverage'] = build_evidence_coverage(scope, evidence['s'],
+        graph_version='PanKgraph_08_04', query=query, validation_verified=True)
     assert broad_cell_search(evidence)
     guard = ScopeTextFilter(evidence)
     chunks = ['Measured value 1.23 [G1].\n\n', 'No other cell types were ', 'queried here.\n\n', 'Inspect the source.']
@@ -120,15 +125,55 @@ def test_release_go_domain_mapping_preserves_filter_and_owner():
 def test_t1d_context_maps_to_required_relation_without_dropping_other_diseases():
     from pankagent_vnext.plan_constraints import repair_step_constraints
     from pankagent_vnext.graph import validate_cypher
-    original={'question':'T1D differential expression', 'relation_types':['T1D_DEG_IN'], 'constraints':[{'property':'id','entity_type':'disease','operator':'=','value':'MONDO_0005147'}]}
-    step=repair_step_constraints(original)
+    from pankagent_vnext.planning_compile import compile_property_owners
+    current_t1d = 'CURRENT_RELEASE_T1D'
+    grounding = {'status':'ready', 'identity':{'graph_release':'PanKgraph_08_04'},
+        'catalog_complete':True, 'mentions':[{'requested':'T1D', 'state':'resolved',
+            'candidates':[{'entity_type':'disease', 'id':current_t1d,
+                           'name':'type 1 diabetes'}]}]}
+    original={'id':'s1', 'question':'T1D differential expression',
+        'relation_types':['T1D_DEG_IN'], 'constraints':[
+            {'property':'id','entity_type':'disease','operator':'=','value':current_t1d}]}
+    compiled, issue = compile_property_owners(
+        {'steps':[original]}, grounding, question=original['question'])
+    assert issue is None
+    step=repair_step_constraints(compiled['steps'][0])
     assert step['constraints'] == []
-    assert step['schema_bindings'][0]['from'] == original['constraints'][0]
+    assert step['constraint_compilation'][0]['requested'] == original['constraints'][0]
+    assert step['schema_bindings'][0]['from'] == {
+        **original['constraints'][0], 'owner_kind':'node'}
     assert 'missing_required_relation:T1D_DEG_IN' in validate_cypher('MATCH (g:Gene) RETURN g',step)
     assert 'measurement_endpoint_schema_mismatch' in validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(d:disease) RETURN g,r,d',step)
     assert validate_cypher('MATCH (g:Gene)-[r:T1D_DEG_IN]->(c:anatomical_structure) RETURN g,r,c',step) == []
-    original['constraints'][0]['value']='MONDO_0005148'
-    assert repair_step_constraints(original)['constraints'] == original['constraints']
+    other = {**original, 'question':'T2D differential expression', 'constraints':[
+        {**original['constraints'][0], 'value':'CURRENT_RELEASE_T2D'}]}
+    other_grounding = {**grounding, 'mentions':[{'requested':'T2D', 'state':'resolved',
+        'candidates':[{'entity_type':'disease', 'id':'CURRENT_RELEASE_T2D',
+                       'name':'type 2 diabetes'}]}]}
+    compiled, issue = compile_property_owners(
+        {'steps':[other]}, other_grounding, question=other['question'])
+    assert issue is None
+    assert repair_step_constraints(compiled['steps'][0])['constraints'] == compiled['steps'][0]['constraints']
+
+
+def test_explicit_t1d_disease_node_request_is_not_erased_as_relation_context():
+    from pankagent_vnext.planning_compile import compile_property_owners
+    current_t1d = 'CURRENT_RELEASE_T1D'
+    question = ('For T1D_DEG_IN, return the T1D disease node with disease id '
+                + current_t1d + '.')
+    grounding = {'status': 'ready',
+        'identity': {'graph_release': 'PanKgraph_08_04'},
+        'catalog_complete': True,
+        'mentions': [{'requested': 'T1D', 'state': 'resolved',
+            'candidates': [{'entity_type': 'disease', 'id': current_t1d,
+                            'name': 'type 1 diabetes'}]}]}
+    plan = {'steps': [{'id': 's1', 'question': question,
+        'relation_types': ['T1D_DEG_IN'], 'constraints': [
+            {'property': 'id', 'entity_type': 'disease',
+             'operator': '=', 'value': current_t1d}]}]}
+    compiled, issue = compile_property_owners(plan, grounding, question=question)
+    assert issue == 'invalid_constraint_endpoint:s1:disease'
+    assert compiled['steps'][0]['constraints'] == plan['steps'][0]['constraints']
 
 
 def test_measurement_endpoint_check_allows_undirected_gene_cell_match():
@@ -148,7 +193,7 @@ def test_repair_timing_excludes_user_confirmation_wait():
 def test_model_plan_structure_reports_specific_issue():
     from pankagent_vnext.llm import plan_structure_issue
     assert plan_structure_issue({'steps':[{'id':'a','depends_on':['b']}]}) == 'invalid_plan_dependencies'
-    assert plan_structure_issue({'steps':[{'id':str(i),'depends_on':[]} for i in range(4)]}) == 'plan_too_large'
+    assert plan_structure_issue({'steps':[{'id':str(i),'depends_on':[]} for i in range(13)]}) == 'plan_too_large'
     assert plan_structure_issue({'steps':[{'id':'a','depends_on':[]},{'id':'b','depends_on':['a']}]}) is None
 
 
@@ -182,7 +227,7 @@ def test_additive_scope_failure_retains_preview_and_blocks_confirmation(tmp_path
             created=await new_plan(client,'Is INS enriched in beta cells?')
             parent=runtime.store.get(created['run_id'])
             res=await client.post(f'/v2/plans/{created["plan_id"]}/revise',json={'question':'add genetics','revision_instruction':'add genetics','revision_mode':'instruction'})
-            child=await wait_state(client,res.json()['run_id'],{'awaiting_confirmation'})
+            child=await wait_state(client,res.json()['run_id'],{'failed'})
             assert child['plan']['proposal_issue']=='additive_revision_scope_loss'
             assert child['preview']['evidence']['nodes']==parent['preview']['evidence']['nodes']
             assert (await client.post(f'/v2/plans/{child["plan_id"]}/confirm',json={})).status_code==409

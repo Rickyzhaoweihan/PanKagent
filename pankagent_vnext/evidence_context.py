@@ -10,13 +10,18 @@ import json
 import math
 from collections import Counter, defaultdict
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
+
+from .evidence_coverage import coverage_for_answer
+from .evidence_identity import evidence_id
 
 
 TARGET_BYTES = 75_000
 MAX_BYTES = 100_000
-_SUMMARY_FIELDS = ("step_id", "status", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary")
+NODE_ONLY_MODE = "node_identity_only"
+_SUMMARY_FIELDS = ("step_id", "status", "execution_status", "retrieval_execution", "graph_version", "truncated", "error", "question", "title", "purpose", "context_for", "requested_scope", "resolved_constraints", "semantic_registry", "donor_summary", "functional_metadata")
 
 
 @dataclass(frozen=True)
@@ -100,13 +105,19 @@ def _bounded(value: Any, limits: _Limits, changes: Counter, depth: int = 0) -> A
     return _bounded(str(value), limits, changes, depth + 1)
 
 
-def _compact_node(node: Mapping, limits: _Limits, changes: Counter) -> dict:
+def _compact_node(node: Mapping, limits: _Limits, changes: Counter,
+                  visible_classifications=frozenset()) -> dict:
     # Stable identifiers and type labels are never shortened. An unexpectedly
     # huge identity therefore fails the total-size gate instead of changing IDs.
+    properties = dict(node.get("properties") or {})
+    if 'donor' in (node.get('labels') or []):
+        from .answer_facts import DONOR_CLASSIFICATION_FIELDS
+        for field in set(DONOR_CLASSIFICATION_FIELDS) - set(visible_classifications):
+            properties.pop(field, None)
     return {
         "id": str(node["id"]),
         "labels": list(node.get("labels") or []),
-        "properties": _bounded(node.get("properties") or {}, limits, changes),
+        "properties": _bounded(properties, limits, changes),
     }
 
 
@@ -142,11 +153,87 @@ def _validation(checks: Any, limits: _Limits, changes: Counter) -> list:
     return [item]
 
 
+def _focal_gene(item: Mapping, node_index: dict) -> str | None:
+    """Use the requested verified gene, never a hub guessed from an excerpt."""
+    scope = item.get("requested_scope") or {}
+    constraints = scope.get("constraints") or []
+    resolved = item.get("resolved_entities") or []
+    release = item.get("graph_version")
+    identities = set()
+    for index, constraint in enumerate(constraints):
+        if constraint.get("entity_type") != "Gene" or constraint.get("property") not in {"id", "name"}:
+            continue
+        if (constraint.get("operator", "=") != "=" or constraint.get("owner_kind", "node") != "node"
+                or constraint.get("relationship_type") or not isinstance(constraint.get("value"), str)):
+            return None
+        records = [record for record in resolved if record.get("constraint_index") == index]
+        if records:
+            if len(records) != 1:
+                return None
+            record = records[0]
+            requested = record.get("requested") or {}
+            if (record.get("state") != "resolved" or record.get("graph_version") != release
+                    or record.get("entity_type") != "Gene" or not isinstance(record.get("id"), str)
+                    or any(requested.get(key) != constraint.get(key) for key in ("entity_type", "property", "value"))
+                    or requested.get("operator", "=") != constraint.get("operator", "=")):
+                return None
+            identifier = record["id"]
+            if constraint["property"] == "id" and constraint["value"] != identifier:
+                return None
+        else:
+            # An exact requested node ID also has a lossless proof in the full
+            # returned node list. A name alone needs an actual resolver record.
+            if constraint["property"] != "id":
+                return None
+            identifier = constraint["value"]
+        if "Gene" not in (node_index.get(identifier, {}).get("labels") or []):
+            return None
+        identities.add(identifier)
+    return next(iter(identities)) if len(identities) == 1 else None
+
+
+def _interaction_totals(item: Mapping, edges: list, node_index: dict, coverage: Mapping) -> dict:
+    """Counts from all retrieved physical interactions before any sampling.
+
+    Incoming and outgoing endpoints form one partner set. Repeated experiments
+    remain separate records, but neither the focal gene nor a self-interaction
+    increases the partner count. Unverified identities do not acquire a total.
+    """
+    records = [edge for edge in edges if edge.get("type") == "PHYSICAL_INTERACTION"]
+    focal = _focal_gene(item, node_index)
+    result = {"focal_gene_id": focal, "unique_partner_genes": None,
+              "count_scope": "all_retrieved_records_before_excerpt_selection",
+              "complete_for_requested_scope": False}
+    if focal is None:
+        result["partner_count_state"] = "focal_gene_not_uniquely_verified"
+        return result
+    incident = [edge for edge in records if focal in {str(edge["start_id"]), str(edge["end_id"])}]
+    partners = {str(edge[key]) for edge in incident for key in ("start_id", "end_id")} - {focal}
+    verified = all("Gene" in (node_index.get(identifier, {}).get("labels") or []) for identifier in partners)
+    complete = bool(item.get("status") in {"complete", "empty"} and item.get("truncated") is False
+                    and coverage.get("query_scope", {}).get("complete_for_requested_scope") is True
+                    and coverage.get("query_scope", {}).get("constraints") == (item.get("requested_scope") or {}).get("constraints")
+                    and len(incident) == len(records) and verified)
+    result.update(unique_partner_genes=len(partners) if verified else None,
+                  unique_partner_entities=len(partners), focal_interaction_records=len(incident),
+                  self_interaction_records=sum(str(edge["start_id"]) == str(edge["end_id"]) == focal for edge in incident),
+                  partner_count_state="verified_from_full_retrieved_records" if verified else "partner_gene_labels_unverified",
+                  complete_for_requested_scope=complete)
+    return result
+
+
 def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict) -> dict:
     changes = Counter()
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
-    entry["evidence_id"] = "G" + str(index + 1)
+    entry["evidence_id"] = evidence_id(item, index)
     entry["validation"] = _validation(item.get("validation"), limits, changes)
+    # Record full query/source scope before sampling. Never clip scope filters or
+    # turn excerpt omissions into a retrieval limit. The total-size gate remains.
+    entry["evidence_coverage"] = coverage_for_answer(item)
+    if isinstance(item.get("coloc_linkage"), Mapping):
+        # The linkage helper already bounds record/reference examples and keeps
+        # authoritative full counts. Do not reclip away role or signal identity.
+        entry["coloc_linkage"] = deepcopy(item["coloc_linkage"])
     nodes, edges, rows = (item.get(key) or [] for key in ("nodes", "edges", "rows"))
     if not all(isinstance(values, list) for values in (nodes, edges, rows)):
         raise ValueError("invalid_evidence_collections")
@@ -155,11 +242,19 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     if any(not isinstance(edge, Mapping) or "start_id" not in edge or "end_id" not in edge for edge in edges):
         raise ValueError("invalid_evidence_edge")
 
+    from .answer_facts import (requested_classification_fields,
+                               sanitize_unrequested_classifications)
+    visible_classifications = requested_classification_fields(item)
+    if 'donor_summary' in entry:
+        entry['donor_summary'] = sanitize_unrequested_classifications(
+            entry['donor_summary'], visible_classifications)
     sampled_nodes, dropped_nodes = _sample(nodes, limits.nodes, _node_type)
     sampled_edges, dropped_edges = _sample(edges, limits.edges, _edge_type)
-    entry["nodes"] = [_compact_node(node, limits, changes) for node in sampled_nodes]
+    entry["nodes"] = [_compact_node(node, limits, changes, visible_classifications)
+                      for node in sampled_nodes]
     entry["edges"] = [_compact_edge(edge, limits, changes) for edge in sampled_edges]
-    entry["rows"] = [_bounded(row, limits, changes) for row in rows[:limits.rows]]
+    entry["rows"] = [_bounded(sanitize_unrequested_classifications(
+        row, visible_classifications), limits, changes) for row in rows[:limits.rows]]
     full_node_index = {str(node["id"]): node for node in nodes}
     visible_ids = {node["id"] for node in entry["nodes"]}
     stubs, missing_endpoints, cross_step_endpoints = 0, 0, 0
@@ -190,6 +285,60 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
 
     for key, values in (("nodes", nodes), ("edges", edges), ("rows", rows)):
         entry[key + "_count"] = len(values)
+    entry["evidence_totals"] = {
+        "distinct_nodes_by_label": {label: len({str(n["id"]) for n in nodes if label in (n.get("labels") or [])})
+            for label in sorted({label for n in nodes for label in (n.get("labels") or [])})},
+        "relationships": {kind: {
+            "records": sum(e.get("type") == kind for e in edges),
+            "unique_start_entities": len({str(e["start_id"]) for e in edges if e.get("type") == kind}),
+            "unique_end_entities": len({str(e["end_id"]) for e in edges if e.get("type") == kind})}
+            for kind in sorted({e.get("type") or "unknown" for e in edges})},
+    }
+    from .answer_facts import build_answer_facts, minimize_answer_facts_for_request
+    # Aggregate projection intentionally removes private donor/sample nodes.
+    # Reuse the full-record anonymous ledger computed immediately before that
+    # projection; rebuilding from the redacted node list would erase correct
+    # sample/assay totals.  Only the versioned aggregate boundary authorizes
+    # this path, and the request-specific classification minimizer still runs.
+    projected_facts = (item.get('answer_facts')
+                       if (item.get('output_scope') or {}).get('mode') == 'aggregate_only'
+                       else None)
+    answer_facts = (deepcopy(projected_facts) if isinstance(projected_facts, Mapping)
+                    else build_answer_facts(
+                        item, coverage=entry["evidence_coverage"],
+                        max_groups=min(30, limits.collection_items),
+                        max_records=min(20, limits.edges)))
+    if answer_facts is not None:
+        entry["answer_facts"] = minimize_answer_facts_for_request(item, answer_facts)
+    from .signal_membership import summarize_signal_membership
+    signal_membership = summarize_signal_membership(item, max_records=min(20, limits.edges))
+    if signal_membership:
+        entry["signal_membership_summary"] = signal_membership
+    from .evidence_coverage import CELL_MEASUREMENTS
+    cell_kinds = CELL_MEASUREMENTS.intersection(entry['evidence_totals']['relationships'])
+    if cell_kinds:
+        all_nodes = {identifier: node for (release, identifier), node in node_context.items()
+                     if release == str(item.get('graph_version', ''))}
+        all_nodes.update(full_node_index)
+        for kind in sorted(cell_kinds):
+            targets = {str(edge['end_id']) for edge in edges if edge.get('type') == kind}
+            verified = all('anatomical_structure' in (all_nodes.get(identifier, {}).get('labels') or [])
+                           for identifier in targets)
+            entry['evidence_totals']['relationships'][kind].update(
+                matched_cell_type_count=len(targets) if verified else None,
+                matched_cell_type_count_state='verified_from_returned_endpoints' if verified else 'endpoint_types_unverified',
+                matched_cell_type_count_scope='all_returned_records_before_excerpt_selection',
+                source_study_total_cell_types=None,
+                source_study_denominator_state='not_established_by_this_query',
+                denominator_rule='Count cell types with matching recorded evidence. A complete PanKgraph search does not by itself '
+                    'establish the total number of cell types profiled in the source study. Do not describe the returned count as '
+                    'all profiled cell types or compute a fraction of the source study without a separately verified denominator.')
+    if "PHYSICAL_INTERACTION" in entry["evidence_totals"]["relationships"]:
+        all_nodes = {identifier: node for (release, identifier), node in node_context.items()
+                     if release == str(item.get("graph_version", ""))}
+        all_nodes.update(full_node_index)
+        entry["evidence_totals"]["relationships"]["PHYSICAL_INTERACTION"].update(
+            _interaction_totals(item, edges, all_nodes, entry["evidence_coverage"]))
     entry["context_counts"] = {
         "full_nodes_selected": len(sampled_nodes), "endpoint_stubs": stubs,
         "edges_selected": len(sampled_edges), "rows_selected": len(entry["rows"]),
@@ -210,7 +359,7 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
     return entry
 
 
-def compact_evidence(evidence: Mapping | list) -> list[dict]:
+def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES) -> list[dict]:
     """Return a JSON-safe synthesis view; do not modify the full evidence.
 
     Caps apply to full records per step. Minimal endpoint stubs may increase
@@ -230,14 +379,192 @@ def compact_evidence(evidence: Mapping | list) -> list[dict]:
             if isinstance(node, Mapping) and "id" in node:
                 node_context.setdefault((str(step.get("graph_version", "")), str(node["id"])), node)
 
-    def build(limits):
-        result = [_compact_step(item, index, limits, node_context) for index, item in enumerate(steps)]
-        size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
-        return result, size
+    def size(value):
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
-    result, size = build(_NORMAL)
-    if size > TARGET_BYTES:
-        result, size = build(_REDUCED)
-    if size > MAX_BYTES:
-        raise ValueError("evidence_context_too_large")
+    result = [_compact_step(item, index, _NORMAL, node_context) for index, item in enumerate(steps)]
+    # Reduce only the largest branch at each stage; smaller independent checks
+    # retain their relationships, measurements and stable citation identifiers.
+    reduced, identity = set(), set()
+    while size(result) > max_bytes and len(identity) < len(steps):
+        index = max((i for i in range(len(steps)) if i not in identity), key=lambda i: size(result[i]))
+        if index not in reduced:
+            candidate = _compact_step(steps[index], index, _REDUCED, node_context)
+            if size(candidate) < size(result[index]):
+                result[index] = candidate
+            reduced.add(index)
+            continue
+        budget = max(1000, max_bytes - size([item for i, item in enumerate(result) if i != index]) - 100)
+        result[index] = node_only_evidence([steps[index]], max_bytes=budget)[0]
+        result[index]['evidence_id'] = evidence_id(steps[index], index)
+        identity.add(index)
+    if size(result) > max_bytes:
+        raise ValueError('evidence_step_envelope_too_large')
+    return result
+
+
+def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES) -> list[dict]:
+    """Bound the oversized answer view to four explicitly allowed node fields.
+
+    Full query records stay untouched. Identity/type values are never clipped:
+    an individually oversized record is omitted, with a disclosed count. Other
+    properties, edges, rows and derived measurement facts cannot reach synthesis.
+    """
+    steps = list(evidence.values()) if isinstance(evidence, Mapping) else evidence
+    if not isinstance(steps, list) or any(not isinstance(s, Mapping) for s in steps):
+        raise ValueError("invalid_evidence_shape")
+    limits = _Limits(0, 0, 0, 512, 8)
+    entries, candidates = [], []
+    for index, step in enumerate(steps):
+        nodes = step.get("nodes") or []
+        if any(not isinstance(n, Mapping) or "id" not in n for n in nodes):
+            raise ValueError("invalid_evidence_node")
+        from .answer_facts import requested_classification_fields
+        visible_classifications = requested_classification_fields(step)
+        entry = {
+            "evidence_id": evidence_id(step, index),
+            "status": step.get("status") if step.get("status") in
+                {"complete", "partial", "empty", "failed", "blocked", "skipped"} else "unknown",
+            "truncated": bool(step.get("truncated")),
+            "nodes": [], "context_sampled": True,
+            "context_compaction": NODE_ONLY_MODE,
+            "context_counts": {"full_nodes_selected": 0},
+            "context_dropped": {"nodes": len(nodes), "edges": len(step.get("edges") or []),
+                                "rows": len(step.get("rows") or [])},
+        }
+        # These identify the requested check, not biological observations.
+        # Keep empty/failed QTL, GWAS, expression, etc. distinguishable without
+        # forwarding their predicates, measurements or raw execution records.
+        scope = step.get("requested_scope") or {}
+        check_changes = Counter()
+        check_limits = _Limits(0, 0, 0, 256, 16)
+        entry["check"] = {
+            "title": _bounded(step.get("title") or step.get("question") or "", check_limits, check_changes),
+            "relation_types": _bounded(scope.get("relation_types") or [], check_limits, check_changes),
+            "purpose": "context" if step.get("purpose") == "context" else "primary",
+        }
+        for key in ("step_id", "graph_version"):
+            value = step.get(key)
+            if isinstance(value, str) and len(value) <= 128:
+                entry[key] = value
+        entries.append(entry)
+        # Interleave rare types first, rather than dropping an entire category.
+        selected, _ = _sample(nodes, min(len(nodes), 200), _node_type)
+        type_counts = Counter(_node_type(node) for node in nodes)
+        selected.sort(key=lambda node: (type_counts[_node_type(node)], _node_type(node)))
+        projected = []
+        for node in selected:
+            properties = node.get("properties") or {}
+            changes = Counter()
+            description = properties.get("description")
+            if description is not None and not isinstance(description, str):
+                changes["unsupported_description_values"] += 1
+                description = None
+            source = {}
+            for key in ("source", "data_source", "data_source_url", "data_version"):
+                if ('donor' in (node.get('labels') or []) and key == 'data_source'
+                        and 'data_source' not in visible_classifications):
+                    continue
+                value = properties.get(key)
+                if key in {"data_source_url", "data_version"} and isinstance(value, str) and len(value) > limits.string_chars:
+                    changes["omitted_oversized_source_identities"] += 1
+                    continue
+                if isinstance(value, (str, int, float)) or value is None:
+                    if value is not None:
+                        source[key] = _bounded(value, limits, changes)
+                elif isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value):
+                    if key in {"data_source_url", "data_version"}:
+                        retained = [v for v in value if len(v) <= limits.string_chars]
+                        changes["omitted_oversized_source_identities"] += len(value) - len(retained)
+                        value = retained
+                    source[key] = _bounded(value, limits, changes)
+                elif key in properties:
+                    changes["unsupported_source_values"] += 1
+            projected.append({"id": str(node["id"]), "type": list(node.get("labels") or []),
+                              "description": _bounded(description, limits, changes),
+                              "source": source or None})
+            if changes:
+                entry.setdefault("context_content_omissions", {})
+                for key, count in changes.items():
+                    entry["context_content_omissions"][key] = entry["context_content_omissions"].get(key, 0) + count
+        candidates.append(projected)
+
+    def size(value):
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
+
+    # Reserve room for changing count digits and the final scientific scope note.
+    available = max_bytes - size(entries) - 1024
+    added = []
+    for position in range(max((len(items) for items in candidates), default=0)):
+        for index, items in enumerate(candidates):
+            if position >= len(items):
+                continue
+            node = items[position]
+            cost = size(node) + 1
+            if cost > available:
+                continue
+            entries[index]["nodes"].append(node)
+            entries[index]["context_counts"]["full_nodes_selected"] += 1
+            entries[index]["context_dropped"]["nodes"] -= 1
+            available -= cost
+            added.append(index)
+    while size(entries) > max_bytes and added:
+        index = added.pop()
+        entries[index]["nodes"].pop()
+        entries[index]["context_counts"]["full_nodes_selected"] -= 1
+        entries[index]["context_dropped"]["nodes"] += 1
+    if size(entries) > max_bytes:
+        # Public plans contain at most twelve checks. Malformed/unbounded step
+        # envelopes still fail explicitly, never silently renumber citations.
+        raise ValueError("evidence_step_envelope_too_large")
+    return entries
+
+
+def scientific_excerpt(compact, *, include_donor_details=False):
+    """Keep trace diagnostics in application metadata, outside scientific prose.
+
+    Explicit excerpt scope remains, so selected records cannot imply complete
+    tabular coverage. This does not change full evidence or graph display data.
+    """
+    def clean(value):
+        if isinstance(value, dict):
+            return {k:clean(v) for k,v in value.items() if not k.startswith('context_') and k not in {'endpoint_stub', 'endpoint_stub_reason'}}
+        if isinstance(value,list): return [clean(v) for v in value]
+        return value
+    result=[]
+    for item in compact:
+        entry=clean(item)
+        if item.get("context_compaction") == NODE_ONLY_MODE:
+            entry["answer_evidence_scope"] = {
+                "mode": NODE_ONLY_MODE, "query_too_broad": True,
+                "selected_node_count": item["context_counts"]["full_nodes_selected"],
+                "omitted_node_count": item["context_dropped"]["nodes"],
+                "node_text_clipped": bool(item.get("context_content_omissions")),
+                "relationship_and_measurement_evidence_available": False,
+            }
+            result.append(entry)
+            continue
+        donor_details_hidden = False
+        if not include_donor_details and any(set(node.get('labels') or []) & {'donor', 'Sample_node'} for node in entry.get('nodes', [])):
+            # Aggregate requests need the full computed facts, not incidental
+            # clinical or sample examples, including tissue-only sample queries. The caller enables details for explicit lists.
+            hidden_ids = {node['id'] for node in entry.get('nodes', [])
+                          if set(node.get('labels') or []) & {'donor', 'Sample_node'}}
+            entry['nodes'] = [node for node in entry.get('nodes', []) if node['id'] not in hidden_ids]
+            entry['edges'] = [edge for edge in entry.get('edges', [])
+                              if edge.get('start_id') not in hidden_ids and edge.get('end_id') not in hidden_ids]
+            entry['rows'] = []
+            if isinstance(entry.get('donor_summary'), dict):
+                entry['donor_summary'].pop('rows', None)
+            donor_details_hidden = True
+        entry['answer_evidence_scope']={
+            'individual_donor_details_hidden':donor_details_hidden,
+            'individual_records_are_selected_examples':bool(item.get('context_sampled')),
+            'authoritative_totals':'Use answer_facts for full-record source/assay/lead-role/distribution facts, and evidence_totals and donor_summary for totals. For physical interactions, use unique_partner_genes computed from the union of both endpoints with the requested focal gene excluded. Never count selected example nodes or add unique_start_entities and unique_end_entities to invent a partner total.',
+            'retrieval_scope':'Use evidence_coverage.query_scope; selected examples do not make a verified complete search incomplete.',
+            'source_comparison':'Use evidence_coverage.source_comparisons; query and display subsets never redefine the source analysis comparison.',
+            'cell_type_denominator':'Use matched_cell_type_count for cell types with returned evidence. Completeness means all matching PanKgraph records were checked; it does not make this count the source-study total or change a recorded one-versus-rest comparison.',
+            'metadata_rule':'Unshown fields and identity-only node examples do not establish missing metadata in Neo4j. Do not describe excerpt omissions or placeholders as incomplete database records. Only explicit source-backed missing values can support a missing-metadata statement.',
+            'graph_display':'Not described by this synthesis excerpt; do not infer visible or omitted graph records.'}
+        result.append(entry)
     return result

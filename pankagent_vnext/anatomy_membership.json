@@ -1,0 +1,340 @@
+{
+  "version": "pankgraph-anatomical-membership-2026-09-08-v1",
+  "graph_release": "PanKgraph_08_04",
+  "source_sha256": "4eec6dc77d0d1b0b4a833a2894bfbff366919cc0aad988fd6e9c211a3d9079a7",
+  "source_scope": "Complete read-only inventory of HAS_CELL_TYPE, PART_OF, SUBCLASS_OF, HAS_STATE; ontology metadata only",
+  "edges": [
+    {
+      "source": "CL_0000057",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0002574"
+    },
+    {
+      "source": "CL_0000075",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_1001433"
+    },
+    {
+      "source": "CL_0000084",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000542"
+    },
+    {
+      "source": "CL_0000094",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000738"
+    },
+    {
+      "source": "CL_0000115",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "CL_0000136",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0002574"
+    },
+    {
+      "source": "CL_0000146",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_1001433"
+    },
+    {
+      "source": "CL_0000169",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0000171",
+      "relation": "HAS_STATE",
+      "target": "CL_0000171_active"
+    },
+    {
+      "source": "CL_0000171",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0000173",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0000192",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0002574"
+    },
+    {
+      "source": "CL_0000235",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000738"
+    },
+    {
+      "source": "CL_0000236",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000542"
+    },
+    {
+      "source": "CL_0000451",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000738"
+    },
+    {
+      "source": "CL_0000509",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0000542",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000738"
+    },
+    {
+      "source": "CL_0000577",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0000738",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "CL_0000775",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000094"
+    },
+    {
+      "source": "CL_0002064",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_1001599"
+    },
+    {
+      "source": "CL_0002079",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0000017"
+    },
+    {
+      "source": "CL_0002079",
+      "relation": "HAS_STATE",
+      "target": "CL_0002079_MUC5B"
+    },
+    {
+      "source": "CL_0002080",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0000017"
+    },
+    {
+      "source": "CL_0002275",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0002410",
+      "relation": "HAS_STATE",
+      "target": "CL_0002410_active"
+    },
+    {
+      "source": "CL_0002410",
+      "relation": "HAS_STATE",
+      "target": "CL_0002410_quiescent"
+    },
+    {
+      "source": "CL_0002410",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0002574"
+    },
+    {
+      "source": "CL_0002574",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "CL_0005019",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0008024"
+    },
+    {
+      "source": "CL_0008024",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "CL_1000322",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_1001433"
+    },
+    {
+      "source": "CL_1001433",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0000017"
+    },
+    {
+      "source": "CL_1001599",
+      "relation": "HAS_CELL_TYPE",
+      "target": "UBERON_0000017"
+    },
+    {
+      "source": "CL_2000001",
+      "relation": "PART_OF",
+      "target": "UBERON_0000178"
+    },
+    {
+      "source": "CL_2000001",
+      "relation": "SUBCLASS_OF",
+      "target": "CL_0000738"
+    },
+    {
+      "source": "PANKREGION:001",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:002",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:003",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:004",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:005",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:006",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:007",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:008",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:009",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:010",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:011",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "PANKREGION:012",
+      "relation": "PART_OF",
+      "target": "UBERON_0000006"
+    },
+    {
+      "source": "UBERON_0000006",
+      "relation": "PART_OF",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "UBERON_0000017",
+      "relation": "PART_OF",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "UBERON_0001069",
+      "relation": "PART_OF",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "UBERON_0001150",
+      "relation": "PART_OF",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "UBERON_0001151",
+      "relation": "PART_OF",
+      "target": "UBERON_0001264"
+    },
+    {
+      "source": "UBERON_0015865",
+      "relation": "PART_OF",
+      "target": "UBERON_0000029"
+    }
+  ],
+  "categories": {
+    "CL_0000057": "cell_type",
+    "CL_0000075": "cell_type",
+    "CL_0000084": "cell_type",
+    "CL_0000094": "cell_type",
+    "CL_0000115": "cell_type",
+    "CL_0000136": "cell_type",
+    "CL_0000146": "cell_type",
+    "CL_0000169": "cell_type",
+    "CL_0000171": "cell_type",
+    "CL_0000171_active": "cell_type",
+    "CL_0000173": "cell_type",
+    "CL_0000192": "cell_type",
+    "CL_0000235": "cell_type",
+    "CL_0000236": "cell_type",
+    "CL_0000451": "cell_type",
+    "CL_0000509": "cell_type",
+    "CL_0000542": "cell_type",
+    "CL_0000577": "cell_type",
+    "CL_0000738": "cell_type",
+    "CL_0000775": "cell_type",
+    "CL_0002064": "cell_type",
+    "CL_0002079": "cell_type",
+    "CL_0002079_MUC5B": "cell_type",
+    "CL_0002080": "cell_type",
+    "CL_0002275": "cell_type",
+    "CL_0002275_CL_0005019": "cell_type",
+    "CL_0002410": "cell_type",
+    "CL_0002410_active": "cell_type",
+    "CL_0002410_quiescent": "cell_type",
+    "CL_0002574": "cell_type",
+    "CL_0005019": "cell_type",
+    "CL_0008024": "cell_type",
+    "CL_1000322": "cell_type",
+    "CL_1001433": "cell_type",
+    "CL_1001599": "cell_type",
+    "CL_2000001": "tissue",
+    "PANKREGION:001": "region",
+    "PANKREGION:002": "region",
+    "PANKREGION:003": "region",
+    "PANKREGION:004": "region",
+    "PANKREGION:005": "region",
+    "PANKREGION:006": "region",
+    "PANKREGION:007": "region",
+    "PANKREGION:008": "region",
+    "PANKREGION:009": "region",
+    "PANKREGION:010": "region",
+    "PANKREGION:011": "region",
+    "PANKREGION:012": "region",
+    "UBERON_0000006": "tissue",
+    "UBERON_0000017": "tissue",
+    "UBERON_0000029": "tissue",
+    "UBERON_0000178": "tissue",
+    "UBERON_0001069": "region",
+    "UBERON_0001150": "region",
+    "UBERON_0001151": "region",
+    "UBERON_0001264": "tissue",
+    "UBERON_0002106": "tissue",
+    "UBERON_0015865": "tissue"
+  },
+  "category_source_sha256": "467396e21cefc9836a010629185ddf24bddb261ce8b3ece19fb105d871bded94",
+  "complete_inventory": true
+}

@@ -42,7 +42,7 @@ def preserve_additive_scope(plan, parent, instruction):
     if not lost:return plan
     result=deepcopy(parent)
     result.update(literature=plan.get('literature',parent.get('literature')), literature_intent=plan.get('literature_intent',parent.get('literature_intent')),
-        clarification='The requested addition would replace or narrow earlier checks. The previous plan and preview are retained. Please specify which checks to keep or replace within the three-step limit.',
+        clarification='The requested addition would replace or narrow earlier checks. The previous plan and preview are retained. Please specify which checks to keep or replace within the twelve-check limit.',
         proposal_issue='additive_revision_scope_loss', retained_previous_plan=True,
         revision_validation={'valid':False,'category':'additive_revision_scope_loss','affected_checks':lost})
     return result

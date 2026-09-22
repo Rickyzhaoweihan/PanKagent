@@ -1,6 +1,7 @@
 """Persistent atomic reservations: interrupted/ambiguous calls retain their bound."""
 import json
 from .audit import provider_event
+from .persistence import SerializedPersistence
 import sqlite3
 import threading
 import time
@@ -16,9 +17,18 @@ class Budget:
     def __init__(self,path,limit):
         self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True)
         self.limit=float(limit);self.lock=threading.RLock()
+        self.io=SerializedPersistence("pank-budget", capacity=32)
         with self._db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, model TEXT, purpose TEXT, reserved REAL, actual REAL, created REAL, tokens TEXT)')
         self.path.chmod(0o600)
+    async def areserve(self, *args):
+        return await self.io.call(self.reserve, *args)
+    async def asettle(self, *args):
+        return await self.io.call(self.settle, *args)
+    async def asnapshot(self):
+        return await self.io.call(self.snapshot)
+    async def aclose(self):
+        await self.io.close()
     def _db(self):
         return sqlite3.connect(self.path,timeout=10)
     def reserve(self,model,purpose,input_bound,max_output):

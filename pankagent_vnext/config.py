@@ -22,6 +22,7 @@ class Settings:
     heartbeat_seconds: float = 2.0
     plan_timeout: float = field(default_factory=lambda: float(env('PLAN_TIMEOUT','45')))
     preview_timeout: float = field(default_factory=lambda: float(env('PREVIEW_TIMEOUT','45')))
+    grouped_preview_timeout: float = field(default_factory=lambda: float(env('GROUPED_PREVIEW_TIMEOUT','120')))
     preview_ttl_seconds: float = field(default_factory=lambda: float(env('PREVIEW_TTL_SECONDS','300')))
     run_timeout: float = 40.0
     provider_status_url: str = "https://status.claude.com/api/v2/summary.json"
@@ -42,6 +43,11 @@ class Settings:
     graph_identity_file: str = field(default_factory=lambda: env('GRAPH_IDENTITY_FILE','var/vnext/graph-identity.json'))
     graph_timeout: float = 10.0
     cypher_timeout: float = 15.0
+    cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '2')))
+    cypher_initial_scope: str = field(default_factory=lambda: env('CYPHER_INITIAL_SCOPE', 'all'))
+    cypher_generation_concurrency: int = field(default_factory=lambda: int(env('CYPHER_GENERATION_CONCURRENCY', '4')))
+    plan_cache_enabled: bool = field(default_factory=lambda: env('PLAN_CACHE_ENABLED','1') == '1')
+    grounded_query_policy: bool = field(default_factory=lambda: env('GROUNDED_QUERY_POLICY','1') == '1')
     max_nodes: int = 2000
     max_edges: int = 5000
     max_bytes: int = 2_000_000
@@ -52,9 +58,15 @@ class Settings:
             raise ValueError('vNext development service must bind to loopback')
         if self.model not in ('claude-sonnet-5','claude-haiku-4-5-20251001'):
             raise ValueError('model must have an explicitly configured price')
-        if not 0 < self.budget_usd <= 10 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
+        if not 0 < self.budget_usd <= 30 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
             raise ValueError('invalid development budget or queue limits')
-        if not 0 < self.preview_timeout <= 120 or not 0 <= self.preview_ttl_seconds <= 3600:
+        if not 0 < self.preview_timeout <= 120 or not 0 < self.grouped_preview_timeout <= 120 or not 0 <= self.preview_ttl_seconds <= 3600:
             raise ValueError('invalid preview deadline or reuse window')
         if not 0 < self.plan_timeout <= 60:
             raise ValueError('invalid planning deadline')
+        if self.cypher_initial_requests not in (1, 2, 4):
+            raise ValueError('initial Cypher requests must be one, two or four')
+        if self.cypher_generation_concurrency not in (1, 2, 4):
+            raise ValueError('Cypher generation concurrency must be one, two or four')
+        if self.cypher_initial_scope not in ("cohort", "all"):
+            raise ValueError("initial Cypher scope must be cohort or all")

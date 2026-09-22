@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 """Narrow scope recovery must strengthen, never bypass, the Cypher guard."""
 import copy
 import asyncio
@@ -45,8 +46,8 @@ class PlanConstraintTests(unittest.TestCase):
         async def run():
             gateway = object.__new__(ClaudeGateway)
             gateway.settings = SimpleNamespace(anthropic_key="placeholder", model="claude-sonnet-5")
-            gateway.budget = SimpleNamespace(settle=lambda *_: None)
-            gateway._reserve = lambda *_: "reservation"
+            gateway.budget = SimpleNamespace(asettle=AsyncMock(return_value=None))
+            gateway._reserve = AsyncMock(return_value="reservation")
             calls = []
 
             async def create(*args, **kwargs):

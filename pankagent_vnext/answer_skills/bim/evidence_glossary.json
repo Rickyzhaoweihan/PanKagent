@@ -1,0 +1,25 @@
+{
+  "version": "evidence-glossary-v4",
+  "terms": {
+    "IBA": "Inferred from Biological aspect of Ancestor: phylogenetic evidence about a gene function. Preserve this formal expansion; it is not an automatically generated IEA annotation.",
+    "ISS": "Inferred from Sequence or structural Similarity.",
+    "IEA": "Inferred from Electronic Annotation: an automatically generated annotation without individual manual review; the method can still draw on experimentally supported or sequence information.",
+    "PIP": "Posterior inclusion probability under the recorded fine-mapping model; not effect size or proof that a variant is causal. A single PIP does not determine the posterior probabilities or rankings of unreturned variants.",
+    "PP.H4": "Posterior support for a shared association signal under the recorded colocalization model; not proof of a biological mechanism.",
+    "NES": "Normalized enrichment score for the recorded ranked analysis. Direction requires its ranking contrast; it does not establish activation of every pathway gene.",
+    "log2err": "Estimated uncertainty in the log2 p-value calculation in fgsea; not an error bar for ES or NES.",
+    "PP.H3": "Posterior support for distinct association signals in the two datasets under the recorded coloc model.",
+    "coloc record multiplicity": "Multiple records may share a GWAS or QTL signal. Do not describe them as statistically independent without explicit evidence.",
+    "TAS": "Traceable Author Statement: the annotation cites an author statement. This is an author-statement category, not a direct-assay code; the code alone also does not establish that experiments are absent.",
+    "GO evidence categories": "Keep experimental evidence, phylogenetic evidence, computational analysis, author statements, curator statements and automatic annotation distinct. Do not label all inferred annotations as unreviewed or use TAS as an example of direct experimental support.",
+    "n_snp": "Recorded number of variants in the source signal or credible set; not the count of QTL relationships returned for this question.",
+    "IDA": "Inferred from Direct Assay: experimental evidence from a direct measurement of the annotated function; not Inspection of Direct Assay."
+  },
+  "sources": {
+    "GO": "https://geneontology.org/docs/guide-go-evidence-codes/",
+    "interpretation": "Pinned BIM bundle; actual recorded measurements and context take precedence.",
+    "fgsea": "https://www.bioconductor.org/packages/release/bioc/manuals/fgsea/man/fgsea.pdf",
+    "coloc": "https://chr1swallace.github.io/coloc/articles/a04_sensitivity.html",
+    "GO_verified": "2026-09-09; official GO guide, sections Experimental evidence codes, Phylogenetically-inferred annotations, Author statement evidence codes and Electronic annotation evidence code."
+  }
+}

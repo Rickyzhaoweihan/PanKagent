@@ -161,26 +161,31 @@ class EvidenceContextTests(unittest.TestCase):
         self.assertEqual(result["context_content_omissions"]["clipped_strings"], 1)
         self.assertEqual(json.loads(json.dumps(result, ensure_ascii=False)), result)
 
-    def test_oversized_normal_context_uses_reduced_caps_and_keeps_rare_type(self):
+    def test_oversized_context_exposes_only_node_identity_fields(self):
         properties = {"measurement_" + str(i): "x" * 200 for i in range(20)}
         edges = [edge("g", "cell", "COMMON", **properties) for _ in range(110)]
         edges.append(edge("g", "cell", "RARE", **properties))
         item = evidence([node("g"), node("cell")], edges, rows=[{"v": i} for i in range(50)])
-        result = compact_evidence([item])[0]
-        self.assertEqual(result["context_compaction"], "reduced")
-        self.assertEqual(len(result["edges"]), 15)
-        self.assertEqual(len(result["rows"]), 5)
-        self.assertIn("RARE", {item["type"] for item in result["edges"]})
+        result = compact_evidence([item], max_bytes=5000)[0]
+        self.assertEqual(result["context_compaction"], "node_identity_only")
+        self.assertNotIn("edges", result)
+        self.assertNotIn("rows", result)
+        self.assertEqual(result["context_dropped"]["edges"], 111)
+        self.assertEqual(result["context_dropped"]["rows"], 50)
+        self.assertEqual(set(result['nodes'][0]), {'id', 'type', 'description', 'source'})
         self.assertLessEqual(len(json.dumps([result], ensure_ascii=False, separators=(",", ":")).encode()), MAX_BYTES)
 
     def test_stable_identifiers_are_never_silently_shortened(self):
         huge_id = "g" * (MAX_BYTES + 1)
-        with self.assertRaisesRegex(ValueError, "evidence_context_too_large"):
-            compact_evidence([evidence([node(huge_id)])])
+        result = compact_evidence([evidence([node(huge_id)])])[0]
+        self.assertEqual(result['nodes'], [])
+        self.assertEqual(result['context_dropped']['nodes'], 1)
 
     def test_total_bound_applies_across_steps(self):
         items = [evidence(question="x" * 1200) for _ in range(200)]
-        with self.assertRaisesRegex(ValueError, "evidence_context_too_large"):
+        # Public plans are capped at twelve checks. Do not silently drop or
+        # renumber arbitrary extra check envelopes to meet the size bound.
+        with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
             compact_evidence(items)
 
     def test_invalid_shape_fails_clearly(self):
@@ -192,3 +197,126 @@ class EvidenceContextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_scientific_excerpt_preserves_scope_without_operational_diagnostics():
+    from pankagent_vnext.evidence_context import scientific_excerpt
+    source=[{'context_sampled':True,'context_compaction':'reduced','context_dropped':{'nodes':40},
+             'nodes_count':126,'donor_summary':{'unique_donors':126,'unique_samples':190},
+             'nodes':[{'id':'x','context_stub':True,'properties':{'name':'Example'}}]}]
+    result=scientific_excerpt(source)
+    assert result[0]['donor_summary']['unique_donors']==126
+    assert result[0]['answer_evidence_scope']['individual_records_are_selected_examples']
+    assert 'context_compaction' not in str(result) and 'context_stub' not in str(result)
+    assert source[0]['context_sampled'] is True
+
+
+def test_totals_distinguish_focal_gene_cells_and_annotation_records():
+    nodes=[{'id':'g','labels':['GENE'],'properties':{}},
+           {'id':'c1','labels':['CellType'],'properties':{}},
+           {'id':'c2','labels':['CellType'],'properties':{}}]
+    edges=[{'start_id':'g','end_id':target,'type':'DETECTED_IN','properties':{}}
+           for target in ('c1','c1','c2')]
+    result=compact_evidence({'s1':{'nodes':nodes,'edges':edges,'rows':[]}})[0]
+    assert result['evidence_totals']['distinct_nodes_by_label']=={'CellType':2,'GENE':1}
+    assert result['evidence_totals']['relationships']['DETECTED_IN']=={
+        'records':3,'unique_start_entities':1,'unique_end_entities':2}
+
+
+def interaction_evidence():
+    from pankagent_vnext.evidence_coverage import build_evidence_coverage
+    nodes = [node('focal')] + [node('p' + str(index)) for index in range(26)]
+    edges = [edge('p' + str(index), 'focal', 'PHYSICAL_INTERACTION') for index in range(18)]
+    edges += [edge('focal', 'p' + str(index), 'PHYSICAL_INTERACTION') for index in range(18, 26)]
+    edges += [edge('p' + str(index), 'focal', 'PHYSICAL_INTERACTION', experiment='repeat') for index in range(5)]
+    constraint = {'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'focal'}
+    query = 'MATCH (g:Gene)-[r:PHYSICAL_INTERACTION]-(p:Gene) WHERE g.id=$gene RETURN g,r,p'
+    item = evidence(nodes, edges, graph_version='PanKgraph_08_04',
+                    requested_scope={'constraints': [constraint], 'relation_types': ['PHYSICAL_INTERACTION'], 'complete': True},
+                    queries=[{'cypher': query, 'parameters': {'gene': 'focal'}}])
+    item['evidence_coverage'] = build_evidence_coverage(item['requested_scope'], item,
+        graph_version=item['graph_version'], query=query, parameters={'gene': 'focal'}, validation_verified=True)
+    return item
+
+
+def test_oversized_interaction_view_does_not_expose_hidden_measurement_totals(monkeypatch):
+    import pankagent_vnext.evidence_context as module
+    source = interaction_evidence(); before = copy.deepcopy(source)
+    result = module.scientific_excerpt(module.node_only_evidence([source]))[0]
+    assert source == before
+    assert 'evidence_totals' not in result and 'edges' not in result
+    assert result['answer_evidence_scope']['mode'] == 'node_identity_only'
+    assert result['answer_evidence_scope']['relationship_and_measurement_evidence_available'] is False
+
+
+def test_interaction_focal_name_requires_unique_verified_release_resolution():
+    source = interaction_evidence()
+    c = source['requested_scope']['constraints'][0]
+    c.update(property='name', value='FocalAlias')
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+    source['resolved_entities'] = [{'constraint_index': 0, 'state': 'resolved', 'entity_type': 'Gene',
+        'graph_version': source['graph_version'], 'id': 'focal', 'requested': copy.deepcopy(c)}]
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] == 26
+    source['resolved_entities'][0]['graph_version'] = 'old'
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+
+
+def test_interaction_multiple_focal_genes_or_missing_scope_cannot_invent_partner_total():
+    source = interaction_evidence()
+    source['requested_scope']['constraints'].append({'entity_type': 'Gene', 'property': 'id', 'value': 'p1'})
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+    source.pop('requested_scope')
+    assert compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']['unique_partner_genes'] is None
+
+
+def test_interaction_self_records_and_both_directions_do_not_double_count_partner_genes():
+    source = interaction_evidence()
+    source['edges'].extend([edge('focal', 'focal', 'PHYSICAL_INTERACTION'), edge('focal', 'p0', 'PHYSICAL_INTERACTION')])
+    total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+    assert total['records'] == 33 and total['unique_partner_genes'] == 26
+    assert total['self_interaction_records'] == 1
+    assert total['complete_for_requested_scope'] is False  # Existing coverage describes the earlier rows.
+
+
+def test_interaction_partial_retrieval_totals_never_claim_complete_scope():
+    for mutation in ('truncated', 'failed', 'missing_coverage', 'unrelated_edge'):
+        source = interaction_evidence()
+        if mutation == 'truncated': source['truncated'] = True
+        elif mutation == 'failed': source['status'] = 'failed'
+        elif mutation == 'missing_coverage': source.pop('evidence_coverage')
+        else: source['edges'].append(edge('p0', 'p1', 'PHYSICAL_INTERACTION'))
+        total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+        assert total['unique_partner_genes'] == 26
+        assert total['complete_for_requested_scope'] is False
+        assert total['count_scope'] == 'all_retrieved_records_before_excerpt_selection'
+
+
+def test_interaction_unverified_partner_node_types_do_not_claim_gene_counts():
+    source = interaction_evidence(); source['nodes'][-1]['labels'] = ['unknown']
+    total = compact_evidence([source])[0]['evidence_totals']['relationships']['PHYSICAL_INTERACTION']
+    assert total['unique_partner_genes'] is None and total['unique_partner_entities'] == 26
+    assert total['partner_count_state'] == 'partner_gene_labels_unverified'
+    assert total['complete_for_requested_scope'] is False
+
+
+def test_scientific_excerpt_hides_presentation_markers_without_erasing_source_missingness():
+    from pankagent_vnext.evidence_context import scientific_excerpt
+    source = [{'nodes_count': 2, 'evidence_coverage': {'query_scope': {'complete_for_requested_scope': True}},
+        'nodes': [{'id': 'd1', 'labels': ['donor'], 'context_stub': True,
+                   'endpoint_stub': True, 'endpoint_stub_reason': 'display_only',
+                   'properties': {'id': 'd1', 'data_source': 'Source study', 'source_row': 17,
+                                  'recorded_measurement': None, 'context_stub': True}},
+                  {'id': 'd2', 'labels': ['donor'], 'properties': {'id': 'd2', 'recorded_measurement': 2.5}}],
+        'context_sampled': True}]
+    before = copy.deepcopy(source)
+    result = scientific_excerpt(source, include_donor_details=True)
+    assert source == before
+    assert source[0]['nodes'][0]['endpoint_stub'] is True
+    assert len(source[0]['nodes']) == len(result[0]['nodes']) == 2
+    assert 'endpoint_stub' not in json.dumps(result) and 'context_stub' not in json.dumps(result)
+    assert result[0]['evidence_coverage']['query_scope']['complete_for_requested_scope'] is True
+    properties = result[0]['nodes'][0]['properties']
+    assert properties['data_source'] == 'Source study' and properties['source_row'] == 17
+    assert 'recorded_measurement' in properties and properties['recorded_measurement'] is None
+    assert result[0]['nodes'][1]['properties']['recorded_measurement'] == 2.5
+    assert 'do not establish missing metadata' in result[0]['answer_evidence_scope']['metadata_rule']

@@ -1,0 +1,296 @@
+"""The isolated evaluator may send public evidence/aggregates only."""
+import asyncio
+from copy import deepcopy
+import importlib.util
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+PATH = Path(__file__).resolve().parents[2] / 'docs/pankagent-vnext/grounded-planning-2026-09-09/outbound_privacy_guard.py'
+if not PATH.is_file():
+    pytest.skip('Project-home evaluation harness is separately tracked', allow_module_level=True)
+SPEC = importlib.util.spec_from_file_location('privacy_guard_test', PATH)
+privacy = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(privacy)
+
+
+def payload(body):
+    return {'model': 'test', 'messages': [{'role': 'user', 'content': json.dumps(body)}]}
+
+
+def test_public_molecular_evidence_and_aggregate_cohort_counts_unchanged():
+    body = {'question': 'Count HPAP stage3 spleen samples excluding multiome.',
+        'evidence': [{'nodes': [{'id': 'ENSG00000138031', 'labels': ['Gene'], 'properties': {'name': 'ADCY3'}}],
+            'donor_summary': {'unique_donors': 40}, 'rows': [{'sample_count': 823}],
+            'answer_facts': {'donor_sample_distribution': [{'sample_count': 2, 'donor_count': 29}]}}],
+        'constraints': [{'entity_type': 'donor', 'field': 'type_1_diabetes_stage', 'value': 'stage3'},
+                        {'field': 'data_source', 'value': 'HPAP'}]}
+    value = payload(body)
+    before = deepcopy(value)
+    result = privacy.OutboundPrivacyGuard().check(value, operation='create')
+    assert result['allowed'] and value == before
+
+
+@pytest.mark.parametrize('body', [
+    {'nodes': [{'id': 'opaque-001', 'labels': ['donor'], 'properties': {}}]},
+    {'nodes': [{'id': 7238294, 'labels': ['Sample_node'], 'properties': {}}]},
+    {'rows': [{'donor_id': 'opaque-001'}]},
+    {'rows': [{'sample_id': 123456}]},
+    {'donor_summary': {'unique_donors': 1, 'rows': [{'id': 'opaque-001'}]}},
+    {'evidence': {'age': 57}}, {'evidence': {'HbA1c': 7.1}},
+    {'evidence': {'cause_of_death': 'private cause'}},
+    {'text': 'The donor HPAP-020 has a sample.'},
+    {'text': 'Retrieve GSM12345678.'},
+    {'sample': {'id': 'x'}}, {'donors': [{'id': 'x'}]},
+    {'node_type': 'Sample_node', 'name': 'opaque sample'},
+])
+def test_individual_records_and_private_fields_refused_before_transport(body):
+    guard = privacy.OutboundPrivacyGuard()
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload(body), operation='create')
+    assert not guard.events[-1]['allowed']
+    assert 'opaque-001' not in json.dumps(guard.events)
+    assert 'private cause' not in json.dumps(guard.events)
+
+
+def test_schema_field_names_are_metadata_not_individual_values():
+    assert privacy.OutboundPrivacyGuard().check(payload({'grounding': {
+        'node_properties': {'donor': ['age', 'sex', 'donor_id']},
+        'paths': [{'labels': ['donor']}]}}), operation='create')['allowed']
+
+
+def test_observed_opaque_sample_id_blocked_in_free_text_and_dependencies():
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence({'nodes': [{'id': 'opaque-linked-private', 'labels': ['Sample_node']} ]})
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'error': 'Query failed for opaque-linked-private.'}), operation='repair')
+
+
+def test_nested_embedded_json_and_unknown_payload_types_fail_closed():
+    guard = privacy.OutboundPrivacyGuard()
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'text': json.dumps({'sample_id': 'private'})}), operation='stream')
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check({'messages': [{'content': object()}]}, operation='stream')
+
+
+def test_create_stream_and_known_zero_reservations_are_guarded(tmp_path):
+    from pankagent_vnext.budget import Budget
+    calls = []
+    async def create(**kwargs):
+        calls.append(('create', kwargs)); return 'reply'
+    def stream(**kwargs):
+        calls.append(('stream', kwargs)); return 'manager'
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    async def reserve(purpose):
+        return await budget.areserve('claude-sonnet-5', purpose, 100, 100)
+    gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=create, stream=stream)),
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
+    guard = privacy.install(gateway)
+
+    async def scenario():
+        try:
+            rid = await gateway._reserve('synthesis')
+            assert isinstance(rid, str)
+            with pytest.raises(privacy.OutboundPrivacyError):
+                gateway.client.messages.stream(**payload({'sample_id': 'private'}))
+            assert calls == []
+            # The snapshot is ordered after the synchronous factory's refund.
+            assert (await budget.asnapshot())['pending_calls'] == 0
+            with budget._db() as db:
+                assert db.execute('SELECT actual FROM usage WHERE id=?', (rid,)).fetchone() == (0,)
+
+            await gateway._reserve('plan')
+            public = payload({'question': 'Show CFTR enrichment.'})
+            before = deepcopy(public)
+            assert await gateway.client.messages.create(**public) == 'reply'
+            assert calls == [('create', before)] and public == before
+            # A later unreserved direct call cannot refund a transported call.
+            with pytest.raises(privacy.OutboundPrivacyError):
+                await gateway.client.messages.create(**payload({'age': 48}))
+            assert len(calls) == 1 and (await budget.asnapshot())['pending_calls'] == 1
+            assert guard.events[-1]['operation'] == 'messages.create'
+
+            rid = await gateway._reserve('verification')
+            with pytest.raises(privacy.OutboundPrivacyError):
+                await gateway.client.messages.create(**payload({'sample_id': 'private'}))
+            with budget._db() as db:
+                assert db.execute('SELECT actual FROM usage WHERE id=?', (rid,)).fetchone() == (0,)
+            assert len(calls) == 1 and (await budget.asnapshot())['pending_calls'] == 1
+        finally:
+            await budget.aclose()
+    asyncio.run(scenario())
+
+
+def test_awaited_reservations_remain_isolated_between_concurrent_guarded_calls(tmp_path):
+    from pankagent_vnext.budget import Budget
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    calls, reservations = [], {}
+    async def create(**kwargs):
+        calls.append(kwargs); return 'reply'
+    async def reserve(purpose):
+        return await budget.areserve('claude-sonnet-5', purpose, 100, 100)
+    gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=create, stream=lambda **kwargs: None)),
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
+    privacy.install(gateway)
+
+    async def scenario():
+        both_reserved = asyncio.Event()
+        async def operation(name, private):
+            reservations[name] = await gateway._reserve(name)
+            if len(reservations) == 2:
+                both_reserved.set()
+            await both_reserved.wait()
+            if private:
+                with pytest.raises(privacy.OutboundPrivacyError):
+                    await gateway.client.messages.create(**payload({'sample_id': 'private'}))
+            else:
+                assert await gateway.client.messages.create(**payload({'question': 'Show CFTR.'})) == 'reply'
+        try:
+            await asyncio.gather(operation('rejected', True), operation('allowed', False))
+            assert len(calls) == 1
+            with budget._db() as db:
+                values = dict(db.execute('SELECT id,actual FROM usage'))
+            assert values[reservations['rejected']] == 0
+            assert values[reservations['allowed']] is None
+        finally:
+            await budget.aclose()
+    asyncio.run(scenario())
+
+
+def test_stream_guard_still_refuses_when_refund_queue_is_full(tmp_path):
+    from pankagent_vnext.budget import Budget
+    budget = Budget(tmp_path / 'budget.sqlite3', 10)
+    calls = []
+    async def reserve(*args):
+        return await budget.areserve('claude-sonnet-5', 'fixture', 100, 100)
+    gateway = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(
+        create=lambda **kwargs: None, stream=lambda **kwargs: calls.append(kwargs))),
+        prepare_answer=lambda q, e: (q, e), _reserve=reserve, budget=budget)
+    privacy.install(gateway)
+
+    async def scenario():
+        acquired = 0
+        try:
+            await gateway._reserve('synthesis')
+            while budget.io.permits.acquire(blocking=False):
+                acquired += 1
+            with pytest.raises(privacy.OutboundPrivacyError):
+                gateway.client.messages.stream(**payload({'sample_id': 'private'}))
+            assert calls == []
+            # Failed refund admission must retain the reservation, never mark
+            # a blocked call transported or discard its financial bound.
+            assert budget.snapshot()['pending_calls'] == 1
+        finally:
+            for _ in range(acquired):
+                budget.io.permits.release()
+            await budget.aclose()
+    asyncio.run(scenario())
+
+
+def test_rejected_key_values_never_enter_guard_event_logs():
+    guard = privacy.OutboundPrivacyGuard()
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check({'HPAP-999': {'age': 48}}, operation='create')
+    assert 'HPAP-999' not in json.dumps(guard.events)
+
+
+@pytest.mark.parametrize('row', [{'record_id': 'opaque', 'contact': 'private name'},
+                                {'record_id': 887633}, {'alias': 'opaque-private-record'}])
+def test_scalar_projection_aliases_cannot_hide_individual_cohort_rows(row):
+    guard = privacy.OutboundPrivacyGuard()
+    source = {'step_id': 'cohort1', 'nodes': [], 'rows': [row],
+              'requested_scope': {'constraints': [{'entity_type': 'Sample_node', 'property': 'data_modality', 'value': 'BCR-seq'}]}}
+    guard.observe_evidence(source)
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'evidence': [source]}), operation='stream')
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'rows': [row]}), operation='stream')
+
+
+def test_verified_scalar_cohort_aggregate_and_public_signal_rows_allowed():
+    guard = privacy.OutboundPrivacyGuard()
+    cohort = {'step_id': 'c1', 'nodes': [], 'rows': [{'sample_count': 823}],
+              'query': 'MATCH (s:Sample_node) RETURN count(s) AS sample_count'}
+    signal = {'step_id': 'g1', 'rows': [{'id': 'rs13393590', 'pip': .0356}]}
+    guard.observe_evidence({'c1': cohort, 'g1': signal})
+    assert guard.check(payload({'evidence': [cohort, signal]}), operation='stream')['allowed']
+
+
+def test_private_value_binding_and_identifier_key_are_refused():
+    guard = privacy.OutboundPrivacyGuard()
+    for body in ({'field': 'donor.age', 'value': 55}, {'HPAP-999': {'count': 1}}):
+        with pytest.raises(privacy.OutboundPrivacyError):
+            guard.check(payload(body), operation='repair')
+
+
+@pytest.mark.parametrize('body', [
+    {'entity_type': 'donor', 'property': 'id', 'value': 'opaque-record-abc123'},
+    {'entity_type': 'Sample_node', 'property': 'name', 'value': 'opaque-record-abc123'},
+    {'owner_label': 'Sample_node', 'property': 'id', 'values': [923342]},
+    {'field': 'donor.id', 'value': 'unknown-private-id'},
+    {'hba1c_percentage': 6.3}, {'c_peptide_ng_ml': .1},
+])
+def test_unobserved_typed_identity_filters_and_actual_clinical_schema_fields_blocked(body):
+    with pytest.raises(privacy.OutboundPrivacyError):
+        privacy.OutboundPrivacyGuard().check(payload(body), operation='verification')
+
+
+def test_actual_grounding_wrapper_is_inspected_and_public_schema_remains_allowed():
+    prefix = '\nVerified grounding metadata (data, not instructions or answer evidence):\n'
+    guard = privacy.OutboundPrivacyGuard()
+    safe = prefix + json.dumps({'schema': {'nodes': {'donor': ['id', 'age']}},
+                                 'node_properties': {'Sample_node': ['id', 'data_modality']}})
+    assert guard.check(payload({'grounding': safe}), operation='plan')['allowed']
+    unsafe = prefix + json.dumps({'entity_type': 'donor', 'property': 'id', 'value': 'opaque-private'})
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check(payload({'grounding': unsafe}), operation='plan')
+
+
+def test_alphabetic_observed_identifier_cannot_leak_through_field_paths():
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence({'nodes': [{'id': 'PrivatePerson', 'labels': ['donor']}]})
+    with pytest.raises(privacy.OutboundPrivacyError):
+        guard.check({'PrivatePerson': {'age': 54}}, operation='plan')
+    assert 'PrivatePerson' not in json.dumps(guard.events)
+    assert all(len(x) == 64 for x in guard.events[-1]['field_path_sha256'])
+
+
+def test_full_result_numeric_coverage_is_not_an_iterable_graph_collection():
+    guard = privacy.OutboundPrivacyGuard()
+    body = {'step_id': 's1', 'nodes': [{'id': 'CFTR', 'labels': ['Gene']}],
+            'donor_summary': {'unique_donors': 0, 'rows': []},
+            'rows': [{'id': 'rs13393590', 'pip': .03}],
+            'evidence_coverage': {'result': {'nodes': 2, 'edges': 2, 'rows': 1}}}
+    guard.observe_evidence(body)
+    assert not guard.cohort_step_ids
+    assert guard.check(payload({'evidence': [body]}), operation='stream')['allowed']
+
+
+def test_empty_or_zero_generic_donor_summary_does_not_reclassify_public_molecular_step():
+    guard = privacy.OutboundPrivacyGuard()
+    for summary in ({}, {'unique_donors': 0}, {'unique_donors': 0, 'rows': []}):
+        source = {'step_id': 's1', 'donor_summary': summary, 'nodes': [], 'rows': [{'variant': 'rs13393590'}]}
+        guard.observe_evidence(source)
+        assert 's1' not in guard.cohort_step_ids
+        assert guard.check(payload(source), operation='stream')['allowed']
+
+
+def test_step_scope_is_reset_for_each_unrelated_operation():
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence({'step_id': 's1', 'requested_scope': {'constraints': [{'entity_type': 'donor'}]}})
+    assert 's1' in guard.cohort_step_ids
+    guard.reset_evidence_state()
+    assert not guard.cohort_step_ids
+    assert guard.check(payload({'step_id': 's1', 'rows': [{'variant': 'rs13393590'}]}), operation='stream')['allowed']
+
+
+def test_cohort_coverage_row_count_is_metadata_not_an_individual_projection():
+    value = {'step_id': 'cohort1', 'requested_scope': {'constraints': [{'entity_type': 'Sample_node'}]},
+             'evidence_coverage': {'result': {'nodes': 12, 'edges': 10, 'rows': 2}},
+             'rows': [{'sample_count': 823}]}
+    guard = privacy.OutboundPrivacyGuard()
+    guard.observe_evidence(value)
+    assert guard.check(payload(value), operation='stream')['allowed']
