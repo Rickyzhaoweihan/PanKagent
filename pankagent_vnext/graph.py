@@ -1784,6 +1784,7 @@ class GraphAdapter:
 
     async def _retrieve(self, query: str, parameters: dict, limits: dict | None = None) -> dict:
         nodes, edges, rows, size, truncated = {}, {}, [], 0, False
+        active_insertions = None
         limits = limits or {}
         seen_nodes = set(limits.get("known_node_ids", []))
         seen_edges = set(limits.get("known_edge_keys", []))
@@ -1793,7 +1794,7 @@ class GraphAdapter:
         row_limit = min(row_limit, limits.get("max_step_rows", row_limit))
 
         def put(target: dict, key, value, maximum, seen, budget_key=None):
-            nonlocal size, truncated
+            nonlocal size, truncated, active_insertions
             if key in target:
                 return
             budget_key = key if budget_key is None else budget_key
@@ -1803,9 +1804,22 @@ class GraphAdapter:
                     or target is edges and len(edges) >= limits.get("max_step_edges", self.settings.max_edges)):
                 truncated = True
                 return
+            seen_before = budget_key in seen
             target[key] = value
             seen.add(budget_key)
             size += width
+            if active_insertions is not None:
+                active_insertions.append(
+                    (target, key, seen, budget_key, width, seen_before))
+
+        def rollback_insertions(insertions):
+            nonlocal size
+            for target, key, seen, budget_key, width, seen_before in reversed(insertions):
+                if key in target:
+                    target.pop(key)
+                    size -= width
+                if not seen_before:
+                    seen.discard(budget_key)
 
         def walk(value):
             if truncated:
@@ -1849,10 +1863,73 @@ class GraphAdapter:
                 return result
             return _safe_value(value)
 
+        def walk_path_records(values):
+            """Materialize a bounded-path aggregate as an atomic prefix.
+
+            A deterministic path query returns one aggregate row.  The normal
+            graph walker may hit a byte/node/edge cap in the middle of that
+            row; discarding the row would leave display nodes and edges without
+            their verified role ordering.  Reserve the serialized row bytes as
+            each complete path is added and roll back the first path that does
+            not fit, so any exposed prefix remains internally consistent.
+            """
+            nonlocal active_insertions, truncated
+            materialized = []
+            row_width = len(b'{"path_records":[]}')
+            for item in values:
+                if truncated:
+                    break
+                insertions = []
+                prior_capture = active_insertions
+                active_insertions = insertions
+                try:
+                    converted = walk(item)
+                finally:
+                    active_insertions = prior_capture
+                if truncated:
+                    rollback_insertions(insertions)
+                    break
+                item_width = len(json.dumps(
+                    converted, ensure_ascii=False, separators=(",", ":")).encode())
+                # Replacing [] with [item] adds item_width bytes; every later
+                # element adds one comma plus item_width.  This is exactly the
+                # compact JSON width without repeatedly serializing the entire
+                # growing aggregate (important for 1,000+ verified paths).
+                candidate_width = row_width + item_width + bool(materialized)
+                if size + candidate_width > byte_limit:
+                    rollback_insertions(insertions)
+                    truncated = True
+                    break
+                materialized.append(converted)
+                row_width = candidate_width
+            return {"path_records": materialized}, row_width
+
         async with self._session() as session:
             async with await session.begin_transaction(timeout=self.settings.graph_timeout) as tx:
                 result = await tx.run(query.rstrip().rstrip(";"), parameters)
                 async for record in result:
+                    items = list(record.items())
+                    if (limits.get("bounded_path_records") is True
+                            and len(items) == 1 and items[0][0] == "path_records"
+                            and isinstance(items[0][1], (list, tuple))):
+                        if len(rows) >= row_limit:
+                            truncated = True
+                            await tx.rollback()
+                            break
+                        row, width = walk_path_records(items[0][1])
+                        if size + width > byte_limit:
+                            truncated = True
+                        else:
+                            from .semantic_registry import meaningful_row
+                            if meaningful_row(row):
+                                rows.append(row)
+                                size += width
+                        if truncated:
+                            # The retained row is an atomic, role-preserving
+                            # prefix.  Discard the unread cursor tail.
+                            await tx.rollback()
+                            break
+                        continue
                     row = {key: walk(value) for key, value in record.items()}
                     width = len(json.dumps(row, ensure_ascii=False, separators=(",", ":")).encode())
                     if truncated or len(rows) >= row_limit or size + width > byte_limit:
@@ -2218,6 +2295,9 @@ class GraphAdapter:
                             "max_step_bytes": (step.get("retrieval_budget") or {}).get("max_bytes", getattr(self.settings, "max_bytes", 2_000_000)),
                             "max_step_edges": (step.get("retrieval_budget") or {}).get("max_edges", getattr(self.settings, "max_edges", 5000)),
                             "max_step_rows": (step.get("retrieval_budget") or {}).get("max_rows", getattr(self.settings, "max_rows", 1000)),
+                            # Only an already-validated deterministic bounded
+                            # path may use atomic aggregate-prefix handling.
+                            "bounded_path_records": path_requested,
                         }
                         retrieval_started = time.monotonic()
                         query_record = {"cypher": query, "parameters": candidate_parameters,
@@ -2280,6 +2360,10 @@ class GraphAdapter:
                                     "reasons": ["bounded_path_record_limit"],
                                 })
                             try:
+                                if ((base.get("nodes") or base.get("edges"))
+                                        and not raw_records):
+                                    raise BoundedPathError(
+                                        "missing_path_records_for_materialized_graph")
                                 path_records = extract_path_records(
                                     step, base.get("rows") or [], base.get("nodes") or [])
                             except BoundedPathError as exc:

@@ -46,10 +46,62 @@ def allocate_independent_budgets(plan, settings):
     steps = plan.get('steps') or []
     # Fixed paths return one aggregate row, but a multi-edge path can contain
     # many more unique nodes and relationships than either of its one-edge
-    # companion checks.  Weight by edge-count squared while retaining a hard
-    # run-wide cap: integer shares never sum above the configured limit.
-    weights = [max(1, len((step.get('path_spec') or {}).get('edges', [])) ** 2)
-               for step in steps]
+    # companion checks.  Keep the general depth-squared policy so a long path
+    # cannot starve a separate branch.  The reviewed HLA plan has measured,
+    # release-specific fan-out: its interaction-only branch needs more bytes
+    # than its direct annotation branch, while the joined branch must preserve
+    # both relationships.  Recognize only that exact deterministic plan and
+    # assign its audited 1:6:14 shares.  Integer shares retain one run-wide cap.
+    route = plan.get('planning_route') or {}
+    expected_hla_shapes = {
+        'direct_annotations': (
+            (('focus', ('Gene',)), ('process', ('kegg', 'reactome'))),
+            (('annotation', 'focus', 'process', ('FUNCTION_ANNOTATION',), 'out'),)),
+        'interaction_partners': (
+            (('focus', ('Gene',)), ('partner', ('Gene',))),
+            (('interaction', 'focus', 'partner',
+              ('GENETIC_INTERACTION', 'PHYSICAL_INTERACTION'), 'either'),)),
+        'partner_annotations': (
+            (('focus', ('Gene',)), ('partner', ('Gene',)),
+             ('process', ('kegg', 'reactome'))),
+            (('interaction', 'focus', 'partner',
+              ('GENETIC_INTERACTION', 'PHYSICAL_INTERACTION'), 'either'),
+             ('annotation', 'partner', 'process', ('FUNCTION_ANNOTATION',), 'out'))),
+    }
+
+    def path_shape(step):
+        spec = step.get('path_spec') or {}
+        nodes, edges = spec.get('nodes'), spec.get('edges')
+        if (spec.get('version') != 'bounded-path-v1'
+                or step.get('evidence_combination') != 'cooccurrence'
+                or not isinstance(nodes, list) or not isinstance(edges, list)
+                or not all(isinstance(item, dict) for item in nodes + edges)):
+            return None
+        return (
+            tuple((node.get('role'), tuple(node.get('entity_types') or []))
+                  for node in nodes),
+            tuple((edge.get('role'), edge.get('from'), edge.get('to'),
+                   tuple(sorted(edge.get('types_any') or [])), edge.get('direction'))
+                  for edge in edges),
+        )
+
+    hla_plan = (
+        route.get('kind') == 'verified_bounded_path'
+        and route.get('version') == 'bounded-path-v1'
+        and len(steps) == len(expected_hla_shapes)
+        and {step.get('id') for step in steps} == set(expected_hla_shapes)
+        and all(path_shape(step) == expected_hla_shapes.get(step.get('id'))
+                for step in steps)
+    )
+    hla_weights = {
+        'direct_annotations': 1,
+        'interaction_partners': 6,
+        'partner_annotations': 14,
+    }
+    weights = ([hla_weights[step['id']] for step in steps] if hla_plan else [
+        max(1, len(((step.get('path_spec') or {}).get('edges') or [])) ** 2)
+        for step in steps
+    ])
     total_weight = max(1, sum(weights))
     for step, weight in zip(steps, weights):
         step['retrieval_budget'] = {

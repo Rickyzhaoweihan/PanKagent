@@ -152,11 +152,59 @@ def test_path_defaults_remain_complete_and_budget_favors_joined_path():
                                max_edges=5000, max_rows=1000)
     allocate_independent_budgets(plan, settings)
     direct, partner, joined = [step["retrieval_budget"] for step in plan["steps"]]
-    assert direct == partner
-    assert joined["max_bytes"] > direct["max_bytes"]
+    assert direct["max_bytes"] < partner["max_bytes"] < joined["max_bytes"]
+    assert [direct, partner, joined] == [
+        {"max_bytes": 95_238, "max_nodes": 95, "max_edges": 238, "max_rows": 47},
+        {"max_bytes": 571_428, "max_nodes": 571, "max_edges": 1428, "max_rows": 285},
+        {"max_bytes": 1_333_333, "max_nodes": 1333,
+         "max_edges": 3333, "max_rows": 666},
+    ]
     for key, total in (("max_bytes", 2_000_000), ("max_nodes", 2000),
                        ("max_edges", 5000), ("max_rows", 1000)):
         assert sum(step["retrieval_budget"][key] for step in plan["steps"]) <= total
+
+
+def test_general_four_node_path_keeps_depth_squared_branch_fairness():
+    path = four_node_step()
+    branch = deepcopy(path)
+    branch["id"] = "branch"
+    branch["path_spec"]["nodes"] = branch["path_spec"]["nodes"][:2]
+    branch["path_spec"]["edges"] = branch["path_spec"]["edges"][:1]
+    branch["relation_types"] = ["PHYSICAL_INTERACTION"]
+    plan = {"steps": [path, branch], "planning_route": {"kind": "general"}}
+    allocate_independent_budgets(
+        plan, SimpleNamespace(max_bytes=1000, max_nodes=100,
+                              max_edges=100, max_rows=100))
+    assert [step["retrieval_budget"]["max_bytes"] for step in plan["steps"]] == [
+        900, 100]
+
+
+def test_hla_budget_override_is_order_independent_and_exact_topology_only():
+    plan, _ = scoped_hla_plan(SCREENSHOT)
+    plan["steps"].reverse()
+    settings = SimpleNamespace(max_bytes=2_000_000, max_nodes=2000,
+                               max_edges=5000, max_rows=1000)
+    allocate_independent_budgets(plan, settings)
+    by_id = {step["id"]: step["retrieval_budget"]["max_bytes"]
+             for step in plan["steps"]}
+    assert by_id == {
+        "direct_annotations": 95_238,
+        "interaction_partners": 571_428,
+        "partner_annotations": 1_333_333,
+    }
+
+    changed = deepcopy(plan)
+    interaction = next(step for step in changed["steps"]
+                       if step["id"] == "interaction_partners")
+    interaction["path_spec"]["edges"][0]["direction"] = "out"
+    allocate_independent_budgets(changed, settings)
+    fallback = {step["id"]: step["retrieval_budget"]["max_bytes"]
+                for step in changed["steps"]}
+    assert fallback == {
+        "direct_annotations": 333_333,
+        "interaction_partners": 333_333,
+        "partner_annotations": 1_333_333,
+    }
 
 
 def test_owner_role_resolves_shared_multi_type_edge_property_without_guessing_type():
@@ -483,10 +531,216 @@ def test_single_aggregate_row_keeps_1391_paths_below_row_budget():
         adapter.settings = SimpleNamespace(graph_timeout=1, max_nodes=2000, max_edges=5000,
                                            max_rows=1000, max_bytes=1_333_333)
         adapter._session = lambda: FakeSession(tx)
-        result = await adapter._retrieve("RETURN path_records", {})
+        result = await adapter._retrieve(
+            "RETURN path_records", {}, {"bounded_path_records": True})
         assert result["status"] == "complete"
         assert len(result["rows"]) == 1
         assert len(result["rows"][0]["path_records"]) == 1391
+    asyncio.run(check())
+
+
+def test_truncated_path_aggregate_retains_only_an_atomic_verified_prefix():
+    step = scoped_hla_plan(SCREENSHOT)[0]["steps"][1]
+
+    async def check():
+        graph = Graph()
+        focus = Node(graph, "n0", 0, ["Gene"], {"id": HLA_ID, "name": "HLA-DRA"})
+        first_partner = Node(graph, "n1", 1, ["Gene"], {"id": "P1", "name": "P1"})
+        second_partner = Node(graph, "n2", 2, ["Gene"], {
+            "id": "P2", "name": "P2", "oversized": "x" * 20_000})
+        relation_type = graph.relationship_type("PHYSICAL_INTERACTION")
+        first = relation_type(graph, "r1", 10, {"source": "first"})
+        second = relation_type(graph, "r2", 11, {"source": "second"})
+        first._start_node, first._end_node = focus, first_partner
+        second._start_node, second._end_node = focus, second_partner
+        tx = FakeTransaction([{"path_records": [
+            {"nodes": [focus, first_partner], "edges": [first]},
+            {"nodes": [focus, second_partner], "edges": [second]},
+        ]}])
+        adapter = object.__new__(GraphAdapter)
+        adapter.settings = SimpleNamespace(
+            graph_timeout=1, max_nodes=10, max_edges=10,
+            max_rows=1000, max_bytes=4_000)
+        adapter._session = lambda: FakeSession(tx)
+        result = await adapter._retrieve(
+            "RETURN path_records", {}, {"bounded_path_records": True})
+        assert result["status"] == "partial"
+        assert result["truncated"] is True
+        assert result["retrieval_execution"]["cursor_exhausted"] is False
+        assert tx.rolled_back is True
+        assert result["materialized_bytes"] <= 4_000
+        assert {node["id"] for node in result["nodes"]} == {HLA_ID, "P1"}
+        assert len(result["edges"]) == 1
+        assert len(result["rows"]) == 1
+        retained = result["rows"][0]["path_records"]
+        assert len(retained) == 1
+        assert retained[0]["nodes"] == [
+            {"node_id": HLA_ID}, {"node_id": "P1"}]
+        assert retained[0]["edges"][0]["edge"] == [
+            HLA_ID, "PHYSICAL_INTERACTION", "P1"]
+        verified = extract_path_records(step, result["rows"], result["nodes"])
+        assert len(verified) == 1
+        assert verified[0]["nodes"][1]["role"] == "partner"
+    asyncio.run(check())
+
+
+def test_path_wrapper_bytes_alone_truncate_to_an_atomic_prefix():
+    async def retrieve(records, max_bytes):
+        graph = Graph()
+        focus = Node(graph, "n0", 0, ["Gene"], {"id": HLA_ID})
+        partner = Node(graph, "n1", 1, ["Gene"], {"id": "P1"})
+        relation_type = graph.relationship_type("PHYSICAL_INTERACTION")
+        edge = relation_type(graph, "r1", 10, {"source": "same"})
+        edge._start_node, edge._end_node = focus, partner
+        path = {"nodes": [focus, partner], "edges": [edge]}
+        tx = FakeTransaction([{"path_records": [path] * records}])
+        adapter = object.__new__(GraphAdapter)
+        adapter.settings = SimpleNamespace(
+            graph_timeout=1, max_nodes=10, max_edges=10,
+            max_rows=1000, max_bytes=max_bytes)
+        adapter._session = lambda: FakeSession(tx)
+        result = await adapter._retrieve(
+            "RETURN path_records", {}, {"bounded_path_records": True})
+        return result, tx
+
+    async def check():
+        one, _ = await retrieve(1, 100_000)
+        two, _ = await retrieve(2, 100_000)
+        assert one["materialized_bytes"] < two["materialized_bytes"]
+        cap = (one["materialized_bytes"] + two["materialized_bytes"]) // 2
+        result, tx = await retrieve(2, cap)
+        assert result["status"] == "partial"
+        assert result["materialized_bytes"] <= cap
+        assert len(result["rows"][0]["path_records"]) == 1
+        assert len(result["nodes"]) == 2 and len(result["edges"]) == 1
+        assert result["retrieval_execution"]["cursor_exhausted"] is False
+        assert tx.rolled_back is True
+    asyncio.run(check())
+
+
+def test_path_record_that_cannot_fit_leaves_no_orphan_graph_materialization():
+    async def check():
+        graph = Graph()
+        focus = Node(graph, "n0", 0, ["Gene"], {
+            "id": HLA_ID, "oversized": "x" * 10_000})
+        partner = Node(graph, "n1", 1, ["Gene"], {"id": "P1"})
+        relation_type = graph.relationship_type("PHYSICAL_INTERACTION")
+        edge = relation_type(graph, "r1", 10, {})
+        edge._start_node, edge._end_node = focus, partner
+        tx = FakeTransaction([{"path_records": [
+            {"nodes": [focus, partner], "edges": [edge]}]}])
+        adapter = object.__new__(GraphAdapter)
+        adapter.settings = SimpleNamespace(
+            graph_timeout=1, max_nodes=10, max_edges=10,
+            max_rows=1000, max_bytes=500)
+        adapter._session = lambda: FakeSession(tx)
+        result = await adapter._retrieve(
+            "RETURN path_records", {}, {"bounded_path_records": True})
+        assert result["status"] == "partial"
+        assert result["nodes"] == [] and result["edges"] == []
+        assert result["rows"] == []
+        assert result["materialized_bytes"] == 0
+        assert tx.rolled_back is True
+    asyncio.run(check())
+
+
+def test_second_path_edge_limit_rolls_back_its_new_partner_node():
+    async def check():
+        graph = Graph()
+        focus = Node(graph, "n0", 0, ["Gene"], {"id": HLA_ID})
+        first_partner = Node(graph, "n1", 1, ["Gene"], {"id": "P1"})
+        second_partner = Node(graph, "n2", 2, ["Gene"], {"id": "P2"})
+        relation_type = graph.relationship_type("PHYSICAL_INTERACTION")
+        first = relation_type(graph, "r1", 10, {})
+        second = relation_type(graph, "r2", 11, {})
+        first._start_node, first._end_node = focus, first_partner
+        second._start_node, second._end_node = focus, second_partner
+        tx = FakeTransaction([{"path_records": [
+            {"nodes": [focus, first_partner], "edges": [first]},
+            {"nodes": [focus, second_partner], "edges": [second]},
+        ]}])
+        adapter = object.__new__(GraphAdapter)
+        adapter.settings = SimpleNamespace(
+            graph_timeout=1, max_nodes=10, max_edges=1,
+            max_rows=1000, max_bytes=100_000)
+        adapter._session = lambda: FakeSession(tx)
+        result = await adapter._retrieve(
+            "RETURN path_records", {}, {"bounded_path_records": True})
+        assert result["status"] == "partial"
+        assert {node["id"] for node in result["nodes"]} == {HLA_ID, "P1"}
+        assert len(result["edges"]) == 1
+        assert len(result["rows"][0]["path_records"]) == 1
+        assert tx.rolled_back is True
+    asyncio.run(check())
+
+
+def test_execute_exposes_atomic_partial_paths_and_incomplete_chain_facts():
+    plan, _ = scoped_hla_plan(STORED)
+    step = plan["steps"][1]
+    edge = {
+        "start_id": HLA_ID, "end_id": "P1", "type": "PHYSICAL_INTERACTION",
+        "properties": {"biogrid_interaction_id": "partial"},
+    }
+    fingerprint = _public_edge_fingerprint(edge)
+
+    async def check():
+        adapter = FakeAdapter([])
+        adapter.settings.graph_version = REGISTRY["release"]
+        adapter.settings.grounded_query_policy = True
+        adapter.settings.max_nodes = 5000
+        adapter.settings.max_edges = 5000
+        adapter.settings.max_rows = 1000
+        adapter.settings.max_bytes = 8_000_000
+        adapter.settings.cypher_timeout = 1
+        adapter.settings.cypher_generation_concurrency = 1
+        adapter.answer = {
+            "nodes": _path_nodes()[:2], "edges": [edge],
+            "rows": [{"path_records": [{
+                "nodes": [{"node_id": HLA_ID}, {"node_id": "P1"}],
+                "edges": [{"edge": [HLA_ID, "PHYSICAL_INTERACTION", "P1"],
+                           "fingerprint": fingerprint}],
+            }]}],
+            "status": "partial", "truncated": True, "materialized_bytes": 1000,
+            "retrieval_execution": {"completed": True, "cursor_exhausted": False,
+                                    "mode": "read_only"},
+        }
+        result = await adapter.execute(step, {}, lambda *_args: asyncio.sleep(0))
+        assert result["status"] == "partial" and result["truncated"] is True
+        assert result["rows"] == []
+        assert len(result["path_records"]) == 1
+        assert result["path_records"][0]["nodes"][1]["role"] == "partner"
+        assert result["chain_facts"]["record_count"] == 1
+        assert len(result["chain_facts"]["records"]) == 1
+        assert result["chain_facts"]["complete_for_requested_scope"] is False
+    asyncio.run(check())
+
+
+def test_execute_fails_closed_on_graph_only_partial_bounded_path_evidence():
+    plan, _ = scoped_hla_plan(STORED)
+    step = plan["steps"][1]
+
+    async def check():
+        adapter = FakeAdapter([])
+        adapter.settings.graph_version = REGISTRY["release"]
+        adapter.settings.grounded_query_policy = True
+        adapter.settings.max_nodes = 5000
+        adapter.settings.max_edges = 5000
+        adapter.settings.max_rows = 1000
+        adapter.settings.max_bytes = 8_000_000
+        adapter.settings.cypher_timeout = 1
+        adapter.settings.cypher_generation_concurrency = 1
+        adapter.answer = {
+            "nodes": _path_nodes()[:2], "edges": [], "rows": [],
+            "status": "partial", "truncated": True, "materialized_bytes": 1000,
+            "retrieval_execution": {"completed": True, "cursor_exhausted": False,
+                                    "mode": "read_only"},
+        }
+        result = await adapter.execute(step, {}, lambda *_args: asyncio.sleep(0))
+        assert result["status"] == "failed"
+        assert result["error"]["category"] == "invalid_bounded_path_evidence"
+        assert result["validation"][-1]["reasons"] == [
+            "invalid_bounded_path_evidence:missing_path_records_for_materialized_graph"]
+        assert "path_records" not in result and "chain_facts" not in result
     asyncio.run(check())
 
 
