@@ -389,7 +389,7 @@ class Runtime:
                             plan_options['grounding'] = grounding
                     model_started = time.monotonic()
                     from .term_clarification import recovery as term_recovery
-                    term_issue = term_recovery(run["question"], (grounding or {}).get("sample_terminology") or {}, self.settings.graph_version)
+                    term_issue = term_recovery(run["question"], (grounding or {}).get("term_vocabulary") or (grounding or {}).get("sample_terminology") or {}, self.settings.graph_version)
                     if term_issue:
                         proposed = {"interpreted_question": run["question"], "steps": [],
                             "clarification": term_issue["message"], "recovery": term_issue,

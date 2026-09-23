@@ -118,4 +118,4 @@ def test_inventory_fallback_when_large_index_unavailable(monkeypatch):
     graph._ensure_identity=verified;graph.semantic_vocabulary=vocabulary
     grounded=asyncio.run(graph.ground_question('Count stage 1 donors in hPAP'))
     assert grounded['term_inventory_status']=='verified_fallback'
-    assert recovery('Count stage 1 donors in hPAP',grounded['sample_terminology'],'r')['suggestions']
+    assert recovery('Count stage 1 donors in hPAP',grounded['term_vocabulary'],'r')['suggestions']

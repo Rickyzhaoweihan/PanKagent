@@ -1179,7 +1179,7 @@ class GraphAdapter:
             or is_hla_path_request(question)
         ) else 3.0
         grounded = await ground_question(self, question, timeout_seconds=timeout)
-        if not grounded.get('sample_terminology') and re.search(
+        if 'tissues' not in (grounded.get('sample_terminology') or {}) and re.search(
                 r'donor|sample|tissue|\bHPAP\b|\b(?:in|from|within)\s+(?:the\s+)?[A-Z]{3,8}\b', question, re.I):
             # A missing large entity index must not hide the smaller verified
             # categorical inventory used for term clarification.
@@ -1187,7 +1187,9 @@ class GraphAdapter:
                 await self._ensure_identity()
                 return await self.semantic_vocabulary()
             try:
-                grounded['sample_terminology'] = await asyncio.wait_for(terminology(), timeout=3.0)
+                vocabulary = await asyncio.wait_for(terminology(), timeout=3.0)
+                grounded['term_vocabulary'] = {key: vocabulary.get(key, [] if key != 'inventory_complete' else False)
+                    for key in ('donor_sources', 'sample_sources', 'tissues', 'inventory_complete')}
                 grounded['term_inventory_status'] = 'verified_fallback'
             except asyncio.TimeoutError:
                 grounded['term_inventory_status'] = 'unavailable'
