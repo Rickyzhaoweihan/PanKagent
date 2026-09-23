@@ -17,12 +17,21 @@ def schema(query_schema):
 def expand(proposal):
     if proposal.get('clarification'):
         return {'interpreted_question': proposal['interpreted_question'], 'steps': [], 'clarification': proposal['clarification']}
-    spec = proposal['chain_spec']; nodes = spec['nodes']; edges = spec['edges']
+    spec = deepcopy(proposal['chain_spec']); nodes = spec['nodes']; edges = spec['edges']
     if not 2 <= len(nodes) <= 16 or len(edges) != len(nodes) - 1:
         raise ValueError('invalid_complete_chain_size')
     roles = [n['role'] for n in nodes]
     if len(set(roles)) != len(roles):
         raise ValueError('duplicate_chain_role')
+    distinct = set()
+    for node in nodes:
+        for other in node.pop('distinct_from', []):
+            if other not in roles or other == node['role']:
+                raise ValueError('invalid_complete_chain_distinct_role')
+            a, b = sorted((roles.index(node['role']), roles.index(other)))
+            distinct.add((a, b))
+    for a, b in sorted(distinct):
+        nodes[b].setdefault('distinct_from', []).append(nodes[a]['role'])
     owner_roles = set(roles) | {e['role'] for e in edges}
     if any(c.get('owner_role') not in owner_roles for c in proposal['constraints']):
         raise ValueError('unknown_chain_filter_role')
