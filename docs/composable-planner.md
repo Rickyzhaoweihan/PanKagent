@@ -88,3 +88,14 @@ Backend evidence remains authoritative for filtering, joins and counts. A compac
 view is never a dependency input. The shared task contract makes new templates and
 result operations independent additions; revisions reuse ordinary planning instead
 of introducing another execution engine.
+
+Explicit connected-path requests use `chain_drafting.py`: one complete path draft
+(up to sixteen roles) becomes bounded fragments and cumulative joins. Node-role
+inequalities and reverse edge spelling are canonicalized without changing their
+meaning. Unverified fragments and missing ancestor paths block the final result.
+The existing recovery payload explains path-condition failures and supplies a
+complete retry question; it never executes a suggested relaxation.
+
+The standalone revised question supplies execution scope; the raw original request
+and revision instruction remain recorded separately. This is necessary for removing
+an old filter without having the grounding layer reapply it.

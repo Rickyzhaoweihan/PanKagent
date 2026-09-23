@@ -34,6 +34,18 @@ def mark_failure(plan):
         return {**plan, 'steps': [], 'clarification': GENE_EXCLUSION_MESSAGE, 'recovery': {
             'category': 'planning_failure', 'title': 'Named gene exclusions are not supported',
             'message': GENE_EXCLUSION_MESSAGE, 'retryable': False, 'suggestions': []}}
+    issue = str(plan.get('proposal_issue') or '')
+    if any(part in issue for part in ('path_', 'chain_', 'dependency_', 'final_join')):
+        message = ('The requested connected-path condition could not be applied because its roles, '
+                   'links, or dependency bindings could not be verified. Every requested filter is retained; '
+                   'no relaxed search was executed.')
+        question = str(plan.get('interpreted_question') or '').strip()
+        recommended = question + ' Preserve every filter and return only complete connected paths.'
+        return {**plan, 'steps': [], 'clarification': message, 'recovery': {
+            'category': 'planning_failure', 'title': 'The connected path needs a valid plan',
+            'message': message, 'retryable': True,
+            'suggestions': [{'label': 'Retry the complete path request', 'instruction': recommended}] if question else [],
+            'evidence': {'condition': 'connected_path', 'reason': issue}}}
     return {**plan, 'steps': [], 'clarification': MESSAGE, 'recovery': {
         'category': 'planning_failure', 'title': 'We couldn’t prepare this search',
         'message': MESSAGE, 'retryable': True, 'suggestions': []}}
