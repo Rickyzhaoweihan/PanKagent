@@ -288,6 +288,20 @@ def _sample_witness(step, paths):
             filters.append(f'{variables[owner]}.`{prop}` {cypher_op} ${parameter}')
     except (ValueError, TypeError, OverflowError):
         return None
+    if tissue_anchors == 0 and (donor_predicates or any(
+            b.get('entity_type') == 'donor' and b.get('target_role') == 'source'
+            for b in step.get('input_bindings', []))):
+        # An unspecified tissue is an output annotation, never a mandatory join.
+        # Use the common endpoint names so typed dependency binding can reuse it.
+        predicates = [f.replace('d.`', 'a.`').replace('s.`', 'b.`') for f in filters]
+        return {'cypher': 'MATCH (a:`donor`)-[r:`HAS_SAMPLE`]->(b:`Sample_node`)\n'
+                + 'WHERE ' + ' AND '.join(predicates) + '\n'
+                + 'RETURN collect(DISTINCT a) + collect(DISTINCT b) AS nodes, collect(DISTINCT r) AS edges',
+                'parameters': params, 'parameter_bindings': parameter_bindings,
+                'template_id': 'directed_relation_records', 'version': VERSION,
+                'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
+                'endpoint_coverage': {'source': 'donor', 'target': 'Sample_node',
+                    'all_requested_paths_covered': True, 'scope_basis': 'requested_donor_samples'}}
     if tissue_anchors != 1 or not donor_predicates:
         return None
     query = ('MATCH (d:`donor`)-[rd:`HAS_SAMPLE`]->(s:`Sample_node`)<-[rt:`HAS_SAMPLE`]-(t:`anatomical_structure`)\n'
