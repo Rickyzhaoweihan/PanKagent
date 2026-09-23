@@ -33,3 +33,25 @@ planning error and offer the original full scope instead of blaming the user.
 Formatting inputs, answer generation, graph-viewer evidence, source data and
 clinical filter semantics are unchanged. No source predicate or stage relaxation
 is introduced by a suggested spelling correction.
+
+## Acceptance — 2026-09-23
+
+314 focused tests and 38 subtests passed. Coverage includes scope preservation,
+ambiguity, recorded proxy labels, original-question retention, no inference or
+query execution during clarification, and unchanged formatter/viewer modules.
+
+Live planning API checks returned structured `term_clarification` recovery for
+both `hPAP` and tissue-position `PKN`, with the complete proposed questions and
+zero planning-model calls. These use the existing failed-plan/revise lifecycle;
+they do not create a new execution state. The existing dialog supports this
+payload; rendered browser interaction was not revalidated.
+
+The compact entity index does not include tissue names. A separate bounded,
+release-verified terminology read supplies clarification candidates, including
+when the larger index is unavailable. This does not replace compact grounding.
+
+Implementation commit `623d27f` is deployed on agent 8794. Results 8795, health,
+frontend and production were not replaced by this change. Private backup,
+deployment and live acceptance evidence is under
+`/db/pankagent-vnext-private/operations/term-clarification/`.
+No paid external validation calls were required.
