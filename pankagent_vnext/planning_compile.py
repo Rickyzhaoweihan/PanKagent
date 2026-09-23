@@ -466,6 +466,12 @@ def compile_property_owners(plan, grounding, *, question=None):
                         constraint['relationship_type'] = relation
                     else:
                         constraint.pop('relationship_type', None)
+                if entity == 'Gene' and prop == 'hgnc_symbol':
+                    identifiers = _grounded_primary_gene_ids(constraint, question, grounding)
+                    if identifiers:
+                        prop = 'id'
+                        constraint['property'] = prop
+                        constraint['value'] = (identifiers if str(constraint.get('operator', '=')).upper() == 'IN' else identifiers[0])
                 if str(constraint.get('operator', '=')).upper() in {'IN', 'NOT IN'}:
                     category_owner = domains[0] if len(domains) == 1 else None
                     categories = (REGISTRY['categories'].get(str(category_owner) + '.' + str(prop))
