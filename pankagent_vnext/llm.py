@@ -127,6 +127,9 @@ def plan_structure_issue(plan):
     from .plan_recovery import GENERIC
     if not plan.get('steps') and (not plan.get('clarification') or str(plan.get('clarification')).strip().lower() in GENERIC):
         return 'empty_executable_plan'
+    if (not plan.get('clarification') and re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', str(plan.get('interpreted_question', '')), re.I)
+            and not any(s.get('path_spec') for s in plan['steps'])):
+        return 'connected_chain_requires_path_fragments_and_final_join'
     from .composable_planning import normalize
     try:
         plan = normalize(plan)
@@ -260,7 +263,7 @@ class ClaudeGateway:
         from .investigations import required_categories
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
-        output_limit=200 if profile_gene else 2400 if _repair or len(required_categories(question))==12 else 3600 if re.search(r'\b(?:chain|chains|path|paths|follow)\b', question, re.I) else 1600
+        output_limit=200 if profile_gene else 4000 if re.search(r'\b(?:chain|chains|path|paths|follow)\b', question, re.I) else 2400 if _repair or len(required_categories(question))==12 else 1600
         rid=await self._reserve('plan',system_text,user,output_limit)
         reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
           system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],

@@ -191,3 +191,15 @@ def test_aggregate_profile_schema_names_are_not_edge_records():
     assert result['edges'] == []
     assert result['answer_profile']['unknown_schema']['edges'] == ['HAS_DONOR']
     assert 'private-donor' not in json.dumps(result)
+
+
+def test_connected_request_cannot_silently_become_independent_lookup():
+    from pankagent_vnext.llm import plan_structure_issue
+    assert plan_structure_issue({'interpreted_question': 'Find connected five-node chains from a gene.',
+        'steps': [{'id': 's1', 'question': 'Find partners', 'depends_on': [], 'constraints': [],
+                   'relation_types': ['PHYSICAL_INTERACTION']}], 'clarification': None}) == 'connected_chain_requires_path_fragments_and_final_join'
+
+
+def test_disabled_literature_wording_preserves_graph_request():
+    from pankagent_vnext.planning_fastpath import literature_request_plan
+    assert literature_request_plan('Show INS detection with literature evidence disabled.') is None
