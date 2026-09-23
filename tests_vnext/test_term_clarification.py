@@ -104,3 +104,18 @@ def test_full_cohort_name_does_not_create_pancreas_filter():
     resolved=resolve(step,v,'PanKgraph_08_04')
     assert not any(c.get('entity_type')=='anatomical_structure' for c in resolved['constraints'])
     assert not any('sample-tissue' in issue for issue in resolved['semantic_issues'])
+
+
+def test_inventory_fallback_when_large_index_unavailable(monkeypatch):
+    import asyncio
+    from pankagent_vnext.graph import GraphAdapter
+    import pankagent_vnext.preplanning_grounding as module
+    async def unavailable(*args,**kwargs):return {'state':'unavailable'}
+    monkeypatch.setattr(module,'ground_question',unavailable)
+    graph=object.__new__(GraphAdapter)
+    async def verified():return None
+    async def vocabulary():return deepcopy(V)
+    graph._ensure_identity=verified;graph.semantic_vocabulary=vocabulary
+    grounded=asyncio.run(graph.ground_question('Count stage 1 donors in hPAP'))
+    assert grounded['term_inventory_status']=='verified_fallback'
+    assert recovery('Count stage 1 donors in hPAP',grounded['sample_terminology'],'r')['suggestions']
