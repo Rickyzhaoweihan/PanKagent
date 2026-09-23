@@ -75,7 +75,7 @@ def test_preview_uses_its_own_records():
 
 
 def test_id_hydration_is_exact_and_does_not_change_saved_evidence():
-    s = evidence('a', [])
+    s = evidence('a', ['one'])
     s['graph_identity_membership'] = {'graph_version': s['graph_version'], 'sampled': False,
         'complete': True, 'typed_ids': [{'id': 'one', 'entity_type': 'donor'}]}
     r = run([s]); original = deepcopy(r)

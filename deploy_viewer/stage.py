@@ -9,6 +9,8 @@ import tarfile
 
 
 def replace_once(text, old, new):
+    if old not in text and text.count(new) == 1:
+        return text
     if text.count(old) != 1:
         raise ValueError('Deployed source does not match the reviewed overlay')
     return text.replace(old, new)

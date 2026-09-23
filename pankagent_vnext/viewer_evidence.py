@@ -92,7 +92,7 @@ async def prepare_evidence(run, phase, graph):
             raise ValueError('unverified_graph_identity_membership')
         requested = {(str(n['id']), n['entity_type']) for n in membership['typed_ids']}
         present = {(str(n['id']), label) for n in step.get('nodes', []) for label in n.get('labels', [])
-                   if n.get('properties')}
+                   if set(n.get('properties') or {}) - {'id', 'name'}}
         missing = requested - present
         if missing:
             try:
