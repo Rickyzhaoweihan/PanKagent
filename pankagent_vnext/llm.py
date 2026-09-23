@@ -177,7 +177,7 @@ class ClaudeGateway:
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         system_text=PLAN_SYSTEM
         schema=PLAN_SCHEMA
-        chain_mode = bool(re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', question, re.I)) and not re.search(r'\b(?:independent|parallel)\b', question, re.I)
+        chain_mode = bool(re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', question, re.I)) and not re.search(r'\b(?:independent|parallel)\s+(?:checks?|branches|queries|evidence)\b', question, re.I)
         if chain_mode:
             from .chain_drafting import schema as chain_schema
             schema = chain_schema(PLAN_SCHEMA['properties']['steps']['items'])
