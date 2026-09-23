@@ -680,7 +680,9 @@ class Runtime:
                 raise
             (await self.io.call(self.store.update_if_active, run_id, plan=plan))
         if plan.get('execution_mode') in {'chain', 'parallel', 'mixed'}:
-            queries = [s for s in plan['steps'] if not s.get('operation') and s.get('purpose') != 'context']
+            queries = [s for s in plan['steps'] if not s.get('operation') and s.get('purpose') != 'context'
+                       and not s.get('semantic_issues') and not s.get('recovery')
+                       and (s.get('entity_resolution') or {}).get('state') != 'needs_clarification']
             if queries:
                 selected = next((s for s in queries if not s.get('path_spec')), queries[0])
                 selected['gpu_participation_required'] = True

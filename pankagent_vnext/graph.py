@@ -1630,6 +1630,8 @@ class GraphAdapter:
             from .query_recovery import plan_recovery
             prepared["recovery"] = plan_recovery(prepared, self.settings.graph_version)
             prepared["clarification"] = prepared["recovery"]["message"]
+        from .filter_recovery import recover_filter_failures
+        prepared = recover_filter_failures(prepared)
         from .annotation_selection import allocate_independent_budgets
         prepared = allocate_independent_budgets(prepared, self.settings)
         for step in prepared["steps"]:
@@ -2029,6 +2031,13 @@ class GraphAdapter:
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
                 "requested_scope": requested_scope(step),
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
+        if step.get('filter_warning'):
+            warning = deepcopy(step['filter_warning'])
+            base['requested_scope']['filter_warning'] = warning
+            # Existing scope rendering displays the title for failed checks.
+            # Preserve this explanation through the unchanged synthesis adapter.
+            base['title'] = (step.get('title') or step.get('question') or 'Requested check') + '. ' + warning['message']
+            base['error'] = {'category': warning['category'], 'message': warning['message']}
         if step.get("path_spec") is not None:
             from .bounded_paths import plan_issue as bounded_path_plan_issue
             issue = bounded_path_plan_issue(step)
