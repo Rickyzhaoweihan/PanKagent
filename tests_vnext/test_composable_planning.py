@@ -147,3 +147,47 @@ def test_formatter_output_function_is_byte_identical_to_baseline():
         node = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.AsyncFunctionDef) and n.name == 'synthesize')
         return ast.get_source_segment(source, node)
     assert output(path.read_text()) == output(old)
+
+
+def test_overretrieved_entities_filtered_before_counts():
+    parents = {'a': evidence('a', ['outside','inside']), 'b': evidence('b', ['inside'])}
+    result = combine(operation('filter'), parents)
+    assert result['combination_summary']['selected_entity_count'] == 1
+    assert [n['id'] for n in result['nodes']] == ['inside']
+    assert len(parents['a']['nodes']) == 2
+
+
+def test_parallel_widening_discovers_previously_absent_ids():
+    parents = {'a': evidence('a', ['old']), 'b': evidence('b', ['old','new'])}
+    assert {n['id'] for n in combine(operation('union'), parents)['nodes']} == {'old','new'}
+    assert list(answer_results({'answer_step_ids':['b']}, parents)) == ['b']
+
+
+def test_cross_type_id_collision_is_not_a_valid_join():
+    parents = {'a': evidence('a', ['same']), 'b': evidence('b', ['same'])}
+    parents['b']['nodes'].append({'id': 'same','labels':['Gene']})
+    with pytest.raises(ValueError, match='cross_type'):
+        combine(operation('intersection'), parents)
+
+
+def test_revision_reuses_semantically_identical_query_id_not_replaced_population():
+    def step(key, value):
+        return {'id':key,'question':'question','depends_on':[], 'relation_types':['HAS_DONOR'],
+                'constraints':[{'property':'t1d_stage','operator':'=','value':value,'entity_type':'donor'}]}
+    parent={'steps':[step('old_stage','Stage 3')]}
+    plan={'steps':[step('s1','Stage 3'),step('s2','Stage 2')], 'answer_step_ids':['s2']}
+    rewritten = reuse_step_ids(plan,parent)
+    assert rewritten['steps'][0]['id']=='old_stage'
+    assert rewritten['steps'][1]['id']!='old_stage'
+    assert rewritten['answer_step_ids']==['s2']
+
+
+def test_aggregate_profile_schema_names_are_not_edge_records():
+    from pankagent_vnext.output_scope import project
+    payload = {'nodes':[{'id':'private-donor','labels':['donor']}],
+        'edges':[{'start_id':'private-donor','end_id':'sample','type':'HAS_SAMPLE'}],
+        'answer_profile':{'unknown_schema':{'edges':['HAS_DONOR']}}}
+    result = project(payload)
+    assert result['edges'] == []
+    assert result['answer_profile']['unknown_schema']['edges'] == ['HAS_DONOR']
+    assert 'private-donor' not in json.dumps(result)

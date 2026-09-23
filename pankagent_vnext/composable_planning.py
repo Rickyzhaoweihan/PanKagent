@@ -145,6 +145,14 @@ def combine(step, previous):
     releases = {p.get('graph_version') for p in parents}
     if len(releases) != 1 or None in releases:
         raise ValueError('combination_graph_release_mismatch')
+    identity_types = {}
+    for parent in parents:
+        for node in parent.get('nodes', []):
+            labels = set(node.get('labels', []))
+            previous_labels = identity_types.get(node['id'])
+            if previous_labels is not None and not previous_labels.intersection(labels):
+                raise ValueError('ambiguous_cross_type_identity')
+            identity_types[node['id']] = labels
     sets = [{n['id'] for n in selected_nodes(p, i['entity_type'], i['role'])}
             for p, i in zip(parents, op['inputs'])]
     all_complete = all(complete(p) for p in parents)

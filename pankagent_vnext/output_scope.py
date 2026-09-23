@@ -83,7 +83,8 @@ def project(value, *, context=None):
                        'donor_ids', 'sample_ids', 'parameters', 'candidate_cypher', 'cypher'}:
                 continue
             if key == 'edges' and isinstance(item, list):
-                item = [e for e in item if str(e.get('start_id')) not in hidden and str(e.get('end_id')) not in hidden]
+                item = [e for e in item if not isinstance(e, dict) or
+                        (str(e.get('start_id')) not in hidden and str(e.get('end_id')) not in hidden)]
             result[key] = clean(item, visible_classifications, evidence_record)
         if isinstance(obj.get('nodes'), list) and any(private(n) for n in obj['nodes']):
             from .semantic_registry import donor_summary
