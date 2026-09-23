@@ -1267,6 +1267,23 @@ class GraphAdapter:
         entry = {"constraint_index": index, "requested": dict(constraint), "state": "unsupported",
                  "graph_version": self.settings.graph_version, "labels": []}
         prop, value = str(constraint.get("property", "")).split(".")[-1], constraint.get("value")
+        # Reuse the reviewed, release-scoped signal identity aliases even when
+        # preplanning grounding timed out. Verify the canonical node live;
+        # retaining the original request literal lets authorization stay strict.
+        from .coloc_scope import VERIFIED_IDENTITY_ALIASES
+        signal_relations = {'SIGNAL_COLOC_WITH', 'PART_OF_GWAS_SIGNAL'}
+        if (constraint.get('entity_type') == 'disease' and prop == 'name'
+                and constraint.get('operator', '=') == '='
+                and set(step.get('relation_types') or []) & signal_relations):
+            aliases = [identifier for (release, kind, identifier), names in VERIFIED_IDENTITY_ALIASES.items()
+                       if release == self.settings.graph_version and kind == 'disease'
+                       and isinstance(value, str) and value.casefold() in {n.casefold() for n in names}]
+            if len(aliases) == 1:
+                canonical = {**constraint, 'property': 'id', 'value': aliases[0]}
+                resolved = await self._resolve_constraint(canonical, index, step)
+                if resolved.get('state') == 'resolved':
+                    return {**resolved, 'requested': dict(constraint),
+                            'verified_signal_alias': True}
         from .genomic_scope import is_verified_region_constraint
         if (step.get('graph_version') == self.settings.graph_version
                 and is_verified_region_constraint(constraint, step)):
@@ -1461,6 +1478,10 @@ class GraphAdapter:
             await emit("progress", {"stage": "resolving_entities", "step_id": step.get("id")})
             entities.append(await self._resolve_constraint(constraint, index, step))
         for entry in entities:
+            if entry.get('verified_signal_alias') and entry.get('state') == 'resolved':
+                entry['original_requested'] = deepcopy(entry['requested'])
+                step['constraints'][entry['constraint_index']].update(property='id', value=entry['id'])
+                entry['requested'] = deepcopy(step['constraints'][entry['constraint_index']])
             if entry.get("state") == "resolved" and entry.get("entity_type") in {"kegg", "reactome", "anatomical_structure"}:
                 entry["original_requested"] = deepcopy(entry["requested"])
                 if entry.get("unique_pattern_match"):
