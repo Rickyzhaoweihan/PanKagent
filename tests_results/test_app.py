@@ -161,7 +161,7 @@ async def service(tmp_path, *, run=None, query=None, layout=None, resources=None
             return upstream_handler(request)
         if request.url.path == "/health/ready":
             return httpx.Response(200, json={"ready": True})
-        if run is not None and request.url.path == "/v2/runs/" + run["run_id"]:
+        if run is not None and request.url.path == "/v2/runs/" + run["run_id"] + "/graph":
             return httpx.Response(200, json=run)
         return httpx.Response(404, json={"detail": "not found"})
     http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
@@ -200,6 +200,8 @@ def test_agent_result_reuses_persisted_evidence_answer_and_literature_without_qu
             assert result["evidence"] == run["evidence"]
             assert result["source"]["retrieval"] == "persisted_final"
             assert s.query.calls == s.gateway.calls == 0
+            assert s.upstream_calls[-1].url.path.endswith("/graph")
+            assert s.upstream_calls[-1].url.params["phase"] == "final"
             assert s.layout.calls == s.resources.calls == 1
             assert s.layout.inputs[0][1] == [NODE["id"]]
             count = len(s.upstream_calls)

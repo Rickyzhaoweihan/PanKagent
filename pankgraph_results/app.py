@@ -70,8 +70,8 @@ class ResultsRuntime:
         self.active = 0
         self.health = ResultsHealth(self)
 
-    async def load_run(self, run_id):
-        response = await self.http.get(self.settings.agent_url + "/v2/runs/" + str(run_id))
+    async def load_run(self, run_id, phase="final"):
+        response = await self.http.get(self.settings.agent_url + "/v2/runs/" + str(run_id) + "/graph?phase=" + phase)
         if response.status_code == 404:
             raise HTTPException(404, "Agent run not found.")
         response.raise_for_status()
@@ -82,7 +82,7 @@ class ResultsRuntime:
     async def create(self, body):
         if body.run_id:
             try:
-                source = agent_snapshot(await self.load_run(body.run_id), body.phase, self.vnext.graph_version)
+                source = agent_snapshot(await self.load_run(body.run_id, body.phase), body.phase, self.vnext.graph_version)
             except ValueError as exc:
                 raise HTTPException(409, str(exc)) from None
         else:

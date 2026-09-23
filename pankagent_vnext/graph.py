@@ -1967,6 +1967,21 @@ class GraphAdapter:
                                         "mode": "read_only"},
                 "status": "partial" if truncated else "complete" if nodes or rows else "empty"}
 
+    async def hydrate_viewer_ids(self, graph_version, typed_ids):
+        """Read annotations for explicit backend membership; never expand it."""
+        if graph_version != self.settings.graph_version:
+            raise ValueError("graph_release_mismatch")
+        await self._ensure_identity()
+        if len(typed_ids) > self.settings.max_nodes:
+            raise ValueError("viewer_identity_limit")
+        # Types and IDs are both parameters, not interpolated query text.
+        return await self._retrieve(
+            "UNWIND $identities AS identity MATCH (n) "
+            "WHERE n.id = identity.id AND identity.entity_type IN labels(n) "
+            "RETURN n",
+            {"identities": [{"id": identifier, "entity_type": label}
+                            for identifier, label in typed_ids]})
+
     async def execute(self, step: dict, previous: dict, emit) -> dict:
         # Older confirmed plans may name a cell in prose but omit its predicate.
         # Recover only the narrow, verified entity constraint; guards stay strict.

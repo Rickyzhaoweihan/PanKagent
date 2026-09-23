@@ -16,7 +16,8 @@ def assemble(source, evidence, presentation):
     return {**presentation, "version": 1, "status": "ready", "question": source["question"],
         "title": source["question"], "answer": source.get("answer", ""),
         "literature": source.get("literature", []), "resources_tabs": {}, "evidence": evidence,
-        "completeness": evidence.get("completeness", "unknown"),
+        "completeness": "unavailable" if evidence.get("viewer", {}).get("status") == "unavailable" else evidence.get("completeness", "unknown"),
+        "graph_evidence": evidence.get("viewer", {}),
         "display": {**presentation["display"], "notice": notice},
         "source": {k: source[k] for k in ("kind", "run_id", "session_id", "phase", "template_id", "retrieval") if k in source},
         "component_status": {"graph": "available" if nodes or edges else "empty", "layout": presentation["layout"]["status"]}}

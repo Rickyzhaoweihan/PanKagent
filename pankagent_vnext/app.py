@@ -1360,6 +1360,30 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         (await runtime.io.call(get_run, run_id))
         return public_run((await runtime.io.call(runtime.store.snapshot, run_id)))
 
+    @app.get("/v2/runs/{run_id}/graph")
+    async def graph_state(run_id: str, phase: str = "final"):
+        if phase not in {"preview", "final"}:
+            raise HTTPException(422, "Unknown graph phase.")
+        await runtime.io.call(get_run, run_id)
+        run = await runtime.io.call(runtime.store.snapshot, run_id)
+        from .viewer_evidence import prepare_evidence
+        try:
+            evidence = await prepare_evidence(run, phase, runtime.graph)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        # The existing summary projection is unchanged. Only this dedicated
+        # renderer endpoint replaces its evidence, after public projection.
+        result = public_run(run)
+        if phase == "preview":
+            result["preview"] = {**(result.get("preview") or {}), "evidence": evidence}
+            result["evidence"] = None
+            result["graph_answer"] = ""
+            result["literature"] = []
+        else:
+            result["evidence"] = evidence
+            result["preview"] = None
+        return result
+
     @app.post("/v2/runs/{run_id}/cancel")
     async def cancel(run_id: str):
         run = (await runtime.io.call(get_run, run_id))
