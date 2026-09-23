@@ -1,0 +1,16 @@
+[
+  {"label":"scRNA-seq","aliases":["scRNAseq","scRNA seq","single-cell RNA sequencing"]},
+  {"label":"scATAC-seq","aliases":["scATACseq","single-cell ATAC sequencing"]},
+  {"label":"snMultiomics","aliases":["single-nucleus multiomics"]},
+  {"label":"Bulk RNA-seq","aliases":["bulk RNA sequencing"]},
+  {"label":"Bulk ATAC-seq","aliases":["bulk ATAC sequencing"]},
+  {"label":"BCR-seq","aliases":["BCR sequencing"]},
+  {"label":"TCR-seq","aliases":["TCR sequencing"]},
+  {"label":"CITE-seq Protein","aliases":[]},
+  {"label":"CODEX","aliases":[]},
+  {"label":"IMC","aliases":["imaging mass cytometry"]},
+  {"label":"Flow Cytometry","aliases":[]},
+  {"label":"Calcium Imaging","aliases":[]},
+  {"label":"Oxygen Consumption","aliases":[]},
+  {"label":"Perifusion","aliases":[]}
+]

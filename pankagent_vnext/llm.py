@@ -67,8 +67,8 @@ PLAN_SYSTEM += "\nRetrieve independent detection, enrichment and marker measurem
 PLAN_SYSTEM += "\nBounded paths: when the user explicitly asks for an ordered chain, path_spec may describe one connected fixed path of two to four node roles. List nodes in traversal order and one edge between each consecutive pair. Every path constraint must set owner_role to the exact node or edge role. Use direction=either only for physical or genetic interactions. Every bounded-path-v1 step uses evidence_combination=cooccurrence. Never use variable-length, branching, cyclic or disconnected paths."
 PLAN_SYSTEM += planner_notes() + "\nFor revision_context in history, apply its instruction to its parent plan and original question. Preserve unrelated constraints, return a standalone revised question, keep graph scope unchanged for literature-only instructions. A short revision is not a new question lacking an entity."
 
-from .coloc_planning_guidance import GUIDANCE as COLOC_PLANNING_GUIDANCE
-PLAN_SYSTEM += COLOC_PLANNING_GUIDANCE
+from .planning_prompt_catalog import GUIDANCE as DOMAIN_PLANNING_GUIDANCE
+PLAN_SYSTEM += DOMAIN_PLANNING_GUIDANCE
 
 # Keep the public plan shape, but stop generating duplicate display fields.
 from .planning_fastpath import expand_compact_plan
