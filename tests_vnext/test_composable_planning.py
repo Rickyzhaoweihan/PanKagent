@@ -254,13 +254,13 @@ def test_stage_identity_does_not_conflict_with_separate_negative_clinical_filter
     from pankagent_vnext.semantic_registry import resolve, STAGES
     q = 'Find HPAP donors with recorded T1D stage 3 but do not have diagnosed type 1 diabetes.'
     vocabulary = {'stages': list(STAGES.values()), 'sources': ['HPAP'], 'modalities': [],
-        'donor_categories_complete': True, 'donor_categorical_values': {'diabetes_type': ['T1D', 'ND']},
+        'donor_categories_complete': True, 'donor_categorical_values': {'diabetes_type': ['Diabetes (Type I)', 'Control Without Diabetes']},
         'inventory_sha256': 'verified-test-inventory'}
     step = {'id': 's1', 'question': q, 'relation_types': ['HAS_DONOR'], 'constraints': [],
         'semantic_request': {'source': 'user_request', 'question': q}}
     result = resolve(step, vocabulary, 'PanKgraph_08_04')
     assert not result['semantic_issues']
     filters = {(c['property'], c['operator'], c['value']) for c in result['constraints']}
-    assert ('diabetes_type', '!=', 'T1D') in filters
+    assert ('diabetes_type', '!=', 'Diabetes (Type I)') in filters
     assert ('t1d_stage', '=', STAGES['3']) in filters
     assert ('data_source', '=', 'HPAP') in filters

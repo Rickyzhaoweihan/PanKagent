@@ -1856,7 +1856,7 @@ def resolve(step, vocabulary, release):
         excluded_kinds = {m['kind'] for m in negative_disease}
         categories = _category_values(vocabulary, 'diabetes_type')
         candidates = [value for value in categories or []
-                      if {m['kind'] for m in _disease_mentions(value)} == excluded_kinds]
+                      if {m['kind'] for m in _disease_mentions(re.sub(r'[()]', ' ', value))} == excluded_kinds]
         if stage_field_requested and len(excluded_kinds) == 1 and len(candidates) == 1:
             # The positive recorded-stage population is explicit. Exclude the
             # verified clinical category, never infer a replacement cohort.
