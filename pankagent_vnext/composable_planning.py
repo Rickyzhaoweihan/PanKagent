@@ -35,7 +35,7 @@ def extend_schema(schema):
 GUIDANCE = '''
 Composable planning: decompose requested investigations into atomic query tasks. Independent tasks run in parallel; dependent tasks form chains; both can coexist. Use dependencies only when an earlier result supplies necessary identities. For every new dependency declare input_bindings with step_id, entity_type, source_role and target_role. For path fragments roles are exact path node roles; for ordinary directed queries use source/target. An empty source_role selects all returned nodes of the declared type, never all node types. Compose longer chains from fixed path fragments of at most four node roles. A dependent fragment may anchor its first node through input_bindings instead of inventing an identity constraint.
 Declare combine_operations for final union/intersection/difference/filter or path join. Each has id, question, operator, and inputs (step_id, entity_type, role). Operations consume earlier query/operation results. filter is a semijoin retaining records from its first input; difference subtracts subsequent eligible IDs; join connects the last role of the first path to the first role of the next path. An empty role selects all nodes of entity_type. Use answer_step_ids to select final outputs; intermediate populations are not answers. Preserve independent categories as separate outputs unless combination is requested. A broader query is allowed only with explicit downstream filtering that retains all requested constraints. Never add a mandatory relationship that narrows the requested population. All filters must be represented in a query and verified before combining; no implicit post-filter prose. Set context_mode=auto normally; identity_only is an answer-input view and never changes backend ID completeness. The total query plus combination task budget is twelve.
-For a five-role chain A-B-C-D-E, use s1 path A-B-C-D and s2 path D-E, then join c1 on the same entity_type and s1 role D / s2 role D; answer_step_ids=["c1"]. BOTH fragments require path_spec, even the two-node fragment. s2 input_bindings=[{step_id:"s1", entity_type:<D type>, source_role:"D", target_role:"D"}]. Each fragment's relation_types must equal ONLY its own edges; each constraint requires owner_role (for example the A identity belongs to role A). Always list path edge from/to in node traversal order; encode backwards traversal using direction="in". A join selector names the shared node, never the terminal output type. Do not use ordinary non-path queries for fragments of a requested connected chain. Repeated node types require separate role names, not additional identity constraints. Preserve this complete representation when repairing an invalid plan.
+All node and edge role names must match [a-z][a-z0-9_]{0,31}; use lowercase names. For a five-role chain a-b-c-d-e, use s1 path a-b-c-d and s2 path d-e, then join c1 on the same entity_type and s1 role d / s2 role d; answer_step_ids=["c1"]. BOTH fragments require path_spec, even the two-node fragment. s2 input_bindings=[{step_id:"s1", entity_type:<d type>, source_role:"d", target_role:"d"}]. Each fragment's relation_types must equal ONLY its own edges; each constraint requires owner_role (for example the a identity belongs to role a). Always list path edge from/to in node traversal order; encode backwards traversal using direction="in". A join selector names the shared node, never the terminal output type. Prefer cutting at a single-type node such as Gene; declare exactly one input binding per parent. Each join has exactly two inputs; compose additional fragments through successive join operations. Do not use ordinary non-path queries for fragments of a requested connected chain. Repeated node types require separate role names, not additional identity constraints. Preserve this complete representation when repairing an invalid plan.
 
 '''
 
@@ -85,6 +85,8 @@ def normalize(plan):
         if op:
             if op.get('operator') not in OPERATORS or len(op.get('inputs', [])) < 2:
                 raise ValueError('invalid_result_operation')
+            if op['operator'] == 'join' and len(op['inputs']) != 2:
+                raise ValueError('path_join_requires_two_inputs')
             if len({i['entity_type'] for i in op['inputs']}) != 1:
                 raise ValueError('incompatible_result_types')
             if any(i['entity_type'] not in REGISTRY['nodes'] for i in op['inputs']):
@@ -167,6 +169,9 @@ def combine(step, previous):
     entity_type = op['inputs'][0]['entity_type']
     paths = []
     if kind == 'join':
+        if any(p.get('nodes') and not p.get('path_records') for p in parents):
+            base['error'] = {'category': 'path_witnesses_unavailable', 'message': 'Joining requires verified path records for both fragments.'}
+            return base
         paths = deepcopy(parents[0].get('path_records', []))
         for parent, left_selector, right_selector in zip(parents[1:], op['inputs'], op['inputs'][1:]):
             joined = []
