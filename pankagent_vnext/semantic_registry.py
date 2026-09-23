@@ -1725,8 +1725,13 @@ def resolve(step, vocabulary, release):
     disease_scope_text = identity_authorization_text(scope_source_text)
     local_disease_scope_text = identity_authorization_text(scope_q)
     request_mentions = _disease_mentions(disease_scope_text)
+    clinical_mentions = [m for m in request_mentions if not _disease_mention_is_stage_label(disease_scope_text, m)]
+    if clinical_mentions:
+        request_mentions = clinical_mentions
     authoritative_disease_mentions = list(request_mentions)
     local_mentions = _disease_mentions(local_disease_scope_text)
+    if clinical_mentions:
+        local_mentions = [m for m in local_mentions if not _disease_mention_is_stage_label(local_disease_scope_text, m)]
     control_polarity = control_cohort_polarity(scope_source_text)
     control_requested = control_polarity['positive']
     control_excluded = control_polarity['negative']
@@ -1848,7 +1853,17 @@ def resolve(step, vocabulary, release):
         constraints=[c for c in constraints if not (
             c.get('entity_type')=='disease' and c.get('property') in ('name','id')
             or c.get('entity_type')=='donor' and c.get('property')=='diabetes_type')]
-        issues.append('Excluding a diabetes type does not uniquely identify a positive donor cohort. Name the intended recorded cohort.')
+        excluded_kinds = {m['kind'] for m in negative_disease}
+        categories = _category_values(vocabulary, 'diabetes_type')
+        candidates = [value for value in categories or []
+                      if {m['kind'] for m in _disease_mentions(value)} == excluded_kinds]
+        if stage_field_requested and len(excluded_kinds) == 1 and len(candidates) == 1:
+            # The positive recorded-stage population is explicit. Exclude the
+            # verified clinical category, never infer a replacement cohort.
+            bind('diabetes_type', 'donor', candidates[0], operator='!=',
+                 kind='runtime_category', requested=negative_disease[0]['text'])
+        else:
+            issues.append('Excluding a diabetes type does not uniquely identify a positive donor cohort. Name the intended recorded cohort.')
     separate_t1d_cohort = any(
         mention['kind'] == '1' and not mention['negated']
         and not _disease_mention_is_stage_label(disease_scope_text, mention)
