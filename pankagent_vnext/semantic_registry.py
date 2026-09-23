@@ -1911,8 +1911,9 @@ def resolve(step, vocabulary, release):
                        if c.get('entity_type') == 'anatomical_structure'
                        and c.get('property') in {'id', 'name'}]
     if trusted_request:
-        requested_tissues = matched_tissues(scope_source_text, vocabulary.get('tissues', []))
-        local_tissues = matched_tissues(scope_q, vocabulary.get('tissues', []))
+        from .term_clarification import source_role_text
+        requested_tissues = matched_tissues(source_role_text(scope_source_text, vocabulary), vocabulary.get('tissues', []))
+        local_tissues = matched_tissues(source_role_text(scope_q, vocabulary), vocabulary.get('tissues', []))
         negative_tissues = [tissue for tissue in requested_tissues
                             if 'negative' in _record_mention_polarities(source_text, tissue)]
         if negative_tissues:

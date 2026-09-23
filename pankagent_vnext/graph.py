@@ -1573,7 +1573,15 @@ class GraphAdapter:
                     'revision_instruction': (plan.get('revision_trace') or {}).get('instruction', '')}}
             from .annotation_selection import apply_default
             source = apply_default(source, plan.get('original_question', ''))
-            prepared["steps"].append(await self._prepare_step(source, emit))
+            resolved = await self._prepare_step(source, emit)
+            from .term_clarification import repair_generated_scope
+            repaired = repair_generated_scope(source, resolved)
+            if repaired is not None:
+                resolved = await self._prepare_step(repaired, emit)
+                resolved['planning_repair'] = {'kind': 'remove_unrequested_tissue', 'attempts': 1,
+                    'original_step_question': source.get('question'),
+                    'verified': not resolved.get('semantic_issues') and resolved.get('entity_resolution', {}).get('state') != 'needs_clarification'}
+            prepared["steps"].append(resolved)
         from .dependency_scope import normalize as preserve_dependency_scope
         prepared = preserve_dependency_scope(prepared)
         from .coloc_scope import compile_comparisons

@@ -19,6 +19,8 @@ def contains_tool_markup(value):
 
 
 def empty_failure(plan):
+    if isinstance(plan, dict) and (plan.get('recovery') or {}).get('category') == 'term_clarification':
+        return False
     if contains_tool_markup(plan):
         return True
     return isinstance(plan, dict) and not plan.get('steps') and not plan.get('answer_mode') and plan.get('plan_mode') not in {'literature_only', 'session_summary'} and (plan.get('proposal_issue') in {'empty_executable_plan','malformed_plan','malformed_step','invalid_plan_dependencies'} or not plan.get('clarification') or str(plan.get('clarification')).lower() in GENERIC)

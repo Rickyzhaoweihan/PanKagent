@@ -388,7 +388,14 @@ class Runtime:
                         if 'grounding' in inspect.signature(self.gateway.plan).parameters:
                             plan_options['grounding'] = grounding
                     model_started = time.monotonic()
-                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
+                    from .term_clarification import recovery as term_recovery
+                    term_issue = term_recovery(run["question"], (grounding or {}).get("sample_terminology") or {}, self.settings.graph_version)
+                    if term_issue:
+                        proposed = {"interpreted_question": run["question"], "steps": [],
+                            "clarification": term_issue["message"], "recovery": term_issue,
+                            "planning_route": {"claude_calls": 0, "reason": "term_clarification"}}
+                    else:
+                        proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
                     (await self.io.call(self.check_active, run_id))
                     if proposed.get('planning_route', {}).get('claude_calls') == 0:

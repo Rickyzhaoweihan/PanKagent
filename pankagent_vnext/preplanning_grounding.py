@@ -509,7 +509,7 @@ class Grounder:
                                     "candidates": candidates, "lookup_complete": True})
             mentions.extend(lookups)
         vocabulary = None
-        if re.search(r"donor|sample|\bhpap\b|\bstage\b|multiom|scrna|atac|perifusion", scope_question, re.I):
+        if re.search(r"donor|sample|\bhpap\b|\bstage\b|multiom|scrna|atac|perifusion|\btissue\b|\b(?:in|from|within)\s+(?:the\s+)?[A-Z]{3,8}\b", scope_question, re.I):
             vocabulary = deepcopy(index.sample_terminology)
         value = {"version": VERSION, "grounding_digest": DIGEST, "state": "ready", "status": "ready",
                  "identity": deepcopy(index.identity), "catalog_digest": index.content_digest,

@@ -38,6 +38,14 @@ def plan_recovery(plan, release):
     names = [str(e.get('original_term') or e.get('requested',{}).get('value') or 'requested term') for e in unresolved]
     message = ' '.join(issues) if issues else ('We could not uniquely match '+', '.join(names)+f' to records in {release}.' if names else 'A requested relationship is not supported by the checked graph schema.')
     suggestions = []
+    if issues and all('generated sample-tissue filter' in i for i in issues) and not unresolved:
+        question = plan.get('effective_question') or plan.get('original_question')
+        if question:
+            return {'category': 'planning_scope_error', 'title': 'The generated plan needs correction',
+                'message': 'The planner added a tissue condition that you did not request. Your original filters are retained; no broader or narrower search was accepted. Suggested question: ' + question,
+                'retryable': True, 'suggestions': [{'label': 'Keep my original scope',
+                    'instruction': 'Use this complete question and do not add unrequested filters: ' + question,
+                    'recommended_question': question}], 'evidence': {'graph_release': release}}
     for entity in unresolved:
         term = entity.get('original_term') or entity.get('requested',{}).get('value')
         for candidate in entity.get('candidates', [])[:2]:
