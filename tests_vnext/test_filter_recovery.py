@@ -56,3 +56,17 @@ def test_failed_filter_warning_survives_existing_synthesis_contract():
     assert compact['requested_scope']['filter_warning'] == warning
     assert compact['title'] == warning['message']
     assert compact['nodes'] == [] and compact['status'] == 'unavailable'
+
+
+def test_existing_renderer_keeps_warning_even_if_model_selects_no_facts():
+    from pankagent_vnext.answer_blocks import catalogue, render
+    from pankagent_vnext.evidence_context import compact_evidence
+    warning = recover_filter_failures(proposal())['steps'][0]['filter_warning']
+    failed = result('coloc', 'failed')
+    failed.update(evidence_id='G1', title=warning['message'],
+                  requested_scope={'filter_warning': warning})
+    compact = compact_evidence(synthesis_evidence({'coloc': failed}))
+    output = render({'fact_ids': []}, catalogue(compact))
+    assert 'lead variant' in output
+    assert 'partial evidence only' in output
+    assert '[G1]' in output
