@@ -177,13 +177,10 @@ class ClaudeGateway:
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         system_text=PLAN_SYSTEM
         schema=PLAN_SCHEMA
-        if re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', question, re.I):
-            from copy import deepcopy
-            schema = deepcopy(PLAN_SCHEMA)
-            schema['required'] += ['combine_operations', 'answer_step_ids']
-            query_schema = schema['properties']['steps']['items']
-            query_schema['required'] += ['path_spec', 'input_bindings']
-            query_schema['properties']['constraints']['items']['required'] += ['owner_role']
+        chain_mode = bool(re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', question, re.I)) and not re.search(r'\b(?:independent|parallel)\b', question, re.I)
+        if chain_mode:
+            from .chain_drafting import schema as chain_schema
+            schema = chain_schema(PLAN_SCHEMA['properties']['steps']['items'])
         from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION, DIGEST as PLANNING_DIGEST
         from .planning_scope import scope_issue, DIGEST as PLANNING_SCOPE_DIGEST
         from .planning_compile import compile_property_owners, DIGEST as COMPILER_DIGEST
@@ -234,7 +231,7 @@ class ClaudeGateway:
                         provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
                         return cached
                     provider_event('planning_cache_rejected', {'key':cache_key,'category':cache_issue})
-            if not _repair:
+            if not _repair and not chain_mode:
                 matched = (compile_signal_plan(question, grounding, history)
                            or compile_hla_path_plan(question, grounding, history)
                            or compile_schema_draft(question, grounding, history))
@@ -271,6 +268,9 @@ class ClaudeGateway:
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
         output_limit=200 if profile_gene else 4000 if re.search(r'\b(?:chain|chains|path|paths|follow)\b', question, re.I) else 2400 if _repair or len(required_categories(question))==12 else 1600
+        if chain_mode:
+            from .chain_drafting import GUIDANCE as CHAIN_GUIDANCE
+            system_text += '\n' + CHAIN_GUIDANCE
         rid=await self._reserve('plan',system_text,user,output_limit)
         reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
           system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
@@ -288,7 +288,16 @@ class ClaudeGateway:
                     from .plan_recovery import mark_failure
                     return mark_failure({'interpreted_question': question, 'proposal_issue': 'malformed_plan'})
                 provider_event('planning_proposal', {'plan':plan,'repair':_repair,'grounding_version':(grounding or {}).get('version')})
-                if profile_gene:
+                if chain_mode:
+                    from .chain_drafting import expand as expand_chain
+                    try:
+                        plan = expand_chain(plan)
+                    except (ValueError, KeyError, TypeError) as exc:
+                        if not _repair:
+                            return await self.plan(question, history + [{'role': 'system', 'content': 'Repair the complete path: '+str(exc)}], _repair=True, grounding=grounding)
+                        from .plan_recovery import mark_failure
+                        return mark_failure({'interpreted_question': question, 'proposal_issue': str(exc)})
+                elif profile_gene:
                     if plan.get('gene_name') != profile_gene: raise ValueError('profile_scope_mismatch')
                     plan=expand_registered_profile(question,profile_gene)
                 else:

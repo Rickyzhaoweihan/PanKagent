@@ -90,7 +90,7 @@ def dataset_source_owner(question, value, occurrence=None):
                      or re.match(r'[\"\']?\s+(?:donors?|cohort)\b', after, re.I))
         if not sample and not donor:
             donor = bool(
-                re.search(r'\b(?:donors?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s*$', before, re.I)
+                re.search(r'\b(?:donors?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s+(?:the\s+)?$', before, re.I)
                 or re.search(r'\b(?:donors?|cohort)\s+(?:excluding|exclude|without|except)\b[^.!?;]{0,70}$', before, re.I)
                 or re.match(r'\s*(?:-(?:only|derived))?\s+'
                          r'(?:[A-Za-z0-9_:/()+.-]+\s+){0,8}'
@@ -112,7 +112,7 @@ def _source_scope_candidate(question, occurrence):
     before = question[max(0, occurrence.start() - 100):occurrence.start()]
     after = question[occurrence.end():occurrence.end() + 80]
     return bool(
-        re.search(r'\b(?:donors?|samples?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s*$', before, re.I)
+        re.search(r'\b(?:donors?|samples?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s+(?:the\s+)?$', before, re.I)
         or re.search(r'\b(?:donors?|cohort)\s+(?:excluding|exclude|without|except)\b[^.!?;]{0,70}$', before, re.I)
         or re.search(r'\b(?:data[- ]?source|source|provider)\s*(?:is|=|:|of|from)?\s*$', before, re.I)
         or re.match(r'\s*(?:-(?:only|derived))?\s+(?:[A-Za-z0-9_:/()+.-]+\s+){0,8}(?:donors?|samples?|cohort)\b', after, re.I)
@@ -246,6 +246,7 @@ def scope_intent_text(text):
     """Mask typed value/projection atoms while preserving character offsets."""
     if not isinstance(text, str):
         return ''
+    text = re.sub(r'\bregardless\s+of\s+(?:their\s+)?(?:recorded\s+)?(?:T1D\s+)?stage(?:s)?\b', lambda m: ' ' * len(m.group()), text, flags=re.I)
     chars = list(text)
     for start, end, _ in scope_incidental_spans(text):
         chars[start:end] = ' ' * (end - start)
@@ -402,7 +403,7 @@ def _unresolved_source_role(text, vocabulary):
     resolved_roles = recorded | tissues | modalities
     patterns = (
         r'\b(?:donors?|samples?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s+'
-        r'([A-Za-z0-9_:+./-]+)',
+        r'(?:the\s+)?([A-Za-z0-9_:+./-]+)',
         r'\b(?:sample|donor|cohort)(?:[ _-]+data)?[ _-]+(?:source|provider)\s*'
         r'(?:is|=|:|of|from)?\s*([A-Za-z0-9_:+./-]+)',
     )

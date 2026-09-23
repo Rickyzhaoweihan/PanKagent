@@ -203,3 +203,48 @@ def test_connected_request_cannot_silently_become_independent_lookup():
 def test_disabled_literature_wording_preserves_graph_request():
     from pankagent_vnext.planning_fastpath import literature_request_plan
     assert literature_request_plan('Show INS detection with literature evidence disabled.') is None
+
+
+def test_join_refuses_nonpath_evidence_instead_of_claiming_empty():
+    parents = {'a': evidence('a', ['A'], 'Gene'), 'b': evidence('b', ['A'], 'Gene')}
+    assert combine(operation('join', label='Gene'), parents)['status'] == 'blocked'
+
+
+def test_reverse_edge_spelling_is_losslessly_canonicalized():
+    step = four_node_step()
+    edge = step['path_spec']['edges'][1]
+    edge['from'], edge['to'] = edge['to'], edge['from']
+    edge['direction'] = {'out': 'in', 'in': 'out', 'either': 'either'}[edge['direction']]
+    plan = normalize({'steps': [step]})
+    assert plan['steps'][0]['path_spec'] == four_node_step()['path_spec']
+
+
+def test_final_join_cannot_drop_ancestor_fragment():
+    a = four_node_step(); a['id'] = 'a'
+    b = deepcopy(a); b['id'] = 'b'; b['depends_on'] = ['a']
+    c = deepcopy(a); c['id'] = 'c'; c['depends_on'] = ['b']
+    op = operation('join', label='Gene')['operation']
+    op['inputs'][0]['step_id'] = 'b'; op['inputs'][1]['step_id'] = 'c'
+    with pytest.raises(ValueError, match='all_ancestor_path'):
+        normalize({'steps': [a,b,c], 'combine_operations': [op], 'answer_step_ids': ['combined']})
+
+
+def test_complete_path_draft_compiles_fragments_and_cumulative_joins():
+    from pankagent_vnext.chain_drafting import expand
+    nodes = [{'role': f'n{i}', 'entity_types': ['Gene']} for i in range(8)]
+    edges = [{'role': f'e{i}', 'from': f'n{i}', 'to': f'n{i+1}', 'types_any': ['PHYSICAL_INTERACTION'], 'direction': 'either'} for i in range(7)]
+    plan = normalize(expand({'interpreted_question': 'Connected path', 'clarification': None,
+        'chain_spec': {'version': 'bounded-path-v1', 'nodes': nodes, 'edges': edges},
+        'constraints': [{'owner_role': 'n0', 'entity_type': 'Gene', 'property': 'id', 'operator': '=', 'value': 'A'}]}))
+    assert len([s for s in plan['steps'] if s.get('path_spec')]) == 3
+    assert plan['combine_operations'][1]['inputs'][0]['step_id'] == 'join1'
+    assert plan['answer_step_ids'] == ['join2']
+    assert all(plan_issue(s) is None for s in plan['steps'])
+
+
+def test_source_article_and_unrestricted_stage_wording():
+    from pankagent_vnext.semantic_registry import dataset_source_owner, _unresolved_source_role, scope_intent_text
+    q = 'Count donors from the HPAP data source regardless of recorded T1D stage.'
+    assert dataset_source_owner(q, 'HPAP') == 'donor'
+    assert not _unresolved_source_role(q, {'sources': ['HPAP']})
+    assert 'T1D' not in scope_intent_text(q)
