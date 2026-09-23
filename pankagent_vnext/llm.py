@@ -297,6 +297,11 @@ class ClaudeGateway:
                     if output_recovery:
                         provider_event('planning_output_recovery', output_recovery)
                 self.last_success=time.time()
+                from .composable_planning import normalize as normalize_composable
+                try:
+                    plan = normalize_composable(plan)
+                except (ValueError, KeyError, TypeError):
+                    pass  # The ordinary validation and single repair report the exact issue.
                 issue = plan_structure_issue(plan)
                 if issue is None and grounding and grounding.get('status') == 'ready':
                     plan, issue = compile_scopes(plan)

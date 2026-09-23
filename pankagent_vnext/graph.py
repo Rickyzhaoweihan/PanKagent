@@ -1568,7 +1568,8 @@ class GraphAdapter:
                 continue
             if plan.get('original_question'):
                 source = {**source, 'semantic_request': {
-                    'source': 'user_request', 'question': plan['original_question'],
+                    'source': 'user_request', 'question': plan.get('effective_question') or plan['original_question'],
+                    'original_question': plan['original_question'],
                     'revision_instruction': (plan.get('revision_trace') or {}).get('instruction', '')}}
             from .annotation_selection import apply_default
             source = apply_default(source, plan.get('original_question', ''))
@@ -1592,7 +1593,8 @@ class GraphAdapter:
             if (plan.get('original_question')
                     and not isinstance(context.get('semantic_request'), dict)):
                 context = {**context, 'semantic_request': {
-                    'source': 'user_request', 'question': plan['original_question'],
+                    'source': 'user_request', 'question': plan.get('effective_question') or plan['original_question'],
+                    'original_question': plan['original_question'],
                     'revision_instruction': (plan.get('revision_trace') or {}).get(
                         'instruction', '')}}
             prepared["steps"].append(await self._prepare_step(context, emit))

@@ -44,6 +44,14 @@ def normalize(plan):
     """Validate references and types; retain the old public steps envelope."""
     result = deepcopy(plan)
     steps = result.get('steps', [])
+    # Canonicalize the equivalent reverse edge spelling, without changing topology.
+    for step in steps:
+        spec = step.get('path_spec') or {}
+        nodes = spec.get('nodes', [])
+        for index, edge in enumerate(spec.get('edges', [])):
+            if index + 1 < len(nodes) and edge.get('from') == nodes[index + 1]['role'] and edge.get('to') == nodes[index]['role']:
+                edge['from'], edge['to'] = edge['to'], edge['from']
+                edge['direction'] = {'in': 'out', 'out': 'in', 'either': 'either'}.get(edge.get('direction'), edge.get('direction'))
     identifiers = {s['id'] for s in steps}
     for op in result.get('combine_operations', []):
         if op['id'] in identifiers:
@@ -98,6 +106,20 @@ def normalize(plan):
     answers = result.get('answer_step_ids')
     if answers is not None and (not answers or len(answers) != len(set(answers)) or not set(answers) <= seen):
         raise ValueError('invalid_answer_step_ids')
+    by_id = {s['id']: s for s in ordered}
+    def path_sources(key, include_dependencies):
+        task = by_id[key]
+        if task.get('operation'):
+            return set().union(*(path_sources(i['step_id'], include_dependencies) for i in task['operation']['inputs']))
+        found = {key} if task.get('path_spec') else set()
+        if include_dependencies:
+            for parent in task.get('depends_on', []):
+                found |= path_sources(parent, True)
+        return found
+    for key in answers or []:
+        if by_id[key].get('operation', {}).get('operator') == 'join':
+            if path_sources(key, False) != path_sources(key, True):
+                raise ValueError('final_join_must_include_all_ancestor_path_fragments')
     chain_ids = {s['id'] for s in ordered if s.get('depends_on') or s.get('path_spec')}
     parents = {d for s in ordered for d in s.get('depends_on', [])}
     independent = {s['id'] for s in ordered} - chain_ids - parents

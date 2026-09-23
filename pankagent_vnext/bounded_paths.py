@@ -225,7 +225,7 @@ def plan_issue(step):
     dependency_anchor = any(b.get("target_role") == anchor and b.get("entity_type") in domains[anchor]
                             for b in step.get("input_bindings", []))
     if not dependency_anchor and not any(c.get("owner_role") == anchor and c.get("entity_type") in domains[anchor]
-               and c.get("property") in {"id", "name"}
+               and c.get("property") in {"id", "name", "hgnc_symbol"}
                and c.get("operator", "=") == "="
                for c in step.get("constraints") or [] if isinstance(c, dict)):
         return "missing_path_anchor_identity"
