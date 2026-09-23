@@ -356,6 +356,8 @@ class Runtime:
                     run = {**run, 'question': revision['new_question']}
                 from .planning_fastpath import literature_request_plan, unsupported_analysis_plan, genomic_neighborhood_plan
                 literature_plan = literature_request_plan(run["question"])
+                if revision and parent.get('plan', {}).get('steps'):
+                    literature_plan = None
                 from .session_summary import plan as summary_plan
                 prior_answer = await self.io.call(self.store.latest_answered_run, run['session_id']) if run['include_context'] else None
                 summary = summary_plan(run['question'], prior_answer)
@@ -670,7 +672,7 @@ class Runtime:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
             (await self.io.call(self.store.update_if_active, run_id, plan=plan))
-        if plan.get('planning_contract') == 'composable-planning-v1':
+        if plan.get('execution_mode') in {'chain', 'parallel', 'mixed'}:
             queries = [s for s in plan['steps'] if not s.get('operation') and s.get('purpose') != 'context']
             if queries:
                 selected = next((s for s in queries if not s.get('path_spec')), queries[0])

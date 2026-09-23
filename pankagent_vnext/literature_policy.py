@@ -13,6 +13,7 @@ _OPTOUT = re.compile(
     rf"|\b(?:use|using|from)\s+(?:the\s+)?{_GRAPH}(?:\s+(?:evidence|results|data))?\s+only\b"
     rf"|(?:^|[.!?;,(])\s*no\s+(?:(?:the|any|additional|external|published)\s+)*{_LITERATURE}"
     rf"(?:\s+(?:search|enrichment))?(?:\s+please)?(?=$|[.!?;,)])"
+    rf"|\b{_LITERATURE}\s+(?:evidence\s+)?(?:is\s+)?disabled\b"
     rf"|\b(?:without|skip|exclude|avoid|disable|remove)\s+(?:(?:the|any|additional|external|published)\s+)*{_LITERATURE}\b"
     rf"|\b(?:do\s+not|don't|dont)\s+(?:use|search|include|consult|retrieve|add)\s+"
     rf"(?:(?:the|any|for|additional|external)\s+)*{_LITERATURE}\b",

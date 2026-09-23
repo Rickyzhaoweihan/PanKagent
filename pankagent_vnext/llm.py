@@ -259,7 +259,7 @@ class ClaudeGateway:
         from .investigations import required_categories
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
-        output_limit=200 if profile_gene else 2400 if _repair or len(required_categories(question))==12 else 1600
+        output_limit=200 if profile_gene else 2400 if _repair or len(required_categories(question))==12 else 3600 if re.search(r'\b(?:chain|chains|path|paths|follow)\b', question, re.I) else 1600
         rid=await self._reserve('plan',system_text,user,output_limit)
         reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
           system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
