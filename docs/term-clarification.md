@@ -55,3 +55,17 @@ frontend and production were not replaced by this change. Private backup,
 deployment and live acceptance evidence is under
 `/db/pankagent-vnext-private/operations/term-clarification/`.
 No paid external validation calls were required.
+
+## Failed-dialog revision round trip
+
+The legacy frontend retries terminal plans by submitting the previous question
+plus `Requested change`. The backend now binds that exact same-session payload
+to the saved failed clarification. Selecting an unchanged stored term suggestion
+uses its complete recommended question directly, with the submitted text retained
+in audit. A custom instruction uses the existing revision interpreter; its
+standalone question is persisted before planning.
+
+Historical repeated-correction tails are removed only when every tail repeats
+the exact same accepted question. Different instructions are never discarded.
+Regression tests exercise the real create -> failed clarification -> apply ->
+new planning API sequence, including context-off sessions and manual edits.

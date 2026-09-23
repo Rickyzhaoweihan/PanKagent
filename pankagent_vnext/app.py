@@ -353,7 +353,7 @@ class Runtime:
                             'message': revision['reason'], 'suggestions': [revision['recommended_question']] if revision['recommended_question'] else [], 'retryable': False}
                         await self.io.call(self._terminal, run_id, 'failed', error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
                         return
-                    run = {**run, 'question': revision['new_question']}
+                    run = await self.io.call(self.store.set_effective_question, run_id, revision['new_question'])
                 from .planning_fastpath import literature_request_plan, unsupported_analysis_plan, genomic_neighborhood_plan
                 literature_plan = literature_request_plan(run["question"])
                 if revision and parent.get('plan', {}).get('steps'):

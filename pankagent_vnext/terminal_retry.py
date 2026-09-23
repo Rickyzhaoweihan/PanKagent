@@ -47,3 +47,48 @@ def terminal_revision_retry(run, audit, submitted, *, include_context=True):
         'prior_options': {'include_context': run.get('include_context', True)},
         'requested_options': {'include_context': include_context},
     }
+
+
+def accepted_term_correction(run, submitted):
+    """Accept only a stored suggestion submitted by the existing recovery dialog."""
+    if not run or run.get('status') not in {'failed', 'interrupted', 'partial'}:
+        return None
+    recovery = (run.get('plan') or {}).get('recovery') or {}
+    if recovery.get('category') != 'term_clarification':
+        return None
+    prefix = str(run.get('question') or '') + SEPARATOR
+    if not submitted.startswith(prefix):
+        return None
+    instruction = submitted[len(prefix):]
+    suggestion = next((s for s in recovery.get('suggestions', [])
+                       if isinstance(s, dict) and s.get('instruction') == instruction), None)
+    if not suggestion or not isinstance(suggestion.get('recommended_question'), str):
+        return None
+    question = suggestion['recommended_question'].strip()
+    # Repair historical loops only when every appended instruction repeats the
+    # exact same corrected question. Never discard a different requested change.
+    pieces = question.split(SEPARATOR)
+    if len(pieces) > 1 and all(p == 'Use this corrected question: ' + pieces[0] for p in pieces[1:]):
+        question = pieces[0]
+    if not question or SEPARATOR in question:
+        return None
+    return {'question': question, 'audit': {
+        'original_question': question, 'raw_original_question': run['question'],
+        'parent_run_id': run['run_id'], 'parent_plan_id': run['plan_id'],
+        'revision_mode': 'replacement_question', 'revision_instruction': instruction,
+        'accepted_term_correction': True, 'retry_submitted_text': submitted}}
+
+
+def terminal_clarification_revision(run, submitted):
+    """Route edited clarification instructions through ordinary interpretation."""
+    if not run or run.get('status') not in {'failed', 'interrupted'}:
+        return None
+    plan = run.get('plan') or {}
+    if plan.get('steps') or not plan.get('recovery'):
+        return None
+    prefix = str(run.get('question') or '') + SEPARATOR
+    if not submitted.startswith(prefix) or not submitted[len(prefix):].strip():
+        return None
+    return {'original_question': run['question'], 'parent_run_id': run['run_id'],
+        'parent_plan_id': run['plan_id'], 'revision_mode': 'instruction',
+        'revision_instruction': submitted[len(prefix):], 'retry_submitted_text': submitted}

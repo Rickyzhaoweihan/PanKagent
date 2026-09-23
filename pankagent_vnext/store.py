@@ -148,6 +148,18 @@ class Store:
 
     def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None, legacy_retry_submission: str | None = None) -> dict:
         with self.transaction():
+            if legacy_retry_submission is not None and session_id:
+                from .terminal_retry import accepted_term_correction, terminal_clarification_revision
+                accepted = accepted_term_correction(self.latest_run(session_id), legacy_retry_submission)
+                if accepted:
+                    question = accepted['question']
+                    audit = {**(audit or {}), **accepted['audit']}
+                    legacy_retry_submission = None
+                else:
+                    binding = terminal_clarification_revision(self.latest_run(session_id), legacy_retry_submission)
+                    if binding:
+                        audit = {**(audit or {}), **binding}
+                        legacy_retry_submission = None
             if legacy_retry_submission is not None and session_id and include_context:
                 from .terminal_retry import terminal_revision_retry
                 latest = self.latest_run(session_id)
@@ -208,6 +220,21 @@ class Store:
     def by_plan(self, plan_id: str) -> dict | None:
         with self.lock:
             return self._decode(self.db.execute("SELECT * FROM runs WHERE plan_id=?", (plan_id,)).fetchone())
+
+    def set_effective_question(self, run_id, question):
+        """Persist interpreted scope while retaining the submitted text in audit."""
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("empty_effective_question")
+        with self.transaction():
+            run = self.get(run_id)
+            metadata = self.audit_metadata(run_id) or {}
+            metadata.setdefault('submitted_question', run['question'])
+            metadata['effective_question'] = question.strip()
+            self.db.execute("UPDATE run_audit SET metadata=? WHERE run_id=?",
+                            (json.dumps(metadata, ensure_ascii=False), run_id))
+            self.db.execute("UPDATE runs SET question=?,updated_at=? WHERE run_id=?",
+                            (question.strip(), utc_now(), run_id))
+            return self.get(run_id)
 
     def update(self, run_id: str, **fields: Any) -> dict:
         allowed = {"status", "stage", "plan", "graph_answer", "evidence", "literature", "error", "preview", "preview_cache"}
