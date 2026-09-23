@@ -1,5 +1,6 @@
 """Compile a single ordered path proposal into ordinary bounded query tasks."""
 from copy import deepcopy
+import re
 from .composable_planning import object_schema, STRING
 from .bounded_paths import PATH_SPEC_SCHEMA
 
@@ -14,12 +15,16 @@ def schema(query_schema):
         'clarification': {'type': ['string', 'null']}})
 
 
-def expand(proposal):
+def expand(proposal, question=None):
     if proposal.get('clarification'):
         return {'interpreted_question': proposal['interpreted_question'], 'steps': [], 'clarification': proposal['clarification']}
     spec = deepcopy(proposal['chain_spec']); nodes = spec['nodes']; edges = spec['edges']
     if not 2 <= len(nodes) <= 16 or len(edges) != len(nodes) - 1:
         raise ValueError('invalid_complete_chain_size')
+    if not re.search(r'outgoing|incoming|as (?:the )?(?:source|target)|directional', question or proposal['interpreted_question'], re.I):
+        for edge in edges:
+            if set(edge['types_any']) <= {'PHYSICAL_INTERACTION', 'GENETIC_INTERACTION'}:
+                edge['direction'] = 'either'
     roles = [n['role'] for n in nodes]
     if len(set(roles)) != len(roles):
         raise ValueError('duplicate_chain_role')

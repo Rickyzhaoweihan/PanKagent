@@ -291,7 +291,7 @@ class ClaudeGateway:
                 if chain_mode:
                     from .chain_drafting import expand as expand_chain
                     try:
-                        plan = expand_chain(plan)
+                        plan = expand_chain(plan, question)
                     except (ValueError, KeyError, TypeError) as exc:
                         if not _repair:
                             return await self.plan(question, history + [{'role': 'system', 'content': 'Repair the complete path: '+str(exc)}], _repair=True, grounding=grounding)
