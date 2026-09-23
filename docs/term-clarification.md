@@ -69,3 +69,9 @@ Historical repeated-correction tails are removed only when every tail repeats
 the exact same accepted question. Different instructions are never discarded.
 Regression tests exercise the real create -> failed clarification -> apply ->
 new planning API sequence, including context-off sessions and manual edits.
+
+Live round-trip acceptance for implementation `8fa04ab`: the three-repeat nPAP
+payload was accepted, the next run persisted exactly `How many T1D stage 2 donors
+are available in HPAP?`, and reached ordinary `awaiting_confirmation` with no
+clarification and no repeated revision text. The 83 targeted regression tests
+passed. Validation plans were closed; existing user history was not rewritten.
