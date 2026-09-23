@@ -177,6 +177,13 @@ class ClaudeGateway:
         user=json.dumps({'question':question,'history':history[-6:],'terminology_guidance':planner_guidance(question)},ensure_ascii=False)
         system_text=PLAN_SYSTEM
         schema=PLAN_SCHEMA
+        if re.search(r'\b(?:connected|ordered|five.node|six.node|seven.node)\s+(?:\w+\s+)?(?:chains?|paths?)\b', question, re.I):
+            from copy import deepcopy
+            schema = deepcopy(PLAN_SCHEMA)
+            schema['required'] += ['combine_operations', 'answer_step_ids']
+            query_schema = schema['properties']['steps']['items']
+            query_schema['required'] += ['path_spec', 'input_bindings']
+            query_schema['properties']['constraints']['items']['required'] += ['owner_role']
         from .planning_contract import SYSTEM as GROUNDED_SYSTEM, VERSION as PLANNING_VERSION, DIGEST as PLANNING_DIGEST
         from .planning_scope import scope_issue, DIGEST as PLANNING_SCOPE_DIGEST
         from .planning_compile import compile_property_owners, DIGEST as COMPILER_DIGEST

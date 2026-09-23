@@ -41,3 +41,50 @@ projection isolation, mixed evidence modes and unchanged output-function tests a
 `tests_vnext/test_composable_planning.py`. Full agent tests distinguish known baseline
 results-service fixture failures from new regressions. Live validation uses a separate
 owner-only state directory and a $20 ledger, never the existing shared ledger.
+
+## I/O flow
+
+```mermaid
+flowchart TD
+  U[Question and session context] --> G[Existing grounding: entity IDs and recorded filters]
+  R[Current question + revision comment + plan] --> I[Small revision interpreter]
+  I -->|Standalone question; chain restart or parallel extension| G
+  G --> P[Planner: dependencies, typed roles, answer targets]
+  P --> D[Query dispatcher]
+  D --> T[Structural template compiler]
+  D --> GPU[At least one GPU Cypher subtask]
+  T --> V[Shared scope and query validation]
+  GPU --> V
+  V --> E[Existing scheduler: parallel tasks and bound-ID chains]
+  E --> C[Typed combination: join / intersect / union / difference / filter]
+  C -->|Verified backend IDs| D
+  C --> F[Final answer projection; intermediate previews retained]
+  F --> A[Per-query input adapter: full or identity-only]
+  A --> O[Unchanged formatter, streaming and frontend]
+  V -->|Unresolved condition| X[Existing rejection and recommended question]
+  X --> I
+```
+
+## Payload flow
+
+```mermaid
+flowchart TD
+  Q[Effective question + immutable original request and revision] --> P[Plan: steps, combine_operations, answer_step_ids]
+  P --> S[Query: constraints, path_spec, depends_on, input_bindings, context_mode]
+  S --> B[Backend evidence: graph_version, nodes, edges, rows, path_records, validation, retrieval_execution]
+  B --> N[Next fragment receives complete typed IDs with source and target roles]
+  N --> B2[Next backend result with verified ordered paths]
+  B --> C[Operation inputs: step_id, entity_type, role]
+  B2 --> C
+  C --> D[Derived result: filtered witnesses + parent snapshots + completeness]
+  D --> L[Large query: sampled identity or whole path tuples, explicit omissions]
+  D --> F[Short query: full relationships and measurements]
+  L --> A[Formatter envelope: separate evidence items, stable G citations, plan structure]
+  F --> A
+  A --> O[Existing graph_answer output contract]
+```
+
+Backend evidence remains authoritative for filtering, joins and counts. A compacted
+view is never a dependency input. The shared task contract makes new templates and
+result operations independent additions; revisions reuse ordinary planning instead
+of introducing another execution engine.
