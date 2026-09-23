@@ -1,6 +1,7 @@
 """One structured plan, one streamed evidence answer, a shared budget gateway."""
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass, field
 import hashlib
