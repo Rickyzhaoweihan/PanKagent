@@ -12,7 +12,7 @@ def test_grounded_and_timeout_fallback_share_coloc_contract():
         assert 'do not add gwas_lead_vars/qtl_lead_vars filters' in prompt
 
 
-async def test_signal_alias_resolves_live_id_and_preserves_user_literal():
+def test_signal_alias_resolves_live_id_and_preserves_user_literal():
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     from pankagent_vnext.graph import GraphAdapter
@@ -23,7 +23,8 @@ async def test_signal_alias_resolves_live_id_and_preserves_user_literal():
     graph._small_query = AsyncMock(return_value=[{'id': 'MONDO_0005147',
                                   'name': 'type 1 diabetes', 'labels': ['disease']}])
     constraint = {'entity_type': 'disease', 'property': 'name', 'operator': '=', 'value': 'T1D'}
-    resolved = await graph._resolve_constraint(constraint, 0, {'relation_types': ['SIGNAL_COLOC_WITH']})
+    import asyncio
+    resolved = asyncio.run(graph._resolve_constraint(constraint, 0, {'relation_types': ['SIGNAL_COLOC_WITH']}))
     assert resolved['state'] == 'resolved'
     assert resolved['id'] == 'MONDO_0005147'
     assert resolved['requested'] == constraint
