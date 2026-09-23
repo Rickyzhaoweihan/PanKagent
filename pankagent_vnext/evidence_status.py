@@ -104,6 +104,9 @@ def checked_query_result(step, result, verified):
         return False
     if any(dependency not in verified for dependency in step.get('depends_on', [])):
         return False
+    if step.get('operation'):
+        from .composable_planning import verify_derivation
+        return verify_derivation(step, result, verified)
     if any(isinstance(query, dict) and isinstance(query.get('cypher'), str) and query['cypher'].strip()
            for query in result.get('queries') or []):
         execution = result.get('retrieval_execution') or {}

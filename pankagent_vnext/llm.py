@@ -76,6 +76,10 @@ PLAN_SCHEMA['properties'].pop('literature')
 PLAN_SCHEMA['required'].remove('literature')
 PLAN_SYSTEM += "\nCompact output contract (takes precedence over display instructions): do not generate title, rationale or literature fields. For exactly one step, use an empty step question to reuse interpreted_question verbatim. Use biological language in interpreted_question and step questions; place schema relationship names only in relation_types. For multiple steps, use concise standalone step questions retaining every scientific modifier; never shorten or drop constraints, identifiers, exclusions, completeness or dependencies. Literature is always enabled by the application. Display titles and explanatory boilerplate are supplied deterministically."
 
+from .composable_planning import extend_schema, GUIDANCE as COMPOSABLE_GUIDANCE
+extend_schema(PLAN_SCHEMA)
+PLAN_SYSTEM += COMPOSABLE_GUIDANCE
+
 SYNTHESIS_SYSTEM = (Path(__file__).parent / 'prompts' / 'answer_style.md').read_text()
 ANSWER_CONTRACT = '''Final presentation contract: return the answer summary only, without follow-up questions or suggested searches. For a simple lookup use a direct sentence, one small table with at most five columns if useful, a source line and a brief evidence caveat only when relevant (aim for 80–160 words total). Preserve IDs and units exactly. Include only returned entities and supported observations. Answer the primary question first; a context step supplies a brief additional observation, not a replacement answer. Distinguish detection from enrichment and exclusive expression. Do not compare measurements across conditions, cohorts or sources as if matched. rank_in_cell_type ranks genes within one cell type; it does not rank cell types for a gene. Never infer the strongest cell type from that rank or from a query restricted to one cell type. Earlier interpretation templates do not require every listed field or extra sections. Never infer unreturned records from generation settings or invent incompleteness when explicit status is complete and sampling/truncation are false.'''
 ANSWER_CONTRACT += "\nVerified glossary: IBA means Inferred from Biological aspect of Ancestor; ISS means Inferred from Sequence or structural Similarity; IEA means Inferred from Electronic Annotation. PIP is model-based fine-mapping probability, not effect size. Colocalization supports a shared association signal, not proof of mechanism. Clinical stage descriptions are recorded metadata, not verified ADA/JDRF definitions. Never describe model-context compaction as browser display omission; actual display counts are unavailable at synthesis. Keep internal compaction diagnostics out of the answer. Missing categories mean a partial profile."
@@ -122,6 +126,11 @@ def plan_structure_issue(plan):
     from .plan_recovery import GENERIC
     if not plan.get('steps') and (not plan.get('clarification') or str(plan.get('clarification')).strip().lower() in GENERIC):
         return 'empty_executable_plan'
+    from .composable_planning import normalize
+    try:
+        plan = normalize(plan)
+    except (ValueError, KeyError, TypeError) as exc:
+        return str(exc)
     seen = set()
     for step in plan['steps']:
         if not step['id'] or step['id'] in seen or any(dependency not in seen for dependency in step['depends_on']):
@@ -313,6 +322,27 @@ class ClaudeGateway:
             return await self.plan(question, history, _repair=True, grounding=grounding)
         from .plan_recovery import mark_failure
         return mark_failure({'interpreted_question':question,'proposal_issue':'missing_structured_plan'})
+    async def interpret_revision(self, question, instruction, parent_plan):
+        from .revision_interpreter import SCHEMA, SYSTEM
+        from .planning_output import matches_schema
+        body = json.dumps({'current_question': question, 'revision_instruction': instruction,
+            'plan_mode': parent_plan.get('execution_mode'),
+            'checks': [{'question': s.get('question'), 'depends_on': s.get('depends_on'),
+                        'path_spec': s.get('path_spec')} for s in parent_plan.get('steps', [])]}, ensure_ascii=False)
+        rid = await self._reserve('revision_interpretation', SYSTEM, body, 1000)
+        reply = await self._create(rid, model=self.settings.model, max_tokens=1000,
+            system=[{'type': 'text', 'text': SYSTEM}], messages=[{'role': 'user', 'content': body}],
+            tools=[{'name': 'interpret_revision', 'description': 'Produce one complete revised question',
+                    'input_schema': SCHEMA, 'strict': True}],
+            tool_choice={'type': 'tool', 'name': 'interpret_revision'}, **self._options())
+        await self.budget.asettle(rid, reply.usage.model_dump())
+        for block in reply.content:
+            if block.type == 'tool_use' and block.name == 'interpret_revision' and matches_schema(block.input, SCHEMA):
+                result = block.input
+                if reply.stop_reason != 'max_tokens' and result['new_question'].strip() and len(result['new_question']) <= 6000:
+                    return result
+        raise ValueError('invalid_revision_interpretation')
+
     async def repair_cypher(self, step, question, failures, candidate):
         """One grounded, budgeted fallback; the caller must revalidate and EXPLAIN."""
         from .release_schema import REGISTRY
@@ -394,10 +424,12 @@ class ClaudeGateway:
             excerpt=relevant(excerpt)
             profile['model_context']['omitted_unrequested_fields']=['rank_in_cell_type']
         def answer_body(items):
-            limited = bool(items) and all(item.get('answer_evidence_scope',{}).get('mode') == NODE_ONLY_MODE for item in items)
+            limited = bool(items) and all(item.get('answer_evidence_scope',{}).get('mode') == NODE_ONLY_MODE and not item.get('identity_path_records') for item in items)
             scope = ('Oversized query: node identities, descriptions and provenance only; no relationship or measurement conclusions are supported by this view.'
                 if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
-            return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope},ensure_ascii=False,default=str)
+            from .format_input_modes import input_structure
+            return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope,
+                'input_structure':input_structure(evidence)},ensure_ascii=False,default=str)
         body=answer_body(excerpt)
         if len(body.encode()) > MAX_BYTES:
             # Include the final question, JSON spacing and scope notes in the
@@ -407,7 +439,7 @@ class ClaudeGateway:
             body=answer_body(excerpt)
         if len(body.encode()) > MAX_BYTES:
             raise ValueError('answer_request_envelope_too_large')
-        node_only=bool(compact) and all(item.get('context_compaction') == NODE_ONLY_MODE for item in compact)
+        node_only=bool(compact) and all(item.get('context_compaction') == NODE_ONLY_MODE and not item.get('identity_path_records') for item in compact)
         profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
         profile['model_context'].update(sampled=profile['context_sampled'],
             mode=NODE_ONLY_MODE if node_only else 'standard',

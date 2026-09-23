@@ -17,6 +17,9 @@ def normalize(plan):
     intersection=bool(re.search(r'\b(?:intersection|intersect|overlap|only those|satisfy both|shared variants)\b',question,re.I))
     by_id={}
     for step in result.get('steps',[]):
+        if step.get('input_bindings') or step.get('operation'):
+            by_id[step['id']] = step
+            continue
         relations=set(step.get('relation_types',[]));constraints=step.setdefault('constraints',[])
         identities={c.get('entity_type') for c in constraints if c.get('property') in {'id','name'}
                     and c.get('operator','=') in {'=','IN'} and c.get('value')}

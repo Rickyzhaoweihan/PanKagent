@@ -1086,6 +1086,17 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         wanted = {"property": "id", "operator": "IN", "value": parameters[name]}
         if not all(_predicate_present(part, wanted, parameters) for part in branches):
             errors.append("missing_dependency:" + name)
+        index = int(name[4:]) if name[4:].isdigit() else -1
+        source_id = (step.get('depends_on') or [])[index] if 0 <= index < len(step.get('depends_on') or []) else None
+        explicit = next((b for b in step.get('input_bindings', []) if b['step_id'] == source_id), None)
+        if explicit and not step.get('path_spec'):
+            for part in branches:
+                owners, directed_paths = _pattern_bindings(part, graph_release=step.get('graph_version'))
+                variables = {a if explicit['target_role'] == 'source' else b for a, b, kinds in directed_paths
+                             if kinds & set(step.get('relation_types', []))}
+                variables = {v for v in variables if explicit['entity_type'] in owners.get(v, set())}
+                if len(variables) != 1 or not _predicate_present(part, wanted, parameters, variables):
+                    errors.append('dependency_role_mismatch:' + name)
         for part in branches:
             errors.extend(_dependency_owner_errors(part, name, parameters[name],
                 (dependency_bindings or {}).get(name), step.get('graph_version')))
@@ -1551,6 +1562,10 @@ class GraphAdapter:
             if prepared.get('clarification') == old_recovery.get('message'):
                 prepared['clarification'] = None
         for source in plan.get("steps") or []:
+            if source.get('operation'):
+                prepared['steps'].append({**source, 'graph_version': self.settings.graph_version,
+                    'resolved_entities': [], 'entity_resolution': {'state': 'resolved', 'unknown_relations': []}})
+                continue
             if plan.get('original_question'):
                 source = {**source, 'semantic_request': {
                     'source': 'user_request', 'question': plan['original_question'],
@@ -2062,7 +2077,14 @@ class GraphAdapter:
                 return base
             ids = sorted({str(node["id"]) for node in evidence.get("nodes", []) if node.get("id") is not None})
             dependency_nodes = evidence.get('nodes', [])
-            if step.get('relation_types') == ['PART_OF_GWAS_SIGNAL']:
+            typed_binding = next((b for b in step.get('input_bindings', []) if b['step_id'] == dependency), None)
+            if typed_binding:
+                from .composable_planning import selected_nodes
+                dependency_nodes = selected_nodes(evidence, typed_binding['entity_type'], typed_binding['source_role'])
+                ids = sorted({str(n['id']) for n in dependency_nodes})
+                if evidence.get('graph_version') != self.settings.graph_version:
+                    raise GraphValidationError('dependency_graph_release_mismatch')
+            if not typed_binding and step.get('relation_types') == ['PART_OF_GWAS_SIGNAL']:
                 # A disease or gene node from a preceding check is not a GWAS
                 # variant input. Never satisfy this dependency on disease alone.
                 dependency_nodes = [n for n in dependency_nodes if 'variants' in (n.get('labels') or [])]
@@ -2102,6 +2124,9 @@ class GraphAdapter:
                 return base
             name = "dep_" + str(index)
             parameters[name] = ids
+            if typed_binding and step.get('path_spec'):
+                step.setdefault('_path_dependency_parameters', {})[name] = {
+                    'ids': ids, 'graph_version': evidence['graph_version']}
             labels_by_id = {}
             for node in dependency_nodes:
                 identifier, labels = node.get('id'), node.get('labels')
@@ -2120,7 +2145,7 @@ class GraphAdapter:
         from .candidate_policy import CandidateBatch, retryable_generation_error, initial_request_count, grounded_prompt_variants
         grounded = getattr(self.settings, 'grounded_query_policy', False)
         from .planning_contract import VerifiedCache
-        from .query_templates import compile_query, compile_variant_dependencies, DIGEST as TEMPLATE_DIGEST
+        from .query_templates import compile_query, compile_variant_dependencies, compile_typed_dependencies, DIGEST as TEMPLATE_DIGEST
         from .bounded_paths import (BoundedPathError, DIGEST as BOUNDED_PATH_DIGEST,
                                     compile_query as compile_bounded_path)
         from .pattern_planning import (DIGEST as PATTERN_PLAN_DIGEST,
@@ -2136,11 +2161,9 @@ class GraphAdapter:
         cached = self._query_cache.get(key) if grounded or path_requested or local_coloc_required else None
         try:
             if path_requested:
-                if dependency_notes:
-                    raise BoundedPathError("bounded_path_dependencies_unsupported")
                 template = compile_bounded_path(step)
             else:
-                template = ((compile_variant_dependencies(step, dependency_bindings)
+                template = (((compile_typed_dependencies(step, dependency_bindings) or compile_variant_dependencies(step, dependency_bindings))
                              if dependency_notes else compile_query(step))
                             if grounded or local_coloc_required else None)
         except BoundedPathError as exc:
@@ -2162,6 +2185,8 @@ class GraphAdapter:
         routes = (['cache'] if cached else []) + (['template'] if template else [])
         if not path_requested and not local_coloc_required:
             routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
+        if step.get('gpu_participation_required'):
+            routes = ['gpu_initial'] + [r for r in routes if r != 'gpu_initial']
         for route in routes:
             local_route = route in {'template', 'cache'}
             template_audit = None
@@ -2170,12 +2195,16 @@ class GraphAdapter:
                     question = generation_request(step, build_generation_question(step))
                 except ValueError as exc:
                     base["validation"].append({"valid": False, "route": route, "reasons": [str(exc)]})
+                    if template or cached:
+                        continue
                     return base
                 if dependency_notes:
                     question += "\n" + "\n".join(dependency_notes)
                 if len(question) > 4000:
                     base["validation"].append({"valid": False, "route": route,
                                                "reasons": ["generation_question_too_long"]})
+                    if template or cached:
+                        continue
                     return base
             n = 8 if route == 'gpu_sampling' else 1
             count = initial_request_count(self.settings, step) if route == 'gpu_initial' else 1
@@ -2200,7 +2229,7 @@ class GraphAdapter:
                     correction += " Use only the resolved donor stage/cohort and sample/tissue constraints."
                 if len(question) + len(correction) <= 4000:
                     attempt_question += correction
-            selected_parameters = parameters
+            selected_parameters = {**parameters, **(template["parameters"] if path_requested and template else {})}
             generate = self._generate
             if route in {'template', 'cache'}:
                 prepared_query = template if route == 'template' else cached
@@ -2241,7 +2270,7 @@ class GraphAdapter:
                         reasons = [str(exc)] if isinstance(exc, GraphValidationError) else ["generation_unavailable:" + type(exc).__name__]
                         base["validation"].append({"valid": False, "n": n,
                                                    "attempt_index": outcome.attempt["attempt_index"], "reasons": reasons})
-                        if not isinstance(exc, GraphValidationError) and not retryable_generation_error(exc):
+                        if not isinstance(exc, GraphValidationError) and not retryable_generation_error(exc) and not (template or cached):
                             return base
                         continue
                     for query in outcome.candidates:
@@ -2283,6 +2312,9 @@ class GraphAdapter:
                         except Exception as exc:
                             base.setdefault('telemetry_failures', []).append({
                                 'event': 'cypher_validation', 'category': type(exc).__name__})
+                        if local_coloc_required and route.startswith('gpu_'):
+                            validation_record['candidate_only'] = True
+                            continue
                         if reasons:
                             continue
                         await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})

@@ -20,12 +20,13 @@ def review_input(question, plan, preview):
         result = outcomes.get(step['id'], {})
         checks.append({key: step[key] for key in ('id', 'question', 'relation_types', 'constraints',
                       'depends_on', 'complete', 'purpose', 'sample_requirements', 'evidence_combination',
-                      'path_spec') if key in step} | {
+                      'path_spec', 'input_bindings', 'operation') if key in step} | {
             'execution_status': result.get('status', 'not_executed'),
             'node_count': len(result.get('nodes', [])), 'relationship_count': len(result.get('edges', [])),
             'query_scope': (result.get('evidence_coverage') or {}).get('query_scope'),
             'semantic_summary': step.get('semantic_summary')})
     return {'original_question': question, 'checks': checks, 'computed_operations': plan.get('computed_operations', []),
+            'combine_operations': plan.get('combine_operations', []), 'answer_step_ids': plan.get('answer_step_ids'),
             'readiness': preview.get('query_readiness'), 'version': VERSION}
 
 
@@ -70,10 +71,13 @@ def review_verified_local_coloc(plan, preview):
     external = [attempt for attempt in outcome.get('generator_attempts') or []
                 if isinstance(attempt, dict)
                 and attempt.get('route') not in {'template', 'cache'}]
-    if external:
+    comparison_only = step.get('gpu_participation_required') and outcome.get('query_route') in {'template', 'cache'}
+    if external and not comparison_only:
         issues.append({'step_id': step.get('id', 'coloc'),
                        'reason': 'The local coloc check unexpectedly used a generated query.'})
     validations = outcome.get('validation') or []
+    if comparison_only:
+        validations = [v for v in validations if v.get('route') in {'template', 'cache'}]
     if (not validations or any(not isinstance(check, dict)
                                or check.get('valid') is not True
                                for check in validations)):

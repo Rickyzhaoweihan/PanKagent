@@ -395,9 +395,13 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
         return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
     result = [_compact_step(item, index, _NORMAL, node_context) for index, item in enumerate(steps)]
+    forced = {i for i, step in enumerate(steps) if step.get('context_mode') == 'identity_only'}
+    for index in forced:
+        result[index] = node_only_evidence([steps[index]], max_bytes=max(1000, max_bytes // max(1, len(steps))))[0]
+        result[index]['evidence_id'] = evidence_id(steps[index], index)
     # Reduce only the largest branch at each stage; smaller independent checks
     # retain their relationships, measurements and stable citation identifiers.
-    reduced, identity = set(), set()
+    reduced, identity = set(), set(forced)
     while size(result) > max_bytes and len(identity) < len(steps):
         index = max((i for i in range(len(steps)) if i not in identity), key=lambda i: size(result[i]))
         if index not in reduced:
@@ -529,6 +533,10 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
         # Public plans contain at most twelve checks. Malformed/unbounded step
         # envelopes still fail explicitly, never silently renumber citations.
         raise ValueError("evidence_step_envelope_too_large")
+    from .format_input_modes import add_chain_identities
+    for index, step in enumerate(steps):
+        remaining = max_bytes - size([e for i, e in enumerate(entries) if i != index]) - 100
+        entries[index] = add_chain_identities(entries[index], step, remaining)
     return entries
 
 
@@ -553,6 +561,7 @@ def scientific_excerpt(compact, *, include_donor_details=False):
                 "omitted_node_count": item["context_dropped"]["nodes"],
                 "node_text_clipped": bool(item.get("context_content_omissions")),
                 "relationship_and_measurement_evidence_available": False,
+                "verified_path_connectivity_available": bool(item.get("identity_path_records")),
             }
             result.append(entry)
             continue

@@ -99,7 +99,7 @@ def plan_issue(step):
         return "path_node_depth_out_of_range"
     if not isinstance(edges, list) or len(edges) != len(nodes) - 1:
         return "path_edge_count_mismatch"
-    if step.get("depends_on"):
+    if step.get("depends_on") and not step.get("input_bindings"):
         return "bounded_path_dependencies_unsupported"
 
     node_roles = []
@@ -222,7 +222,9 @@ def plan_issue(step):
                 return "path_constraint_owner_mismatch"
 
     anchor = node_roles[0]
-    if not any(c.get("owner_role") == anchor and c.get("entity_type") in domains[anchor]
+    dependency_anchor = any(b.get("target_role") == anchor and b.get("entity_type") in domains[anchor]
+                            for b in step.get("input_bindings", []))
+    if not dependency_anchor and not any(c.get("owner_role") == anchor and c.get("entity_type") in domains[anchor]
                and c.get("property") in {"id", "name"}
                and c.get("operator", "=") == "="
                for c in step.get("constraints") or [] if isinstance(c, dict)):
@@ -349,6 +351,20 @@ def compile_query(step):
     except (ValueError, TypeError, KeyError, OverflowError) as exc:
         raise BoundedPathError(str(exc) or "path_constraint_compilation_failed") from exc
 
+    for index, dependency in enumerate(step.get('depends_on', [])):
+        binding = next((b for b in step.get('input_bindings', []) if b['step_id'] == dependency), None)
+        trusted = (step.get('_path_dependency_parameters') or {}).get('dep_' + str(index))
+        if binding is None or not trusted or trusted.get('graph_version') != step.get('graph_version'):
+            raise BoundedPathError('unverified_path_dependency')
+        role_index, node = node_by_role[binding['target_role']]
+        if binding['entity_type'] not in node['entity_types'] or not trusted.get('ids'):
+            raise BoundedPathError('invalid_path_dependency_type')
+        name = 'dep_' + str(index)
+        parameters[name] = trusted['ids']
+        bindings[name] = {'owner_role': binding['target_role'], 'proof_source': 'dependency_evidence',
+                         'graph_release': step['graph_version'], 'operator': 'IN', 'property': 'id'}
+        filters.append(f'n{role_index}.`id` IN ${name}')
+        anchor_resolved |= role_index == 0
     if not anchor_resolved:
         raise BoundedPathError("unresolved_path_anchor")
     if not filters:

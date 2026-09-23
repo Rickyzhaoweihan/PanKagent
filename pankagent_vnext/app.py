@@ -124,6 +124,8 @@ def normalize_plan(plan: dict) -> dict:
         raise ValueError("Invalid structured plan")
     if len(plan["steps"]) > 12:
         return {**plan, "steps": [], "clarification": "Please narrow this to at most twelve graph investigations."}
+    from .composable_planning import normalize
+    plan = normalize(plan)
     seen = set()
     for index, step in enumerate(plan["steps"]):
         if not isinstance(step, dict) or not step.get("id") or not isinstance(step.get("question"), str):
@@ -147,9 +149,10 @@ def normalize_plan(plan: dict) -> dict:
     return plan
 
 
-def aggregate_evidence(previous: dict) -> dict:
-    steps = list(previous.values())
-    result = {"steps": steps, "nodes": [], "edges": [], "queries": [], "provenance": [], "graph_version": None}
+def aggregate_evidence(previous: dict, plan=None) -> dict:
+    from .composable_planning import answer_results
+    steps = list(answer_results(plan or {}, previous).values())
+    result = {"steps": list(previous.values()), "nodes": [], "edges": [], "queries": [], "provenance": [], "graph_version": None}
     for kind in ("nodes", "edges"):
         seen = set()
         for step in steps:
@@ -338,8 +341,19 @@ class Runtime:
                 metadata = (await self.io.call(self.store.audit_metadata, run_id)) or {}
                 parent = (await self.io.call(self.store.get, metadata.get("parent_run_id"))) if metadata.get("parent_run_id") else None
                 instruction = metadata.get('revision_instruction') or run['question']
+                revision = None
                 grounding = None
                 fast = parent and parent.get('plan') and metadata.get('revision_mode') == 'instruction' and literature_only_revision(instruction)
+                if parent and not fast and metadata.get('revision_mode') == 'instruction' and hasattr(self.gateway, 'interpret_revision'):
+                    current_question = (parent.get('plan') or {}).get('interpreted_question') or metadata.get('original_question') or parent['question']
+                    revision = await asyncio.wait_for(self.gateway.interpret_revision(current_question, instruction, parent.get('plan') or {}), self.settings.plan_timeout)
+                    await self.io.call(self.store.audit_event, run_id, 'revision_interpreted', revision)
+                    if revision['execution'] == 'clarify':
+                        recovery = {'category': 'revision_needs_clarification', 'title': 'Clarify the requested change',
+                            'message': revision['reason'], 'suggestions': [revision['recommended_question']] if revision['recommended_question'] else [], 'retryable': False}
+                        await self.io.call(self._terminal, run_id, 'failed', error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
+                        return
+                    run = {**run, 'question': revision['new_question']}
                 from .planning_fastpath import literature_request_plan, unsupported_analysis_plan, genomic_neighborhood_plan
                 literature_plan = literature_request_plan(run["question"])
                 from .session_summary import plan as summary_plan
@@ -372,7 +386,7 @@ class Runtime:
                         if 'grounding' in inspect.signature(self.gateway.plan).parameters:
                             plan_options['grounding'] = grounding
                     model_started = time.monotonic()
-                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
+                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
                     (await self.io.call(self.check_active, run_id))
                     if proposed.get('planning_route', {}).get('claude_calls') == 0:
@@ -383,6 +397,12 @@ class Runtime:
                     claude_pending = False
                 from .plan_recovery import recover_empty_plan
                 proposed = await recover_empty_plan(self.gateway, proposed, run["question"], (await self.io.call(self.planning_history, run)), self.settings.plan_timeout, grounding=grounding)
+                if revision:
+                    from .revision_interpreter import reuse_step_ids
+                    if revision['execution'] == 'parallel_extend':
+                        proposed = reuse_step_ids(proposed, parent.get('plan') or {})
+                    proposed['revision_execution'] = revision['execution']
+                    proposed['effective_question'] = revision['new_question']
                 plan = normalize_plan(proposed)
                 from .followup_scope import preserve_original_sources
                 plan = preserve_original_sources(plan, run["question"], prior_answer)
@@ -537,7 +557,7 @@ class Runtime:
     def save_preview(self, run_id, previous, cache, *, error=None, preparation_complete=False):
         self.check_active(run_id)
         linkage = self.annotate_plan_evidence(self.store.get(run_id)['plan'] or {}, previous)
-        evidence = aggregate_evidence(previous)
+        evidence = aggregate_evidence(previous, self.store.get(run_id)["plan"] or {})
         if linkage.get('groups'):
             evidence['coloc_linkage'] = linkage
         from .investigations import coverage
@@ -590,7 +610,13 @@ class Runtime:
                     await before_query()
                     (await self.io.call(self.check_active, run_id))
                 await self.emit(run_id, kind, payload)
-            result = await self.graph.execute(step, previous, progress)
+            if step.get('operation'):
+                from .composable_planning import combine
+                result = combine(step, previous)
+            else:
+                result = await self.graph.execute(step, previous, progress)
+            result['context_mode'] = step.get('context_mode', 'auto')
+            result['input_bindings'] = deepcopy(step.get('input_bindings', []))
             (await self.io.call(self.check_active, run_id))
             result.setdefault("step_id", step["id"])
             plan = (await self.io.call(self.store.get, run_id)).get("plan") or {}
@@ -644,6 +670,11 @@ class Runtime:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
             (await self.io.call(self.store.update_if_active, run_id, plan=plan))
+        if plan.get('planning_contract') == 'composable-planning-v1':
+            queries = [s for s in plan['steps'] if not s.get('operation') and s.get('purpose') != 'context']
+            if queries:
+                selected = next((s for s in queries if not s.get('path_spec')), queries[0])
+                selected['gpu_participation_required'] = True
         plan.pop('review_ready', None)
         (await self.io.call(self.store.update_if_active, run_id, plan=plan))
         cache = {"identity": self.preview_identity(plan), "step_completed_epochs": {}, "step_identities": {}}
@@ -668,6 +699,7 @@ class Runtime:
         primary_tasks_done = asyncio.Event()
         remaining_required = set(required_ids)
         execution_slots = asyncio.Semaphore(2)
+        from .revision_interpreter import retrieval_signature
         async def worker(index, step):
             for dependency in step.get('depends_on', []):
                 await done[dependency].wait()
@@ -677,8 +709,11 @@ class Runtime:
             fingerprint = self.preview_identity({"steps": [step], "contract_sha256": CONTRACT_DIGEST})
             old = parent_steps.get(step["id"], {})
             epoch = parent_cache.get("step_completed_epochs", {}).get(step["id"], 0)
-            can_reuse = (checked_query_result(step, old, {key: previous[key] for key in reused})
-                and parent_cache.get("step_identities", {}).get(step["id"]) == fingerprint
+            can_reuse = (plan.get("revision_execution") != "chain_restart" and checked_query_result(step, old, {key: previous[key] for key in reused})
+                and (parent_cache.get("step_identities", {}).get(step["id"]) == fingerprint
+                     or (plan.get('revision_execution') == 'parallel_extend'
+                         and retrieval_signature(step)
+                         == retrieval_signature(next((s for s in (parent.get('plan') or {}).get('steps', []) if s['id'] == step['id']), {}))))
                 and 0 <= time.time() - epoch < self.settings.preview_ttl_seconds
                 and set(step.get("depends_on", [])) <= reused)
             if can_reuse:
@@ -891,7 +926,7 @@ class Runtime:
                 await wait_prior()
                 previous[step["id"]] = result
             previous[step["id"]]["evidence_id"] = cached.get("evidence_id", f"G{index + 1}") if reason is None else f"G{index + 1}"
-            evidence = aggregate_evidence(previous)
+            evidence = aggregate_evidence(previous, run["plan"])
             evidence["preview_reuse"] = reuse_info
             (await self.io.call(self.store.update_if_active, run_id, evidence=evidence))
             await self.emit(run_id, "graph_step", {"step_id": step["id"], "evidence": previous[step["id"]], "reused_preview": reason is None})
@@ -911,7 +946,7 @@ class Runtime:
         previous = {step['id']: previous[step['id']] for step in run['plan']['steps']}
 
         linkage = self.annotate_plan_evidence(run['plan'], previous)
-        evidence = aggregate_evidence(previous)
+        evidence = aggregate_evidence(previous, self.store.get(run_id)["plan"] or {})
         if linkage.get('groups'):
             evidence['coloc_linkage'] = linkage
         evidence["preview_reuse"] = reuse_info
@@ -933,7 +968,8 @@ class Runtime:
             (await self.io.call(self.store.audit_event, run_id, "population_answer_guard", population_issue["evidence"]))
         status_message = population_issue["message"] if population_issue else outcome_message(previous)
         from .evidence_status import synthesis_evidence
-        answer_evidence = synthesis_evidence(previous)
+        from .composable_planning import answer_results
+        answer_evidence = synthesis_evidence(answer_results(run["plan"], previous))
         async def tokens():
             missing = [step for step in previous.values() if step.get('purpose') != 'context' and (step.get('status') in {'failed','blocked','unavailable'} or step.get('truncated'))]
             if preview.get('query_readiness',{}).get('partial_ready') and missing:

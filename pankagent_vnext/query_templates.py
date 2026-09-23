@@ -493,3 +493,35 @@ def compile_variant_dependencies(step, dependency_bindings):
             'required_label': 'variants',
         }
     return query
+
+
+def compile_typed_dependencies(step, dependency_bindings):
+    """Use the same directed template with explicit, verified endpoint ID inputs."""
+    from copy import deepcopy
+    bindings = step.get('input_bindings') or []
+    if not bindings or step.get('path_spec'):
+        return None
+    plain = deepcopy(step)
+    plain['depends_on'] = []
+    query = compile_query(plain)
+    if not query or query.get('template_id') != 'directed_relation_records':
+        return None
+    predicates = []
+    for index, dependency in enumerate(step['depends_on']):
+        binding = next((b for b in bindings if b['step_id'] == dependency), None)
+        name = 'dep_' + str(index)
+        proof = dependency_bindings.get(name) or {}
+        if not binding or proof.get('graph_version') != step.get('graph_version'):
+            return None
+        if query['endpoint_coverage'].get(binding['target_role']) != binding['entity_type']:
+            return None
+        if any(binding['entity_type'] not in labels for labels in proof.get('id_labels', {}).values()):
+            return None
+        variable = 'a' if binding['target_role'] == 'source' else 'b'
+        predicates.append(f'{variable}.id IN ${name}')
+        query['parameter_bindings'][name] = {'proof_source': 'dependency_evidence',
+            'graph_release': step['graph_version'], 'owner': binding['entity_type'],
+            'owner_role': binding['target_role'], 'property': 'id', 'operator': 'IN'}
+    query['cypher'] = query['cypher'].replace('\nWHERE ', '\nWHERE ' + ' AND '.join(predicates) + ' AND ', 1)
+    query['template_id'] = 'typed_dependency_records'
+    return query

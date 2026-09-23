@@ -1,0 +1,149 @@
+"""Synthetic identity, path and lifecycle contracts; never live donor data."""
+from copy import deepcopy
+import ast
+import json
+from pathlib import Path
+import subprocess
+
+import pytest
+from pankagent_vnext.composable_planning import normalize, combine, selected_nodes, answer_results, snapshot
+from pankagent_vnext.evidence_status import checked_query_result
+from pankagent_vnext.app import aggregate_evidence
+from pankagent_vnext.evidence_context import compact_evidence, scientific_excerpt
+from pankagent_vnext.bounded_paths import compile_query, plan_issue
+from pankagent_vnext.graph import validate_cypher, _public_edge_fingerprint
+from pankagent_vnext.revision_interpreter import reuse_step_ids
+from test_bounded_paths import four_node_step, prepared, STORED
+
+
+def evidence(key, ids, label='donor', status='complete'):
+    return {'step_id': key, 'graph_version': 'PanKgraph_08_04', 'status': status,
+        'nodes': [{'id': i, 'labels': [label], 'properties': {'id': i}} for i in ids],
+        'edges': [], 'rows': [], 'queries': [{'cypher': 'MATCH (n) RETURN n'}],
+        'validation': [{'valid': True, 'reasons': []}], 'truncated': status == 'partial',
+        'retrieval_execution': {'completed': True, 'cursor_exhausted': status != 'partial'}}
+
+
+def operation(kind, role='', label='donor'):
+    spec = {'id': 'combined', 'question': 'Combine the requested records.', 'operator': kind,
+        'inputs': [{'step_id': k, 'entity_type': label, 'role': role} for k in ('a', 'b')]}
+    return {'id': 'combined', 'question': spec['question'], 'operation': spec, 'depends_on': ['a', 'b']}
+
+
+@pytest.mark.parametrize('kind,expected', [('union', {'one', 'two', 'three'}),
+    ('intersection', {'two'}), ('filter', {'two'}), ('difference', {'one'})])
+def test_exact_id_algebra_and_verified_derivation(kind, expected):
+    parents = {'a': evidence('a', ['one', 'two']), 'b': evidence('b', ['two', 'three'])}
+    step = operation(kind)
+    result = combine(step, parents)
+    assert {n['id'] for n in result['nodes']} == expected
+    assert checked_query_result(step, result, parents)
+    altered = deepcopy(result); altered['nodes'].append({'id': 'invented', 'labels': ['donor']})
+    assert not checked_query_result(step, altered, parents)
+    assert len(parents['a']['nodes']) == 2
+
+
+def test_partial_exclusion_blocked_and_intersection_not_complete():
+    parents = {'a': evidence('a', ['one']), 'b': evidence('b', [], status='partial')}
+    assert combine(operation('difference'), parents)['status'] == 'blocked'
+    result = combine(operation('intersection'), parents)
+    assert result['status'] == 'partial' and result['truncated']
+    assert not checked_query_result(operation('intersection'), result, parents)
+
+
+def test_release_failure_and_formatter_samples_cannot_supply_ids():
+    parents = {'a': evidence('a', ['one']), 'b': evidence('b', ['one'])}
+    parents['b']['graph_version'] = 'different'
+    with pytest.raises(ValueError, match='release_mismatch'):
+        combine(operation('intersection'), parents)
+    sampled = {**parents['a'], 'context_compaction': 'node_identity_only'}
+    with pytest.raises(ValueError, match='formatter_projection'):
+        selected_nodes(sampled, 'donor')
+    parents['b']['status'] = 'failed'
+    assert combine(operation('intersection'), parents)['status'] == 'blocked'
+
+
+def path_result(key, identifiers, roles):
+    result = evidence(key, identifiers, 'Gene')
+    result['edges'] = [{'start_id': a, 'end_id': b, 'type': 'PHYSICAL_INTERACTION', 'properties': {}}
+                        for a,b in zip(identifiers, identifiers[1:])]
+    result['path_records'] = [{'nodes': [{'id': i, 'role': r, 'labels': ['Gene']} for i,r in zip(identifiers, roles)],
+        'edges': [{**{k:e[k] for k in ('start_id','end_id','type')}, 'role': key+str(n),
+                   'fingerprint': _public_edge_fingerprint(e)} for n,e in enumerate(result['edges'])]}]
+    return result
+
+
+def test_chain_join_beyond_four_nodes_keeps_actual_witnesses():
+    parents = {'a': path_result('a', ['A','B','C','D'], ['start','middle','next','join_left']),
+               'b': path_result('b', ['D','E','F'], ['join_right','later','end'])}
+    step = operation('join', label='Gene')
+    step['operation']['inputs'][0]['role'] = 'join_left'
+    step['operation']['inputs'][1]['role'] = 'join_right'
+    result = combine(step, parents)
+    assert [n['id'] for n in result['path_records'][0]['nodes']] == list('ABCDEF')
+    assert len(result['edges']) == 5
+    assert {n['id'] for n in result['nodes']} == set('ABCDEF')
+    assert checked_query_result(step, result, parents)
+    parents['b'] = path_result('b', ['X','E','F'], ['join_right','later','end'])
+    assert combine(step, parents)['status'] == 'empty'
+
+
+def test_final_projection_does_not_union_rejected_intermediates():
+    parents = {'a': evidence('a', ['excluded','kept']), 'b': evidence('b', ['kept'])}
+    parents['combined'] = combine(operation('intersection'), parents)
+    plan = {'answer_step_ids': ['combined']}
+    aggregate = aggregate_evidence(parents, plan)
+    assert {n['id'] for n in aggregate['nodes']} == {'kept'}
+    assert len(aggregate['steps'][0]['nodes']) == 2
+    assert list(answer_results(plan, parents)) == ['combined']
+
+
+def test_typed_fragment_anchor_and_exact_compiler_validation():
+    step = prepared(four_node_step(), STORED)
+    step['constraints'] = []
+    step['resolved_entities'] = []
+    step['depends_on'] = ['prior']
+    step['input_bindings'] = [{'step_id': 'prior', 'entity_type': 'Gene', 'source_role': 'last', 'target_role': 'focus'}]
+    assert plan_issue(step) is None
+    step['_path_dependency_parameters'] = {'dep_0': {'ids': ['A'], 'graph_version': 'PanKgraph_08_04'}}
+    query = compile_query(step)
+    assert 'n0.`id` IN $dep_0' in query['cypher']
+    assert query['parameters']['dep_0'] == ['A']
+    errors = validate_cypher(query['cypher'], step, query['parameters'],
+        dependency_bindings={'dep_0': {'graph_version': 'PanKgraph_08_04', 'id_labels': {'A': ['Gene']}}})
+    assert errors == []
+    assert validate_cypher(query['cypher'].replace('n0.`id` IN', 'n1.`id` IN'), step, query['parameters'])
+
+
+def test_modes_operations_and_bad_references():
+    steps = [{'id': k, 'question': k, 'depends_on': [], 'constraints': [], 'relation_types': []} for k in ['a','b']]
+    plan = normalize({'steps': steps, 'combine_operations': [operation('intersection')['operation']]})
+    assert plan['answer_step_ids'] == ['combined']
+    assert plan['steps'][-1]['depends_on'] == ['a','b']
+    with pytest.raises(ValueError, match='invalid_answer'):
+        normalize({'steps': steps, 'answer_step_ids': ['missing']})
+    with pytest.raises(ValueError, match='invalid_plan_dependencies'):
+        normalize({'steps': [{**steps[0], 'depends_on': ['a']}]})
+
+
+def test_per_query_identity_paths_and_short_full_measurements():
+    a = path_result('a', ['A','B','C','D'], ['a','b','c','d'])
+    a['context_mode'] = 'identity_only'
+    b = evidence('b', ['S','T'], 'Gene')
+    b['edges'] = [{'start_id':'S','end_id':'T','type':'PHYSICAL_INTERACTION', 'properties': {'measurement':17}}]
+    before = deepcopy(a)
+    views = scientific_excerpt(compact_evidence({'a':a,'b':b}))
+    assert views[0]['identity_path_records'][0]['nodes'][0]['id'] == 'A'
+    assert views[0]['path_input_scope']['measurements_available'] is False
+    assert not views[0].get('edges')
+    assert views[1]['edges'][0]['properties']['measurement'] == 17
+    assert a == before
+
+
+def test_formatter_output_function_is_byte_identical_to_baseline():
+    path = Path(__file__).parents[1] / 'pankagent_vnext/llm.py'
+    old = subprocess.check_output(['git','show','4f2d0d3:pankagent_vnext/llm.py'], text=True)
+    def output(source):
+        node = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.AsyncFunctionDef) and n.name == 'synthesize')
+        return ast.get_source_segment(source, node)
+    assert output(path.read_text()) == output(old)
