@@ -365,7 +365,7 @@ def _unresolved_tissue_role(text, vocabulary, matched):
         tail = text[occurrence.end():occurrence.end() + 20]
         if value not in sources and not re.match(r'\s+donors?\b', tail, re.I):
             return not matched
-    stop = {'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
+    stop = {'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
             'donor', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
             'seq', 'multiome', 'multiomics', 'assay'}
     for occurrence in re.finditer(r'\b([A-Za-z][A-Za-z0-9_-]*)\s+(?:samples?|specimens?)\b', text, re.I):
