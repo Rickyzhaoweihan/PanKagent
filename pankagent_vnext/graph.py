@@ -1598,6 +1598,15 @@ class GraphAdapter:
             if prepared.get('clarification') == old_recovery.get('message'):
                 prepared['clarification'] = None
         for source in plan.get("steps") or []:
+            # A donor-only parent supplies IDs; sample conditions are enforced
+            # by its explicit downstream HAS_SAMPLE task, not by both tasks.
+            if (source.get('relation_types') == ['HAS_DONOR']
+                    and any(source['id'] in child.get('depends_on', [])
+                            and child.get('relation_types') == ['HAS_SAMPLE']
+                            for child in plan.get('steps', []))
+                    and not any(c.get('entity_type') in {'Sample_node', 'data_modality', 'anatomical_structure'}
+                                for c in source.get('constraints', []))):
+                source = {**source, 'deferred_sample_scope': True}
             if source.get('operation'):
                 prepared['steps'].append({**source, 'graph_version': self.settings.graph_version,
                     'resolved_entities': [], 'entity_resolution': {'state': 'resolved', 'unknown_relations': []}})

@@ -323,6 +323,11 @@ def identity_authorization_text(text):
 
 def _unresolved_tissue_role(text, vocabulary, matched):
     """Detect an explicit tissue slot that has no unique live-graph match."""
+    # Mask only descriptive question phrases, never an explicit named filter
+    # elsewhere in the request (e.g. "from spleen; what tissue ...?").
+    text = re.sub(r'\b(?:what|which)\s+(?:tissues?|cell[ -]?types?)'
+                  r'(?:\s*/\s*(?:tissues?|cell[ -]?types?))?'
+                  r'\s+(?:are|is|do|does)\b', ' ', text, flags=re.I)
     if re.search(r'\b(?:tissue|anatom(?:y|ical)(?:[ _-]+structure)?)\b'
                  r'\s*(?:is|=|:|of|from)?\s*[A-Za-z0-9]', text, re.I):
         return not matched
@@ -2261,6 +2266,18 @@ def resolve(step, vocabulary, release):
             out['semantic_summary'] = 'Match recorded '+', '.join(recorded)+' assay metadata; indexed samples do not verify file availability or measured functional outcomes.'
             for match in out['resolved_constraints']:
                 if match.get('requested') == 'RNA/ATAC assay intent': match['requested'] = 'recorded assay intent'
+    if out.get('deferred_sample_scope'):
+        # These predicates are checked on the downstream sample task. They must
+        # not turn a donor-ID retrieval into an extra mandatory sample join.
+        kept_indices = [i for i, c in enumerate(out['constraints'])
+                        if c.get('entity_type') not in {'Sample_node', 'data_modality', 'anatomical_structure'}]
+        remap = {old: new for new, old in enumerate(kept_indices)}
+        out['constraints'] = [out['constraints'][i] for i in kept_indices]
+        out['request_filter_bindings'] = [{**b, 'constraint_index': remap[b['constraint_index']]}
+            for b in out.get('request_filter_bindings', []) if b['constraint_index'] in remap]
+        out['resolved_constraints'] = [m for m in out['resolved_constraints']
+            if not m.get('canonical_binding') or m['canonical_binding'] in out['constraints']]
+        out['sample_requirements'] = {}
     from .donor_query_guard import normalize_diagnosis
     return normalize_diagnosis(out, vocabulary)
 

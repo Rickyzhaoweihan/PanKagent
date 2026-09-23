@@ -139,6 +139,8 @@ def normalize_plan(plan: dict) -> dict:
         plan["steps"][index] = repair_step_constraints(step)
     plan.setdefault("literature", False)
     plan.setdefault("clarification", None)
+    from .evidence_status import PARTIAL_INDEPENDENT_POLICY
+    plan.setdefault('retrieval_policy', PARTIAL_INDEPENDENT_POLICY)
     if not plan["steps"] and not plan["clarification"] and plan.get("plan_mode") not in {"literature_only", "session_summary"}:
         from .plan_recovery import mark_failure
         plan = mark_failure(plan)
