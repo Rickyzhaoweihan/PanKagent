@@ -34,6 +34,11 @@ class DemoAuthentication:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or self.settings.testing:
             return await self.app(scope, receive, send)
+        # The standalone operator dashboard enforces its own independent credentials.
+        # Only this exact namespace is delegated; it never reaches regular app data.
+        if any(scope["path"] == prefix or scope["path"].startswith(prefix + "/")
+               for prefix in ("/pankgraph/health", "/health-dashboard")):
+            return await self.app(scope, receive, send)
         headers = dict(scope.get("headers", []))
         # Health and metrics are never accepted through this exception when a
         # reverse proxy identifies an external client.
@@ -58,12 +63,21 @@ class DemoAuthentication:
             except (ValueError, UnicodeError):
                 allowed = False
         if not allowed:
-            return await JSONResponse({"detail": "Demo login required."}, status_code=401, headers={"WWW-Authenticate": 'Basic realm="PanKgraph demo", charset="UTF-8"', "Cache-Control": "no-store"})(scope, receive, send)
+            response_headers = {"Cache-Control": "no-store"}
+            # PrefixMiddleware has removed the public prefix. A background
+            # access probe must return promptly so the UI can show its sign-in
+            # link; only top-level navigation should open the native prompt.
+            if scope["method"] != "GET" or scope["path"] != "/api/access":
+                response_headers["WWW-Authenticate"] = 'Basic realm="PanKgraph demo", charset="UTF-8"'
+            return await JSONResponse({"detail": "Demo login required."}, status_code=401, headers=response_headers)(scope, receive, send)
         if scope["method"] not in {"GET", "HEAD", "OPTIONS"}:
             # Native Basic auth is ambient browser authority. Deny cross-site
             # mutations even though no permissive CORS policy is configured.
             origin = headers.get(b"origin", b"").decode("latin1")
             host = headers.get(b"host", b"").decode("latin1")
-            if headers.get(b"sec-fetch-site") == b"cross-site" or (origin and urlsplit(origin).netloc != host):
+            # Amplify keeps the dev browser Origin while the upstream Host may
+            # name jieliu3. This single protected opt-in is not a CORS policy.
+            trusted_origin = getattr(self.settings, "trusted_browser_origin", "")
+            if headers.get(b"sec-fetch-site") == b"cross-site" or (origin and urlsplit(origin).netloc != host and origin != trusted_origin):
                 return await JSONResponse({"detail": "Cross-site request denied."}, status_code=403)(scope, receive, send)
         return await self.app(scope, receive, send)

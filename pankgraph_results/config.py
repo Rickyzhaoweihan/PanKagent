@@ -32,6 +32,7 @@ class ResultsSettings:
     operator_token: str = field(default_factory=lambda: env("OPERATOR_TOKEN"))
     basic_user: str = field(default_factory=lambda: env("BASIC_USER", "pank-demo"))
     password_hash: str = field(default_factory=lambda: env("PASSWORD_HASH"))
+    trusted_browser_origin: str = field(default_factory=lambda: env("TRUSTED_BROWSER_ORIGIN"))
     testing: bool = False
 
     def __post_init__(self):
@@ -45,3 +46,5 @@ class ResultsSettings:
         if not self.public_path.startswith("/") or ".." in self.public_path:
             raise ValueError("invalid_public_path")
         self.public_path = self.public_path.rstrip("/")
+        if self.trusted_browser_origin not in {"", "https://dev.pankgraph.org"}:
+            raise ValueError("unsupported_trusted_browser_origin")
