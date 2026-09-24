@@ -45,11 +45,14 @@ class DemoAuthentication:
         local_operator = scope.get("client", ("",))[0] in {"127.0.0.1", "::1"} and b"x-forwarded-for" not in headers
         if local_operator and scope["path"] in {"/health/live", "/health/ready", "/health/components", "/metrics"}:
             return await self.app(scope, receive, send)
-        if not self.settings.password_hash:
+        # Dev may disable the additional agent API login independently of site access.
+        agent_api = scope["path"].startswith("/api/agent/")
+        password_required = not (agent_api and not getattr(self.settings, "agent_api_basic_auth", True))
+        if password_required and not self.settings.password_hash:
             return await JSONResponse({"detail": "Demo authentication is not configured."}, status_code=503)(scope, receive, send)
         raw = headers.get(b"authorization", b"")
         key = hashlib.sha256(raw).digest()
-        allowed = self.cache.get(key, 0) > time.monotonic()
+        allowed = not password_required or self.cache.get(key, 0) > time.monotonic()
         if not allowed:
             try:
                 if len(raw) > 4096 or not raw.startswith(b"Basic "):
