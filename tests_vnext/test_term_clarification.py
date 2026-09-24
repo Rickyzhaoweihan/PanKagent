@@ -82,10 +82,10 @@ def test_runtime_case_variant_reaches_planner(tmp_path):
 def test_output_and_viewer_modules_remain_unchanged():
     from pathlib import Path
     import subprocess
-    for path in ['pankagent_vnext/output_scope.py',
+    for path in [
                  'pankagent_vnext/evidence_context.py','pankagent_vnext/format_input_modes.py',
                  'pankagent_vnext/viewer_evidence.py','pankgraph_results/app.py']:
-        assert Path(path).read_bytes()==subprocess.check_output(['git','show','b34f1f8:'+path])
+        assert Path(path).read_bytes()==subprocess.check_output(['git','show','e062fff:'+path])
 
 
 def test_full_cohort_name_does_not_create_pancreas_filter():

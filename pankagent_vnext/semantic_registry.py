@@ -357,7 +357,7 @@ def _unresolved_tissue_role(text, vocabulary, matched):
         if value not in sources and not re.match(r'\s+donors?\b', tail, re.I):
             return not matched
     stop = {'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
-            'donor', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
+            'donor', 'donors', 'and', 'or', 'their', 'nd', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
             'seq', 'multiome', 'multiomics', 'assay'}
     for occurrence in re.finditer(r'\b([A-Za-z][A-Za-z0-9_-]*)\s+(?:samples?|specimens?)\b', text, re.I):
         modifier = occurrence.group(1).casefold()
@@ -426,7 +426,7 @@ def _unresolved_donor_modifier(text, vocabulary):
         'find', 'show', 'list', 'count', 'group', 'grouped', 'report', 'breakdown',
         'matching', 'available', 'all', 'any', 'among',
         'many', 'the', 'these', 'those', 'hpap', 'healthy', 'control', 'controls',
-        'nd', 'non', 'diabetic', 'diabetes', 'type', 'stage', 'recorded',
+        'nd', 't1d', 't2d', 'non', 'diabetic', 'diabetes', 'type', 'stage', 'recorded',
         'sample', 'samples', 'from', 'with', 'whose', 'having', 'female', 'male',
     }
     for match in re.finditer(r'\b([A-Za-z][A-Za-z0-9_-]*)\s+donors?\b', text, re.I):
@@ -546,6 +546,8 @@ def control_cohort_polarity(text):
         r'\bcontrols?\s+without\s+diabetes\b',
         r'\b(?:donors?|cohort)\s+without\s+diabetes\b',
     )
+    if re.search(r'\b(?:donors?|cohort|samples?)\b', text, re.I):
+        direct_patterns += (r'\bND\b',)
     mentions = []
     for pattern in direct_patterns:
         for match in re.finditer(pattern, text, re.I):
@@ -586,7 +588,7 @@ def _control_category(vocabulary):
     for value in values:
         normalized = re.sub(r'[^a-z0-9]+', ' ', value.casefold()).strip()
         if (normalized in {'nd', 'healthy', 'healthy control', 'non diabetic'}
-                or 'control without diabetes' in normalized
+                or normalized == 'control without diabetes'
                 or normalized == 'without diabetes'):
             candidates.append(value)
     return candidates[0] if len(candidates) == 1 else None
@@ -796,8 +798,8 @@ def _assay_intent_values(text, available):
         or _explicit_modality_label(positive_text, available))
     capability_inclusion = bool(re.search(
         r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}'
-        r'\b(?:multiom\w*|(?:RNA|ATAC)\s+components?)', positive_text, re.I))
-    if label_lookup and named and not capability_inclusion:
+        r'\b(?:(?:sn)?multiom\w*|(?:RNA|ATAC)\s+components?)', positive_text, re.I))
+    if named and (label_lookup or not paired) and not capability_inclusion:
         exact = True
     positive = set(named)
     if paired and not exact:
@@ -810,51 +812,10 @@ def _assay_intent_values(text, available):
     return positive, negative, bool(positive or negative or rna or atac or paired)
 
 
-_DONOR_REQUEST_FIELD_PATTERNS = {
-    # Specific identifier fields precede the generic donor ID pattern so a
-    # phrase such as ``center donor ID`` cannot be re-owned as donor.id.
-    'center_donor_id': r'\bcenter[ _-]+donor[ _-]+(?:id|identifier)\b',
-    'pancdb_id': r'\bpancdb[ _-]+(?:id|identifier)\b',
-    'pankbase_id': r'\bpankbase[ _-]+(?:id|identifier)\b',
-    'rrid': r'\bRRID\b',
-    'id': r'(?<!center )(?<!center_)(?<!center-)(?<!pancdb )(?<!pancdb_)(?<!pancdb-)'
-          r'(?<!pankbase )(?<!pankbase_)(?<!pankbase-)\b(?:donor|record)\s*(?:id|identifier)\b',
-    'data_source_url': r'\b(?:donor[ _.-]+)?data[ _-]+source[ _-]+url\b',
-    'data_version': r'\b(?:donor\s*[._-]\s*)?data[ _-]+version\b',
-    'age': r'\b(?:age|aged|older|younger)\b',
-    'bmi': r'\b(?:BMI|body\s+mass\s+index)\b',
-    'gender': r'\bgender\b',
-    'sex_at_birth': r'\bsex[ _-]+at[ _-]+birth\b',
-    'race': r'\b(?:race|racial)\b',
-    'donation_type': r'\b(?:donation|donor)[ _-]+type\b',
-    'aab_state': r'\b(?:AAB|autoantibod(?:y|ies))[ _-]*(?:state|status)?\b',
-    'hla_status': r'\bHLA[ _-]+status\b',
-    'hla_typing': r'\bHLA[ _-]+typ(?:e|ing)\b',
-    'diabetes_type': r'\bdiabetes[ _-]+type\b',
-    'derived_diabetes_status': r'\bderived(?:[ _-]+diabetes)?[ _-]+(?:status|classification)\b',
-    'hba1c_percentage': r'\b(?:HbA1c|hemoglobin\s+A1c)\b',
-    'c_peptide_ng_ml': r'\bC[ _-]*peptide\b',
-    'other_disease_records': r'\b(?:other[ _-]+disease(?:[ _-]+records?)?|comorbidit(?:y|ies))\b',
-    'diabetes_duration': r'\b(?:diabetes[ _-]+duration|duration\s+of\s+diabetes|years?\s+with\s+diabetes)\b',
-    'family_history_of_diabetes': r'\bfamily[ _-]+history(?:[ _-]+of[ _-]+diabetes)?\b',
-    'predicted_genetic_ancestry': r'\b(?:predicted[ _-]+)?genetic[ _-]+ancestry\b',
-    'hospital_stay_hours': r'\bhospital[ _-]+stay(?:[ _-]+hours?)?\b',
-    'cause_of_death': r'\bcause[ _-]+of[ _-]+death\b',
-    'other_therapy': r'\bother[ _-]+therap(?:y|ies)\b',
-    'creation_date': r'\bcreation[ _-]+date\b',
-    't1d_stage': r'\b(?:T1D[ _-]+)?stage\b',
-    'data_source': r'\b(?:data|dataset|donor|cohort)[ _-]+source\b(?![ _-]+url\b)',
-}
+_DONOR_REQUEST_FIELD_PATTERNS = schema_module('semantics_modalities')['request_fields']['_DONOR_REQUEST_FIELD_PATTERNS']
 
 
-_SAMPLE_REQUEST_FIELD_PATTERNS = {
-    'id': r'\b(?:Sample_node\s*\.\s*id|sample[ _-]*(?:id|identifier))\b',
-    'note': r'\b(?:Sample_node\s*\.\s*)?notes?\b|\bsample[ _-]+notes?\b',
-    'contact': r'\b(?:Sample_node\s*\.\s*)?contact\b|\bsample[ _-]+contact\b',
-    'data_version': (r'\bSample_node\s*\.\s*data_version\b|'
-                     r'\bsample[ _-]+data[ _-]+version\b|'
-                     r'\bsamples?\b[^.!?;\n]{0,35}\bdata_version\b'),
-}
+_SAMPLE_REQUEST_FIELD_PATTERNS = schema_module('semantics_modalities')['request_fields']['_SAMPLE_REQUEST_FIELD_PATTERNS']
 
 
 def _constraint_values(constraint):
@@ -1774,7 +1735,8 @@ def resolve(step, vocabulary, release):
     authorized_local_disease = [mention for mention in local_mentions
                                 if (mention['kind'], mention['negated']) in authorized_disease_keys]
     comparison = (control_requested and any(not mention['negated'] for mention in request_mentions)
-                  and bool(re.search(r'\b(?:versus|vs\.?|compare|between)\b', source_text, re.I)))
+                  and any(re.search(pattern, source_text, re.I) for pattern in
+                          schema_module('semantics_modalities')['cohort_comparison_patterns']))
     if comparison:
         # Only the current step may select one side of an explicit comparison.
         local_control_polarity = control_cohort_polarity(scope_q)
@@ -2042,8 +2004,8 @@ def resolve(step, vocabulary, release):
     # merely because scRNA-seq contains the letters RNA.
     label_lookup = bool(re.search(r'\b(?:samples?|records?)\s+(?:explicitly\s+)?label(?:ed|led)\b|\b(?:assay|modality)\s+(?:label|value)\s*(?:=|is|of|:)\s*', assay_q, re.I)) or _explicit_modality_label(positive_q, available)
     named_assays = _mentioned_assays(positive_q, available)
-    capability_inclusion = bool(re.search(r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}\b(?:multiom\w*|(?:RNA|ATAC)\s+components?)', positive_q, re.I))
-    if label_lookup and named_assays and not capability_inclusion:
+    capability_inclusion = bool(re.search(r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}\b(?:(?:sn)?multiom\w*|(?:RNA|ATAC)\s+components?)', positive_q, re.I))
+    if named_assays and (label_lookup or not paired) and not capability_inclusion:
         exact = True
     paired = paired and not exact and not bool(re.search(r'\b(?:include|including|also|or)\b.{0,60}multiom',assay_q,re.I))
     if not unsupported_assay and (old_assay or named_assays or rna or atac or paired):
@@ -2614,13 +2576,20 @@ REGISTRY_NODE_TYPES = set(PROPERTIES) | {
 }
 
 
+def sample_lookup_requested(step):
+    question, _ = _trusted_request(step)
+    return ('HAS_SAMPLE' in step.get('relation_types', [])
+            and not step.get('deferred_sample_scope')
+            and bool(re.search(r'\bsamples?\b|\bSample_node\b', question, re.I)))
+
+
 def generation_guidance(step):
     if not step.get('semantic_registry'):return ''
     notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. A recorded T1D stage does not imply a second disease diagnosis filter: apply only the resolved disease constraint, if present. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. For stage-only questions do not add disease.id or donor.diabetes_type filters, including for stages 1 and 2; those are not necessarily recorded as diagnosed diabetes. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
     notes+=' Do not filter sample.anatomical_structure: this is descriptive text, not a tissue identifier; constrain the linked anatomy node instead.'
     if step.get('semantic_registry', {}).get('donor_required') is False:
         notes+=' SAMPLE-ONLY lookup: apply the sample assay/source and requested anatomy filters to the same Sample_node. Do not require donor or disease links; neither was requested.'
-    elif not step.get('sample_requirements',{}).get('modality_groups') and not step.get('sample_requirements',{}).get('excluded_modality_constraints') and not any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])):
+    elif not sample_lookup_requested(step) and not step.get('sample_requirements',{}).get('modality_groups') and not step.get('sample_requirements',{}).get('excluded_modality_constraints') and not any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])):
         notes+=' DONOR-ONLY lookup: do not MATCH Sample_node, data_modality, anatomical_structure or HAS_SAMPLE. Return all matching donors and their disease link, without any assay restriction.'
     if step.get('sample_requirements',{}).get('separate_bindings'):notes+=' For RNA AND ATAC bind two sample variables linked to the SAME donor and requested tissue; each must satisfy its corresponding modality group. The two variables may identify the same multiome sample.'
     if step.get('sample_requirements',{}).get('excluded_modality_constraints'):
@@ -2668,10 +2637,10 @@ def validation_errors(tokens, step, parameters, bindings, paths, predicate, choi
     exclusions=requirement.get('excluded_modality_constraints',[])
     tissue_required=any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
     anatomy={v for v,labels in bindings.items() if 'anatomical_structure' in labels and constraints_at(v,'anatomical_structure')}
-    if donor_required and not groups and not exclusions and not tissue_required and any('HAS_SAMPLE' in kinds for a,b,kinds in paths):
+    if donor_required and not sample_lookup_requested(step) and not groups and not exclusions and not tissue_required and any('HAS_SAMPLE' in kinds for a,b,kinds in paths):
         errors.append('unrequested_sample_join_for_donor_only_lookup')
     sample_fields = [c for c in step.get('constraints', []) if c.get('entity_type') == 'Sample_node' and c.get('property') != 'data_modality']
-    if groups or exclusions or tissue_required or (not donor_required and sample_fields):
+    if sample_lookup_requested(step) or groups or exclusions or tissue_required or (not donor_required and sample_fields):
         candidates=[]
         for group in groups or [None]:
             valid=set()

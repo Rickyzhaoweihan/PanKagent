@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Query Patterns",
+  "type": "object",
+  "required": [
+    "schema",
+    "library",
+    "providers",
+    "gpu_participation_required"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.query-patterns",
+        "version": "1.0.0"
+      }
+    },
+    "library": {
+      "type": "object"
+    },
+    "providers": {
+      "type": "object"
+    },
+    "gpu_participation_required": {
+      "type": "boolean"
+    }
+  }
+}

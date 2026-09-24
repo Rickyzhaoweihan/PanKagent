@@ -141,7 +141,7 @@ def test_gateway_reviews_local_hla_draft_with_model(question):
         plan = await gateway.plan(question, [], grounding=grounding)
         assert len(calls) == 1
         assert len(plan["steps"]) == 3
-        assert (plan.get("planning_route") or {}).get("kind") == "claude-led-planning-v1"
+        assert (plan.get("planning_route") or {}).get("kind") == "claude-led-planning-v2"
     asyncio.run(check())
 
 

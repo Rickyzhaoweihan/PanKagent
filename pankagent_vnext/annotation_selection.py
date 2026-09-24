@@ -110,6 +110,18 @@ def allocate_independent_budgets(plan, settings):
             'max_edges': getattr(settings, 'max_edges', 5000) * weight // total_weight,
             'max_rows': getattr(settings, 'max_rows', 1000) * weight // total_weight,
         }
+    # A completed parent's unused reservation can be shared by its direct
+    # children. Split before execution so concurrent siblings cannot each
+    # spend the same reservation; unrelated branches keep their own share.
+    children = {step['id']: set() for step in steps}
+    for step in steps:
+        for parent in step.get('depends_on', []):
+            if parent in children:
+                children[parent].add(step['id'])
+    for step in steps:
+        step['budget_parent_shares'] = {
+            parent: len(children[parent]) for parent in step.get('depends_on', [])
+            if parent in children and children[parent]}
     # A gene mentioned in a GWAS question is not a variant/locus binding. Keep
     # the unavailable branch explicit instead of silently scanning a disease.
     genes = [entity for step in steps for entity in step.get('resolved_entities', [])
@@ -124,3 +136,19 @@ def allocate_independent_budgets(plan, settings):
                for entity in genes for field in ('id', 'name') if entity.get(field)):
             step['gwas_scope_unavailable'] = True
     return plan
+
+
+def inherited_budget(step, previous):
+    """Transfer only measured unused reservations, never formatter evidence."""
+    budget = dict(step.get('retrieval_budget') or {})
+    for parent, divisor in (step.get('budget_parent_shares') or {}).items():
+        result = previous.get(parent) or {}
+        if (type(divisor) is not int or divisor < 1
+                or result.get('status') not in {'complete', 'empty'}):
+            continue
+        accounting = result.get('resource_budget') or {}
+        allocated, consumed = accounting.get('allocated', {}), accounting.get('consumed', {})
+        for key in budget:
+            if key in allocated and key in consumed:
+                budget[key] += max(0, allocated[key] - consumed[key]) // divisor
+    return budget

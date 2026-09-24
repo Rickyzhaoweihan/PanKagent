@@ -188,12 +188,16 @@ class Runtime:
     def __init__(self, settings, gateway, graph, literature):
         self.settings, self.gateway, self.graph, self.literature = settings, gateway, graph, literature
         if hasattr(gateway, "repair_cypher"):
-            self.graph.query_repair = gateway.repair_cypher
+            self.graph.query_repair = self.repair_query
+        from contextvars import ContextVar
+        self.repair_run = ContextVar("execution_repair_run", default=None)
         self.store = Store(settings.state_dir)
         self.io = SerializedPersistence("pank-agent-storage")
         self.owner_task = None
         self.admission = AdmissionContinuations()
         self.audit_identity = deployment_identity(settings)
+        from .agent_schemas import run_context
+        self.audit_identity['agent_run_context'] = run_context(settings)
         self.tasks: dict[str, asyncio.Task] = {}
         self.started_graph_checks: dict[str, set[str]] = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
@@ -260,7 +264,7 @@ class Runtime:
             raise asyncio.CancelledError
         # Some upstream clients suppress task cancellation while cleaning up.
         # A terminal durable state remains authoritative even if they return.
-        if self.store.get(run_id)["status"] in TERMINAL:
+        if self.store.run_status(run_id) in TERMINAL:
             raise asyncio.CancelledError
 
     def launch(self, run_id: str, coroutine):
@@ -283,7 +287,7 @@ class Runtime:
         task.add_done_callback(finished)
 
     async def emit(self, run_id: str, event_type: str, payload: dict):
-        run = (await self.io.call(self.store.get, run_id))
+        run = (await self.io.call(self.store.event_context, run_id))
         if run["status"] in TERMINAL:
             return
         stage = payload.get("stage") if event_type == "progress" else None
@@ -394,6 +398,10 @@ class Runtime:
                             grounding = {'status': 'unavailable', 'diagnostic': 'E01'}
                         if scoped_question != run['question']:
                             grounding['session_scope_question'] = scoped_question
+                        from .session_inputs import population
+                        reference = population(run['question'], prior_answer, self.settings.graph_version)
+                        if reference:
+                            grounding['session_population'] = reference
                         (await self.io.call(self.store.audit_event, run_id, 'preplanning_grounding', grounding))
                         self.metrics.observe('preplanning_grounding', time.monotonic() - grounding_started)
                         import inspect
@@ -639,6 +647,17 @@ class Runtime:
         self.store.update(run_id, preview=preview, preview_cache=cache)
         return preview
 
+    async def repair_query(self, step, question, failures, candidate):
+        from .agent_schemas import module
+        run_id = self.repair_run.get()
+        if not run_id:
+            return []
+        claimed = await self.io.call(self.store.claim_execution_repair, run_id, step['id'],
+                                     module('validation_repair')['limits'])
+        if not claimed:
+            return []
+        return await self.gateway.repair_cypher(step, question, failures, candidate)
+
     async def execute_step(self, run_id, step, previous, before_query=None):
         (await self.io.call(self.check_active, run_id))
         prior_generation = getattr(self.graph, "last_generation_success", None)
@@ -652,11 +671,20 @@ class Runtime:
                     await before_query()
                     (await self.io.call(self.check_active, run_id))
                 await self.emit(run_id, kind, payload)
-            if step.get('operation'):
+            if step.get('session_input'):
+                from .session_inputs import materialize
+                current = await self.io.call(self.store.get, run_id)
+                source = await self.io.call(self.store.get, step['session_input']['source_run_id'])
+                result = materialize(step, source, current)
+            elif step.get('operation'):
                 from .composable_planning import combine
                 result = combine(step, previous)
             else:
-                result = await self.graph.execute(step, previous, progress)
+                token = self.repair_run.set(run_id)
+                try:
+                    result = await self.graph.execute(step, previous, progress)
+                finally:
+                    self.repair_run.reset(token)
             result['context_mode'] = step.get('context_mode', 'auto')
             result['input_bindings'] = deepcopy(step.get('input_bindings', []))
             (await self.io.call(self.check_active, run_id))
@@ -713,7 +741,7 @@ class Runtime:
                 raise
             (await self.io.call(self.store.update_if_active, run_id, plan=plan))
         if plan.get('execution_mode') in {'chain', 'parallel', 'mixed'}:
-            queries = [s for s in plan['steps'] if not s.get('operation') and s.get('purpose') != 'context'
+            queries = [s for s in plan['steps'] if not s.get('operation') and not s.get('session_input') and s.get('purpose') != 'context'
                        and not s.get('semantic_issues') and not s.get('recovery')
                        and (s.get('entity_resolution') or {}).get('state') != 'needs_clarification']
             if queries:
@@ -1043,13 +1071,13 @@ class Runtime:
                 visible = citation_filter.feed(token)
                 if visible:
                     answer += visible
-                    (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                    (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
                     await self.emit(run_id, "graph_answer", {"text": visible, "delta": True})
             tail = citation_filter.feed("", final=True)
             (await self.io.call(self.check_active, run_id))
             if tail:
                 answer += tail
-                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
                 await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
 
             if synthesis_started:
@@ -1091,7 +1119,7 @@ class Runtime:
                 footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
                 answer += footer
                 reference_validation["application_fallback"] = True
-                (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer))
+                (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
                 await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
 
         evidence["follow_up_questions"] = [] if status_message else followup_questions(previous)

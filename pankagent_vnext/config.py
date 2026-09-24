@@ -1,4 +1,5 @@
 """Service-owned settings. Never import the legacy executable config module."""
+from .agent_schemas import module as schema_module
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,9 +49,9 @@ class Settings:
     cypher_generation_concurrency: int = field(default_factory=lambda: int(env('CYPHER_GENERATION_CONCURRENCY', '4')))
     plan_cache_enabled: bool = field(default_factory=lambda: env('PLAN_CACHE_ENABLED','1') == '1')
     grounded_query_policy: bool = field(default_factory=lambda: env('GROUNDED_QUERY_POLICY','1') == '1')
-    max_nodes: int = 2000
-    max_edges: int = 5000
-    max_bytes: int = 2_000_000
+    max_nodes: int = field(default_factory=lambda: schema_module('validation_repair')['backend_materialization']['max_nodes'])
+    max_edges: int = field(default_factory=lambda: schema_module('validation_repair')['backend_materialization']['max_edges'])
+    max_bytes: int = field(default_factory=lambda: schema_module('validation_repair')['backend_materialization']['max_bytes'])
 
     def __post_init__(self):
         self.state_dir = Path(self.state_dir)

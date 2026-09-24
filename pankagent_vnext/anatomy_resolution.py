@@ -1,29 +1,13 @@
 """Deterministic matching for the full release anatomy inventory. No inference calls."""
 import re
+from .agent_schemas import module as schema_module
 from copy import deepcopy
 from difflib import SequenceMatcher
 
 VERSION = 'anatomy-resolution-3'
 RELEASE = 'PanKgraph_08_04'
 # Reviewed against current named records; an alias is active only if ID and name agree.
-ALIASES = {
- 'UBERON_0001264': ('pancreas', ['pancreatic', 'pancreatic tissue']),
- 'CL_0000171': ('alpha cell', ['alpha']),
- 'CL_0000169': ('beta cell', ['beta']),
- 'CL_0000173': ('delta cell', ['delta']),
- 'CL_0002079': ('ductal cell', ['ductal']),
- 'CL_0000115': ('endothelial cell', ['endothelial']),
- 'UBERON_0000006': ('pancreatic islet (islet of Langerhans)', ['islet','islet of Langerhans','pancreatic islet']),
- 'UBERON_0015865': ('pancreaticosplenic lymph node (proxy for "pancreatic LN")', ['PLN','pancreatic lymph node','pancreatic LN']),
- 'CL_0002064': ('pancreatic acinar cell', ['acinar cell']),
- 'CL_0002410': ('pancreatic stellate cell', ['stellate cell']),
- 'CL_0002410_active': ('pancreatic stellate cell active state', ['active pancreatic stellate cell','activated pancreatic stellate cell','ActiveStellate']),
- 'CL_0002410_quiescent': ('pancreatic stellate cell quiescent state', ['quiescent pancreatic stellate cell','QuiescentStellate']),
- 'CL_0002275': ('pancreatic PP cell (gamma cell)', ['gamma cell','PP cell']),
- 'CL_0005019': ('pancreatic epsilon cell', ['epsilon cell']),
- 'CL_0002079_MUC5B': ('pancreatic ductal cell MUC5B+', ['MUC5B+ ductal','MUC5B+ ductal cell']),
- 'CL_0000738': ('leukocyte (immune cell)', ['leukocyte','immune cell']),
-}
+ALIASES = schema_module('semantics_modalities')['anatomy']['ALIASES']
 
 def normalize(value):
     value = str(value).translate(str.maketrans({'α':'alpha','β':'beta','δ':'delta','γ':'gamma','ε':'epsilon','Α':'alpha','Β':'beta','Δ':'delta','Γ':'gamma','Ε':'epsilon'}))

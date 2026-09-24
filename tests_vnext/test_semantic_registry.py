@@ -36,7 +36,7 @@ def test_stage_canonical_values(stage):
 
 
 def test_rna_capability_and_exact_assay_stay_distinct():
-    broad=prepared();exact=prepared('Find HPAP stage 3 T1D donors with spleen standalone scRNAseq only')
+    broad=prepared('Find HPAP stage 3 T1D donors with spleen scRNAseq data including RNA-capable multiome');exact=prepared('Find HPAP stage 3 T1D donors with spleen standalone scRNAseq only')
     assert broad['sample_requirements']['modality_groups']==[['scRNA-seq','snMultiomics']]
     assert exact['sample_requirements']['modality_groups']==[['scRNA-seq']]
     assert validate_cypher(query(broad),broad)==[]
@@ -89,7 +89,7 @@ def test_summary_deduplicates_without_claiming_downloads():
 
 
 def test_map_property_wrong_owner_and_modality_node_equivalence():
-    p=prepared();q=query(p)
+    p=prepared('Find HPAP stage 3 T1D donors with spleen RNA data including multiome');q=query(p)
     assert validate_cypher(q.replace('d.t1d_stage','c.t1d_stage'),p)
     q=q.replace(' WHERE ', ' MATCH (m:data_modality)-[:HAS_SAMPLE]->(s0) WHERE ').replace('s0.data_modality IN','m.id IN')
     assert validate_cypher(q,p)==[]
@@ -141,7 +141,7 @@ def test_including_multiome_is_not_paired_only_and_exclusion_is_preserved():
 
 def test_capability_scope_from_verified_records_without_invented_cohort():
     v={**VOCAB,'assay_donor_sources':{'snMultiomics':['HPAP']}}
-    q='How many pancreatic lymph node (PLN) scRNA-seq samples from T1D stage 3 donors?'
+    q='How many pancreatic lymph node (PLN) scRNA-seq samples from T1D stage 3 donors, including RNA-capable multiome?'
     p=resolve({'question':q,'constraints':[]},v,'PanKgraph_08_04')
     assert not p['semantic_issues']
     assert p['sample_requirements']['capability_scope_verified']
@@ -151,7 +151,7 @@ def test_capability_scope_from_verified_records_without_invented_cohort():
         bad=resolve({'question':q,'constraints':[]},{**v,'assay_donor_sources':{'snMultiomics':sources}},'PanKgraph_08_04')
         assert bad['semantic_issues']
         assert not bad['sample_requirements']['capability_scope_verified']
-    exact=resolve({'question':q+' standalone scRNA-seq only','constraints':[]},v,'PanKgraph_08_04')
+    exact=resolve({'question':q.split(', including')[0]+' standalone scRNA-seq only','constraints':[]},v,'PanKgraph_08_04')
     assert exact['sample_requirements']['modality_groups']==[['scRNA-seq']]
 
 

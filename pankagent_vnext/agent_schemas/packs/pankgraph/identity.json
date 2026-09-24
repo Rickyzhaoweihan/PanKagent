@@ -28,5 +28,17 @@
   ],
   "max_candidates": 10,
   "fuzzy_selection": "contextual_model_choice",
-  "case_variants_require_clarification": false
+  "case_variants_require_clarification": false,
+  "exact_only_labels": [
+    "variants"
+  ],
+  "session_references": [
+    {
+      "entity_type": "donor",
+      "mention_pattern": "\\b(?:these|those|the previously (?:identified|returned))\\s+donors\\b",
+      "query_relations": [
+        "HAS_SAMPLE"
+      ]
+    }
+  ]
 }

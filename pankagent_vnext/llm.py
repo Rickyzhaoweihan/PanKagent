@@ -1,5 +1,6 @@
 """Claude-led planning and unchanged streamed evidence synthesis."""
 from copy import deepcopy
+from .agent_schemas import module as schema_module
 import asyncio
 import json
 import re
@@ -36,7 +37,7 @@ PLAN_SCHEMA = {
   'literature':{'type':'boolean'},'clarification':{'type':['string','null']}},
  'required':['interpreted_question','steps','literature','clarification']}
 
-PLAN_SYSTEM = '''Plan a read-only PanKgraph scientific query. Produce one concise plan with at most twelve independent graph checks. Most questions need one complete natural-language step, not decomposition. For a standalone question, preserve the original wording verbatim as the step question whenever possible. Never expand direct effector prioritization into extra variant, GO, pathway, regulatory or physical-interaction investigation unless explicitly requested. Never infer extra evidence categories or scientific goals. Preserve scope strictly. Combine cleanup and follow-up interpretation here. Resolve pronouns only using provided session history. Record disease/gene/tissue/cohort/property constraints explicitly. Preserve user-supplied identifiers exactly. Use PanKgraph labels Gene, disease, anatomical_structure, variants, donor, GO_term, reactome and relation types in the provided question; do not invent IDs or recorded categorical values. Entity identities and categorical filters are resolved against the currently configured graph after planning. IDs use property id; gene symbols use name. Put unknown IDs in the natural-language question rather than inventing them. Constraint values are scalar strings; for IN use a nonempty native array of strings. Never use comma-separated text or a serialized array as the list value; preserve commas within individual literal values. Use the release schema notes below; do not guess property names. If an entity has an explicit identifier, constrain id only, retaining its human name in the question; do not add a redundant name predicate. Do not invent ontology IDs or stored labels for non-diabetic or antibody-positive cohorts. Context in a requested measurement column is not necessarily a row predicate. Every step question must include all its scientific constraints so it can be sent independently to a Cypher writer. Dependencies refer to earlier step IDs and pass their returned stable entity IDs, never broaden a failed dependency. complete=true for all/every/full/complete requests, false for explicitly limited representative examples. For unspecified sets prefer complete=true. If the user asks for more than twelve independent investigations or lacks a necessary entity, set clarification and no steps. Never perform retrieval or answer the question while planning.'''
+PLAN_SYSTEM = schema_module('semantics_modalities')['planning_instructions']['fallback']
 
 # Schema-only reference: accepted PanKgraph 08_04 property export, not held-out answers.
 PLAN_SYSTEM += '''
@@ -198,25 +199,12 @@ class ClaudeGateway:
         from .coloc_tissue_scope import compile_scope as compile_coloc_tissue, DIGEST as COLOC_TISSUE_DIGEST
         from .cohort_plan_scope import compile_scope as compile_cohort_scope, DIGEST as COHORT_SCOPE_DIGEST
         def compile_scopes(proposal):
-            proposal, issue = compile_cohort_scope(question, grounding, proposal)
-            if issue is None:
-                proposal, issue = compile_property_owners(proposal, grounding, question=question)
-            if issue is None:
-                from .independent_checks import split
-                try: proposal = split(proposal, question)
-                except ValueError as exc: issue = str(exc)
-            if issue is None:
-                proposal, issue = compile_coloc_tissue(question, grounding, proposal)
-            if issue is None:
-                proposal, issue = compile_requested_scope(question, grounding, proposal)
-            if issue is None:
-                proposal, issue = compile_genomic_scope(question, grounding, proposal)
-            if issue is None:
-                from .dependency_scope import compile_inputs
-                try: proposal = compile_inputs(proposal)
-                except ValueError as exc: issue = str(exc)
-            return proposal, issue
+            from .preparation_tools import prepare_scope
+            return prepare_scope(question, grounding, proposal)
         from .planning_session import initial_assessment
+        from .task_preparation import bind_unique_requested_identities, independent_subset, PreparationIssue
+        initial_proofs = [deepcopy(c['selection_proof']) for m in (grounding or {}).get('mentions', [])
+                          for c in m.get('candidates', []) if c.get('selection_proof')]
         scope_question = (grounding or {}).get('session_scope_question') or question
         local_draft = None
         if grounding and grounding.get('status') == 'ready':
@@ -237,9 +225,15 @@ class ClaudeGateway:
             local_draft = expand_registered_profile(question, profile_gene)
         user = json.dumps({'question': question, 'history': history[-6:],
             'grounding': public_grounding, 'preliminary_assessment': initial_assessment(grounding),
+            'session_population': (grounding or {}).get('session_population'),
             'terminology_advisory': (grounding or {}).get('terminology_advisory'),
             'terminology_guidance': planner_guidance(question), 'local_draft': local_draft}, ensure_ascii=False)
         # Even exact/local/profile cases need Claude's final semantic decision.
+        if (grounding or {}).get('session_population'):
+            system_text += ('\nThe referenced population is verified backend evidence. Plan only the NEW connected queries '
+                'from that population. Do not invent individual IDs or repeat its donor/cohort lookup. The backend '
+                'will insert the verified parent and typed input binding. Preserve all newly requested assay/tissue filters. '
+                'An unspecified tissue is an annotation to return, not a required tissue filter.')
         if profile_gene:
             profile_gene = None
         from .investigations import required_categories
@@ -251,13 +245,18 @@ class ClaudeGateway:
             system_text += '\n' + CHAIN_GUIDANCE
         def finalize(proposal, chosen):
             nonlocal grounding
-            if grounding and grounding.get('status') == 'ready' and chosen:
-                grounding = deepcopy(grounding)
+            if chosen:
+                grounding = deepcopy(grounding or {})
+                grounding['status'] = 'ready'
+                grounding.setdefault('identity', {})['graph_release'] = chosen[0]['graph_release']
                 for proof in chosen:
+                    prior_candidate = next((deepcopy(c) for m in grounding.get('mentions', [])
+                        for c in m.get('candidates', []) if c.get('id') == proof['id']
+                        and c.get('entity_type') == proof['entity_type']), {})
                     grounding['mentions'] = [m for m in grounding.get('mentions', [])
                         if str(m.get('requested', '')).casefold() != proof['mention'].casefold()]
                     grounding['mentions'].append({'requested': proof['mention'], 'state': 'resolved',
-                        'candidates': [{**proof, 'labels': [proof['entity_type']], 'match_kind': proof['match_method']}]})
+                        'candidates': [{**prior_candidate, **proof, 'labels': [proof['entity_type']], 'match_kind': proof['match_method']}]})
             plan = proposal
             if chain_mode:
                 from .chain_drafting import expand
@@ -266,13 +265,27 @@ class ClaudeGateway:
                 from .planning_output import recover_misplaced_steps
                 plan, output_recovery = recover_misplaced_steps(plan, schema)
             from .composable_planning import normalize
+            from .session_inputs import attach
+            plan = attach(plan, (grounding or {}).get('session_population'))
             plan = normalize(plan)
+            plan = bind_unique_requested_identities(scope_question, grounding, plan)
+            used = {(item['entity_type'], item['id']) for step in plan.get('steps', []) for item in step.get('preparation_trace', [])}
+            plan['entity_selection_proofs'] = [p for p in initial_proofs if (p['entity_type'], p['id']) in used]
             issue = plan_structure_issue(plan)
             if issue is None and grounding and grounding.get('status') == 'ready' and not plan.get('clarification'):
                 plan, issue = compile_scopes(plan)
                 issue = issue or scope_issue(scope_question, grounding, plan) or requirements_issue(question, grounding, plan, history)
             if issue:
-                raise ValueError(issue)
+                partial = independent_subset(plan, issue)
+                if partial:
+                    partial, partial_issue = compile_scopes(partial)
+                    partial_issue = partial_issue or scope_issue(scope_question, grounding, partial) or requirements_issue(question, grounding, partial, history)
+                    if partial_issue:
+                        partial = None
+                    else:
+                        partial = expand_compact_plan(partial)
+                        partial['steps'] = [repair_step_constraints(s) for s in partial['steps']]
+                raise PreparationIssue(issue, partial)
             plan = expand_compact_plan(plan)
             plan['steps'] = [repair_step_constraints(step) for step in plan['steps']]
             plan = independent_measurement_steps(plan)
@@ -284,7 +297,7 @@ class ClaudeGateway:
             return plan
         from .planning_session import run
         return await run(self, question, user, system_text, schema, output_limit, finalize,
-                         resolver=resolver, preparer=preparer)
+                         resolver=resolver, preparer=preparer, initial_proofs=initial_proofs)
 
     async def interpret_revision(self, question, instruction, parent_plan):
         from .revision_interpreter import SCHEMA, SYSTEM

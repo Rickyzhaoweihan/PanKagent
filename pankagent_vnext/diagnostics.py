@@ -9,7 +9,7 @@ REGISTRY = {
  'E01': ('M03/D01', 'Grounding lookup was unavailable. Planning can continue with available context.'),
  'E02': ('M04/D02', 'The planner could not produce a usable plan within its limits.'),
  'E03': ('M04', 'A selected identity could not be matched to retained resolver evidence.'),
- 'E04': ('M05', 'An identity, filter, schema rule, or dependency could not be verified.'),
+ 'E04': ('M04 tools/M07', 'An identity, filter, schema rule, or dependency could not be verified.'),
  'E05': ('M06b', 'The query generation service could not produce a candidate.'),
  'E06': ('M07/D8', 'The generated query did not pass executable validation.'),
  'E07': ('M08', 'Database retrieval failed or did not finish completely.'),
@@ -22,6 +22,11 @@ EXACT = {
  'entity_choice_requires_resolve_entities': ('E03', 'ENTITY_CHOICE_UNVERIFIED'),
  'entity_choice_not_in_user_request': ('E03', 'ENTITY_MENTION_UNVERIFIED'),
  'invalid_entity_choices': ('E03', 'INVALID_ENTITY_CHOICES'),
+ 'session_population_requires_connected_queries': ('E04', 'SESSION_POPULATION_BINDING_MISSING'),
+ 'session_population_role_ambiguous': ('E04', 'SESSION_POPULATION_ROLE_AMBIGUOUS'),
+ 'session_population_unavailable': ('E08', 'SESSION_POPULATION_UNAVAILABLE'),
+ 'session_population_stale_or_incomplete': ('E08', 'SESSION_POPULATION_STALE'),
+ 'reserved_session_population_id': ('E04', 'RESERVED_TASK_ID'),
  'malformed_plan': ('E02', 'MALFORMED_PLAN'), 'malformed_step': ('E02', 'MALFORMED_STEP'),
  'empty_executable_plan': ('E02', 'EMPTY_PLAN'), 'planning_repair_exhausted': ('E02', 'REPAIR_EXHAUSTED'),
  'plan_too_large': ('E02', 'PLAN_LIMIT'), 'invalid_plan_dependencies': ('E04', 'INVALID_DEPENDENCIES'),
@@ -42,6 +47,11 @@ SAFE_REASONS = {'timeout','rate_limited','budget_exhausted','authentication','au
  'run_graph_materialization_limit','retrieval_incomplete','not_found','ambiguous','scope_unavailable'}
 
 
+def _schema_reasons():
+    from .agent_schemas import module
+    return module('validation_repair')['diagnostic_reasons']
+
+
 def diagnostic(reason, stage=None, *, blocking=True, run_id=None, step_id=None):
     raw = reason if isinstance(reason, str) else ''
     if raw.startswith('{'):
@@ -49,8 +59,11 @@ def diagnostic(reason, stage=None, *, blocking=True, run_id=None, step_id=None):
         except (ValueError, AttributeError): raw = ''
     if raw.startswith('E01 preparation service unavailable'):
         family, name, safe = 'E04', 'PREPARATION_UNAVAILABLE', 'preparation_unavailable'
-    elif raw in EXACT:
-        family, name = EXACT[raw]; safe = raw
+    elif any(raw.startswith(prefix + ':') for prefix in _schema_reasons()):
+        prefix = next(p for p in _schema_reasons() if raw.startswith(p + ':'))
+        family, name, safe = 'E04', _schema_reasons()[prefix], prefix
+    elif raw.split(':', 1)[0] in EXACT:
+        safe = raw.split(':', 1)[0]; family, name = EXACT[safe]
     elif raw in SAFE_REASONS:
         family, name, safe = STAGES.get(stage, 'E00'), raw.upper(), raw
     elif raw.startswith(('missing_', 'unrequested_', 'unsupported_', 'scope_', 'dependency_', 'path_', 'chain_')):

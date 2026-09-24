@@ -1193,7 +1193,8 @@ class GraphAdapter:
                 grounded['term_inventory_status'] = 'verified_fallback'
             except asyncio.TimeoutError:
                 grounded['term_inventory_status'] = 'unavailable'
-        return grounded
+        from .entity_lookup import retain_grounding_proofs
+        return retain_grounding_proofs(self, grounded)
 
     async def close(self):
         await self.http.aclose()
@@ -1218,7 +1219,8 @@ class GraphAdapter:
         from .bounded_paths import DIGEST as bounded_path_digest, VERSION as bounded_path_version
         from .pattern_planning import DIGEST as pattern_plan_digest, VERSION as pattern_plan_version
         from .coloc_records import DIGEST as coloc_record_digest, VERSION as coloc_record_version
-        return {"record_comparison_contract": "recorded-signal-comparison-v1", "semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "qtl_tissue_binding": "qtl-tissue-owner-v2", "measurement_filter_contract": "requested-measurement-predicates-v1", "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
+        from .agent_schemas import active_pack
+        return {"agent_schema": active_pack().identity(), "record_comparison_contract": "recorded-signal-comparison-v1", "semantic_registry": semantic_digest, "anatomy_resolver": anatomy_version, "anatomy_scope": anatomy_scope_digest, "qtl_tissue_binding": "qtl-tissue-owner-v2", "measurement_filter_contract": "requested-measurement-predicates-v1", "graph_version": self.settings.graph_version, "identity_manifest_sha256": manifest_hash,
                 "bounded_path_version": bounded_path_version,
                 "bounded_path_sha256": bounded_path_digest,
                 "signal_pattern_version": pattern_plan_version,
@@ -1623,14 +1625,15 @@ class GraphAdapter:
         for source in plan.get("steps") or []:
             # A donor-only parent supplies IDs; sample conditions are enforced
             # by its explicit downstream HAS_SAMPLE task, not by both tasks.
-            if (source.get('relation_types') == ['HAS_DONOR']
+            if ((source.get('relation_types') == ['HAS_DONOR']
+                     or not source.get('relation_types') and any(c.get('entity_type') == 'donor' for c in source.get('constraints', [])))
                     and any(source['id'] in child.get('depends_on', [])
                             and child.get('relation_types') == ['HAS_SAMPLE']
                             for child in plan.get('steps', []))
                     and not any(c.get('entity_type') in {'Sample_node', 'data_modality', 'anatomical_structure'}
                                 for c in source.get('constraints', []))):
                 source = {**source, 'deferred_sample_scope': True}
-            if source.get('operation'):
+            if source.get('operation') or source.get('session_input'):
                 prepared['steps'].append({**source, 'graph_version': self.settings.graph_version,
                     'resolved_entities': [], 'entity_resolution': {'state': 'resolved', 'unknown_relations': []}})
                 continue
@@ -2061,6 +2064,19 @@ class GraphAdapter:
                             for identifier, label in typed_ids]})
 
     async def execute(self, step: dict, previous: dict, emit) -> dict:
+        from .annotation_selection import inherited_budget
+        step = deepcopy(step)
+        step['retrieval_budget'] = inherited_budget(step, previous)
+        result = await self._execute(step, previous, emit)
+        result['resource_budget'] = {
+            'allocated': deepcopy(step['retrieval_budget']),
+            'consumed': {'max_nodes': len(result.get('nodes', [])),
+                         'max_edges': len(result.get('edges', [])),
+                         'max_rows': len(result.get('rows', [])),
+                         'max_bytes': result.get('materialized_bytes', 0)}}
+        return result
+
+    async def _execute(self, step: dict, previous: dict, emit) -> dict:
         # Older confirmed plans may name a cell in prose but omit its predicate.
         # Recover only the narrow, verified entity constraint; guards stay strict.
         step = repair_step_constraints(step)

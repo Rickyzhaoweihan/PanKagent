@@ -80,7 +80,8 @@ def generation_request(step, base_question):
             bindings.append(f"{c.get('entity_type') or 'recorded property'} {c.get('property')} {c.get('operator')} {json.dumps(c.get('value'))}")
     if step.get('semantic_registry'):
         requirements=step.get('sample_requirements',{})
-        samples=bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
+        from .semantic_registry import sample_lookup_requested
+        samples=sample_lookup_requested(step) or bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
         disease_requested=any(c.get('entity_type')=='disease' for c in step.get('constraints',[]))
         donor_cohort = [c for c in step.get('constraints', [])
                         if c.get('entity_type') == 'donor'
@@ -89,7 +90,12 @@ def generation_request(step, base_question):
                'donor filtered by the verified recorded donor cohort predicates; no disease-node identity filter was requested'
                if donor_cohort else
                'donor; no disease-node identity or recorded donor cohort filter was requested')
-        if samples:paths+='; donor -HAS_SAMPLE-> Sample_node; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
+        if samples:
+            paths+='; donor -HAS_SAMPLE-> Sample_node'
+            if any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints', [])):
+                paths+='; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
+            else:
+                paths+='; no required tissue join, return available sample annotations'
         text=base_question+'\nUse these verified bindings (replace shorthand values in the question): '+'; '.join(bindings)+'.'
         text+='\nRequired connected schema paths: '+paths+'.'
         if samples:text+=' Sample_node.data_modality stores the assay. Tissue is matched on the linked anatomical_structure; do not filter the descriptive Sample_node.anatomical_structure string.'

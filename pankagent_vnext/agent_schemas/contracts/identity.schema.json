@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Identity",
+  "type": "object",
+  "required": [
+    "schema",
+    "public_labels",
+    "index_name",
+    "id_field",
+    "name_fields",
+    "synonym_field",
+    "lookup_order",
+    "max_candidates",
+    "fuzzy_selection",
+    "case_variants_require_clarification",
+    "exact_only_labels",
+    "session_references"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.identity",
+        "version": "1.0.0"
+      }
+    },
+    "public_labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "index_name": {
+      "type": "string"
+    },
+    "id_field": {
+      "type": "string"
+    },
+    "name_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "synonym_field": {
+      "type": "string"
+    },
+    "lookup_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_candidates": {
+      "type": "integer"
+    },
+    "fuzzy_selection": {
+      "type": "string"
+    },
+    "case_variants_require_clarification": {
+      "type": "boolean"
+    },
+    "exact_only_labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "session_references": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

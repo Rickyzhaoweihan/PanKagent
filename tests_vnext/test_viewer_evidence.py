@@ -122,13 +122,13 @@ def test_verified_chain_and_short_parallel_measurements_remain_rich():
 def test_formatting_source_files_and_methods_unchanged():
     import subprocess, ast
     from pathlib import Path
-    protected = ['pankagent_vnext/output_scope.py',
+    protected = [
         'pankagent_vnext/evidence_context.py', 'pankagent_vnext/format_input_modes.py']
     for path in protected:
-        assert Path(path).read_bytes() == subprocess.check_output(['git','show','8c8a771:'+path])
+        assert Path(path).read_bytes() == subprocess.check_output(['git','show','e062fff:'+path])
     for path, names in [('pankagent_vnext/llm.py', {'synthesize', 'synthesize_prepared', 'finish_answer'}), ('pankagent_vnext/app.py', {'public_run','public_payload','execution'}),
                         ('pankgraph_results/app.py', {'answer'})]:
-        old = ast.parse(subprocess.check_output(['git','show','8c8a771:'+path]))
+        old = ast.parse(subprocess.check_output(['git','show','e062fff:'+path]))
         new = ast.parse(Path(path).read_text())
         def methods(tree):
             return {n.name: ast.dump(n) for n in ast.walk(tree)

@@ -50,15 +50,18 @@ def project(value, *, context=None):
                 collect(item)
     collect(value)
     if context is not None: collect(context)
+    # Compile once per projection. Recompiling thousands of identifiers for
+    # every string made large backend populations block the event loop. Longest
+    # alternatives first preserve the existing overlapping-ID preference.
+    identifiers = sorted((i for i in hidden if len(i) >= 4), key=lambda i: (-len(i), i))
+    identifier_pattern = (re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, identifiers)) + r')(?!\w)')
+                          if identifiers else None)
     def clean(obj, visible_classifications=None, evidence_record=None):
         if isinstance(obj, list):
             return [clean(x, visible_classifications, evidence_record) for x in obj if not private(x)]
         if isinstance(obj, str):
             if obj in hidden: return '[individual identifier withheld]'
-            for identifier in sorted(hidden, key=len, reverse=True):
-                if len(identifier) >= 4:
-                    obj = re.sub(r'(?<!\w)' + re.escape(identifier) + r'(?!\w)', '[individual identifier withheld]', obj)
-            return obj
+            return identifier_pattern.sub('[individual identifier withheld]', obj) if identifier_pattern else obj
         if not isinstance(obj, dict): return obj
         if any(key in obj for key in ('nodes', 'edges', 'answer_facts',
                                       'aggregate_cohort_facts', 'step_id', 'evidence_id')):
@@ -104,13 +107,15 @@ def project(value, *, context=None):
             stages = Counter(str((n.get('properties') or {}).get('t1d_stage') or 'not recorded') for n in donors.values())
             sources = Counter(str((n.get('properties') or {}).get('data_source') or 'not recorded') for n in donors.values())
             assays = {}
+            sample_donors = {}
+            for edge in obj.get('edges', []):
+                if edge.get('type') == 'HAS_SAMPLE' and edge.get('start_id') in donors:
+                    sample_donors.setdefault(edge.get('end_id'), set()).add(edge['start_id'])
             for sample_id, sample in samples.items():
                 modality = str((sample.get('properties') or {}).get('data_modality') or 'not recorded')
                 group = assays.setdefault(modality, {'sample_ids':set(), 'donor_ids':set()})
                 group['sample_ids'].add(sample_id)
-                for edge in obj.get('edges', []):
-                    if edge.get('type') == 'HAS_SAMPLE' and edge.get('end_id') == sample_id and edge.get('start_id') in donors:
-                        group['donor_ids'].add(edge['start_id'])
+                group['donor_ids'].update(sample_donors.get(sample_id, ()))
             classifications = {
                 'recorded_diabetes_type_counts':dict(diabetes_types),
                 'recorded_derived_diabetes_status_counts':dict(derived_statuses),
@@ -130,6 +135,6 @@ def project(value, *, context=None):
                 'samples': len(samples) if samples else None,
                 'count_scope': 'retrieved records', 'complete': obj.get('status') == 'complete' and obj.get('truncated') is False}
         return result
-    result = clean(deepcopy(value))
+    result = clean(value)
     if isinstance(result, dict): result['output_scope'] = {'mode': 'aggregate_only', 'version': VERSION}
     return result

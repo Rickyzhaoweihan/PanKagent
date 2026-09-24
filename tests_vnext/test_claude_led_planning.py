@@ -100,15 +100,15 @@ def test_lookup_then_model_choice_verified_preparation_and_warning():
     asyncio.run(check())
 
 
-def test_three_turn_ceiling_and_two_lookup_batch_ceiling():
+def test_five_planning_calls_and_two_lookup_batch_ceiling():
     async def check():
         request = {'requests': [{'mention': 'INS', 'entity_type': 'Gene', 'fuzzy': False}]}
         g, calls = gateway([('resolve_entities', request)])
         resolver = AsyncMock(return_value={'results': []})
         result = await run(g, 'INS', '{}', 'test', SCHEMA, 500, lambda p,c: p, resolver=resolver)
-        assert len(calls) == 3 and resolver.await_count == 2
+        assert len(calls) == 5 and resolver.await_count == 2
         assert calls[-1]['tool_choice'] == {'type': 'tool', 'name': 'record_plan'}
-        assert result['planning_route']['claude_calls'] == 3
+        assert result['planning_route']['claude_calls'] == 5
     asyncio.run(check())
 
 

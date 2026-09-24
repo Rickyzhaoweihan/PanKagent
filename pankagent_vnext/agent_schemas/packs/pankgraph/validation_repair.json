@@ -32,5 +32,11 @@
     "missing_requested_scope:Gene": "REQUESTED_ENTITY_BINDING_MISSING",
     "invalid_dependency_target_role": "DEPENDENCY_ROLE_INVALID",
     "missing_requested_scope:tissue": "REQUESTED_TISSUE_BINDING_MISSING"
+  },
+  "backend_materialization": {
+    "max_nodes": 12000,
+    "max_edges": 20000,
+    "max_bytes": 12000000,
+    "on_exhaustion": "partial_never_exhaustive_count"
   }
 }

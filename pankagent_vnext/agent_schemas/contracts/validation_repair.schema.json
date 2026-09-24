@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Validation Repair",
+  "type": "object",
+  "required": [
+    "schema",
+    "limits",
+    "scope_compilers",
+    "invariants",
+    "diagnostic_reasons",
+    "backend_materialization"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.validation-repair",
+        "version": "1.0.0"
+      }
+    },
+    "limits": {
+      "type": "object"
+    },
+    "scope_compilers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnostic_reasons": {
+      "type": "object"
+    },
+    "backend_materialization": {
+      "type": "object"
+    }
+  }
+}

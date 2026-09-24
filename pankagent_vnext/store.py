@@ -32,6 +32,7 @@ class Store:
         self.path = state_dir / "sessions.sqlite3"
         self.lock = threading.RLock()
         self.audit_dropped = 0
+        self._event_contexts = {}
         self.owner = None
         self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=5)
         os.chmod(self.path, 0o600)
@@ -207,6 +208,12 @@ class Store:
         with self.lock:
             return self._decode(self.db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone())
 
+    def run_status(self, run_id: str) -> str | None:
+        """Read the cancellation fence without decoding the evidence payload."""
+        with self.lock:
+            row = self.db.execute("SELECT status FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            return row[0] if row else None
+
     def snapshot(self, run_id: str) -> dict | None:
         """Pair the current state with its replay high-water mark."""
         with self.lock:
@@ -246,6 +253,8 @@ class Store:
         sql = "UPDATE runs SET " + ",".join(f"{key}=?" for key in fields) + ",updated_at=? WHERE run_id=?"
         with self.transaction():
             self.db.execute(sql, [*values, utc_now(), run_id])
+            if set(fields) & {"plan", "evidence", "preview", "preview_cache"}:
+                self._event_contexts.pop(run_id, None)
         return self.get(run_id)
 
     def update_if_active(self, run_id, **fields):
@@ -257,10 +266,44 @@ class Store:
 
     def event_if_active(self, run_id, event_type, payload=None):
         with self.lock:
-            value = self.get(run_id)
-            if value is None or (value["status"] in TERMINAL and event_type != "terminal"):
+            status = self.run_status(run_id)
+            if status is None or (status in TERMINAL and event_type != "terminal"):
                 return None
             return self.event(run_id, event_type, payload)
+
+    def persist_answer(self, run_id, graph_answer):
+        """Persist a streaming delta without decoding unchanged graph evidence."""
+        with self.transaction():
+            self.db.execute("UPDATE runs SET graph_answer=?,updated_at=? WHERE run_id=? "
+                "AND status NOT IN ('completed','partial','failed','cancelled','interrupted','superseded')",
+                (graph_answer, utc_now(), run_id))
+
+    def event_context(self, run_id):
+        """Metadata and identity redaction context, cached until evidence changes."""
+        with self.lock:
+            row = self.db.execute("SELECT run_id,session_id,question,status,stage,created_epoch FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                return None
+            if run_id not in self._event_contexts:
+                run = self.get(run_id)
+                identities = set()
+                def collect(value):
+                    if isinstance(value, list):
+                        for item in value: collect(item)
+                    elif isinstance(value, dict):
+                        if set(value.get('labels') or []) & {'donor','Sample_node'}:
+                            for source in (value, value.get('properties') or {}):
+                                for key in ('id','name'):
+                                    if source.get(key) is not None: identities.add(str(source[key]))
+                        for key,item in value.items():
+                            if key in {'donor_id','sample_id'} and item is not None: identities.add(str(item))
+                            collect(item)
+                collect(run)
+                if len(self._event_contexts) >= 16:
+                    self._event_contexts.pop(next(iter(self._event_contexts)))
+                self._event_contexts[run_id] = {'plan':run.get('plan'),
+                    '_redaction_context':[{'donor_id':i} for i in identities]}
+            return {**dict(row), **self._event_contexts[run_id]}
 
     def confirm(self, run_id: str) -> bool:
         with self.transaction():
@@ -304,6 +347,23 @@ class Store:
             self.audit_dropped += 1
             return "unavailable"
 
+    def claim_execution_repair(self, run_id, step_id, limits):
+        """Persist the attempt before inference; crashes/retries cannot reset it."""
+        with self.transaction():
+            run = self.get(run_id)
+            if not run or run['status'] in TERMINAL:
+                return False
+            plan = run.get('plan') or {}
+            planned = (plan.get('planning_route') or {}).get('claude_calls', 0)
+            used = self.db.execute(
+                "SELECT COUNT(*) FROM audit_events WHERE run_id=? AND kind='execution_repair_claim'",
+                (run_id,)).fetchone()[0]
+            if used >= limits['execution_repairs'] or planned + used >= limits['total_claude_calls']:
+                return False
+            self.db.execute("INSERT INTO audit_events VALUES (?,?,?,?,?)", (run_id, str(uuid4()),
+                'execution_repair_claim', utc_now(), json.dumps({'step_id': step_id, 'attempt': used + 1})))
+            return True
+
     def audit_snapshot(self, run_id):
         with self.lock:
             rows = self.db.execute("SELECT event_id,kind,received_at,payload FROM audit_events WHERE run_id=? ORDER BY rowid", (run_id,)).fetchall()
@@ -311,9 +371,10 @@ class Store:
 
     def event(self, run_id: str, event_type: str, payload: dict | None = None) -> dict:
         with self.transaction():
-            run = self.get(run_id)
-            if run is None:
+            row = self.db.execute("SELECT session_id,stage,status,created_epoch FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
                 raise KeyError("run")
+            run = dict(row)
             seq = self.db.execute("SELECT COALESCE(MAX(sequence),0)+1 FROM events WHERE run_id=?", (run_id,)).fetchone()[0]
             envelope = {
                 "version": 2, "run_id": run_id, "session_id": run["session_id"],

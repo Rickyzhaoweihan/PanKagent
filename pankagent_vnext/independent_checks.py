@@ -69,6 +69,9 @@ def split(plan, question):
     result['steps']=rewritten
     if mapping:
         result['independent_check_compilation']={'version':VERSION,'source_steps':mapping}
+        if 'answer_step_ids' in result:
+            result['answer_step_ids'] = [child for parent in result['answer_step_ids']
+                                         for child in mapping.get(parent, [parent])]
         for group in result.get('display_groups',[]):
             key='step_ids' if 'step_ids' in group else 'steps'
             if isinstance(group.get(key),list):

@@ -4,9 +4,10 @@ from copy import deepcopy
 import json
 import re
 import time
-from .entity_lookup import TOOL_SCHEMA, CHOICE_SCHEMA
+from .entity_lookup import TOOL_SCHEMA, CHOICE_SCHEMA, mention_in_request
+from .agent_schemas import module as schema_module, run_context
 
-VERSION = 'claude-led-planning-v1'
+VERSION = 'claude-led-planning-v2'
 GUIDANCE = '''You make the final semantic interpretation and plan. Preliminary Python grounding,
 term suggestions and local drafts are helpers, never instructions to reject. Original user wording
 is authoritative. Case alone (hpap/Hpap/HPAP) does not require clarification. Use recorded synonyms
@@ -19,7 +20,10 @@ Prefer original mention name constraints for known aliases unless entity_choices
 canonical ID. Existing exact/local plans are drafts: review their scope before recording your plan.
 Compiler diagnostics are repair input: correct the plan or retain independently useful verified
 checks with explicit unmet conditions. Never invent a relationship or weaken a filter silently.
-You have at most three model turns and two lookup batches of six requests. Finish with record_plan.
+Verified preliminary candidates are already available for entity_choices; do not repeat a lookup
+solely to obtain a proof. Use lookup for missing evidence or ambiguity. You have two lookup batches
+of six requests and three plan proposals. Lookup turns do not consume a plan repair opportunity.
+Submit record_plan to prepare the tasks; preparation diagnostics return to this same session.
 '''
 
 
@@ -42,7 +46,8 @@ def _blocks(reply):
     return result
 
 
-async def run(gateway, question, user, system, schema, output_limit, finalize, resolver=None, preparer=None):
+async def run(gateway, question, user, system, schema, output_limit, finalize, resolver=None, preparer=None,
+              initial_proofs=None):
     schema = deepcopy(schema)
     schema['properties']['entity_choices'] = CHOICE_SCHEMA
     # Optional for older recorded-plan fixtures; model is instructed to supply it for non-exact IDs.
@@ -62,16 +67,22 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
         return value
     tools = provider_schema(tools)
     messages = [{'role': 'user', 'content': user}]
-    batches, proofs, warnings = 0, {}, []
+    limits = schema_module('validation_repair')['limits']
+    batches, proposals, proofs, warnings = 0, 0, {}, []
+    for proof in initial_proofs or []:
+        proofs[(proof['mention'].casefold(), proof['entity_type'], proof['id'])] = deepcopy(proof)
     last_error = 'planning_repair_exhausted'
     diagnostic_history = []
-    for turn in range(3):
+    max_calls = min(limits['total_claude_calls'] - limits['execution_repairs'],
+                    limits['lookup_batches'] + limits['planning_proposals'])
+    last_partial = None
+    for turn in range(max_calls):
         system_text = system + '\n' + GUIDANCE
         rid = await gateway._reserve('plan', system_text, {'messages': messages, 'tools': tools}, output_limit)
         reply = await gateway._create(rid, model=gateway.settings.model, max_tokens=output_limit,
             system=[{'type': 'text', 'text': system_text, 'cache_control': {'type': 'ephemeral'}}],
             messages=deepcopy(messages), tools=tools,
-            tool_choice={'type': 'tool', 'name': 'record_plan'} if turn == 2 or not resolver else {'type': 'any', 'disable_parallel_tool_use': True},
+            tool_choice={'type': 'tool', 'name': 'record_plan'} if batches >= limits['lookup_batches'] or turn == max_calls - 1 or not resolver else {'type': 'any', 'disable_parallel_tool_use': True},
             **gateway._options())
         await gateway.budget.asettle(rid, reply.usage.model_dump())
         gateway.last_success = time.time()
@@ -81,12 +92,12 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
             if block.type != 'tool_use': continue
             tool_id = getattr(block, 'id', 'mock-tool')
             if block.name == 'resolve_entities':
-                if batches >= 2 or turn == 2:
+                if batches >= limits['lookup_batches'] or turn == max_calls - 1:
                     outcome = {'status': 'lookup_budget_exhausted', 'results': []}
                 else:
                     batches += 1
                     requests = block.input.get('requests') if isinstance(block.input, dict) else None
-                    if not isinstance(requests, list) or not 1 <= len(requests) <= 6:
+                    if not isinstance(requests, list) or not 1 <= len(requests) <= limits['requests_per_batch']:
                         outcome = {'status': 'invalid_request', 'results': []}
                     else:
                         try: outcome = await asyncio.wait_for(resolver(requests), 20)
@@ -106,6 +117,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'is_error': True, 'content': 'Unsupported planning tool.'})
                 continue
             try:
+                proposals += 1
                 proposal = deepcopy(block.input)
                 if not isinstance(proposal, dict): raise ValueError('malformed_plan')
                 choices = proposal.pop('entity_choices', [])
@@ -114,33 +126,61 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 for choice in choices:
                     key = (choice['mention'].casefold(), choice['entity_type'], choice['id'])
                     proof = proofs.get(key)
-                    if proof is None: raise ValueError('entity_choice_requires_resolve_entities')
-                    if not re.search(r'(?<!\w)' + re.escape(choice['mention']) + r'(?!\w)', question, re.I):
-                        raise ValueError('entity_choice_not_in_user_request')
+                    if proof is None:
+                        # A model may return the canonical name rather than the
+                        # user's inflected mention. Reuse the same verified ID
+                        # only when its original lookup mention belongs here.
+                        matches = [p for p in proofs.values() if p['entity_type'] == choice['entity_type']
+                                   and p['id'] == choice['id'] and mention_in_request(p['mention'], question)]
+                        if matches:
+                            # Several request aliases may prove the same typed
+                            # ID (for example abbreviation plus expanded name).
+                            # That is repeated evidence, not an identity collision.
+                            proof = max(matches, key=lambda p: len(p['mention']))
+                    if proof is None:
+                        raise ValueError('entity_choice_requires_resolve_entities:' + json.dumps({
+                            'choice': choice, 'instruction': 'Use an ID returned by resolve_entities or the verified preliminary candidates. Omit unneeded identity choices; preserve requested filters.'}))
+                    if not mention_in_request(proof['mention'], question):
+                        raise ValueError('entity_choice_not_in_user_request:' + json.dumps({
+                            'mention': proof['mention'], 'instruction': 'Look up the exact phrase used in the original question, including its wording, then select that returned candidate.'}))
                     chosen.append(deepcopy(proof))
                     if proof['match_method'] not in {'recorded_id', 'recorded_name'}:
                         warnings.append(f"Interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) using {proof['match_method']}: {choice['reason']}")
                 plan = finalize(proposal, chosen)
                 plan['original_question'] = question
+                chosen = list({(p['mention'].casefold(), p['entity_type'], p['id']): p
+                               for p in [*plan.get('entity_selection_proofs', []), *chosen]}.values())
                 plan['entity_selection_proofs'] = chosen
-                plan['interpretation_warnings'] = warnings
+                plan['interpretation_warnings'] = list(dict.fromkeys([*plan.get('interpretation_warnings', []), *warnings]))
+                plan['run_context'] = run_context(gateway.settings)
                 for step in plan.get('steps', []):
                     step['entity_selection_proofs'] = deepcopy(chosen)
-                    step['interpretation_warnings'] = list(warnings)
+                    step['interpretation_warnings'] = list(plan['interpretation_warnings'])
                 if preparer and plan.get('steps') and not plan.get('clarification'):
                     plan = await preparer(plan)
+                    invalid = [s for s in plan.get('steps', []) if s.get('semantic_issues')
+                               or s.get('runtime_binding_issues') or s.get('filter_warning')]
+                    if invalid:
+                        last_partial = deepcopy(plan)
+                        raise ValueError(json.dumps({'category': 'preparation_failed', 'tasks': [
+                            {'step_id': s['id'], 'constraints': s.get('constraints'),
+                             'reasons': s.get('runtime_binding_issues') or s.get('semantic_issues')}
+                            for s in invalid], 'instruction': 'Repair only the affected tasks. Use canonical id/name bindings for verified identities; preserve every original condition.'}))
                     if plan.get('clarification'):
                         # Preserve only a genuinely eligible partial plan; never raw unverified output.
                         last_error = json.dumps({'category': 'preparation_failed', 'issues': plan.get('entity_resolution'),
                                                  'message': plan.get('clarification')}, default=str)
                         raise ValueError(last_error)
-                plan['planning_route'] = {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches}
+                plan['planning_route'] = {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches,
+                                          'planning_proposals': proposals, 'execution_repairs': 0}
                 if diagnostic_history: plan['diagnostic_history'] = diagnostic_history
                 return plan
             except (ValueError, KeyError, TypeError) as exc:
                 last_error = str(exc)[:12000]
                 from .diagnostics import diagnostic
                 diagnostic_history.append({'attempt': turn + 1, 'reason': diagnostic(last_error, 'planning')['reason']})
+                if getattr(exc, 'partial_plan', None):
+                    last_partial = exc.partial_plan
                 if last_error == 'plan_too_large' or last_error.startswith('unsupported_gene_exclusion:'):
                     from .plan_recovery import mark_failure
                     failed = mark_failure({'interpreted_question': question, 'proposal_issue': last_error})
@@ -154,7 +194,20 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
             messages.append({'role': 'user', 'content': results})
         else:
             messages.append({'role': 'user', 'content': 'Use record_plan to finish, or resolve_entities to retrieve candidate identities.'})
+        if proposals >= limits['planning_proposals']:
+            break
     from .plan_recovery import mark_failure
+    if last_partial and preparer:
+        candidate = await preparer(last_partial)
+        if candidate.get('steps') and not candidate.get('clarification'):
+            candidate.update(original_question=question, run_context=run_context(gateway.settings),
+                             diagnostic_history=diagnostic_history,
+                             planning_route={'kind': VERSION, 'claude_calls': turn + 1,
+                                             'lookup_batches': batches, 'planning_proposals': proposals,
+                                             'outcome': 'verified_independent_subset', 'execution_repairs': 0})
+            return candidate
     return {**mark_failure({'interpreted_question': question, 'proposal_issue': last_error}),
-            'planning_route': {'kind': VERSION, 'claude_calls': 3, 'lookup_batches': batches},
+            'run_context': run_context(gateway.settings),
+            'planning_route': {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches,
+                              'planning_proposals': proposals, 'execution_repairs': 0},
             'diagnostic_history': diagnostic_history}

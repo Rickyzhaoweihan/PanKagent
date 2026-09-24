@@ -6,6 +6,7 @@ metadata and ambiguous aliases never authorize a guessed identity or an absence
 claim. The same payload can be supplied to the planner and Cypher generator.
 """
 import asyncio
+from .agent_schemas import module as schema_module
 from copy import deepcopy
 import hashlib
 import json
@@ -25,34 +26,8 @@ from .semantic_registry import identity_authorization_text, scope_incidental_spa
 VERSION = "preplanning-grounding-10-live-refresh"
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + GENOMIC_SCOPE_DIGEST.encode()).hexdigest()
 # Family-level language, never specific questions, genes, tissues or query text.
-RELATION_TERMS = {
-    "SIGNAL_COLOC_WITH": r"coloc|colocali[sz]",
-    "PART_OF_QTL_SIGNAL": r"\bqtl\b|eqtl|sqtl|exonqtl|molecular association",
-    "PART_OF_GWAS_SIGNAL": r"\bgwas\b|credible set|fine.?mapp|disease association",
-    "GENE_DETECTED_IN": r"express|detect|transcript",
-    "GENE_ENRICHED_IN": r"enrich|specific",
-    "MARKER_GENE_OF": r"marker",
-    "T1D_DEG_IN": r"differential|diabet.*express|express.*diabet",
-    "EFFECTOR_GENE_OF": r"effector|prioriti[sz]",
-    "FUNCTION_ANNOTATION": r"pathway|function|annotation|\bkegg\b|reactome",
-    "ASSOCIATED_WITH_GO": r"\bgo\b|ontology|biological process|molecular function|cellular component|annotation",
-    "FGSEA_ENRICHED_IN": r"fgsea|gsea|pathway.*enrich|enrich.*pathway",
-    "PHYSICAL_INTERACTION": r"interact|partner|protein.?protein",
-    "GENETIC_INTERACTION": r"interact|partner",
-    "HAS_SAMPLE": r"sample|assay|scrna|snrna|atac|multiom|perifusion",
-    "HAS_DONOR": r"donor|cohort|\bhpap\b|stage",
-    "HAS_CELL_TYPE": r"cell type|cells.*tissue|cell.*pancrea",
-    "GENE_ACTIVITY_SCORE_IN": r"activity|chromatin",
-    "OCR_PEAK_IN": r"accessib|chromatin|\bocr\b",
-}
-ENTITY_TYPE_TERMS = {
-    "Gene": r"\bgenes?\b|gene profile", "variants": r"\bvariants?\b|\bsnps?\b|\brs\d+\b",
-    "donor": r"\bdonors?\b|\bhpap\b|cohort", "Sample_node": r"\bsamples?\b|assay",
-    "anatomical_structure": r"\btissues?\b|\bcells?\b|anatom",
-    "disease": r"\bdiseases?\b|diabet", "GO_term": r"\bgo\b|gene ontology",
-    "kegg": r"\bkegg\b|pathways?", "reactome": r"\breactome\b|pathways?",
-    "data_modality": r"modality|modalities|assay", "OCR_peak": r"chromatin|\bocr\b",
-}
+RELATION_TERMS = schema_module('semantics_modalities')['intent_vocabulary']['RELATION_TERMS']
+ENTITY_TYPE_TERMS = schema_module('semantics_modalities')['intent_vocabulary']['ENTITY_TYPE_TERMS']
 _GENERIC_GENE_WORDS = {"a", "all", "an", "and", "any", "as", "at", "by", "can", "do", "every", "for", "has", "have", "in", "is", "it", "no", "not", "of", "on", "or", "rest", "so", "the", "to", "was", "with", "yes"}
 _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon"})
 # These are linguistic roles, not excluded gene symbols. An explicit gene
@@ -591,6 +566,9 @@ def grounding_guidance(payload, *, max_chars=7000, relation_types=None):
     view = deepcopy(payload)
     view.pop("latency_ms", None)
     for mention in view.get("mentions", []):
+        for candidate in mention.get('candidates', []):
+            candidate.pop('selection_proof', None)
+            candidate.pop('token', None)
         incidental = mention.pop("incidental_candidates", [])
         if incidental:
             mention["incidental_catalog_matches"] = len(incidental)

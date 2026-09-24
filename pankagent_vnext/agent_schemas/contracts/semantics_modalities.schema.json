@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Semantics Modalities",
+  "type": "object",
+  "required": [
+    "schema",
+    "terminology",
+    "modalities",
+    "prompt_modules",
+    "clinical_distinctions",
+    "intent_vocabulary",
+    "anatomy",
+    "request_fields",
+    "planning_instructions",
+    "cohort_comparison_patterns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.semantics",
+        "version": "1.0.0"
+      }
+    },
+    "terminology": {
+      "type": "object"
+    },
+    "modalities": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "prompt_modules": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "clinical_distinctions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "intent_vocabulary": {
+      "type": "object"
+    },
+    "anatomy": {
+      "type": "object"
+    },
+    "request_fields": {
+      "type": "object"
+    },
+    "planning_instructions": {
+      "type": "object"
+    },
+    "cohort_comparison_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

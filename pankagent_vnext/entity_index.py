@@ -1,9 +1,10 @@
 """Explicit, additive public metadata index provisioning; never runs on API startup."""
 import argparse
 import json
-from .entity_lookup import INDEX_NAME, LABELS
+from .entity_lookup import INDEX_NAME, IDENTITY
+LABELS = tuple(IDENTITY['public_labels'])
 
-PROPERTIES = ('name', 'synonyms', 'hgnc_symbol', 'hgnc_id')
+PROPERTIES = tuple(dict.fromkeys([*IDENTITY['name_fields'], IDENTITY['synonym_field']]))
 
 
 def ensure_index(session, create=False):

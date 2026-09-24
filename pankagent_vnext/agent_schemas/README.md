@@ -12,6 +12,8 @@ v0.3.0 contract. The context-aware branch is not used.
 6. Validation/repair: registered check order, bounded repair and completeness invariants.
 
 `SchemaPack` validates cross-references and snapshots JSON at process startup.
+`PANK_VNEXT_SCHEMA_PACK` selects a packaged directory at startup; questions cannot
+select a path or hot reload a pack. The default is `packs/pankgraph`.
 Consumers receive copies; active investigations cannot see edits made to files.
 The canonical digest includes every module and belongs in run/cache/proof identity.
 Deploy code and pack together. Never change credentials, endpoints or live data
@@ -32,7 +34,18 @@ to `38c8f454eaecf79cacd7ef42d6b109595798791a`: 16 display entries expand to 14
 unique concrete questions. HPAP tests are separate and require live recorded
 category resolution and exact ID membership comparisons, not hardcoded counts.
 
-The formal manifest contract is in `contracts/manifest.schema.json`. Runtime
+Formal contracts for all six modules are in `contracts/*.schema.json`. Runtime
 validation additionally checks endpoints, pattern paths, module versions and
 registered compiler/budget limits. Invalid packs fail release preparation rather
 than presenting a question-level grounding error.
+
+Schema 3 also declares referential populations such as “these donors.” The
+supervisor receives a typed reference and count, never formatter-sampled IDs.
+The server rechecks the originating session, graph release, pack digest,
+completeness and backend result fingerprint before binding dependent queries.
+Ambiguous or incomplete previous populations cannot become unrestricted inputs.
+
+The allocation policy partitions reservations across independent tasks. A
+completed parent's unused reservation is divided between its direct children;
+children cannot spend the same bytes twice, and unrelated branches retain their
+allocation. Exact counts still require exhausted database cursors.

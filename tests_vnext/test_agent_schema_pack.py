@@ -37,3 +37,41 @@ def test_frontend_fixture_covers_every_entry_without_unbound_slots():
     assert len(fixture['cases']) == 14
     assert all('[GENE]' not in c['question'] and '[SNP]' not in c['question'] for c in fixture['cases'])
     assert sum(len(c['sources']) for c in fixture['cases']) == 18
+
+
+def test_renamed_types_and_property_use_same_path_and_identity_operators(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from pankagent_vnext import bounded_paths, query_templates, entity_lookup
+    registry={'release':'renamed-fixture','nodes':{'Thing':['id','title','aliases'], 'Category':['id','title']},
+              'relations':{'BELONGS_TO':{'paths':[{'source':['Thing'],'target':['Category']}],
+                                        'properties':['source']}}}
+    monkeypatch.setattr(bounded_paths,'REGISTRY',registry)
+    monkeypatch.setattr(query_templates,'REGISTRY',registry)
+    identity={**active_pack().module('identity'),'name_fields':['title'],'synonym_field':'aliases'}
+    monkeypatch.setattr(entity_lookup,'IDENTITY',identity)
+    monkeypatch.setattr(entity_lookup,'LABELS',('Thing','Category'))
+    class Fixture:
+        settings=SimpleNamespace(graph_version='renamed-fixture')
+        async def _ensure_identity(self):pass
+        async def _small_query(self,query,parameters):
+            assert 'n.`title`' in query and 'n.`aliases`' in query
+            assert 'hgnc_symbol' not in query and parameters=={'mention':'alternate'}
+            return [{'id':'thing-1','title':'Canonical','aliases':['alternate'],'labels':['Thing']}]
+    lookup=asyncio.run(entity_lookup.lookup(Fixture(),'alternate','Thing'))
+    assert lookup['status']=='resolved' and lookup['candidates'][0]['match_method']=='recorded_alias'
+    constraint={'owner_role':'focus','entity_type':'Thing','property':'id','operator':'=','value':'thing-1'}
+    step={'id':'one','question':'Categories for alternate','graph_version':'renamed-fixture',
+          'relation_types':['BELONGS_TO'],'depends_on':[],'constraints':[constraint],
+          'semantic_request':{'source':'user_request','question':'Categories for alternate'},
+          'resolved_entities':[{'constraint_index':0,'requested':deepcopy(constraint),'state':'resolved',
+              'entity_type':'Thing','labels':['Thing'],'id':'thing-1','graph_version':'renamed-fixture'}],
+          'request_filter_bindings':[{'constraint_index':0,'canonical_binding':deepcopy(constraint),
+              'source':'immutable_user_request','authorization_kind':'verified_test_request_filter','request_sha256':__import__('hashlib').sha256(b'Categories for alternate').hexdigest(),'graph_release':'renamed-fixture'}],
+          'evidence_combination':'cooccurrence','path_spec':{'version':'bounded-path-v1',
+              'nodes':[{'role':'focus','entity_types':['Thing']},{'role':'category','entity_types':['Category']}],
+              'edges':[{'role':'membership','from':'focus','to':'category','types_any':['BELONGS_TO'],'direction':'out'}]}}
+    result=bounded_paths.compile_query(step)
+    assert '`Thing`' in result['cypher'] and '`Category`' in result['cypher'] and '`BELONGS_TO`' in result['cypher']
+    assert result['parameters']['path_0']=='thing-1'
+    assert 'Gene' not in result['cypher']

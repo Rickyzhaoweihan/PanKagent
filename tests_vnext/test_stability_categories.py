@@ -94,7 +94,7 @@ def test_gene_annotation_categories_get_independent_checks_with_dependency_mappi
 
 @pytest.mark.parametrize('literal',[STAGE,'Stage 2: two or more autoantibodies, HbA1c >= 5.7%','Stage 2: dysglycemia'])
 def test_verified_stage_is_bound_without_regenerating_source_bytes(literal):
- s=step();q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage = '"+literal+"' AND a.id = 'UBERON_0000006' AND s.data_modality IN ['scRNA-seq','snMultiomics'] RETURN d,s,a"
+ s=step();q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage = '"+literal+"' AND a.id = 'UBERON_0000006' AND s.data_modality = 'scRNA-seq' RETURN d,s,a"
  rewritten,parameters,notes=bind_verified_categories(q,s,{})
  assert '$canonical_donor_stage' in rewritten
  assert parameters['canonical_donor_stage']==STAGE
@@ -173,7 +173,7 @@ class CategoricalExecutionTests(unittest.IsolatedAsyncioTestCase):
 
  async def test_exact_category_parameters_reach_explain_retrieval_and_evidence(self):
   from tests_vnext.test_graph import FakeAdapter
-  q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage='Stage 2: corrected typography' AND a.id='UBERON_0000006' AND s.data_modality IN ['scRNA-seq','snMultiomics'] RETURN d,s,a"
+  q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage='Stage 2: corrected typography' AND a.id='UBERON_0000006' AND s.data_modality = 'scRNA-seq' RETURN d,s,a"
   adapter=FakeAdapter([[q]])
   adapter.settings.graph_version=RELEASE
   async def emit(*args): pass
@@ -191,7 +191,7 @@ class CategoricalExecutionTests(unittest.IsolatedAsyncioTestCase):
 
  async def test_malformed_first_candidate_reaches_escalation_without_duplicate_read(self):
   from tests_vnext.test_graph import FakeAdapter
-  q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage='Stage 2: fixed' AND a.id='UBERON_0000006' AND s.data_modality IN ['scRNA-seq','snMultiomics'] RETURN d,s,a"
+  q="MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(a:anatomical_structure) WHERE d.t1d_stage='Stage 2: fixed' AND a.id='UBERON_0000006' AND s.data_modality = 'scRNA-seq' RETURN d,s,a"
   adapter=FakeAdapter([["MATCH (d:donor) WHERE d.t1d_stage='Stage 2: unclosed"],[q]])
   adapter.settings.graph_version=RELEASE
   async def emit(*args): pass
