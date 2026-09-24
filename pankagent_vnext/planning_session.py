@@ -64,6 +64,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
     messages = [{'role': 'user', 'content': user}]
     batches, proofs, warnings = 0, {}, []
     last_error = 'planning_repair_exhausted'
+    diagnostic_history = []
     for turn in range(3):
         system_text = system + '\n' + GUIDANCE
         rid = await gateway._reserve('plan', system_text, {'messages': messages, 'tools': tools}, output_limit)
@@ -134,9 +135,12 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                                                  'message': plan.get('clarification')}, default=str)
                         raise ValueError(last_error)
                 plan['planning_route'] = {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches}
+                if diagnostic_history: plan['diagnostic_history'] = diagnostic_history
                 return plan
             except (ValueError, KeyError, TypeError) as exc:
                 last_error = str(exc)[:12000]
+                from .diagnostics import diagnostic
+                diagnostic_history.append({'attempt': turn + 1, 'reason': diagnostic(last_error, 'planning')['reason']})
                 if last_error == 'plan_too_large' or last_error.startswith('unsupported_gene_exclusion:'):
                     from .plan_recovery import mark_failure
                     failed = mark_failure({'interpreted_question': question, 'proposal_issue': last_error})
@@ -152,4 +156,5 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
             messages.append({'role': 'user', 'content': 'Use record_plan to finish, or resolve_entities to retrieve candidate identities.'})
     from .plan_recovery import mark_failure
     return {**mark_failure({'interpreted_question': question, 'proposal_issue': last_error}),
-            'planning_route': {'kind': VERSION, 'claude_calls': 3, 'lookup_batches': batches}}
+            'planning_route': {'kind': VERSION, 'claude_calls': 3, 'lookup_batches': batches},
+            'diagnostic_history': diagnostic_history}

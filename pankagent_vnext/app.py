@@ -55,6 +55,8 @@ def public_payload(value, *, context=None):
     public transport uses this same boundary so replaying an older raw event
     cannot bypass the current donor-classification policy.
     """
+    from .diagnostics import annotate
+    value = annotate(value, context=context)
     from .output_scope import aggregate_only, enabled, project
     source = context if isinstance(context, dict) else value if isinstance(value, dict) else {}
     aggregate = enabled(source) or aggregate_only(str(source.get('question') or ''))
@@ -865,6 +867,8 @@ class Runtime:
             from .interrupted_evidence import complete_interrupted_evidence
             fields["evidence"] = complete_interrupted_evidence(run["plan"], fields.get("evidence", run["evidence"]),
                 {"category": status}, self.started_graph_checks.get(run_id, set()))
+        if isinstance(fields.get('error'), dict):
+            fields['error'] = {**fields['error'], 'stage': fields['error'].get('stage') or run.get('stage')}
         self.store.update(run_id, status=status, stage=status, **fields)
         self.store.event(run_id, "terminal", {"status": status, **({"error": fields["error"]} if fields.get("error") else {})})
         self.metrics.count(f"runs_{status}")
@@ -1060,7 +1064,7 @@ class Runtime:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            synthesis_error = safe_error(exc)
+            synthesis_error = {**safe_error(exc), 'stage': 'writing_answer'}
             if synthesis_started:
                 self.health.record_inference("claude", False, synthesis_error["category"])
             else:
