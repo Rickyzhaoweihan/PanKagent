@@ -134,14 +134,14 @@ def test_contextless_pathway_and_partner_wording_is_not_the_joined_hla_route():
 
 
 @pytest.mark.parametrize("question", [SCREENSHOT, STORED, STORED_NBSP])
-def test_gateway_uses_no_model_for_reviewed_hla_path_request(question):
+def test_gateway_reviews_local_hla_draft_with_model(question):
     grounding = hla_grounding(question)
     async def check():
-        gateway, calls = gateway_for(lambda _count: pytest.fail("provider must not be called"))
+        gateway, calls = gateway_for(lambda _count: deepcopy(compile_hla_path_plan(question, grounding)))
         plan = await gateway.plan(question, [], grounding=grounding)
-        assert not calls
+        assert len(calls) == 1
         assert len(plan["steps"]) == 3
-        assert (plan.get("planning_route") or {}).get("kind") == "verified_bounded_path"
+        assert (plan.get("planning_route") or {}).get("kind") == "claude-led-planning-v1"
     asyncio.run(check())
 
 

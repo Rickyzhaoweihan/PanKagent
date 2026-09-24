@@ -50,7 +50,7 @@ def test_verified_owner_compiles_before_scope_guard_without_repair_or_cache_infe
         assert fields[1]['entity_type'] == 'Sample_node'
         assert result['steps'][0]['constraint_compilation'][0]['requested'] == raw['steps'][0]['constraints'][0]
         assert await gateway.plan(QUESTION, [], grounding=GROUNDING) == result
-        assert len(calls) == 1
+        assert len(calls) == 2  # Fresh requests always receive Claude review.
         assert raw == proposal()
     asyncio.run(check())
 
@@ -65,8 +65,8 @@ def test_ambiguous_owner_gets_one_precise_repair_and_no_false_plan():
             return raw
         gateway, calls = gateway_for(invalid)
         result = await gateway.plan(QUESTION, [], grounding=GROUNDING)
-        assert len(calls) == 2
-        assert 'ambiguous_property_owner' in calls[1]['messages'][0]['content']
+        assert len(calls) == 3
+        assert 'ambiguous_property_owner' in calls[1]['messages'][-1]['content'][0]['content']
         assert result['proposal_issue'].startswith('ambiguous_property_owner:')
         assert result['recovery']['category'] == 'planning_failure'
         assert not gateway.plan_cache.values
@@ -77,7 +77,7 @@ def test_cached_plan_with_wrong_owner_is_revalidated_before_reuse():
     async def check():
         gateway, calls = gateway_for(lambda _: proposal())
         original = await gateway.plan(QUESTION, [], grounding=GROUNDING)
-        key = next(iter(gateway.plan_cache.values))
+        key = 'old-cached-plan' # Cache cannot bypass the model on a fresh request.
         corrupted = deepcopy(original)
         corrupted['steps'][0]['constraints'][0]['entity_type'] = 'disease'
         gateway.plan_cache.put(key, corrupted)

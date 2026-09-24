@@ -67,7 +67,7 @@ def test_recovered_output_uses_one_call_and_still_runs_dependency_guard():
     asyncio.run(check())
 
 
-def test_composed_gateway_and_outer_recovery_allow_only_two_planning_calls():
+def test_composed_gateway_and_outer_recovery_allow_only_three_planning_calls():
     async def check():
         gateway = object.__new__(ClaudeGateway)
         gateway.settings = SimpleNamespace(anthropic_key='mock', model='claude-sonnet-5')
@@ -76,7 +76,7 @@ def test_composed_gateway_and_outer_recovery_allow_only_two_planning_calls():
         calls = []
         async def create(*args, **kwargs):
             calls.append(kwargs)
-            assert len(calls) <= 2
+            assert len(calls) <= 3
             plan = {'interpreted_question':'Show ADCY3 coloc.', 'steps':[],
                     'clarification': None if len(calls) == 1 else 'Please provide a concrete entity or graph question.'}
             return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda: {}), content=[
@@ -84,7 +84,7 @@ def test_composed_gateway_and_outer_recovery_allow_only_two_planning_calls():
         gateway._create = create
         plan = await gateway.plan('Show ADCY3 coloc.', [])
         result = await recover_empty_plan(gateway, plan, 'Show ADCY3 coloc.', [], 10)
-        assert len(calls) == 2
+        assert len(calls) == 3
         assert result['recovery']['category'] == 'planning_failure'
         assert result['proposal_issue'] == 'empty_executable_plan'
     asyncio.run(check())
@@ -119,7 +119,7 @@ def test_grounded_tissue_omission_is_filled_without_an_extra_model_call(monkeypa
                 SimpleNamespace(type='tool_use', name='record_plan', input=plan)])
         gateway._create = create
         plan = await gateway.plan('Show all QTL evidence for GCLC in pancreas.', [], grounding=grounding)
-        assert len(calls) == int(use_model)
+        assert len(calls) == 1
         assert not plan.get('clarification')
         assert len(plan['steps']) == 1
         step = plan['steps'][0]

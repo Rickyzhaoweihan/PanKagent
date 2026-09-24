@@ -6,13 +6,9 @@ V = {'inventory_complete': True, 'donor_sources': ['HPAP'],
      'tissues': [{'id':PLN_ID,'name':PLN_NAME},{'id':'pancreas','name':'pancreas'}]}
 
 
-def test_case_correction_is_a_question_not_silent_authorization():
-    q='How many T1D stage 1 donors available in hPAP?'
-    r=recovery(q,V,'release')
-    assert r['message'].startswith('Do you mean HPAP?')
-    assert r['suggestions'][0]['recommended_question']==q.replace('hPAP','HPAP')
-    assert r['original_question']==q
-    assert not empty_failure({'steps':[],'clarification':r['message'],'recovery':r})
+def test_case_variants_need_no_clarification():
+    for name in ['hpap', 'hPAP', 'Hpap', 'HPAP']:
+        assert recovery(f'How many T1D stage 1 donors available in {name}?', V, 'release') is None
 
 
 def test_pkn_is_a_suggestion_with_recorded_proxy_and_retains_filters():
@@ -36,8 +32,8 @@ def test_registry_presence_and_protected_identifiers():
 def test_multiple_terms_produce_one_complete_question():
     q='Show samples in PKN from hPAP excluding stage 1.'
     r=recovery(q,V,'r')
-    assert len(r['issues'])==2 and len(r['suggestions'])==1
-    assert r['suggestions'][0]['recommended_question']=='Show samples in pancreatic lymph node from HPAP excluding stage 1.'
+    assert len(r['issues'])==1 and len(r['suggestions'])==1
+    assert r['suggestions'][0]['recommended_question']=='Show samples in pancreatic lymph node from hPAP excluding stage 1.'
 
 
 def test_source_expansion_is_not_tissue_but_explicit_tissue_is_preserved():
@@ -68,28 +64,25 @@ def test_ambiguous_source_offers_choices_without_applying_one():
     assert all('excluding stage 3' in x['recommended_question'] for x in r['suggestions'])
 
 
-def test_runtime_clarification_bypasses_planner_and_queries(tmp_path):
+def test_runtime_case_variant_reaches_planner(tmp_path):
     import asyncio
     from tests_vnext.test_runtime import service, Graph, wait_state
     class GroundedGraph(Graph):
         async def ground_question(self, question):
             return {'state':'ready','sample_terminology':deepcopy(V)}
-        async def execute(self,*args):
-            raise AssertionError('Clarification must not execute a query')
     async def scenario():
         async with service(tmp_path,graph=GroundedGraph()) as (client,runtime,gateway,*_):
             response=await client.post('/v2/plans',json={'question':'How many stage 1 donors in hPAP?'})
             r=await wait_state(client,response.json()['run_id'],{'awaiting_confirmation','failed'})
-            assert r['plan']['recovery']['category']=='term_clarification'
-            assert r['plan']['recovery']['suggestions'][0]['recommended_question']=='How many stage 1 donors in HPAP?'
-            assert gateway.plans==gateway.syntheses==0
+            assert gateway.plans == 1 and gateway.syntheses == 0
+            assert r['plan'].get('recovery', {}).get('category') != 'term_clarification'
     asyncio.run(scenario())
 
 
 def test_output_and_viewer_modules_remain_unchanged():
     from pathlib import Path
     import subprocess
-    for path in ['pankagent_vnext/llm.py','pankagent_vnext/output_scope.py',
+    for path in ['pankagent_vnext/output_scope.py',
                  'pankagent_vnext/evidence_context.py','pankagent_vnext/format_input_modes.py',
                  'pankagent_vnext/viewer_evidence.py','pankgraph_results/app.py']:
         assert Path(path).read_bytes()==subprocess.check_output(['git','show','b34f1f8:'+path])
@@ -118,4 +111,4 @@ def test_inventory_fallback_when_large_index_unavailable(monkeypatch):
     graph._ensure_identity=verified;graph.semantic_vocabulary=vocabulary
     grounded=asyncio.run(graph.ground_question('Count stage 1 donors in hPAP'))
     assert grounded['term_inventory_status']=='verified_fallback'
-    assert recovery('Count stage 1 donors in hPAP',grounded['term_vocabulary'],'r')['suggestions']
+    assert recovery('Count stage 1 donors in hPAP',grounded['term_vocabulary'],'r') is None

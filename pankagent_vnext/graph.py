@@ -1233,7 +1233,7 @@ class GraphAdapter:
     def _resolution_signature(self, step: dict) -> str:
         if not hasattr(self, "_resolution_secret"):
             self._resolution_secret = secrets.token_bytes(32)
-        payload = {key: value for key, value in step.items() if key != "resolution_key"}
+        payload = {key: value for key, value in step.items() if key not in {"resolution_key", "gpu_participation_required"}}
         body = json.dumps([self.preview_identity(), payload], sort_keys=True, separators=(",", ":"), default=str).encode()
         return hmac.new(self._resolution_secret, body, hashlib.sha256).hexdigest()
 
@@ -1262,6 +1262,10 @@ class GraphAdapter:
         if re.fullmatch(r"MONDO_\d+", value):
             return "disease"
         return None
+
+    async def resolve_entities(self, requests):
+        from .entity_lookup import resolve_entities
+        return await resolve_entities(self, requests)
 
     async def _resolve_constraint(self, constraint: dict, index: int, step: dict) -> dict:
         entry = {"constraint_index": index, "requested": dict(constraint), "state": "unsupported",
@@ -1323,6 +1327,18 @@ class GraphAdapter:
         cache = getattr(self, "_entity_cache", {})
         self._entity_cache = cache
         cache_key = json.dumps([self.preview_identity(), label, prop, value], sort_keys=True)
+        from .entity_lookup import valid_selection
+        request_text = (step.get('semantic_request') or {}).get('question') or step.get('question', '')
+        selected = [proof for proof in step.get('entity_selection_proofs', [])
+                    if proof.get('entity_type') == label and value in {proof.get('id'), proof.get('name'), proof.get('mention')}
+                    and valid_selection(self, proof, request_text)]
+        if len(selected) == 1:
+            proof = selected[0]
+            rows = await self._small_query(f"MATCH (n:`{label}`) WHERE n.id = $id RETURN n.id AS id, n.name AS name, labels(n) AS labels", {'id': proof['id']})
+            if len(rows) == 1:
+                return {**entry, **rows[0], 'entity_type': label, 'state': 'resolved',
+                        'original_requested': {**constraint, 'property': 'name', 'value': proof['mention']},
+                        'model_identity_interpretation': proof}
         cached = cache.get(cache_key)
         if cached and time.monotonic() - cached[0] < 300:
             return {**deepcopy(cached[1]), "constraint_index": index, "requested": dict(constraint)}
@@ -1335,6 +1351,11 @@ class GraphAdapter:
         if not rows and prop == "name":
             query = f"MATCH {node} WHERE {collection_filter}toLower(n.name) = toLower($value) RETURN n.id AS id, n.name AS name, labels(n)[..16] AS labels LIMIT 3"
             rows = await asyncio.wait_for(self._small_query(query, {"value": value}), timeout)
+        if not rows and prop == 'name':
+            from .entity_lookup import LABELS, lookup
+            if label in LABELS:
+                found = await lookup(self, value, label, fuzzy=False)
+                rows = found.get('candidates', [])
         candidates = [{"id": row.get("id"), "name": row.get("name"), "labels": row.get("labels", [])}
                       for row in rows[:3]]
         invalid_metadata = any(not isinstance(row["id"], str) or not row["id"] or len(row["id"]) > 512
@@ -1420,6 +1441,8 @@ class GraphAdapter:
             return value
 
     async def _prepare_step(self, source: dict, emit) -> dict:
+        if self._resolution_verified(source):
+            return deepcopy(source)
         step = repair_step_constraints({key: value for key, value in source.items()
                                         if key not in {"resolution_key", "resolved_entities", "entity_resolution",
                                             "recovery", "semantic_issues", "resolved_constraints", "semantic_registry",
@@ -2055,6 +2078,8 @@ class GraphAdapter:
             clinical = (current.get("semantic_registry") or {}).get("clinical_intent")
             if isinstance(clinical, dict):
                 scope["clinical_intent"] = deepcopy(clinical)
+            if current.get('interpretation_warnings'):
+                scope['interpretation_warnings'] = list(current['interpretation_warnings'])
             return scope
         base = {"step_id": step.get("id"), "question": step.get("question"), "graph_version": self.settings.graph_version,
                 "nodes": [], "edges": [], "rows": [], "queries": [], "validation": [],

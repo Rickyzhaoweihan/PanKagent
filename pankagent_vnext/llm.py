@@ -1,4 +1,5 @@
-"""One structured plan, one streamed evidence answer, a shared budget gateway."""
+"""Claude-led planning and unchanged streamed evidence synthesis."""
+from copy import deepcopy
 import asyncio
 import json
 import re
@@ -172,7 +173,7 @@ class ClaudeGateway:
             if exc.status_code in (400,401,403,404,413,422,429):
                 await self.budget.asettle(rid,{})
             raise
-    async def plan(self,question,history, _repair=False, grounding=None):
+    async def plan(self,question,history, _repair=False, grounding=None, resolver=None, preparer=None):
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         from .semantic_registry import planner_guidance
         from .investigations import generic_profile_gene, expand_registered_profile
@@ -215,58 +216,32 @@ class ClaudeGateway:
                 try: proposal = compile_inputs(proposal)
                 except ValueError as exc: issue = str(exc)
             return proposal, issue
+        from .planning_session import initial_assessment
         scope_question = (grounding or {}).get('session_scope_question') or question
-        reviewed_hla_request = not history and is_hla_path_request(question)
-        cache_key = None
+        local_draft = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
-            user=json.dumps({'question':question,'history':history[-6:],'grounding':grounding_guidance(grounding)},ensure_ascii=False)
-            system_text=GROUNDED_SYSTEM
-            cache_key=self.plan_cache.key(question,history[-6:],grounding_guidance(grounding),PLANNING_VERSION,PLANNING_DIGEST,PLANNING_SCOPE_DIGEST,COMPILER_DIGEST,REQUIREMENTS_DIGEST,GENOMIC_SCOPE_DIGEST,PATTERN_PLAN_DIGEST,SCHEMA_DRAFT_DIGEST,BOUNDED_PATH_DIGEST,INDEPENDENT_CHECKS_DIGEST,COLOC_TISSUE_DIGEST,COHORT_SCOPE_DIGEST,schema,self.settings.model)
-            if not _repair and getattr(self.settings,'plan_cache_enabled',True):
-                cached=self.plan_cache.get(cache_key)
-                if cached is not None:
-                    cache_issue=plan_structure_issue(cached)
-                    if cache_issue is None:
-                        cached, cache_issue=compile_scopes(cached)
-                    cache_issue=cache_issue or scope_issue(scope_question,grounding,cached) or requirements_issue(question,grounding,cached,history)
-                    if cache_issue is None:
-                        provider_event('planning_cache', {'hit':True,'key':cache_key,'version':PLANNING_VERSION})
-                        return cached
-                    provider_event('planning_cache_rejected', {'key':cache_key,'category':cache_issue})
-            if not _repair and not chain_mode:
-                matched = (compile_signal_plan(question, grounding, history)
-                           or compile_hla_path_plan(question, grounding, history)
-                           or compile_schema_draft(question, grounding, history))
-                if matched is not None:
-                    matched, pattern_issue = compile_scopes(matched)
-                    pattern_issue = (pattern_issue or plan_structure_issue(matched)
-                                     or scope_issue(scope_question, grounding, matched)
-                                     or requirements_issue(question, grounding, matched, history))
-                    provider_event('planning_pattern', {'matched': True, 'valid': pattern_issue is None,
-                                   'category': pattern_issue, 'route': matched.get('planning_route')})
-                    if pattern_issue is None:
-                        matched = expand_compact_plan(matched)
-                        matched['retrieval_policy'] = 'partial_independent_v1'
-                        if cache_key:
-                            self.plan_cache.put(cache_key, matched)
-                        return matched
-                    if (matched.get('planning_route') or {}).get('kind') == 'verified_bounded_path':
-                        from .plan_recovery import mark_failure
-                        return mark_failure({'interpreted_question': question,
-                                             'proposal_issue': pattern_issue,
-                                             'planning_route': matched.get('planning_route')})
-        if reviewed_hla_request and not _repair:
-            from .plan_recovery import mark_failure
-            return mark_failure({'interpreted_question': question,
-                                 'proposal_issue': 'bounded_path_grounding_unavailable',
-                                 'planning_route': {'kind': 'verified_bounded_path',
-                                                    'version': 'bounded-path-v1',
-                                                    'claude_calls': 0}})
-        provider_event('planning_cache', {'hit':False,'key':cache_key,'version':PLANNING_VERSION})
+            system_text = GROUNDED_SYSTEM
+            if not chain_mode:
+                try:
+                    local_draft = (compile_signal_plan(question, grounding, history)
+                                   or compile_hla_path_plan(question, grounding, history)
+                                   or compile_schema_draft(question, grounding, history))
+                except (ValueError, KeyError, TypeError):
+                    local_draft = None  # An advisory draft cannot block Claude.
+
+            public_grounding = grounding_guidance(grounding)
+        else:
+            public_grounding = grounding or {'status': 'unavailable', 'diagnostic': 'E01'}
         if profile_gene:
-            system_text='Interpret this exact request for a comprehensive gene profile. Record the supplied gene symbol unchanged. The application expands its versioned twelve-category profile after this call and verifies the gene against the graph; do not invent filters, resolve its existence, or generate checks.'
-            schema={'type':'object','additionalProperties':False,'properties':{'gene_name':{'type':'string'}},'required':['gene_name']}
+            local_draft = expand_registered_profile(question, profile_gene)
+        user = json.dumps({'question': question, 'history': history[-6:],
+            'grounding': public_grounding, 'preliminary_assessment': initial_assessment(grounding),
+            'terminology_advisory': (grounding or {}).get('terminology_advisory'),
+            'terminology_guidance': planner_guidance(question), 'local_draft': local_draft}, ensure_ascii=False)
+        # Even exact/local/profile cases need Claude's final semantic decision.
+        if profile_gene:
+            profile_gene = None
         from .investigations import required_categories
         # Twelve complete checks need more structured output than a one-step lookup.
         # Keep the existing wall-clock deadline and persistent reservation cap.
@@ -274,82 +249,43 @@ class ClaudeGateway:
         if chain_mode:
             from .chain_drafting import GUIDANCE as CHAIN_GUIDANCE
             system_text += '\n' + CHAIN_GUIDANCE
-        rid=await self._reserve('plan',system_text,user,output_limit)
-        reply=await self._create(rid,model=self.settings.model,max_tokens=output_limit,
-          system=[{'type':'text','text':system_text,'cache_control':{'type':'ephemeral'}}],
-          messages=[{'role':'user','content':user}],
-          tools=[{'name':'record_plan','description':'Record the proposed plan for user review','input_schema':schema,'strict':True}],
-          tool_choice={'type':'tool','name':'record_plan'},**self._options())
-        await self.budget.asettle(rid,reply.usage.model_dump())
-        provider_event('planning_response', {'stop_reason':getattr(reply,'stop_reason',None),'repair':_repair})
-        for block in reply.content:
-            if block.type=='tool_use' and block.name=='record_plan':
-                plan=block.input
-                if not isinstance(plan, dict):
-                    if not _repair:
-                        return await self.plan(question, history, _repair=True, grounding=grounding)
-                    from .plan_recovery import mark_failure
-                    return mark_failure({'interpreted_question': question, 'proposal_issue': 'malformed_plan'})
-                provider_event('planning_proposal', {'plan':plan,'repair':_repair,'grounding_version':(grounding or {}).get('version')})
-                if chain_mode:
-                    from .chain_drafting import expand as expand_chain
-                    try:
-                        plan = expand_chain(plan, question)
-                    except (ValueError, KeyError, TypeError) as exc:
-                        if not _repair:
-                            return await self.plan(question, history + [{'role': 'system', 'content': 'Repair the complete path: '+str(exc)}], _repair=True, grounding=grounding)
-                        from .plan_recovery import mark_failure
-                        return mark_failure({'interpreted_question': question, 'proposal_issue': str(exc)})
-                elif profile_gene:
-                    if plan.get('gene_name') != profile_gene: raise ValueError('profile_scope_mismatch')
-                    plan=expand_registered_profile(question,profile_gene)
-                else:
-                    from .planning_output import recover_misplaced_steps
-                    plan, output_recovery = recover_misplaced_steps(plan, schema)
-                    if output_recovery:
-                        provider_event('planning_output_recovery', output_recovery)
-                self.last_success=time.time()
-                from .composable_planning import normalize as normalize_composable
-                try:
-                    plan = normalize_composable(plan)
-                except (ValueError, KeyError, TypeError):
-                    pass  # The ordinary validation and single repair report the exact issue.
-                issue = plan_structure_issue(plan)
-                if issue is None and grounding and grounding.get('status') == 'ready':
-                    plan, issue = compile_scopes(plan)
-                    provider_event('planning_constraint_compilation', {'valid':issue is None, 'category':issue,
-                        'changes':[{'step_id':s.get('id'),'bindings':s['constraint_compilation']}
-                                   for s in plan.get('steps',[]) if s.get('constraint_compilation')]})
-                    issue = issue or scope_issue(scope_question, grounding, plan) or requirements_issue(question, grounding, plan, history)
-                provider_event('planning_output_validation', {'valid': issue is None, 'category': issue})
-                if issue and issue != 'plan_too_large' and not issue.startswith('unsupported_gene_exclusion:') and not _repair:
-                    return await self.plan(question, history + [{'role':'system','content':'Repair the invalid planning output: '+issue+'. Preserve the complete original scope. Concrete genes need executable checks, not an empty plan.'}], _repair=True, grounding=grounding)
-                if issue:
-                    if issue == 'plan_too_large':
-                        return {**plan,'steps':[],'proposal_issue':issue,'clarification':'This investigation needs more than twelve graph checks. Please narrow its scope.'}
-                    from .plan_recovery import mark_failure
-                    return mark_failure({'interpreted_question':question,'proposal_issue':issue})
-                try:
-                    plan=expand_compact_plan(plan)
-                    plan['steps']=[repair_step_constraints(step) for step in plan['steps']]
-                    plan=independent_measurement_steps(plan)
-                    from .investigations import category_issue
-                    issue=category_issue(question, plan)
-                    if issue: raise ValueError(issue)
-                    if grounding and grounding.get('status') == 'ready':
-                        plan['retrieval_policy']='partial_independent_v1'
-                    if cache_key and plan.get('steps') and not plan.get('clarification'):
-                        self.plan_cache.put(cache_key,plan)
-                    return plan
-                except (ValueError, KeyError, TypeError) as exc:
-                    if not _repair:
-                        return await self.plan(question, history + [{'role':'system','content':'The last structured plan failed '+str(exc)+'. Supply valid independent checks preserving every requested category and the original scope.'}], _repair=True, grounding=grounding)
-                    from .plan_recovery import mark_failure
-                    return mark_failure({'interpreted_question':question,'proposal_issue':'planning_repair_exhausted'})
-        if not _repair:
-            return await self.plan(question, history, _repair=True, grounding=grounding)
-        from .plan_recovery import mark_failure
-        return mark_failure({'interpreted_question':question,'proposal_issue':'missing_structured_plan'})
+        def finalize(proposal, chosen):
+            nonlocal grounding
+            if grounding and grounding.get('status') == 'ready' and chosen:
+                grounding = deepcopy(grounding)
+                for proof in chosen:
+                    grounding['mentions'] = [m for m in grounding.get('mentions', [])
+                        if str(m.get('requested', '')).casefold() != proof['mention'].casefold()]
+                    grounding['mentions'].append({'requested': proof['mention'], 'state': 'resolved',
+                        'candidates': [{**proof, 'labels': [proof['entity_type']], 'match_kind': proof['match_method']}]})
+            plan = proposal
+            if chain_mode:
+                from .chain_drafting import expand
+                plan = expand(plan, question)
+            else:
+                from .planning_output import recover_misplaced_steps
+                plan, output_recovery = recover_misplaced_steps(plan, schema)
+            from .composable_planning import normalize
+            plan = normalize(plan)
+            issue = plan_structure_issue(plan)
+            if issue is None and grounding and grounding.get('status') == 'ready' and not plan.get('clarification'):
+                plan, issue = compile_scopes(plan)
+                issue = issue or scope_issue(scope_question, grounding, plan) or requirements_issue(question, grounding, plan, history)
+            if issue:
+                raise ValueError(issue)
+            plan = expand_compact_plan(plan)
+            plan['steps'] = [repair_step_constraints(step) for step in plan['steps']]
+            plan = independent_measurement_steps(plan)
+            from .investigations import category_issue
+            issue = category_issue(question, plan)
+            if issue: raise ValueError(issue)
+            plan['retrieval_policy'] = 'partial_independent_v1'
+            self.last_success = time.time()
+            return plan
+        from .planning_session import run
+        return await run(self, question, user, system_text, schema, output_limit, finalize,
+                         resolver=resolver, preparer=preparer)
+
     async def interpret_revision(self, question, instruction, parent_plan):
         from .revision_interpreter import SCHEMA, SYSTEM
         from .planning_output import matches_schema
@@ -457,7 +393,9 @@ class ClaudeGateway:
                 if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
             from .format_input_modes import input_structure
             return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope,
-                'input_structure':input_structure(evidence)},ensure_ascii=False,default=str)
+                'input_structure':input_structure(evidence),
+                'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()
+                    for w in (step.get('requested_scope') or {}).get('interpretation_warnings', [])))},ensure_ascii=False,default=str)
         body=answer_body(excerpt)
         if len(body.encode()) > MAX_BYTES:
             # Include the final question, JSON spacing and scope notes in the

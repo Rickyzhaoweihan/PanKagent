@@ -73,18 +73,18 @@ def test_definitive_stream_rejection_releases_reservation(tmp_path):
     asyncio.run(check())
 
 
-def test_registered_profile_uses_one_short_scope_call(tmp_path):
+def test_registered_profile_receives_model_review_of_full_plan(tmp_path):
     async def check():
         gateway = ClaudeGateway(Settings(state_dir=tmp_path, anthropic_key='test-placeholder'))
         calls = []
         async def create(**kwargs):
             calls.append(kwargs)
             return SimpleNamespace(usage=SimpleNamespace(model_dump=lambda: {'input_tokens': 10, 'output_tokens': 10}),
-                content=[SimpleNamespace(type='tool_use', name='record_plan', input={'gene_name':'GLIS3'})])
+                content=[SimpleNamespace(type='tool_use', name='record_plan', input=__import__('pankagent_vnext.investigations', fromlist=['expand_registered_profile']).expand_registered_profile('Give me a comprehensive gene profile of GLIS3.', 'GLIS3'))])
         gateway.client.messages.create = create
         try:
             plan = await gateway.plan('Give me a comprehensive gene profile of GLIS3.', [])
-            assert len(calls) == 1 and calls[0]['max_tokens'] == 200
+            assert len(calls) == 1 and calls[0]['max_tokens'] >= 2400
             assert len(plan['steps']) == 12
             assert plan['steps'][9]['depends_on'] == ['s9']
             assert gateway.budget.snapshot()['pending_calls'] == 0

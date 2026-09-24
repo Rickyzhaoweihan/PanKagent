@@ -35,10 +35,10 @@ def test_cache_revalidates_filters_and_versions_before_reusing_a_plan(monkeypatc
                 SimpleNamespace(type='tool_use', name='record_plan', input=deepcopy(proposal))])
         gateway._create = create
         first = await gateway.plan(question, [], grounding=grounding)
-        assert len(calls) == 0  # This fully grounded lookup has a deterministic plan.
+        assert len(calls) == 1  # Local knowledge is advisory, not a model bypass.
         assert await gateway.plan(question, [], grounding=grounding) == first
-        assert len(calls) == 0  # A valid revisit adds no inference.
-        assert any(name == 'planning_cache' and data['hit'] for name, data in events)
+        assert len(calls) == 2  # Each fresh request receives a model decision.
+        assert not any(name == 'planning_cache' and data['hit'] for name, data in events)
 
         def assert_scope(plan):
             assert len(plan['steps']) == 1
@@ -53,12 +53,12 @@ def test_cache_revalidates_filters_and_versions_before_reusing_a_plan(monkeypatc
         assert_scope(first)
 
         # A corrupt cached plan must not bypass raw requested-scope checking.
-        key, (expiry, saved) = next(iter(gateway.plan_cache.values.items()))
+        key, expiry, saved = 'legacy-entry', 9999999999, deepcopy(first)
         broken = deepcopy(saved)
         broken['steps'][0]['constraints'] = [c for c in broken['steps'][0]['constraints'] if c['entity_type'] == 'Gene']
         gateway.plan_cache.values[key] = (expiry, broken)
         repaired = await gateway.plan(question, [], grounding=grounding)
-        assert len(calls) == 0
+        assert len(calls) == 3
         assert_scope(repaired)
         assert repaired['steps'][0]['requested_scope_compilation']
 
@@ -68,14 +68,12 @@ def test_cache_revalidates_filters_and_versions_before_reusing_a_plan(monkeypatc
         gateway.plan_cache.values[key] = (expiry, wrong_identity)
         rebuilt = await gateway.plan(question, [], grounding=grounding)
         assert_scope(rebuilt)
-        assert any(name == 'planning_cache_rejected' for name, _ in events)
-        assert len(calls) == 0
+        assert len(calls) == 4
 
         # Validator changes invalidate the key, even with identical inputs.
         monkeypatch.setattr(scope, 'DIGEST', 'new-scope-contract')
         updated = await gateway.plan(question, [], grounding=grounding)
         assert_scope(updated)
-        assert set(gateway.plan_cache.values) > {key}
-        assert len(gateway.plan_cache.values) == 2
-        assert len(calls) == 0
+        assert set(gateway.plan_cache.values) == {key}
+        assert len(calls) == 5
     asyncio.run(check())

@@ -179,7 +179,7 @@ def test_saved_region_proposals_pass_full_gateway_scope_and_repair_pipeline(inde
         assert cells and all(c['property'] == 'id' and c['operator'] == '=' and c['value'] == ALPHA[1] for c in cells)
         assert any(c['requested']['property'] == 'cell_type' for c in second['constraint_compilation'])
         assert await gateway.plan(SAVED['question'], [], grounding=data) == result
-        assert len(calls) == 1
+        assert len(calls) == 2
     asyncio.run(check())
 
 
@@ -210,7 +210,7 @@ def test_negative_alias_cannot_satisfy_requested_positive_cell_scope(operator):
             cell['value'] = [cell['value']]
         gateway, calls = gateway_for(lambda _: deepcopy(raw))
         result = await gateway.plan(SAVED['question'], [], grounding=region_grounding())
-        assert len(calls) == 2
+        assert len(calls) == 3
         assert result['proposal_issue'] == 'unknown_property_owner:s2:cell_type:'
         assert result['steps'] == [] and result['recovery']['category'] == 'planning_failure'
     asyncio.run(check())

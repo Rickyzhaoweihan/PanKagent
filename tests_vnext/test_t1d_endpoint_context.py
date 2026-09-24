@@ -166,7 +166,7 @@ def test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_corre
         assert any(binding['requested']['property'].endswith('end_id') for binding in second['constraint_compilation'])
         assert any(binding['to'] == 'required relationship T1D_DEG_IN' for binding in second['schema_bindings'])
         assert await gateway.plan(SAVED['question'], [], grounding=data) == result
-        assert len(calls) == 1 and raw == before
+        assert len(calls) == 2 and raw == before
         # Saved Cypher text is exact; dependency IDs here are a controlled
         # validation fixture. This performs no graph read or model call.
         step = {**second, 'graph_version': data['identity']['graph_release']}
@@ -188,7 +188,7 @@ def test_user_requested_raw_endpoint_survives_gateway_cache_and_validation(endpo
         assert len(calls) == 1 and not result.get('proposal_issue')
         second = result['steps'][1]
         assert any(c['property'] == 'end_id' and c['relationship_type'] == 'T1D_DEG_IN' for c in second['constraints'])
-        assert await gateway.plan(question, [], grounding=data) == result and len(calls) == 1
+        assert await gateway.plan(question, [], grounding=data) == result and len(calls) == 2
         step = {**second, 'graph_version': data['identity']['graph_release']}
         parameters = {'dep_0': ['ENSG00000186868']}
         assert validate_cypher(SAVED['candidate_queries'][1], step, parameters) == []

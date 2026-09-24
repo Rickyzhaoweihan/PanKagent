@@ -90,7 +90,7 @@ def dataset_source_owner(question, value, occurrence=None):
                      or re.match(r'[\"\']?\s+(?:donors?|cohort)\b', after, re.I))
         if not sample and not donor:
             donor = bool(
-                re.search(r'\b(?:donors?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s+(?:the\s+)?$', before, re.I)
+                re.search(r'\b(?:donors?|cohort)\s+(?:(?:are\s+)?available\s+)?(?:in|from|provided\s+by|sourced\s+from)\s+(?:the\s+)?$', before, re.I)
                 or re.search(r'\b(?:donors?|cohort)\s+(?:excluding|exclude|without|except)\b[^.!?;]{0,70}$', before, re.I)
                 or re.match(r'\s*(?:-(?:only|derived))?\s+'
                          r'(?:[A-Za-z0-9_:/()+.-]+\s+){0,8}'

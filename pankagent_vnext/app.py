@@ -381,7 +381,15 @@ class Runtime:
                         grounding_started = time.monotonic()
                         from .followup_scope import grounding_question
                         scoped_question = grounding_question(run['question'], prior_answer)
-                        grounding = await self.graph.ground_question(scoped_question)
+                        try:
+                            grounding = await asyncio.wait_for(self.graph.ground_question(scoped_question), 25)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            grounding = {'status': 'unavailable', 'diagnostic': 'E01',
+                                         'error_category': type(exc).__name__}
+                        if not isinstance(grounding, dict):
+                            grounding = {'status': 'unavailable', 'diagnostic': 'E01'}
                         if scoped_question != run['question']:
                             grounding['session_scope_question'] = scoped_question
                         (await self.io.call(self.store.audit_event, run_id, 'preplanning_grounding', grounding))
@@ -390,14 +398,35 @@ class Runtime:
                         if 'grounding' in inspect.signature(self.gateway.plan).parameters:
                             plan_options['grounding'] = grounding
                     model_started = time.monotonic()
+                    import inspect
                     from .term_clarification import recovery as term_recovery
                     term_issue = term_recovery(run["question"], (grounding or {}).get("term_vocabulary") or (grounding or {}).get("sample_terminology") or {}, self.settings.graph_version)
                     if term_issue:
-                        proposed = {"interpreted_question": run["question"], "steps": [],
-                            "clarification": term_issue["message"], "recovery": term_issue,
-                            "planning_route": {"claude_calls": 0, "reason": "term_clarification"}}
-                    else:
-                        proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
+                        grounding = {**(grounding or {}), 'terminology_advisory': term_issue}
+                        if 'grounding' in inspect.signature(self.gateway.plan).parameters:
+                            plan_options['grounding'] = grounding
+                    parameters = inspect.signature(self.gateway.plan).parameters
+                    if 'resolver' in parameters and hasattr(self.graph, 'resolve_entities'):
+                        plan_options['resolver'] = self.graph.resolve_entities
+                    if 'preparer' in parameters and hasattr(self.graph, 'prepare_plan'):
+                        async def prepare_proposal(proposal):
+                            from .filter_recovery import recover_filter_failures
+                            try:
+                                prepared = await self.graph.prepare_plan(normalize_plan(proposal),
+                                    lambda kind, payload: self.emit(run_id, kind, payload))
+                                return recover_filter_failures(prepared)
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as exc:
+                                raise ValueError('E01 preparation service unavailable: ' + type(exc).__name__) from exc
+                        plan_options['preparer'] = prepare_proposal
+                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
+                    # Only a model-requested terminology clarification activates the existing revision UI.
+                    if term_issue and proposed.get('clarification') and not proposed.get('steps'):
+                        wording = str(proposed['clarification']).casefold()
+                        labels = [c['label'].casefold() for item in term_issue.get('issues', []) for c in item.get('candidates', [])]
+                        if any(label in wording for label in labels):
+                            proposed['recovery'] = {**term_issue, 'message': proposed['clarification']}
                     self.metrics.observe("model_plan", time.monotonic() - model_started)
                     (await self.io.call(self.check_active, run_id))
                     if proposed.get('planning_route', {}).get('claude_calls') == 0:

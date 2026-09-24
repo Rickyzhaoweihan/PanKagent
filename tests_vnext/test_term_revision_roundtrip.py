@@ -20,7 +20,7 @@ def test_apply_suggestion_reaches_planner_with_one_question(tmp_path, manual):
         async def plan(self,question,history):
             self.received=question
             self.plans+=1
-            return {'interpreted_question':question,'steps':[], 'clarification':'A separate stage-inventory check is required.'}
+            return {'interpreted_question':question,'steps':[], 'clarification':'Do you mean HPAP?' if 'nPAP' in question else 'A separate stage-inventory check is required.'}
     async def scenario():
         gateway=Capture()
         async with service(tmp_path,graph=Grounded(),gateway=gateway) as (client,runtime,*_):
@@ -37,7 +37,7 @@ def test_apply_suggestion_reaches_planner_with_one_question(tmp_path, manual):
             audit=runtime.store.audit_metadata(new['run_id'])
             assert audit.get('raw_original_question',audit.get('original_question'))==original
             assert audit['retry_submitted_text']==payload['question']
-            assert gateway.plans==1
+            assert gateway.plans==2
     asyncio.run(scenario())
 
 

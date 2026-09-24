@@ -118,9 +118,9 @@ def test_live_shaped_typed_assay_grounding_preserves_exact_sample_roles(question
         assert step['relation_types'] == ['HAS_SAMPLE'] and not step['depends_on']
         assert any(c['entity_type'] == 'donor' and c['property'] == 'data_source' for c in step['constraints'])
     async def check():
-        gateway, calls = gateway_for(lambda _: {})
+        gateway, calls = gateway_for(lambda _: deepcopy(compile_schema_draft(question, data)))
         result = await gateway.plan(question, [], grounding=data)
-        assert not calls and not result.get('proposal_issue')
+        assert len(calls) == 1 and not result.get('proposal_issue')
         assert len(result['steps']) == len(assays)
     asyncio.run(check())
 
@@ -155,7 +155,7 @@ def test_multi_assay_or_question_reaches_general_planner_instead_of_typed_union_
     question = 'Find HPAP donors with spleen BCR-seq or TCR-seq samples.'
     data = sample_grounding(question)
     async def check():
-        gateway, calls = gateway_for(lambda _: {})
+        gateway, calls = gateway_for(lambda _: deepcopy(compile_schema_draft(question, data)))
         result = await gateway.plan(question, [], grounding=data)
         assert calls and result.get('proposal_issue')
         assert result.get('planning_route', {}).get('kind') != 'verified_schema_pattern'
@@ -209,8 +209,8 @@ def test_independent_count_route_does_not_accept_intersection_exclusion_or_mixed
 def test_gateway_accepts_scoped_draft_without_provider_call(question):
     data = sample_grounding(question)
     async def check():
-        gateway, calls = gateway_for(lambda _: {})
+        gateway, calls = gateway_for(lambda _: deepcopy(compile_schema_draft(question, data)))
         result = await gateway.plan(question, [], grounding=data)
-        assert not calls and not result.get('proposal_issue') and result['steps']
-        assert result['planning_route']['claude_calls'] == 0
+        assert len(calls) == 1 and not result.get('proposal_issue') and result['steps']
+        assert result['planning_route']['claude_calls'] == 1
     asyncio.run(check())

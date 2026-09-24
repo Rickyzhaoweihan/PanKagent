@@ -8,7 +8,7 @@ SOURCE_EXPANSIONS = {'HPAP': ('Human Pancreas Analysis Program',)}
 
 def source_role_text(text, vocabulary):
     """A verified source's explicit long name is not an anatomical predicate."""
-    sources = set(vocabulary.get('donor_sources', [])) | set(vocabulary.get('sample_sources', []))
+    sources = set(vocabulary.get('donor_sources') or []) | set(vocabulary.get('sample_sources') or [])
     for source, names in SOURCE_EXPANSIONS.items():
         if source not in sources:
             continue
@@ -23,7 +23,7 @@ def candidates(question, vocabulary):
     from .tissue_aliases import PLN_ID, PLN_NAME, PLN_ALIASES
     from .anatomy_resolution import ALIASES
     records = []
-    for name in sorted(set(vocabulary.get('donor_sources', [])) | set(vocabulary.get('sample_sources', []))):
+    for name in sorted(set(vocabulary.get('donor_sources') or []) | set(vocabulary.get('sample_sources') or [])):
         if isinstance(name, str):
             records.append({'role': 'source', 'name': name, 'id': name, 'aliases': [name]})
     for tissue in vocabulary.get('tissues', []):
@@ -48,9 +48,7 @@ def candidates(question, vocabulary):
         tail = question[match.start(1):]
         exact = [r for r in records if any(re.match(re.escape(a)+r'(?!\w)', tail, re.I) for a in r['aliases'])]
         if exact:
-            if any(token in r['aliases'] or r['role'] == 'tissue' for r in exact):
-                continue
-            options = [(r, r['name'], 'case_variant', 1.0) for r in exact if r['name'].casefold() == token.casefold()]
+            continue  # Case-insensitive recorded names are already canonical identities.
         else:
             options = []
             for r in records:

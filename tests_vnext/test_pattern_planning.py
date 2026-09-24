@@ -193,13 +193,13 @@ def test_gateway_pattern_admission_bypasses_provider_and_revalidates_cache():
     question = 'For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?'
     data = grounded(question)
     async def check():
-        gateway, calls = gateway_for(lambda _: {})
+        gateway, calls = gateway_for(lambda _: deepcopy(compile_signal_plan(question, data)))
         result = await gateway.plan(question, [], grounding=data)
-        assert not calls and result['planning_route']['claude_calls'] == 0
+        assert len(calls) == 1 and result['planning_route']['claude_calls'] == 1
         assert len(result['steps']) == 3
         assert all(s['complete'] for s in result['steps'])
         assert await gateway.plan(question, [], grounding=data) == result
-        assert not calls
+        assert len(calls) == 2
     asyncio.run(check())
 
 
@@ -208,16 +208,16 @@ def test_no_variant_coloc_role_frame_bypasses_provider_and_reuses_verified_cache
     question = 'Does the T1D GWAS signal near the PLEKHM1 gene colocalize with a QTL signal for PLEKHM1?'
     data = grounded(question, [PLEKHM1])
     async def check():
-        gateway, calls = gateway_for(lambda _: {})
+        gateway, calls = gateway_for(lambda _: deepcopy(compile_signal_plan(question, data)))
         result = await gateway.plan(question, [], grounding=data)
-        assert not calls and result['planning_route']['claude_calls'] == 0
+        assert len(calls) == 1 and result['planning_route']['claude_calls'] == 1
         assert len(result['steps']) == 1
         step = result['steps'][0]
         assert step['relation_types'] == ['SIGNAL_COLOC_WITH']
         assert {c['entity_type']: c['value'] for c in step['constraints']} == {
             'Gene': 'ENSG00000225190', 'disease': 'MONDO_0005147'}
         assert await gateway.plan(question, [], grounding=data) == result
-        assert not calls
+        assert len(calls) == 2
     asyncio.run(check())
 
 
@@ -230,9 +230,9 @@ def test_no_variant_coloc_executes_local_template_with_grounded_policy_disabled(
     data = grounded(question, [PLEKHM1])
 
     async def check():
-        gateway, planning_calls = gateway_for(lambda _: {})
+        gateway, planning_calls = gateway_for(lambda _: deepcopy(compile_signal_plan(question, data)))
         plan = await gateway.plan(question, [], grounding=data)
-        assert not planning_calls
+        assert len(planning_calls) == 1
 
         graph = FakeAdapter([])
         graph.settings.graph_version = REGISTRY['release']

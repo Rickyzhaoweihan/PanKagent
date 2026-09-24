@@ -52,6 +52,9 @@ class ResolverGraph(GraphAdapter):
             self.assert_no_parameters(params)
             return [{"name": row["name"]} for row in sorted(rows, key=lambda row: row.get("name") or "")
                     if row.get("name") is not None][:2000]
+        if params and 'mention' in params:
+            from pankagent_vnext.entity_lookup import match_fields
+            return copy.deepcopy([row for row in rows if match_fields(row, params['mention'])][:11])
         if not params or set(params) != {"value"} or "$value" not in query:
             raise AssertionError("ResolverGraph received an unsupported metadata query")
         if "toLower" in query:

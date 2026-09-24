@@ -254,7 +254,7 @@ def test_gateway_compiles_region_before_scope_checks_and_revalidates_cache():
         assert result['steps'] and result['interpreted_question'] == QUESTION
         assert scope_issue(QUESTION, grounding(), result) is None
         assert await gateway.plan(QUESTION, [], grounding=grounding()) == result
-        assert len(calls) <= 1
+        assert len(calls) == 2
 
     asyncio.run(check())
 
