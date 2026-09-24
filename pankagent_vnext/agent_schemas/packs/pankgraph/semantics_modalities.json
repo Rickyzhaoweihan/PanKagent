@@ -1,0 +1,192 @@
+{
+  "schema": {
+    "id": "kg-agent.semantics",
+    "version": "1.0.0"
+  },
+  "terminology": {
+    "VERSION": "pankgraph-semantics-v10-request-authority",
+    "RELEASE": "PanKgraph_08_04",
+    "SOURCE": "https://hpap.pmacs.upenn.edu/analysis",
+    "STAGES": {
+      "1": "Stage 1: two or more autoantibodies, normal glucose metabolism level",
+      "3": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis"
+    },
+    "PROPERTIES": {
+      "donor": [
+        "id",
+        "data_source",
+        "data_version",
+        "data_source_url",
+        "diabetes_type",
+        "hla_typing",
+        "c_peptide_ng_ml",
+        "aab_state",
+        "other_disease_records",
+        "gender",
+        "hla_status",
+        "age",
+        "hba1c_percentage",
+        "center_donor_id",
+        "pancdb_id",
+        "other_therapy",
+        "creation_date",
+        "hospital_stay_hours",
+        "bmi",
+        "pankbase_id",
+        "t1d_stage",
+        "race",
+        "rrid",
+        "diabetes_duration",
+        "predicted_genetic_ancestry",
+        "family_history_of_diabetes",
+        "sex_at_birth",
+        "donation_type",
+        "cause_of_death",
+        "derived_diabetes_status"
+      ],
+      "Sample_node": [
+        "id",
+        "data_source",
+        "data_version",
+        "data_modality",
+        "anatomical_structure",
+        "note",
+        "contact"
+      ],
+      "data_modality": [
+        "id",
+        "data_source",
+        "data_version"
+      ],
+      "disease": [
+        "id",
+        "name",
+        "description",
+        "data_source",
+        "data_version",
+        "synonyms",
+        "data_source_url"
+      ]
+    },
+    "ALIASES": {
+      "scrnaseq": "scRNA-seq",
+      "singlecellrnaseq": "scRNA-seq",
+      "snmultiomics": "snMultiomics",
+      "multiome": "snMultiomics",
+      "multiomics": "snMultiomics",
+      "snrnaseq": "snRNA-seq",
+      "scatacseq": "scATAC-seq",
+      "singlecellatacseq": "scATAC-seq",
+      "snatacseq": "snATAC-seq",
+      "citeseqprotein": "CITE-seq Protein"
+    },
+    "CAPABILITIES": {
+      "scRNA-seq": [
+        "RNA"
+      ],
+      "scATAC-seq": [
+        "ATAC"
+      ],
+      "snMultiomics": [
+        "RNA",
+        "ATAC"
+      ],
+      "CITE-seq Protein": [
+        "protein"
+      ]
+    }
+  },
+  "modalities": [
+    {
+      "label": "scRNA-seq",
+      "aliases": [
+        "scRNAseq",
+        "scRNA seq",
+        "single-cell RNA sequencing"
+      ]
+    },
+    {
+      "label": "scATAC-seq",
+      "aliases": [
+        "scATACseq",
+        "single-cell ATAC sequencing"
+      ]
+    },
+    {
+      "label": "snMultiomics",
+      "aliases": [
+        "single-nucleus multiomics"
+      ]
+    },
+    {
+      "label": "Bulk RNA-seq",
+      "aliases": [
+        "bulk RNA sequencing"
+      ]
+    },
+    {
+      "label": "Bulk ATAC-seq",
+      "aliases": [
+        "bulk ATAC sequencing"
+      ]
+    },
+    {
+      "label": "BCR-seq",
+      "aliases": [
+        "BCR sequencing"
+      ]
+    },
+    {
+      "label": "TCR-seq",
+      "aliases": [
+        "TCR sequencing"
+      ]
+    },
+    {
+      "label": "CITE-seq Protein",
+      "aliases": []
+    },
+    {
+      "label": "CODEX",
+      "aliases": []
+    },
+    {
+      "label": "IMC",
+      "aliases": [
+        "imaging mass cytometry"
+      ]
+    },
+    {
+      "label": "Flow Cytometry",
+      "aliases": []
+    },
+    {
+      "label": "Calcium Imaging",
+      "aliases": []
+    },
+    {
+      "label": "Oxygen Consumption",
+      "aliases": []
+    },
+    {
+      "label": "Perifusion",
+      "aliases": []
+    }
+  ],
+  "prompt_modules": [
+    {
+      "id": "colocalization",
+      "text": "\nColocalization topology and signal linkage (including when grounding times out):\nSIGNAL_COLOC_WITH is (Gene)-[coloc]->(disease), e.g. ADCY3 to T1D. It is never Gene-to-variant or variant-to-Gene. The SNP is not a colocalization endpoint. Preserve the requested disease explicitly on the coloc and GWAS checks. Without a grounded canonical ID, preserve the user literal exactly: for T1D use entity_type=disease, property=name, value=T1D, operator== and let entity resolution bind it. Do not replace T1D with a newly expanded name or guess an ontology ID; textual expansion can lose request-authorization provenance.\nFor a question naming a gene, disease and rsID, create three independent checks: (1) Gene-to-disease SIGNAL_COLOC_WITH records, constrained only by the requested gene, disease and explicitly requested supported coloc properties; (2) requested variant-to-disease PART_OF_GWAS_SIGNAL membership; (3) requested variant-to-Gene PART_OF_QTL_SIGNAL membership. Retain primary coloc records even if either membership lookup is empty or unavailable. Do not assume a mentioned rsID is a lead variant, and do not add gwas_lead_vars/qtl_lead_vars filters unless the user explicitly requires a lead role.\nReturn coloc relationship annotations gwas_signal_id, qtl_signal_id, coloc_dataset, gwas_lead_vars, qtl_lead_vars and pp_h4_abf, together with membership annotations. The existing backend compares these recorded signal identities after retrieval: gwas_signal_id matches GWAS credible_set_id using the verified release-specific __selected suffix rule; qtl_signal_id matches QTL credible_set with the same gene and the coloc_dataset-specific data_source and tissue_id. Preserve source, tissue and disease context; a shared SNP or gene alone is not proof of matching signals. Signal identifiers and lead variants are different fields. Do not invent signal identifiers or require the SNP to be a member of both signals to retain recorded colocalization.\nFor example, 'For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?' needs ADCY3-to-T1D coloc plus rs13393590-to-T1D GWAS and rs13393590-to-ADCY3 QTL checks. Backend linkage determines which coloc record the variant supports and in which role. Missing membership means unverified linkage, not absence of the primary coloc record.\n"
+    },
+    {
+      "id": "donor_samples",
+      "text": "Donor-to-sample follow-ups:\nInterpret 'these donors' using the prior verified backend donor population and unchanged cohort/source/stage/exclusion scope. Produce a standalone effective question retaining this scope. Formatter samples, displayed example IDs and aggregate counts are not complete backend identity sets. Never derive donor IDs from an aggregate count or make up IDs.\nThe graph direction is (d:donor)-[:HAS_SAMPLE]->(s:Sample_node). The assay filter belongs to s.data_modality, not a separate scRNA-seq sample node type. The same pattern applies to every recorded sample modality. Count DISTINCT s.id, not relationships or donors. Return matching sample identities and donor links for inspection when needed; an indexed sample does not prove downloadable files exist.\nIf complete verified donor IDs are supplied as backend scope, one HAS_SAMPLE query anchored to those donor IDs is sufficient. Do not repeat HAS_DONOR or require a disease/tissue witness merely to get samples. Never encode a previous run ID as a current-plan dependency. If verified IDs are unavailable to this plan, first retrieve the complete donor population using the preserved filters, then retrieve its samples. For this donor population step, retrieve donor identities rather than only a count.\nFor an ordinary donor-to-sample dependent step use relation_types=[\"HAS_SAMPLE\"], depends_on=[\"donors\"], input_bindings=[{\"step_id\":\"donors\",\"entity_type\":\"donor\",\"source_role\":\"\",\"target_role\":\"source\"}]. The donor is the source endpoint; the sample is the target. target_role=\"donor\" is invalid unless an explicit path_spec declares that role. No path_spec is needed for this single edge.\nThe sample constraint is {\"entity_type\":\"Sample_node\",\"property\":\"data_modality\",\"operator\":\"=\",\"value\":<recorded modality label>}. Do not add HAS_DONOR to the sample step. Preserve HPAP/source, stage, polarity and independent clinical conditions in the donor retrieval; never guess the full stored clinical-stage sentence. Clinical metadata is resolved by the existing grounding pipeline.\nExample: after 'How many T1D stage 2 donors are available in HPAP?', 'How many scRNAseq samples are available for these donors?' means count distinct Sample_node IDs connected to that exact verified donor cohort, with the recorded scRNA-seq assay scope. This is a normal donor-to-sample lookup, not a long connected-path request.\nModality entries below are terminology guidance, not authorization or inventory proof. Use runtime grounding to verify labels. Preserve negations, explicit exact-assay requests and the existing reviewed multiome capability policy. Do not silently equate scRNA-seq, bulk RNA-seq and snMultiomics; do not infer that an RNA component is a standalone scRNA-seq sample. New capabilities or cross-modality expansions require a separately reviewed semantic rule.\nAsking what tissues/cell types the samples are from requests output annotations, not a tissue restriction. Retrieve the matching samples across recorded tissues and retain their anatomical_structure metadata; optional tissue annotations must not exclude samples without annotations. Do not invent a cell type from a tissue label. Missing annotations are reported as unavailable by the answer, not a reason to reject an otherwise valid sample query.\n"
+    }
+  ],
+  "clinical_distinctions": [
+    "ND is a positive recorded control category, not not-T1D.",
+    "Recorded stage is independent from diagnosed disease.",
+    "HPAP donor source does not impose sample source.",
+    "An unspecified tissue is an annotation request, not an unresolved tissue filter."
+  ]
+}

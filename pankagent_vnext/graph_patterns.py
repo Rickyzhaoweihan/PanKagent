@@ -5,13 +5,14 @@ composition rules. These are guidance facts, not an execution allowlist: novel
 questions still use the grounded generator and full query validation.
 """
 from copy import deepcopy
+from .agent_schemas import module as schema_module
 import hashlib
 import json
 from pathlib import Path
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST, guidance as schema_guidance
 
-_RAW = Path(__file__).with_suffix('.json').read_bytes()
+_RAW = json.dumps(schema_module('query_patterns')['library'], sort_keys=True).encode()
 LIBRARY = json.loads(_RAW)
 VERSION = LIBRARY['version']
 DIGEST = hashlib.sha256(_RAW + Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()).hexdigest()

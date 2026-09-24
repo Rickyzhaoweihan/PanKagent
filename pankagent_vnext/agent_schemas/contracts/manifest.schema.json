@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KG agent schema pack manifest",
+  "type": "object",
+  "required": [
+    "schema",
+    "pack",
+    "standard",
+    "modules",
+    "execution_modes",
+    "primary_backend"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "const": "kg-agent.pack"
+        },
+        "version": {
+          "const": "1.0.0"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pack": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]+$"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "standard": {
+      "type": "object",
+      "required": [
+        "repository",
+        "branch",
+        "version",
+        "commit",
+        "contract_sha256"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "contract_sha256": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "modules": {
+      "type": "object",
+      "required": [
+        "graph_storage",
+        "identity",
+        "semantics_modalities",
+        "query_patterns",
+        "validation_repair"
+      ],
+      "properties": {
+        "graph_storage": {
+          "const": "graph_storage.json"
+        },
+        "identity": {
+          "const": "identity.json"
+        },
+        "semantics_modalities": {
+          "const": "semantics_modalities.json"
+        },
+        "query_patterns": {
+          "const": "query_patterns.json"
+        },
+        "validation_repair": {
+          "const": "validation_repair.json"
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution_modes": {
+      "const": [
+        "parallel",
+        "chain",
+        "mixed"
+      ]
+    },
+    "primary_backend": {
+      "const": "neo4j"
+    }
+  }
+}

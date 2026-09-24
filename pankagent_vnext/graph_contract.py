@@ -3,40 +3,14 @@
 Labels/relationships verified by read-only RL metadata on 2026-09-07.
 Measurement guidance is release-specific, not a scientific answer template.
 """
+from .agent_schemas import module as schema_module
 import hashlib
 import json
 import re
 
 VERSION = 'pankgraph-08-04-intent-v10-runtime-identity'
-RELATIONS = {
-    'GENE_ENRICHED_IN': 'Gene -> anatomical_structure; measured enrichment, not exclusive expression. Properties: padj, pvalue, log2_fold_change, rank_in_cell_type, condition.',
-    'GENE_DETECTED_IN': 'Gene -> anatomical_structure; detection/expression, not enrichment. Recorded measurements include median_donor_log_cpm, median_donor_cpm, median_pct_cells_expressing, total_cells, expression_call and condition. There is no generic rank or id property on this relationship; do not ORDER BY nonexistent fields or invent a ranking. Return recorded measurements without invented significance cutoffs.',
-    'MARKER_GENE_OF': 'Gene -> cell type (anatomical_structure, category cell_type), never its enclosing tissue. Marker annotation is distinct from measured enrichment. Return recorded markers without invented rank cutoffs; preserve cell types that have no recorded markers in a separate cell-type check.',
-    'T1D_DEG_IN': 'Gene -> anatomical_structure; differential expression in T1D. T1D context is encoded by this relationship, not a disease endpoint or extra disease-id predicate. No GENE_ANNOTATION join exists. adjusted_p_value is distinct from enrichment padj.',
-    'EFFECTOR_GENE_OF': 'Gene -> disease; effector prioritization evidence, not differential expression. Preserve the requested disease.',
-    'FUNCTION_ANNOTATION': 'Gene -> kegg or reactome; pathway membership is annotation, not pathway activation.',
-    'ASSOCIATED_WITH_GO': 'Gene -> GO_term; GO_term.go_domain stores biological_process, molecular_function or cellular_component. Neither namespace nor ontology_namespace exists. Constrain the GO_term node go_domain for a requested ontology domain.',
-    'PHYSICAL_INTERACTION': 'Gene interaction evidence; preserve both requested endpoints.',
-    'GENETIC_INTERACTION': 'Gene interaction evidence; preserve both requested endpoints.',
-    'PART_OF_QTL_SIGNAL': 'Molecular QTL evidence; tissue_id, tissue_name, nominal_p, pip. Molecular association is not disease association.',
-    'PART_OF_GWAS_SIGNAL': 'Disease association/credible-set evidence; PIP is candidate support, not effect size.',
-    'SIGNAL_COLOC_WITH': 'Gene -> disease; recorded colocalization evidence. The relationship itself stores gwas_signal_id, qtl_signal_id, gwas_lead_vars, qtl_lead_vars, gwas_locus_name, qtl_locus_name and pp_h4_abf. A request to show the GWAS/QTL signal identities can be answered from these fields without an extra PART_OF_GWAS_SIGNAL or PART_OF_QTL_SIGNAL join. Retrieve primary coloc records directly; optional signal enrichment must not remove them. Shared-signal support is not proof of mechanism.',
-    'GENE_ACTIVITY_SCORE_IN': 'Gene activity; cohort-specific measurements are columns, not invented condition_id predicates.',
-    'HAS_DONOR': 'Disease and donor cohort link; use actual donor diabetes_type/derived_diabetes_status fields. Available donor metadata also includes aab_state, hla_status and hla_typing. Recorded autoantibody or HLA metadata lookup is supported; do not reject it as requiring new genotype inference. Preserve the recorded source and distinguish a recorded typing/status field from newly inferred genotype or clinical risk.',
-    'HAS_SAMPLE': 'Sample linkage; Sample_node is the node label.',
-    'OCR_PEAK_IN': 'Chromatin accessibility evidence.',
-    'FGSEA_ENRICHED_IN': 'Recorded gene-set enrichment evidence, not direct gene expression. A request for pathways enriched in a named cell type is an existing-record lookup using this relationship. Retrieve available recorded comparisons and conditions without requiring the user to choose annotation versus enrichment or supply a new contrast/ranked gene list. Explain missing analysis context in the answer. Ask for a contrast only when the user requests a new enrichment calculation, which this lookup does not perform.',
-    'PART_OF': 'Contained tissue or region -> containing tissue. Pancreatic islet and exocrine pancreas both point PART_OF toward pancreas.',
-    'HAS_CELL_TYPE': 'Cell type -> tissue (both nodes are anatomical_structure). For a requested tissue use (cell)-[:HAS_CELL_TYPE]->(tissue), never tissue -> cell. The stored direction differs from the English relationship name. Whole-organ cell profiles include contained tissues via tissue -> PART_OF -> organ and narrower cell groups via child -> SUBCLASS_OF -> parent. A direct cell-to-organ match alone misses endocrine and exocrine subclasses. Use separate validated checks or explicit fixed paths; do not invent unsupported variable-length queries.',
-    'SUBCLASS_OF': 'Child cell group -> parent cell group. Include recorded child groups when the question asks broadly for cell types, preserving source labels and grouping; major does not specify a rank cutoff.',
-    'HAS_STATE': 'Base cell type -> recorded state. State expansion is distinct from child-to-parent SUBCLASS_OF direction.',
-    'REPRESENTS_COMPOSITE_LABEL': 'Composite cell-label linkage.',
-    'LYMPH_FLOWS_TO': 'Anatomical lymph flow.', 'ADJACENT_TO': 'Anatomical adjacency.',
-}
-LABELS = ['Gene', 'disease', 'anatomical_structure', 'GO_term', 'reactome', 'kegg',
-          'variants', 'donor', 'Sample_node', 'data_modality', 'OCR_peak',
-          'regulatory_elements', 'ontology', 'sequence_variant', 'snv', 'deletion',
-          'indel', 'insertion', 'provenance']
+RELATIONS = schema_module('graph_storage')['relationship_guidance']
+LABELS = schema_module('graph_storage')['labels']
 from .semantic_registry import DIGEST as SEMANTIC_DIGEST
 from .release_schema import REGISTRY as RELEASE_REGISTRY, DIGEST as SCHEMA_DIGEST
 from .anatomy_paths import DIGEST as ANATOMY_PATH_DIGEST

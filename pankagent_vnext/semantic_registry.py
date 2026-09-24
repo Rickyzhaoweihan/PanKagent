@@ -1,29 +1,20 @@
 """Release-scoped terminology and assay capabilities; never executable Cypher."""
 from copy import deepcopy
+from .agent_schemas import module as schema_module
 from difflib import get_close_matches
 import hashlib
 import json
 from pathlib import Path
 import re
 
-VERSION = 'pankgraph-semantics-v10-request-authority'
-RELEASE = 'PanKgraph_08_04'
-SOURCE = 'https://hpap.pmacs.upenn.edu/analysis'
-STAGES = {
-    '1': 'Stage 1: two or more autoantibodies, normal glucose metabolism level',
-    '3': 'Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis',
-}
+VERSION = schema_module('semantics_modalities')['terminology']['VERSION']
+RELEASE = schema_module('semantics_modalities')['terminology']['RELEASE']
+SOURCE = schema_module('semantics_modalities')['terminology']['SOURCE']
+STAGES = schema_module('semantics_modalities')['terminology']['STAGES']
 # Property ownership is verified against this release, not inferred from global keys.
-PROPERTIES = {
- 'donor': 'id data_source data_version data_source_url diabetes_type hla_typing c_peptide_ng_ml aab_state other_disease_records gender hla_status age hba1c_percentage center_donor_id pancdb_id other_therapy creation_date hospital_stay_hours bmi pankbase_id t1d_stage race rrid diabetes_duration predicted_genetic_ancestry family_history_of_diabetes sex_at_birth donation_type cause_of_death derived_diabetes_status'.split(),
- 'Sample_node': 'id data_source data_version data_modality anatomical_structure note contact'.split(),
- 'data_modality': 'id data_source data_version'.split(),
- 'disease': 'id name description data_source data_version synonyms data_source_url'.split(),
-}
-ALIASES = {'scrnaseq':'scRNA-seq', 'singlecellrnaseq':'scRNA-seq', 'snmultiomics':'snMultiomics',
- 'multiome':'snMultiomics', 'multiomics':'snMultiomics', 'snrnaseq':'snRNA-seq', 'scatacseq':'scATAC-seq',
- 'singlecellatacseq':'scATAC-seq', 'snatacseq':'snATAC-seq', 'citeseqprotein':'CITE-seq Protein'}
-CAPABILITIES = {'scRNA-seq':['RNA'], 'scATAC-seq':['ATAC'], 'snMultiomics':['RNA','ATAC'], 'CITE-seq Protein':['protein']}
+PROPERTIES = schema_module('semantics_modalities')['terminology']['PROPERTIES']
+ALIASES = schema_module('semantics_modalities')['terminology']['ALIASES']
+CAPABILITIES = schema_module('semantics_modalities')['terminology']['CAPABILITIES']
 from .donor_categories import DIGEST as DONOR_CATEGORIES_DIGEST
 DIGEST = hashlib.sha256(json.dumps([VERSION, RELEASE, PROPERTIES, ALIASES, CAPABILITIES, SOURCE, DONOR_CATEGORIES_DIGEST],sort_keys=True).encode() + Path(__file__).read_bytes() + Path(__file__).with_name('tissue_aliases.py').read_bytes()).hexdigest()
 

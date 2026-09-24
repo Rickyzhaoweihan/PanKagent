@@ -1,0 +1,30 @@
+{
+  "schema": {
+    "id": "kg-agent.pack",
+    "version": "1.0.0"
+  },
+  "pack": {
+    "id": "pankgraph",
+    "version": "1.0.0"
+  },
+  "standard": {
+    "repository": "https://github.com/RingoMao/KG_agent",
+    "branch": "kg-standard",
+    "version": "0.3.0",
+    "commit": "414c2732b5c8a50ba3a4d18561cfe12785a8b535",
+    "contract_sha256": "6b6116dc0cd4adbd058082ec7f013ab764332f6c75312e2629af02e44f7e6593"
+  },
+  "modules": {
+    "graph_storage": "graph_storage.json",
+    "identity": "identity.json",
+    "semantics_modalities": "semantics_modalities.json",
+    "query_patterns": "query_patterns.json",
+    "validation_repair": "validation_repair.json"
+  },
+  "execution_modes": [
+    "parallel",
+    "chain",
+    "mixed"
+  ],
+  "primary_backend": "neo4j"
+}

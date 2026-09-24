@@ -5,10 +5,10 @@ These hints never bypass runtime entity, inventory or request-scope validation.
 import hashlib
 import json
 from pathlib import Path
-from .coloc_planning_guidance import GUIDANCE as COLOC_GUIDANCE
+from .agent_schemas import module as schema_module
 
 ROOT = Path(__file__).parent / 'prompts' / 'planning'
-MODALITIES = json.loads((ROOT / 'modalities.json').read_text())
+MODALITIES = schema_module('semantics_modalities')['modalities']
 labels = [entry['label'] for entry in MODALITIES]
 if len(labels) != len(set(labels)) or any(
     not isinstance(entry['label'], str) or not entry['label']
@@ -17,10 +17,9 @@ if len(labels) != len(set(labels)) or any(
     for entry in MODALITIES
 ):
     raise ValueError('invalid_planner_modality_catalog')
-MODULES = (
-    ('colocalization', COLOC_GUIDANCE),
-    ('donor_samples', (ROOT / 'donor_samples.md').read_text()),
+MODULES = tuple((item['id'], item['text']) for item in schema_module('semantics_modalities')['prompt_modules']) + (
     ('sample_modalities', 'Recorded sample modality terminology hints:\n' + json.dumps(MODALITIES)),
 )
+
 GUIDANCE = '\n'.join(f'\nPlanning module: {name}\n{text}' for name, text in MODULES)
 DIGEST = hashlib.sha256(GUIDANCE.encode()).hexdigest()

@@ -1,0 +1,108 @@
+{
+  "schema": {
+    "id": "kg-agent.query-patterns",
+    "version": "1.0.0"
+  },
+  "library": {
+    "version": "pankgraph-query-patterns-v1",
+    "graph_release": "PanKgraph_08_04",
+    "rules": [
+      {
+        "id": "coloc_primary",
+        "relations": [
+          "SIGNAL_COLOC_WITH"
+        ],
+        "required_paths": [
+          [
+            "Gene",
+            "SIGNAL_COLOC_WITH",
+            "disease"
+          ]
+        ],
+        "guidance": "Retrieve Gene-to-disease coloc directly. GWAS/QTL membership are independent checks; absent membership must not remove primary coloc. Match recorded signal identifiers with source/context, not shared gene or variant alone."
+      },
+      {
+        "id": "qtl_membership",
+        "relations": [
+          "PART_OF_QTL_SIGNAL"
+        ],
+        "required_paths": [
+          [
+            "variants",
+            "PART_OF_QTL_SIGNAL",
+            "Gene"
+          ]
+        ],
+        "guidance": "QTL tissue and credible_set belong to the relationship. Keep gene, variant and tissue scopes distinct; indexed members need not enumerate the source credible set."
+      },
+      {
+        "id": "gwas_membership",
+        "relations": [
+          "PART_OF_GWAS_SIGNAL"
+        ],
+        "required_paths": [
+          [
+            "variants",
+            "PART_OF_GWAS_SIGNAL",
+            "disease"
+          ]
+        ],
+        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. A member variant is not automatically the lead. Preserve the requested disease."
+      },
+      {
+        "id": "same_sample",
+        "relations": [
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [
+          [
+            "donor",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ],
+          [
+            "anatomical_structure",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ],
+          [
+            "data_modality",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ]
+        ],
+        "guidance": "Bind donor, tissue and assay to the SAME sample. For separate requested assays keep each sample bound to the same donor and its requested tissue. Cohort source belongs to donor; literal sample source is distinct."
+      },
+      {
+        "id": "independent_measurements",
+        "relations": [
+          "GENE_DETECTED_IN",
+          "GENE_ENRICHED_IN",
+          "T1D_DEG_IN",
+          "MARKER_GENE_OF"
+        ],
+        "required_paths": [],
+        "guidance": "Retrieve detection, enrichment, disease expression and marker annotations independently unless an intersection is explicitly requested. Do not add a required join that erases a category."
+      },
+      {
+        "id": "annotation_sources",
+        "relations": [
+          "FUNCTION_ANNOTATION",
+          "ASSOCIATED_WITH_GO"
+        ],
+        "required_paths": [],
+        "guidance": "Keep explicit annotation resource and GO-domain predicates. Reactome/KEGG pathway records and GO records are separate categories; do not add an unrequested category."
+      }
+    ]
+  },
+  "providers": {
+    "neo4j": [
+      "structural_template",
+      "gpu_cypher"
+    ],
+    "postgresql": [
+      "verified_coordinate_pattern"
+    ]
+  },
+  "gpu_participation_required": true
+}

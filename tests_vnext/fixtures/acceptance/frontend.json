@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "source_repository": "https://github.com/wangyiqunumich/pank_frontend",
+  "source_branch": "xuteng/react",
+  "source_commit": "38c8f454eaecf79cacd7ef42d6b109595798791a",
+  "files": {
+    "landing_sample_questions.json": "66aacb28b6915fa11d92c3b097c290a30468681b1e09b298e61a58d56a0c99de",
+    "landing_page_schema.json": "928fa62bbce958d167dd70cd93ed70687e83e6799fef15ac6b379d1c587da85e"
+  },
+  "displayed_entries": 16,
+  "cases": [
+    {
+      "id": "landing-4545d2550d6f",
+      "question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+      "sources": [
+        {
+          "group": "search_examples",
+          "entry": 0,
+          "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+          "link": ""
+        },
+        {
+          "group": "Explore QTL",
+          "entry": 3,
+          "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-8b6eabf2ec8f",
+      "question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+      "sources": [
+        {
+          "group": "search_examples",
+          "entry": 1,
+          "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+          "link": ""
+        },
+        {
+          "group": "Important genes",
+          "entry": 0,
+          "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-4fda6e2c447e",
+      "question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+      "sources": [
+        {
+          "group": "search_examples",
+          "entry": 2,
+          "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+          "link": ""
+        },
+        {
+          "group": "T1D Mechanism",
+          "entry": 0,
+          "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-7013c6383a33",
+      "question": "Which SNP serves as the lead QTL for CFTR?",
+      "sources": [
+        {
+          "group": "Explore QTL",
+          "entry": 0,
+          "original_question": "Which SNP serves as the lead QTL for CFTR?",
+          "link": "/result-new?sourceTerm=snp@rs2402203&targetTerm=gene@ENSG00000001626&relationship=QTL"
+        },
+        {
+          "group": "Explore QTL",
+          "entry": 1,
+          "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+          "link": "/match?qid=1"
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-9e2e44cdcd36",
+      "question": "Which SNP serves as the lead QTL for CENPO?",
+      "sources": [
+        {
+          "group": "Explore QTL",
+          "entry": 1,
+          "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+          "link": "/match?qid=1"
+        }
+      ],
+      "substitutions": {
+        "gene": "CENPO(ENSG00000138092)"
+      }
+    },
+    {
+      "id": "landing-ca5a07dbcce9",
+      "question": "Which GENE is regulated by rs113869178 as a QTL?",
+      "sources": [
+        {
+          "group": "Explore QTL",
+          "entry": 2,
+          "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+          "link": "/match?qid=2"
+        }
+      ],
+      "substitutions": {
+        "snp": "rs113869178"
+      }
+    },
+    {
+      "id": "landing-2c285c984b65",
+      "question": "Which GENE is regulated by rs12154969 as a QTL?",
+      "sources": [
+        {
+          "group": "Explore QTL",
+          "entry": 2,
+          "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+          "link": "/match?qid=2"
+        }
+      ],
+      "substitutions": {
+        "snp": "rs12154969"
+      }
+    },
+    {
+      "id": "landing-88fecb41cadf",
+      "question": "Is CFTR specifically enriched in ductal cells?",
+      "sources": [
+        {
+          "group": "Gene expression",
+          "entry": 0,
+          "original_question": "Is CFTR specifically enriched in ductal cells?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-24e85206e3e1",
+      "question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+      "sources": [
+        {
+          "group": "Gene expression",
+          "entry": 1,
+          "original_question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-056eef739cb6",
+      "question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+      "sources": [
+        {
+          "group": "Gene expression",
+          "entry": 2,
+          "original_question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-55db6980815c",
+      "question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+      "sources": [
+        {
+          "group": "Important genes",
+          "entry": 1,
+          "original_question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-349b0793d724",
+      "question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+      "sources": [
+        {
+          "group": "Important genes",
+          "entry": 2,
+          "original_question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-ef206d99c401",
+      "question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+      "sources": [
+        {
+          "group": "T1D Mechanism",
+          "entry": 1,
+          "original_question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    },
+    {
+      "id": "landing-663aaab606c9",
+      "question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+      "sources": [
+        {
+          "group": "T1D Mechanism",
+          "entry": 2,
+          "original_question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+          "link": ""
+        }
+      ],
+      "substitutions": {}
+    }
+  ]
+}

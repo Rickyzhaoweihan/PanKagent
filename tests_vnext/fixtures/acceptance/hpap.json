@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "reference_policy": "Resolve recorded categories and compare full typed ID sets with independently checked Neo4j queries. No hardcoded counts.",
+  "cases": [
+    {
+      "id": "hpap-nd-donors",
+      "question": "How many donors are available in HPAP for ND?",
+      "cohort": "ND",
+      "count_unit": "donor"
+    },
+    {
+      "id": "hpap-nd-samples",
+      "question": "How many samples are available from HPAP ND donors?",
+      "cohort": "ND",
+      "count_unit": "sample"
+    },
+    {
+      "id": "hpap-nd-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP ND donors?",
+      "cohort": "ND",
+      "count_unit": "sample"
+    },
+    {
+      "id": "hpap-t1d-donors",
+      "question": "How many donors are available in HPAP for T1D?",
+      "cohort": "T1D",
+      "count_unit": "donor"
+    },
+    {
+      "id": "hpap-t1d-samples",
+      "question": "How many samples are available from HPAP T1D donors?",
+      "cohort": "T1D",
+      "count_unit": "sample"
+    },
+    {
+      "id": "hpap-t1d-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP T1D donors?",
+      "cohort": "T1D",
+      "count_unit": "sample"
+    },
+    {
+      "id": "hpap-stage-1",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "stage": "1",
+      "count_unit": "donor"
+    },
+    {
+      "id": "hpap-stage-2",
+      "question": "How many T1D stage 2 donors are available in HPAP?",
+      "stage": "2",
+      "count_unit": "donor"
+    },
+    {
+      "id": "hpap-stage-3",
+      "question": "How many T1D stage 3 donors are available in HPAP?",
+      "stage": "3",
+      "count_unit": "donor"
+    },
+    {
+      "id": "hpap-nd-spleen-rna",
+      "question": "How many spleen scRNA-seq (or snMultiomics, which includes an RNA component) samples are available from HPAP donors who are recorded as ND/healthy (not type 1 diabetes)?",
+      "cohort": "ND",
+      "count_unit": "sample"
+    },
+    {
+      "id": "hpap-comparison",
+      "question": "How many ND and T1D donors and samples are available in HPAP?",
+      "count_unit": "separate_donor_and_sample"
+    },
+    {
+      "id": "hpap-followup",
+      "question": "How many scRNA-seq samples are available for these donors? What tissues are they from?",
+      "parent_case_id": "hpap-stage-1",
+      "count_unit": "sample"
+    }
+  ]
+}

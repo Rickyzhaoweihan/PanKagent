@@ -1,10 +1,11 @@
 """Reviewed full-release structural inventory; no answer queries or model calls."""
+from .agent_schemas import module as schema_module
 import hashlib
 import json
 import re
 from pathlib import Path
 
-_RAW = Path(__file__).with_suffix('.json').read_bytes()
+_RAW = json.dumps(schema_module('graph_storage')['registry'], sort_keys=True).encode()
 REGISTRY = json.loads(_RAW)
 DIGEST = hashlib.sha256(_RAW + Path(__file__).read_bytes()).hexdigest()
 

@@ -8,6 +8,7 @@ used for execution stay in the live local semantic resolver and are not copied
 into model grounding. Schema observations are diagnostic until reviewed; they
 never silently replace the release registry used by validation.
 """
+from .agent_schemas import module as schema_module
 import asyncio
 from datetime import datetime, timezone
 import hashlib
@@ -27,9 +28,7 @@ from .semantic_registry import DIGEST as SEMANTIC_DIGEST, CAPABILITIES, SOURCE
 VERSION = "grounding-inventory-6-live-refresh"
 ENVELOPE_DIGEST_VERSION = "grounding-inventory-envelope-v1"
 DEFAULT_CACHE_TTL_SECONDS = 300.0
-PUBLIC_CATALOG_LABELS = (
-    "Gene", "anatomical_structure", "disease", "GO_term", "kegg", "reactome", "data_modality",
-)
+PUBLIC_CATALOG_LABELS = tuple(schema_module('identity')['public_labels'])
 ANNOTATION_SOURCE_QUERY = (
     "MATCH ()-[r:`FUNCTION_ANNOTATION`]->() RETURN collect(DISTINCT r.data_source) AS values, "
     "count(r) AS record_count, count(r.data_source) AS valued_records")

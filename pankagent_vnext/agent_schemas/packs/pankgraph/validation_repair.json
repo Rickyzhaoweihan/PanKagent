@@ -1,0 +1,36 @@
+{
+  "schema": {
+    "id": "kg-agent.validation-repair",
+    "version": "1.0.0"
+  },
+  "limits": {
+    "lookup_batches": 2,
+    "requests_per_batch": 6,
+    "candidates_per_request": 10,
+    "planning_proposals": 3,
+    "execution_repairs": 2,
+    "total_claude_calls": 7
+  },
+  "scope_compilers": [
+    "cohort_scope",
+    "property_owners",
+    "independent_measurements",
+    "coloc_tissue",
+    "requested_scope",
+    "genomic_scope",
+    "dependency_bindings"
+  ],
+  "invariants": [
+    "failed_is_not_empty",
+    "backend_ids_before_compaction",
+    "failed_parent_never_unrestricted",
+    "incomplete_exclusion_not_proof",
+    "independent_success_survives",
+    "exact_counts_require_complete_scope"
+  ],
+  "diagnostic_reasons": {
+    "missing_requested_scope:Gene": "REQUESTED_ENTITY_BINDING_MISSING",
+    "invalid_dependency_target_role": "DEPENDENCY_ROLE_INVALID",
+    "missing_requested_scope:tissue": "REQUESTED_TISSUE_BINDING_MISSING"
+  }
+}
