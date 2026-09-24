@@ -35,6 +35,7 @@ class ResultsSettings:
     trusted_browser_origin: str = field(default_factory=lambda: env("TRUSTED_BROWSER_ORIGIN"))
     basic_auth: bool = field(default_factory=lambda: env("BASIC_AUTH", "true").lower() != "false")
     agent_api_basic_auth: bool = field(default_factory=lambda: env("AGENT_API_BASIC_AUTH", "true").lower() != "false")
+    allow_localhost_cors: bool = field(default_factory=lambda: env("ALLOW_LOCALHOST_CORS", "false").lower() == "true")
     testing: bool = False
 
     def __post_init__(self):

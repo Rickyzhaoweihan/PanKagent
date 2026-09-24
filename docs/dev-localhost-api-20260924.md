@@ -1,0 +1,11 @@
+# Local frontend access to the dev API
+
+The dev results gateway explicitly enables `PANK_RESULTS_ALLOW_LOCALHOST_CORS=true`. Local frontends can use `https://dev.pankgraph.org/pankgraph-vnext/api` as their API base URL without an additional password or debug key. The agent API is under `/agent/v2/` relative to that base.
+
+Allowed browser origins are HTTP or HTTPS on exactly `localhost`, `127.0.0.1`, or `[::1]`, with optional ports. CORS preflight, JSON requests, and credentialed EventSource responses use the same origin policy as mutation admission. Responses echo the allowed origin and include `Vary: Origin`; credentials are supported for the existing EventSource client. Unrelated origins remain rejected for mutations. The option defaults off outside this explicitly configured dev deployment.
+
+Deployment: results-only immutable release `20260924-localhost-cors/backend` under `/var/local/serviceuser/projects/pankgraph-demo/releases/`. Agent and dashboard process records are unchanged. The prior release is `20260924-dev-no-login/backend`; private configuration and ownership backups are in `/db/pankagent-vnext-private/operations/localhost-cors-20260924-records/`. Rollback must use the owned results manager and restore the backed-up results runtime environment; do not restore state or budget databases.
+
+Validation: 29 focused tests passed on the matching source tree; 28 relevant tests passed on the exact deployment candidate. They cover opt-in/default-off behavior, localhost variants, preflight, POST, streamed responses, error responses, credentials, origin reflection, and deceptive/nonlocal origin rejection. Obsolete fixtures initially bundled in the runtime were replaced with matching current source fixtures before candidate validation; production code outside the two authentication/configuration files was preserved.
+
+Public checks from localhost:3000 and 127.0.0.1:5173 returned preflight 200, access GET 200, and empty JSON POST 422 with the correct origin/credentials headers. A real browser page at localhost:18799 successfully read the access response with credentials and the JSON validation response after preflight. The 422 is expected for the deliberately empty request and proves business validation was reached without executing scientific work. External-origin POST stayed 403. No model calls were made.

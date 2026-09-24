@@ -4,10 +4,12 @@ import base64
 import hashlib
 import hmac
 import secrets
+import re
 import time
 from urllib.parse import urlsplit
 
 from starlette.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 
 
 def hash_password(password, salt=None):
@@ -26,7 +28,26 @@ def verify_password(password, encoded):
         return False
 
 
+LOCAL_ORIGIN_PATTERN = r"https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?"
+
+
 class DemoAuthentication:
+    """Share the dev origin policy between CORS and mutation admission."""
+    def __init__(self, app, settings):
+        self.app = _DemoAuthentication(app, settings)
+        if getattr(settings, "allow_localhost_cors", False):
+            self.app = CORSMiddleware(
+                self.app, allow_origin_regex=LOCAL_ORIGIN_PATTERN,
+                allow_credentials=True,
+                allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                allow_headers=["*"], expose_headers=["Content-Disposition"], max_age=600,
+            )
+
+    async def __call__(self, scope, receive, send):
+        return await self.app(scope, receive, send)
+
+
+class _DemoAuthentication:
     def __init__(self, app, settings):
         self.app, self.settings = app, settings
         self.cache = {}
@@ -81,6 +102,7 @@ class DemoAuthentication:
             # Amplify keeps the dev browser Origin while the upstream Host may
             # name jieliu3. This single protected opt-in is not a CORS policy.
             trusted_origin = getattr(self.settings, "trusted_browser_origin", "")
-            if headers.get(b"sec-fetch-site") == b"cross-site" or (origin and urlsplit(origin).netloc != host and origin != trusted_origin):
+            local_dev = getattr(self.settings, "allow_localhost_cors", False) and re.fullmatch(LOCAL_ORIGIN_PATTERN, origin) is not None
+            if not local_dev and (headers.get(b"sec-fetch-site") == b"cross-site" or (origin and urlsplit(origin).netloc != host and origin != trusted_origin)):
                 return await JSONResponse({"detail": "Cross-site request denied."}, status_code=403)(scope, receive, send)
         return await self.app(scope, receive, send)
