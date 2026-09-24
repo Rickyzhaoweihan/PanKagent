@@ -33,6 +33,7 @@ class ResultsSettings:
     basic_user: str = field(default_factory=lambda: env("BASIC_USER", "pank-demo"))
     password_hash: str = field(default_factory=lambda: env("PASSWORD_HASH"))
     trusted_browser_origin: str = field(default_factory=lambda: env("TRUSTED_BROWSER_ORIGIN"))
+    basic_auth: bool = field(default_factory=lambda: env("BASIC_AUTH", "true").lower() != "false")
     agent_api_basic_auth: bool = field(default_factory=lambda: env("AGENT_API_BASIC_AUTH", "true").lower() != "false")
     testing: bool = False
 

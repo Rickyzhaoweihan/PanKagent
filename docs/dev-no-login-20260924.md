@@ -1,0 +1,11 @@
+# Dev browser password removal — 2026-09-24
+
+The user requested removal of all extra pank dev passwords. The protected results runtime environment now sets `PANK_RESULTS_BASIC_AUTH=false`, `PANK_RESULTS_AGENT_API_BASIC_AUTH=false`, and `PANK_RESULTS_HEALTH_BASIC_AUTH=false`. These explicit deployment flags default to true elsewhere. Results retains its cross-site mutation checks; the dashboard remains read-only. Service credentials and telemetry operator tokens are unchanged.
+
+Results deployed from the prior live `20260924-agent-api-auth-6782701/backend` into `20260924-dev-no-login/backend`, beneath `/var/local/serviceuser/projects/pankgraph-demo/releases/`. Dashboard deployed from `/db/pankagent-vnext-private/operations/health-logging-20260920` into its sibling `health-no-login-20260924`, preserving the private log rotation implementation. The existing frontend artifact is reused. Agent PID and release record were unchanged.
+
+Focused checks passed on the deployed Python runtime: public GET, stale Basic header tolerance, trusted dev POST, cross-site rejection, authentication enabled by default, read-only dashboard, and protected configuration loading. Credential-free public requests returned 200 with no WWW-Authenticate header for `/`, `/agent-vnext`, `/pankgraph-vnext/api/access`, `/pankgraph-vnext/health/ready`, `/pankgraph/health/`, `/pankgraph/health/api/snapshot`, and `/health-dashboard`. Browser acceptance showed the agent input page and populated healthy monitor/agent/results dashboard. No inference was submitted.
+
+Private original configuration, service records and activation record are under `/db/pankagent-vnext-private/operations/dev-no-login-20260924-records/`. To roll back, use the current results release ownership manager to stop results, restore `results-runtime.env` to `/var/local/serviceuser/.config/pankgraph-results/runtime.env` preserving 0600, then start the prior results release with its ownership manager. Stop the dashboard using the current supervisor and start the prior dashboard supervisor. Run as serviceuser. Do not restore any state or budget database. Rediscover ownership records before rollback in case another deployment has occurred.
+
+Future deployments must include these settings and preserve the false values; an older release ignoring the flags will restore the password prompts.

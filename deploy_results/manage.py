@@ -126,7 +126,7 @@ def main(argv=None):
         raise ValueError("Existing protected vNext state is required for the shared budget ledger")
     env["PANK_RESULTS_STATE_DIR"] = str(state)
     env["PANK_RESULTS_PORT"] = str(PORT)
-    if not env.get("PANK_RESULTS_PASSWORD_HASH"):
+    if env.get("PANK_RESULTS_BASIC_AUTH", "true").lower() != "false" and not env.get("PANK_RESULTS_PASSWORD_HASH"):
         raise ValueError("Configure the protected application password hash before starting")
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     if state.is_symlink() or state.stat().st_uid != os.geteuid() or state.stat().st_mode & 0o077:

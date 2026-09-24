@@ -47,7 +47,7 @@ class DemoAuthentication:
             return await self.app(scope, receive, send)
         # Dev may disable the additional agent API login independently of site access.
         agent_api = scope["path"].startswith("/api/agent/")
-        password_required = not (agent_api and not getattr(self.settings, "agent_api_basic_auth", True))
+        password_required = getattr(self.settings, "basic_auth", True) and not (agent_api and not getattr(self.settings, "agent_api_basic_auth", True))
         if password_required and not self.settings.password_hash:
             return await JSONResponse({"detail": "Demo authentication is not configured."}, status_code=503)(scope, receive, send)
         raw = headers.get(b"authorization", b"")

@@ -42,14 +42,14 @@ def create_app(settings=None, collector=None):
     cache={}
     @app.middleware('http')
     async def authenticate(request:Request,call_next):
-        # Only the supervisor gets unauthenticated liveness; detailed data always needs Basic.
+        # The dev deployment can explicitly disable the dashboard login.
         local=request.client and request.client.host in ('127.0.0.1','::1') and not request.headers.get('x-forwarded-for')
         if request.url.path=='/health/live' and local:
             return await call_next(request)
         if request.method not in ('GET','HEAD'): return JSONResponse({'error':'read_only'},status_code=405)
         raw=request.headers.get('authorization','')
         key=hashlib.sha256(raw.encode()).hexdigest();now=time.monotonic()
-        if cache.get(key,0)<now:
+        if settings.basic_auth and cache.get(key,0)<now:
             if not await asyncio.to_thread(valid_auth,raw,settings):
                 return JSONResponse({'error':'authentication_required'},401,headers={'WWW-Authenticate':'Basic realm="PanKgraph health"'})
             if len(cache)>128:cache.clear()

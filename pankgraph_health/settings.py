@@ -62,6 +62,7 @@ class Settings:
     cypher_url: str = 'http://127.0.0.1:33917'
     cypher_replica_a_url: str = 'http://127.0.0.1:33918'
     cypher_replica_b_url: str = ''
+    basic_auth: bool = True
 
     def __post_init__(self):
         self.cypher_url = cypher_endpoint(self.cypher_url)
@@ -84,14 +85,16 @@ class Settings:
         stat = cfg.state_dir.stat()
         if cfg.state_dir.is_symlink() or stat.st_uid != os.geteuid() or stat.st_mode & 0o077:
             raise ValueError('Dashboard state must be owner-only')
+        cfg.basic_auth = results.get("PANK_RESULTS_HEALTH_BASIC_AUTH", "true").lower() != "false"
         operator = cfg.state_dir / "operator-auth.json"
-        info = operator.stat()
-        if operator.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
-            raise ValueError("Operator credentials must be owner-only")
-        credentials = json.loads(operator.read_text())
-        cfg.user, cfg.password_hash = credentials.get('user', ''), credentials.get('password_hash', '')
-        if not cfg.user or not cfg.password_hash or cfg.password_hash == results.get('PANK_RESULTS_PASSWORD_HASH'):
-            raise ValueError("Separate operator authentication is required")
+        if cfg.basic_auth:
+            info = operator.stat()
+            if operator.is_symlink() or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError("Operator credentials must be owner-only")
+            credentials = json.loads(operator.read_text())
+            cfg.user, cfg.password_hash = credentials.get('user', ''), credentials.get('password_hash', '')
+            if not cfg.user or not cfg.password_hash or cfg.password_hash == results.get('PANK_RESULTS_PASSWORD_HASH'):
+                raise ValueError("Separate operator authentication is required")
         auth = cfg.state_dir / "frontend-auth.json"
         if auth.exists():
             info = auth.stat()
