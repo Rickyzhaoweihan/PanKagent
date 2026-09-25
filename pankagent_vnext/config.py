@@ -35,6 +35,10 @@ class Settings:
     health_interval: float = 30.0
     claude_health_interval: float = 300.0
     literature_timeout: float = 60.0
+    glkb_url: str = field(default_factory=lambda: env('GLKB_URL', 'http://127.0.0.1:5055'))
+    glkb_timeout: float = 330.0
+    literature_concurrency: int = 4
+    literature_queue: int = 8
     literature_url: str = field(default_factory=lambda: env('LITERATURE_URL','http://127.0.0.1:8102'))
     corpus_version: str = field(default_factory=lambda: env('CORPUS_VERSION','hirn-mixed-current'))
     source_policy: str = field(default_factory=lambda: env('SOURCE_POLICY','mixed'))

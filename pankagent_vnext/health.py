@@ -113,7 +113,7 @@ class HealthMonitor:
         self.io = io
         self._budget = {}
         self._storage = {"state": "unknown"}
-        self.observations = {name: self._unknown() for name in ("cypher", "neo4j", "claude", "claude_provider", "hirn", "runtime")}
+        self.observations = {name: self._unknown() for name in ("cypher", "neo4j", "claude", "claude_provider", "hirn", "glkb", "runtime")}
         self.inference: dict[str, dict] = {}
         self.tasks: list[asyncio.Task] = []
 
@@ -232,6 +232,8 @@ class HealthMonitor:
         await self.refresh_persistence()
         graph_probes = [self._probe("neo4j", self.graph.probe), self._probe("cypher", self.graph.probe_cypher)] if hasattr(self.graph, "probe_cypher") else [self._probe("graph", self.graph.probe)]
         probes = [*graph_probes, self._probe("hirn", self.literature.probe)]
+        if hasattr(self.literature, "glkb"):
+            probes.append(self._probe("glkb", self.literature.glkb.probe))
         if online:
             probes.extend([self._probe("claude", self.gateway.probe), self._probe("claude_provider", self._provider)])
         await asyncio.gather(*probes)

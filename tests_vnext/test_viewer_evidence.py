@@ -139,9 +139,16 @@ def test_formatting_source_files_and_methods_unchanged():
     # The accepted deadline/SSE persistence fix changed the execution runtime,
     # not formatter output. Preserve that runtime independently from input policy.
     path = 'pankagent_vnext/app.py'
-    names = {'execution'}
+    # Dual-source literature intentionally changes execution after graph completion.
+    # Keep its graph deadline/recovery block unchanged instead of freezing the
+    # whole orchestration function; concurrency is covered by test_dual_literature.
     old = ast.parse(subprocess.check_output(['git','show','fdd5a5e:'+path]))
-    assert methods(old) == methods(ast.parse(Path(path).read_text()))
+    def graph_execution(tree):
+        execution = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == 'execution')
+        return next(ast.dump(n) for n in ast.walk(execution) if isinstance(n, ast.Try)
+                    and n.body and isinstance(n.body[0], ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'retrieval_window' for t in n.body[0].targets))
+    assert graph_execution(old) == graph_execution(ast.parse(Path(path).read_text()))
 
 
 def test_scalar_only_count_cannot_become_arbitrary_donors_or_empty_match():
