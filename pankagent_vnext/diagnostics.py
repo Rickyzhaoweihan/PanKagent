@@ -92,6 +92,9 @@ def annotate(value, context=None):
         out={k:visit(v,stage) for k,v in item.items() if k not in {'diagnostics','diagnostic_history'}}
         here=item.get('stage') or ('querying_graph' if item.get('step_id') else stage)
         found=[]
+        for advice in item.get('identity_selection_diagnostics', []):
+            if isinstance(advice, dict) and advice.get('reason') == 'entity_choice_requires_resolve_entities':
+                found.append(diagnostic(advice['reason'], 'planning', blocking=False, run_id=run_id))
         if item.get('proposal_issue'):
             found.append(diagnostic(item['proposal_issue'],'planning',run_id=run_id))
             # Do not publish serialized compiler records or arbitrary exceptions.

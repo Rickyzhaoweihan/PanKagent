@@ -1,0 +1,59 @@
+{
+  "release": "/db/pankagent-vnext-private/operations/schema-consolidation-20260924/e03-advisory-candidate",
+  "reports": [
+    {
+      "case": "disease-definition",
+      "question": "What is T1D?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E06.QUERY_VALIDATION",
+        "E06.VALIDATION_FAILED"
+      ],
+      "model_seconds": 9.282,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 12918,
+        "cache_read_input_tokens": 25836,
+        "input_tokens": 7117,
+        "output_tokens": 698
+      },
+      "settled_cost_usd": 0.0586762,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 3,
+        "lookup_batches": 1,
+        "planning_proposals": 2,
+        "execution_repairs": 0
+      },
+      "preview_s": 32.916,
+      "elapsed_s": 32.97,
+      "steps": [
+        [
+          "s1",
+          "failed"
+        ]
+      ],
+      "expected_clarification": false
+    }
+  ],
+  "budget": {
+    "limit_usd": 10.0,
+    "spent_usd": 6.320082,
+    "reserved_usd": 0,
+    "remaining_usd": 3.679918,
+    "calls": 281,
+    "pending_calls": 0,
+    "input_tokens": 1947081,
+    "output_tokens": 156688,
+    "cache_read_tokens": 1916462,
+    "cache_creation_tokens": 190299
+  }
+}

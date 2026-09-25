@@ -40,13 +40,39 @@ def mention_in_request(mention, question):
                                for i in range(len(words)-len(needle)+1))
 
 
-def valid_selection(graph, proof, question):
+def verified_identity(graph, proof):
+    """Authenticate database identity evidence independently of interpretation."""
     return (isinstance(proof, dict) and proof.get('graph_release') == graph.settings.graph_version
             and proof.get('schema_sha256', active_pack().digest) == active_pack().digest
             and isinstance(proof.get('mention'), str) and bool(proof['mention'])
-            and mention_in_request(proof['mention'], question)
             and isinstance(proof.get('token'), str)
             and hmac.compare_digest(proof['token'], selection_token(graph, proof)))
+
+
+def interpret_selection(graph, proof, choice, question):
+    """Bind Claude's semantic choice to authenticated facts, never invent facts."""
+    if (not verified_identity(graph, proof)
+            or (proof['entity_type'], proof['id']) != (choice['entity_type'], choice['id'])):
+        return None
+    from copy import deepcopy
+    out = deepcopy(proof)
+    out['lookup_mention'] = proof.get('lookup_mention', proof['mention'])
+    out['mention'] = choice['mention']
+    out['semantic_selection'] = {
+        'owner': 'claude', 'reason': choice['reason'],
+        'request_sha256': hashlib.sha256(question.encode()).hexdigest()}
+    out['token'] = selection_token(graph, out)
+    return out
+
+
+def valid_selection(graph, proof, question):
+    if not verified_identity(graph, proof):
+        return False
+    selection = proof.get('semantic_selection')
+    if selection:
+        return (selection.get('owner') == 'claude'
+                and selection.get('request_sha256') == hashlib.sha256(question.encode()).hexdigest())
+    return mention_in_request(proof['mention'], question)
 
 
 def match_fields(row, mention):

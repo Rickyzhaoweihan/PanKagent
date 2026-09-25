@@ -125,10 +125,54 @@ def test_preparation_diagnostics_return_to_same_session():
 def test_unverified_model_identity_repaired_never_executed():
     async def check():
         g, calls = gateway([('record_plan', {**PLAN, 'entity_choices': [{'mention': 'TM4SF6', 'entity_type': 'Gene', 'id': 'invented', 'reason': 'guess'}]})])
-        prep = AsyncMock()
+        prep = AsyncMock(side_effect=lambda p: {**p, 'clarification': 'Selected ID does not exist.', 'steps': [
+            {**p['steps'][0], 'runtime_binding_issues': ['selected_id_not_found']}]})
         result = await run(g, 'Find TM4SF6', '{}', 'test', SCHEMA, 500, lambda p,c: p, preparer=prep)
-        assert len(calls) == 3 and prep.await_count == 0
-        assert 'entity_choice_requires' in result['proposal_issue']
+        assert len(calls) == 3 and prep.await_count >= 3
+        assert 'selected_id_not_found' in result['proposal_issue']
+        assert all(not call.args[0]['entity_selection_proofs'] for call in prep.await_args_list)
+    asyncio.run(check())
+
+
+def test_unverified_unused_choice_is_advisory_not_a_planning_veto():
+    async def check():
+        g, calls = gateway([('record_plan', {**PLAN, 'entity_choices': [
+            {'mention': 'optional context', 'entity_type': 'Gene', 'id': 'unknown', 'reason': 'optional'}]})])
+        prep = AsyncMock(side_effect=lambda p: p)
+        result = await run(g, 'Find TM4SF6', '{}', 'test', SCHEMA, 500, lambda p,c: p, preparer=prep)
+        assert len(calls) == 1 and prep.await_count == 1
+        assert result['steps'] and not result['entity_selection_proofs']
+        from pankagent_vnext.diagnostics import annotate
+        item = annotate({'plan': result})['diagnostics'][0]
+        assert item['code'] == 'E03.ENTITY_CHOICE_UNVERIFIED'
+        assert item['severity'] == 'warning' and item['blocking'] is False
+    asyncio.run(check())
+
+
+def test_claude_connects_abbreviation_to_verified_canonical_lookup():
+    async def check():
+        db = graph([{'id': 'MONDO_0005147', 'name': 'type 1 diabetes', 'labels': ['disease']}])
+        request = {'requests': [{'mention': 'Type 1 Diabetes', 'entity_type': 'disease', 'fuzzy': False}]}
+        choice = {'mention': 'T1D', 'entity_type': 'disease', 'id': 'MONDO_0005147',
+                  'reason': 'T1D is the requested disease abbreviation.'}
+        proposal = {'interpreted_question': 'What is T1D?', 'steps': [
+            {'id': 's1', 'question': 'What is T1D?', 'relation_types': [], 'constraints': [
+                {'entity_type': 'disease', 'property': 'id', 'operator': '=', 'value': choice['id']}]}],
+            'entity_choices': [choice]}
+        g, calls = gateway([('resolve_entities', request), ('record_plan', proposal)])
+        result = await run(g, 'What is T1D?', '{}', 'test', SCHEMA, 500, lambda p,c: p,
+                           resolver=db.resolve_entities, preparer=AsyncMock(side_effect=lambda p: p))
+        assert len(calls) == 2 and result['steps']
+        proof = result['entity_selection_proofs'][0]
+        assert proof['lookup_mention'] == 'Type 1 Diabetes' and proof['mention'] == 'T1D'
+        assert proof['semantic_selection']['owner'] == 'claude'
+        assert valid_selection(db, proof, 'What is T1D?')
+        assert not valid_selection(db, proof, 'What is T2D?')
+        assert not valid_selection(db, {**proof, 'id': 'invented'}, 'What is T1D?')
+        step = {**result['steps'][0], 'semantic_request': {'question': 'What is T1D?'}}
+        resolved = await db._resolve_constraint(step['constraints'][0], 0, step)
+        assert resolved['state'] == 'resolved' and resolved['id'] == choice['id']
+        assert db._small_query.call_args.args[1] == {'id': choice['id']}
     asyncio.run(check())
 
 @pytest.mark.parametrize('source', ['hpap', 'Hpap', 'HPAP'])

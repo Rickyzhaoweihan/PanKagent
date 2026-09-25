@@ -3,6 +3,8 @@
 Candidate on the existing `Ringo` branch, based on `93b8982`. Not deployed and
 not accepted for release: live correctness found blockers; performance remains pending.
 See [the live validation report](live-validation/README.md).
+The subsequent [E03 advisory update](e03-advisory/README.md) removes the lexical
+identity-proof veto and passes the focused T1D definition replay.
 
 ## Changes
 

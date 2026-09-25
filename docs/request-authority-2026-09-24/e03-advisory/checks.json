@@ -1,0 +1,23 @@
+{
+  "baseline_commit": "72034d7d030afcc80f74b92855c9819eb64de0f1",
+  "offline": {
+    "passed": 2783,
+    "failed": 19,
+    "subtests_passed": 231,
+    "skipped": 5,
+    "new_failures": [],
+    "focused_passed": 33,
+    "final_elapsed_seconds": 95.87
+  },
+  "diagram": {
+    "changed_cells": [
+      "scope",
+      "claude-tools"
+    ],
+    "geometry_unchanged": true,
+    "connectors_unchanged": true,
+    "tabs_02_04_byte_identical": true,
+    "render_checked": true,
+    "sha256": "80b542191370d5a9ca0be5b7e9dc0810e0d219fa59129004de4a762cce403f58"
+  }
+}

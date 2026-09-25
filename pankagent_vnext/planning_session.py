@@ -16,8 +16,10 @@ non-exact entity names; do not guess canonical IDs. Tool failures are E01 unavai
 record_plan.entity_choices records each chosen non-exact identity with the user's exact mention,
 verified candidate ID, entity_type and contextual reason. If ambiguity remains, ask a specific
 clarification. Do not pick based only on a fuzzy score. Preserve all currently requested clinical/biological conditions.
-Prefer original mention name constraints for known aliases unless entity_choices accompanies the
-canonical ID. Existing exact/local plans are drafts: review their scope before recording your plan.
+Keep requested entities in the task constraints. When an abbreviation or synonym lookup is empty,
+look up your contextually inferred expanded name, then bind its verified canonical ID and record
+the interpretation in entity_choices. Do not remove an entity constraint merely to bypass a failed
+literal-name lookup. Existing exact/local plans are drafts: review their scope before recording your plan.
 Compiler diagnostics are repair input: correct the plan or retain independently useful verified
 checks with explicit unmet conditions. Never invent a relationship or weaken a filter silently.
 Verified preliminary candidates are already available for entity_choices; do not repeat a lookup
@@ -26,6 +28,10 @@ of six requests and three plan proposals. Lookup turns do not consume a plan rep
 Use inspect_schema for field ownership and interpretation, and resolve_property_values for recorded categorical codes. These share the two lookup-batch budget.
 Record applied/discarded advice in optional advisory_decisions using its supplied rule_id; these audit notes do not alter execution.
 D02 is your semantic decision within record_plan: select relevant entities, relationships and optional context. A disease-definition request needs disease identity, description and provenance, not a donor inventory.
+E03 identity-proof advice is non-blocking. You may link the user's phrase to a differently worded
+verified lookup candidate using its typed ID and a contextual reason. Lexical matching does not
+overrule your interpretation. Unverified choices proceed to database preparation checks; an
+interpretation is not proof that an ID exists. Do not invent IDs or claim unverified data was found.
 Submit record_plan to prepare the tasks; preparation diagnostics return to this same session.
 '''
 
@@ -193,9 +199,12 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     if isinstance(item, dict) and item.get('rule_id') in advisory_ids
                     and item.get('disposition') in {'applied', 'discarded'}] if isinstance(advice_decisions, list) else []
                 choices = proposal.pop('entity_choices', [])
-                chosen, warnings = [], []
+                chosen, warnings, identity_diagnostics = [], [], []
                 if not isinstance(choices, list) or len(choices) > 12: raise ValueError('invalid_entity_choices')
                 for choice in choices:
+                    if not isinstance(choice, dict) or not all(isinstance(choice.get(k), str) and choice[k].strip()
+                            for k in ('mention', 'entity_type', 'id', 'reason')):
+                        raise ValueError('invalid_entity_choices')
                     key = (choice['mention'].casefold(), choice['entity_type'], choice['id'])
                     proof = proofs.get(key)
                     if proof is None:
@@ -209,16 +218,28 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                             # ID (for example abbreviation plus expanded name).
                             # That is repeated evidence, not an identity collision.
                             proof = max(matches, key=lambda p: len(p['mention']))
-                    if proof is None:
-                        raise ValueError('entity_choice_requires_resolve_entities:' + json.dumps({
-                            'choice': choice, 'instruction': 'Use an ID returned by resolve_entities or the verified preliminary candidates. Omit unneeded identity choices; preserve requested filters.'}))
-                    if not mention_in_request(proof['mention'], question):
-                        raise ValueError('entity_choice_not_in_user_request:' + json.dumps({
-                            'mention': proof['mention'], 'instruction': 'Look up the exact phrase used in the original question, including its wording, then select that returned candidate.'}))
+                    semantic_rebinding = proof is None or not mention_in_request(proof['mention'], question)
+                    if semantic_rebinding and graph is not None:
+                        from .entity_lookup import interpret_selection
+                        matches = [p for p in proofs.values() if p['entity_type'] == choice['entity_type']
+                                   and p['id'] == choice['id']]
+                        proof = next((rebound for p in matches
+                                      if (rebound := interpret_selection(graph, p, choice, question))), None)
+                    if proof is None or (semantic_rebinding and not proof.get('semantic_selection')):
+                        identity_diagnostics.append({'reason': 'entity_choice_requires_resolve_entities',
+                                                     'blocking': False})
+                        warnings.append('E03.ENTITY_CHOICE_UNVERIFIED: Claude selected '
+                            f"{choice['mention']!r} as {choice['entity_type']} {choice['id']}; "
+                            'the helper has no matching retained identity proof. Database preparation must verify it.')
+                        continue
                     chosen.append(deepcopy(proof))
-                    if proof['match_method'] not in {'recorded_id', 'recorded_name'}:
+                    if semantic_rebinding:
+                        warnings.append(f"Claude interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) "
+                                        f"from verified lookup {proof['lookup_mention']!r}: {choice['reason']}")
+                    elif proof['match_method'] not in {'recorded_id', 'recorded_name'}:
                         warnings.append(f"Interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) using {proof['match_method']}: {choice['reason']}")
                 plan = attach(finalize(proposal, chosen), context)
+                plan['identity_selection_diagnostics'] = identity_diagnostics
                 plan['tool_suggestion_decisions'] = advice_decisions + suggestion_decisions(local_draft, plan)
                 plan['original_question'] = question
                 chosen = list({(p['mention'].casefold(), p['entity_type'], p['id']): p
