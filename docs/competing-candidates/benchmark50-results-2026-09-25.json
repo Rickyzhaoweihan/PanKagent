@@ -1,0 +1,392 @@
+{
+  "date": "2026-09-25",
+  "status": "partial_budget_limited",
+  "backend_commit": "5cd7234c0c5c11831e568936591a093bb9a6a387",
+  "baseline_commit": "5c5cf2bc76502e10c9bf8bc5235adcb6fbf5961f",
+  "manifest_sha256": "50202c4cc64e737b7c5a88c1134ce82cf6f5bb7b3251c41dfacbd60ab9a61ff4",
+  "model": "claude-sonnet-5",
+  "graph_release": "PanKgraph_08_04",
+  "analysis": {
+    "complete": false,
+    "arms": {
+      "original": {
+        "attempted": 40,
+        "ready": 32,
+        "settled_eligible": 32,
+        "answers": 32,
+        "exact_reference_passes": 11,
+        "exact_reference_cases": 25,
+        "latency_successful_only": {
+          "first_preview_s": {
+            "n": 32,
+            "median": 14.157755868509412
+          },
+          "settled_preview_s": {
+            "n": 32,
+            "median": 14.158114487305284
+          },
+          "elapsed_s": {
+            "n": 32,
+            "median": 22.452288150787354
+          }
+        },
+        "expected_clarifications": {
+          "passed": 0,
+          "cases": 1
+        },
+        "model_stages": {
+          "plan": {
+            "calls": 97,
+            "seconds": 458.87801099999996,
+            "cost_usd": 2.0183239
+          },
+          "synthesis": {
+            "calls": 31,
+            "seconds": 277.571587,
+            "cost_usd": 1.2653297999999997
+          },
+          "cypher_repair": {
+            "calls": 1,
+            "seconds": 2.170802,
+            "cost_usd": 0.008958
+          }
+        },
+        "cost_usd_all_attempts": 3.2926117,
+        "pending_bound_usd": 0,
+        "database_reads": 53,
+        "gpu_requests": 69
+      },
+      "candidate": {
+        "attempted": 41,
+        "ready": 32,
+        "settled_eligible": 31,
+        "answers": 31,
+        "exact_reference_passes": 10,
+        "exact_reference_cases": 26,
+        "latency_successful_only": {
+          "first_preview_s": {
+            "n": 32,
+            "median": 10.778681049123406
+          },
+          "settled_preview_s": {
+            "n": 31,
+            "median": 16.31165147945285
+          },
+          "elapsed_s": {
+            "n": 31,
+            "median": 25.869178369641304
+          }
+        },
+        "expected_clarifications": {
+          "passed": 0,
+          "cases": 1
+        },
+        "model_stages": {
+          "plan": {
+            "calls": 95,
+            "seconds": 475.1668469999999,
+            "cost_usd": 1.9284106999999995
+          },
+          "cypher_repair": {
+            "calls": 16,
+            "seconds": 34.974314,
+            "cost_usd": 0.18125800000000003
+          },
+          "synthesis": {
+            "calls": 31,
+            "seconds": 261.14177600000005,
+            "cost_usd": 1.2049393999999998
+          },
+          "query_structure_assistance": {
+            "calls": 9,
+            "seconds": 88.82087400000002,
+            "cost_usd": 0.35496600000000006
+          }
+        },
+        "cost_usd_all_attempts": 3.6695741,
+        "pending_bound_usd": 0,
+        "database_reads": 96,
+        "gpu_requests": 120
+      },
+      "matched_successes": {
+        "first_preview_s": {
+          "n": 30,
+          "original": 14.157755868509412,
+          "candidate": 10.778681049123406
+        },
+        "settled_preview_s": {
+          "n": 30,
+          "original": 14.158114487305284,
+          "candidate": 16.474137905985117
+        },
+        "elapsed_s": {
+          "n": 30,
+          "original": 22.452288150787354,
+          "candidate": 25.896952562965453
+        }
+      }
+    },
+    "budget": {
+      "limit_usd": 10.0,
+      "spent_usd": 9.679535,
+      "reserved_usd": 0.173912,
+      "remaining_usd": 0.146552,
+      "calls": 388,
+      "pending_calls": 1,
+      "input_tokens": 3377528,
+      "output_tokens": 205836,
+      "cache_read_tokens": 3175734,
+      "cache_creation_tokens": 92389
+    },
+    "paired_cases": 40,
+    "paired_arms": {
+      "original": {
+        "attempted": 40,
+        "ready": 32,
+        "settled_eligible": 32,
+        "answers": 32,
+        "exact_reference_passes": 11,
+        "exact_reference_cases": 25,
+        "latency_successful_only": {
+          "first_preview_s": {
+            "n": 32,
+            "median": 14.157755868509412
+          },
+          "settled_preview_s": {
+            "n": 32,
+            "median": 14.158114487305284
+          },
+          "elapsed_s": {
+            "n": 32,
+            "median": 22.452288150787354
+          }
+        },
+        "expected_clarifications": {
+          "passed": 0,
+          "cases": 1
+        },
+        "model_stages": {
+          "plan": {
+            "calls": 97,
+            "seconds": 458.87801099999996,
+            "cost_usd": 2.0183239
+          },
+          "synthesis": {
+            "calls": 31,
+            "seconds": 277.571587,
+            "cost_usd": 1.2653297999999997
+          },
+          "cypher_repair": {
+            "calls": 1,
+            "seconds": 2.170802,
+            "cost_usd": 0.008958
+          }
+        },
+        "cost_usd_all_attempts": 3.2926117,
+        "pending_bound_usd": 0,
+        "database_reads": 53,
+        "gpu_requests": 69
+      },
+      "candidate": {
+        "attempted": 40,
+        "ready": 31,
+        "settled_eligible": 30,
+        "answers": 30,
+        "exact_reference_passes": 9,
+        "exact_reference_cases": 25,
+        "latency_successful_only": {
+          "first_preview_s": {
+            "n": 31,
+            "median": 11.142421264201403
+          },
+          "settled_preview_s": {
+            "n": 30,
+            "median": 16.474137905985117
+          },
+          "elapsed_s": {
+            "n": 30,
+            "median": 25.896952562965453
+          }
+        },
+        "expected_clarifications": {
+          "passed": 0,
+          "cases": 1
+        },
+        "model_stages": {
+          "plan": {
+            "calls": 94,
+            "seconds": 471.2435669999999,
+            "cost_usd": 1.9102072999999995
+          },
+          "cypher_repair": {
+            "calls": 16,
+            "seconds": 34.974314,
+            "cost_usd": 0.18125800000000003
+          },
+          "synthesis": {
+            "calls": 30,
+            "seconds": 254.19446900000003,
+            "cost_usd": 1.1643101999999999
+          },
+          "query_structure_assistance": {
+            "calls": 9,
+            "seconds": 88.82087400000002,
+            "cost_usd": 0.35496600000000006
+          }
+        },
+        "cost_usd_all_attempts": 3.6107415,
+        "pending_bound_usd": 0,
+        "database_reads": 94,
+        "gpu_requests": 118
+      },
+      "matched_successes": {
+        "first_preview_s": {
+          "n": 30,
+          "original": 14.157755868509412,
+          "candidate": 10.778681049123406
+        },
+        "settled_preview_s": {
+          "n": 30,
+          "original": 14.158114487305284,
+          "candidate": 16.474137905985117
+        },
+        "elapsed_s": {
+          "n": 30,
+          "original": 22.452288150787354,
+          "candidate": 25.896952562965453
+        }
+      }
+    },
+    "unpaired_valid_attempts": [
+      {
+        "case": "history-000067",
+        "arm": "candidate"
+      }
+    ],
+    "excluded_attempts": {
+      "count": 19,
+      "cost_usd": 0.315278,
+      "cases": [
+        {
+          "case": "followup",
+          "arm": "candidate",
+          "reason": "Parent session supplied with conversation context disabled"
+        },
+        {
+          "case": "followup",
+          "arm": "original",
+          "reason": "Parent session supplied with conversation context disabled"
+        },
+        {
+          "case": "history-000005",
+          "arm": "candidate",
+          "reason": "Parent session supplied with conversation context disabled"
+        },
+        {
+          "case": "history-000005",
+          "arm": "original",
+          "reason": "Parent session supplied with conversation context disabled"
+        },
+        {
+          "case": "history-000054",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000054",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000067",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000071",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000071",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000074",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000074",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000076",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000076",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000077",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000077",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000105",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-000105",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-001394",
+          "arm": "candidate",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        },
+        {
+          "case": "history-001394",
+          "arm": "original",
+          "reason": "Cumulative API budget prevented a model stage from running"
+        }
+      ]
+    },
+    "scoring_note": "Predeclared expected clarifications are excluded from exact membership denominators. Failed confirmations are not settled-eligible. Matched latency uses cases confirmable in both arms. First preview means publication; publication alone does not prove confirmation will succeed."
+  },
+  "remaining_case_keys": [
+    "followup",
+    "history-000005",
+    "history-000054",
+    "history-000067",
+    "history-000071",
+    "history-000074",
+    "history-000076",
+    "history-000077",
+    "history-000105",
+    "history-001394"
+  ],
+  "cost_accounting": {
+    "corrected_pass_usd": 7.2774638000000005,
+    "pilot_settled_usd": 0.7225911,
+    "pilot_pending_bound_usd": 0.1739125,
+    "previous_settled_usd": 1.6794804
+  },
+  "artifact_sha256": {
+    "report.jsonl": "567a3c08459deb936d554874b6a9aeaf198d909035ff62508dcdd3b9bead5c24",
+    "references.json": "dc2e57e8f8aae9c4d81e05c47e7b30ada743f0d96112adedddb9b8024f113cdb",
+    "run-manifest.json": "f4f720815f2709b521ef3d4f9329d8799526351c74572475b5f75a72d5d4f7e4"
+  }
+}

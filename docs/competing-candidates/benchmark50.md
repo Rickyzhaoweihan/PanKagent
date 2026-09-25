@@ -20,7 +20,7 @@ python scripts/acceptance/workflow50.py \
 # Same arguments without --references-only runs both arms.
 ```
 
-The runner freezes independent Neo4j references before any model calls. It refuses changed manifests or overwriting an existing comparison. `--limit` permits a smoke subset, which must never be reported as the full 50-question result. Raw plans, full backend evidence, answer text, events and audit records stay in the protected output directory. `summary.json` updates as each attempt finishes. A budget stop is recorded as incomplete.
+The runner freezes independent Neo4j references before any model calls. It refuses changed manifests or overwriting an existing comparison. `--limit` permits a smoke subset, which must never be reported as the full 50-question result. Raw plans, full backend evidence, answer text, events and audit records stay in the protected output directory. `summary.json` updates as each attempt finishes. A budget stop is recorded as incomplete. After the process has stopped, `--resume` explicitly continues only unfinished attempts, checking the manifest, graph/schema identity, model and runtime settings. It retains the original budget snapshot and records each continuation. Changing `--ceiling` requires user authorization; the ledger is never reset. A process lock prevents concurrent writers using this runner version.
 
 ## What is measured
 
@@ -30,7 +30,7 @@ The runner freezes independent Neo4j references before any model calls. It refus
 - Settled API cost, outstanding reservation bounds, stage-specific input/output/cache usage, and assistance claims. These are the repository's configured token-price estimates, not a separately reconciled provider invoice. GPU/database infrastructure cost is unpriced and reported as work.
 - Candidate selections, replacements, conflicts, preview versions, and stream reconstruction.
 
-Successful-only timing tables include their denominators and matched-pair counts. Costs include failed attempts; a missing answer is not a cheap successful answer. Missing or unexecuted evidence cannot pass a verified-empty check. Larger membership is never rewarded.
+Successful-only timing tables include their denominators and matched-pair counts. First preview means publication, not a guarantee that confirmation will succeed. Matched timing comparisons require both arms to reach a confirmable settled preview; failed confirmations are excluded from that timing subset. Costs include failed attempts; a missing answer is not a cheap successful answer. Missing or unexecuted evidence cannot pass a verified-empty check. Larger membership is never rewarded. The predeclared ambiguous-source clarification case is scored separately from exact membership; a generic planning failure is not a successful clarification.
 
 Open-ended frontend questions also have supporting-evidence references, marked separately from exact-answer oracles. For example, a lead-QTL question does not require reporting every credible-set variant. Interpretation questions and the bounded OCR question require answer review against the case rubric, the original question and returned evidence. Exact membership alone does not establish answer quality or valid causal language.
 
@@ -45,3 +45,13 @@ python -m pytest -q tests_vnext/test_workflow50_benchmark.py
 The checks cover complete landing-example coverage, parent ordering, typed endpoint extraction, rejection of unexecuted empty results, and fair treatment of failed attempts in timing/cost summaries. Acceptance still requires the live results and answer review.
 
 The initial pilot at `79f9720` exposed an undefined assistance-schema validator and false conflicts caused by collect-versus-native graph row shapes. Commit `5cd7234` fixes both, with regression tests. Retain the pilot separately and include its spend; do not pool its outcomes into the corrected 50-question comparison.
+
+## Offline answer viewer and scoring corrections
+
+```sh
+python scripts/acceptance/workflow50_report.py /protected/evaluation/run1 /local/report/comparison.html
+```
+
+This creates a standalone paired-answer viewer plus `scored-summary.json` and `scored-cases.json`. An optional adjacent `review-annotations.json` adds human-readable qualitative review. Keep raw graph records and credentials outside Git; only sanitized aggregate/per-case metrics and reviews belong in the benchmark report.
+
+The initial live harness passed parent session IDs with `include_context=false`. Its two contextual cases are invalid comparisons and must be repeated with context enabled; the reporter excludes those attempts automatically while retaining their cost separately. The runner now enables context only for declared follow-ups and requires the parent run. It also captures the terminal state after a rejected confirmation; the offline reporter recovers that state from persisted events for older artifacts without rewriting them. These are harness corrections, not changes to the tested backend.

@@ -1,0 +1,174 @@
+{
+  "landing-4545d2550d6f": {
+    "verdict": "both supported overall; candidate has a more accurate PIP rounding",
+    "original": "Says GWAS PIP=0.0358; returned value is 0.0355837329953211, which rounds to 0.0356. Main coloc/membership interpretation is supported.",
+    "candidate": "Correct PIP=0.0356; distinguishes QTL/GWAS leads and per-record verified membership.",
+    "severity": "minor numeric error in original"
+  },
+  "landing-8b6eabf2ec8f": {
+    "verdict": "tie",
+    "notes": "Both distinguish predicted effector evidence from causal proof, and verified absence of marker annotation from biological absence. Pilot conflict is fixed."
+  },
+  "landing-4fda6e2c447e": {
+    "verdict": "tie with different emphasis",
+    "notes": "Both preserve direct HLA-DRA pathways versus partner annotations and physical association versus disease causality. Candidate adds an independent DEG negative; original gives more partner-annotation detail. No demonstrated query-quality gain."
+  },
+  "landing-7013c6383a33": {
+    "verdict": "original more careful about lead status",
+    "original": "Reports strongest retrieved variant but does not designate a lead when lead-role evidence is absent.",
+    "candidate": "After correctly disclaiming a graph-designated lead, says rs2402203 is a lead of its own credible set. Only one retrieved member of that set is available; this designation is not independently established.",
+    "severity": "unsupported lead designation in candidate"
+  },
+  "landing-9e2e44cdcd36": {
+    "verdict": "similar supported core answer",
+    "notes": "Both avoid declaring an indexed CENPO QTL member a proven lead. Original explicitly discloses partial scope; candidate claims complete checked QTL scope. Neither has complete credible-set membership."
+  },
+  "landing-ca5a07dbcce9": {
+    "verdict": "original wording more precise",
+    "notes": "Both identify TMEM98 with matching QTL evidence and distinguish PIP from effect size. Candidate opens with regulated by, while original says part of a QTL signal; candidate later qualifies causal uncertainty. Minor wording difference, not a retrieval difference."
+  },
+  "landing-2c285c984b65": {
+    "verdict": "tie",
+    "notes": "Both identify IFRD1 and preserve tissue, association, credible-set and PIP caveats."
+  },
+  "landing-88fecb41cadf": {
+    "verdict": "candidate better interpretation",
+    "original": "Correct numerical records, but describes a ratio of log2FC values as roughly six-fold higher and later frames the one-versus-rest comparison as effectively ductal versus MUC5B-positive ductal. Those are different contrasts.",
+    "candidate": "Correctly preserves the source one-versus-rest denominator and distinguishes ductal lineage enrichment from biological exclusivity.",
+    "severity": "misleading contrast interpretation in original"
+  },
+  "landing-24e85206e3e1": {
+    "verdict": "both support the scoped detection conclusion",
+    "notes": "Both find only beta-cell detection and avoid biological exclusivity. Original wording attaches median donor percent (98.87%) to the pooled 120502-cell denominator; that pooled percentage is not directly established by a median. Candidate avoids that explicit multiplication."
+  },
+  "landing-056eef739cb6": {
+    "verdict": "original more precise",
+    "notes": "Both recover the three detection identities. Candidate says over 30-fold higher on a log-CPM scale: fold ratios should use the linear scale, and the MUC5B-positive comparison is about 23-fold from recorded CPM. Its functional speculation is labeled but unnecessary. Original reports source measurements without this conflation."
+  },
+  "landing-55db6980815c": {
+    "verdict": "tie",
+    "notes": "Both retrieve an explicitly partial ten-pathway overview, preserve pathway-membership versus activation/causality distinctions, and avoid claiming exhaustive lack of immune pathways."
+  },
+  "landing-349b0793d724": {
+    "verdict": "candidate wording better; both need scoped claims",
+    "notes": "Both support immune over beta-cell evidence using detection and enrichment, while no direct antigen-presentation pathway query is shown here. Original table erroneously describes marker search as empty for all genes/cell types; it was scoped to HLA-DRA. Both should avoid a global no-beta-cell-record claim beyond the categories actually checked."
+  },
+  "landing-ef206d99c401": {
+    "verdict": "tie",
+    "notes": "Both preserve the MAPT GWAS locus versus PLEKHM1 QTL target, distinct leads, credible-set sizes and association-not-causation caveat. Neither should treat an arbitrary H4 threshold as a universal validated cutoff."
+  },
+  "landing-663aaab606c9": {
+    "verdict": "tie",
+    "notes": "Both link the specific coloc QTL signal to pancreas splicing evidence and verify the separate GWAS lead. Correctly distinguish the different lead variants and avoid causal-gene claims."
+  },
+  "stage-case": {
+    "verdict": "same correct donor membership; candidate better sample caveat",
+    "notes": "Both identify three Stage 1 HPAP donors and keep staging separate from clinical ND status. Original says all donors have zero associated samples recorded in this donor-only query; the independent sample reference has one scRNA-seq sample. Candidate correctly says sample counts were not returned."
+  },
+  "stage3-case": {
+    "verdict": "both fail before query coordination",
+    "notes": "Both fail M04 preparation/authority checks on the mixed-case source/stage wording. Neither reaches M06. Independent reference contains 44 donors."
+  },
+  "stage-negative": {
+    "verdict": "original succeeds; candidate fails before M06",
+    "notes": "Original verifies the correct empty membership. Candidate preparation reports missing_requested_scope:Gene:not and never executes a query; NOT is being treated as an entity requirement. Same unchanged M04 code, separate model runs."
+  },
+  "nd-paraphrase": {
+    "verdict": "both fail before M06",
+    "notes": "Both fail preparation after misinterpreting source negation/tissue scope; independent reference has 96 ND donor IDs. No answer is preferable to a false zero, but neither fulfills the query."
+  },
+  "nd-stage": {
+    "verdict": "both fail before M06",
+    "notes": "Both fail planning/preparation despite a three-donor independent reference. Query coordination cannot repair an unapproved plan."
+  },
+  "sample-tissues": {
+    "verdict": "original fulfills sample/tissue request; candidate incomplete",
+    "notes": "Original returns the independently verified one scRNA-seq sample and two anatomical ontology annotations. Its table labels one matching donor, meaning donors with a matching sample; there are three total Stage 1 donors. Candidate preserves all three donor IDs but cannot execute the dependent sample/tissue step and correctly discloses the gap.",
+    "diagnosis": "The local candidate includes OPTIONAL anatomical_structure-HAS_SAMPLE annotations; GPU candidate returns the same donor/sample scope without those annotation nodes/edges. Global graph-membership comparison classifies the richer-versus-poorer evidence as conflict, rather than retaining the complete annotated candidate. A scoped primary-membership and required-evidence comparison is needed before activation."
+  },
+  "multiome-optin": {
+    "verdict": "both fail in preparation",
+    "notes": "Neither reaches a confirmable plan. Independent reference contains four RNA-capable samples; no valid assay-separated answer produced."
+  },
+  "tissue-spleen": {
+    "verdict": "tie, correct verified empty result",
+    "notes": "Both execute the ND donor plus spleen scRNA-seq scope, return zero matching samples, and distinguish recorded absence from biological absence."
+  },
+  "cohort-comparison": {
+    "verdict": "both fail in preparation",
+    "notes": "No cohort-separated sample count produced. Independent reference is based on clinical diabetes_type, not provenance disease labels."
+  },
+  "cftr-paraphrase": {
+    "verdict": "tie on requested records",
+    "notes": "Both return the two requested ductal populations with correct effect sizes and adjusted p-values, preserving the one-versus-rest denominator. Candidate additionally reports median expression percentages. Completeness language should remain scoped to queried ductal identities; broader absence claims require an unrestricted query."
+  },
+  "cftr-alias": {
+    "verdict": "same canonical identity and core enrichment; original more precise denominator",
+    "notes": "Both resolve ABCC7 to CFTR and return canonical ductal enrichment. Candidate labels the median donor percentage as mean/median and attaches it to the total pooled cell count; those are not the same statistic. Both omit the dataset-local MUC5B-positive ductal subtype from this alias phrasing, in contrast to the broader ductal-populations reference."
+  },
+  "adcy3-coloc": {
+    "verdict": "same two signals and correct distinct lead identities",
+    "notes": "Both return the two coloc pairs and correct H4 values. Candidate retains explicit signal IDs and flags an identity-proof limitation. Original unnecessarily describes credible-set overlap as a sufficient explanation of coloc; model-based shared-signal support is the safer interpretation."
+  },
+  "cftr-sqtl": {
+    "verdict": "both support main answer; candidate cleaner scope",
+    "notes": "Both match the coloc credible-set ID to pancreatic splicing records and distinguish GWAS versus QTL leads. Original adds a zero-match locus-filtered GWAS query which does not negate known lead membership under a differently anchored query. Candidate correctly distinguishes the extra QTL credible sets from the actual coloc-linked one. Pancreas attribution comes from matched QTL records, not the coloc dataset name itself."
+  },
+  "plekhm1-signal": {
+    "verdict": "original preserves partial answer; candidate confirmation fails",
+    "notes": "Both cannot verify the T1D filter for the coloc/GWAS branches in this wording, despite earlier paraphrases succeeding. Original keeps the QTL branch but inconsistently says two versus three distinct credible sets; table shows three. Candidate publishes a partial preview but confirmation returns 409/preview_revalidation_required (checked_evidence_expired), so no answer reaches the user."
+  },
+  "hla-compartments": {
+    "verdict": "both miss one ductal subtype; original more precise interpretation",
+    "notes": "Both retrieve leukocyte and canonical ductal detection and a verified beta-cell zero. Both omit the recorded MUC5B-positive ductal subtype from the plural ductal-populations request. Candidate wrongly calls detection/expression-support records one-versus-rest; that contrast belongs to enrichment, while these are pseudobulk detection measurements. Both correctly distinguish missing graph records from biological absence."
+  },
+  "shared-partners": {
+    "verdict": "both incorrect; original caveat is less misleading",
+    "notes": "Independent reference has seven shared Gene identities. Both atomic query results actually contain those same seven overlapping identities, but M09 intersection with role=target produces zero. Undirected physical-interaction retrieval is being combined using directional stored endpoints. Original admits unknown/incomplete scope but still opens with no shared partners; candidate incorrectly calls the graph intersection conclusively empty. More generation did not repair this selector error.",
+    "diagnosis": "CFTR atomic evidence has 1467 nodes; ADCY3 has 81. Typed Gene intersection equals all seven reference IDs. Each query is undirected; end_id is not a reliable partner role relative to the query anchor. The defect is combination selection, not missing database evidence."
+  },
+  "hla-connected": {
+    "verdict": "both fail before M06",
+    "notes": "Original rejects bounded_path_requires_cooccurrence; candidate fails general preparation. Independent reference contains five partners satisfying both links. No relaxed query or false answer was returned."
+  },
+  "long-connected": {
+    "verdict": "both fail before query coordination",
+    "notes": "Neither prepares the requested connected chain. Independent reference is empty, but lack of execution cannot pass as a verified empty answer."
+  },
+  "typo-cohort": {
+    "verdict": "both fail the predeclared clarification requirement",
+    "notes": "The request says nPAP, an unverified source name. Both silently answer HPAP Stage 2 instead of asking for clarification. The numerical match to HPAP is not evidence that this source substitution was authorized. This case is excluded from exact membership denominators and scored as an expected clarification failure."
+  },
+  "history-000002": {
+    "verdict": "both fail preparation",
+    "notes": "Neither produces an INS overview from this historical wording, despite narrow INS detection questions succeeding. Failure is in the shared planning/preparation stage."
+  },
+  "history-000003": {
+    "verdict": "tie on full effector-gene membership",
+    "notes": "Both recover all 208 distinct genes and 256 source relationships, with the same source and classification counts. Both distinguish prioritized predictions from causal proof. Their displayed examples differ; that does not change retrieval quality."
+  },
+  "history-000014": {
+    "verdict": "tie on a limited overview, not exhaustive",
+    "notes": "Both return the same 10 annotation records and seven unique GO terms, disclose the limit, and distinguish record count from unique terms. Independent full membership is 50 GO terms, so neither passes the exhaustive membership reference. This is incomplete coverage rather than fabricated annotations."
+  },
+  "history-000016": {
+    "verdict": "tie, correct complete result",
+    "notes": "Both return the single PLEKHM1 beta-cell DEG record with the correct positive log2FC, uncertainty, adjusted p-value, source and scoped absence caveat."
+  },
+  "history-000018": {
+    "verdict": "different breadth; candidate avoids an original context error",
+    "notes": "Both provide supported identity and limited GO/pathway context. Original adds detection and enrichment, but merges their conditions/sources: detection is condition ALL, while enrichment is ND with the DE-methods source. Candidate is narrower and explicitly discloses overview limits."
+  },
+  "history-000019": {
+    "verdict": "same limited GO records; original clearer scope",
+    "notes": "Both return seven unique terms from ten annotation records rather than all 22 reference terms. Candidate says exactly ten edges in the release before qualifying the check as partial, an internally inconsistent completeness claim."
+  },
+  "history-000020": {
+    "verdict": "same limited GO records; original clearer scope",
+    "notes": "Both return seven terms from ten records rather than all 57 reference terms. Original discloses incomplete scope; candidate calls the retrieved set complete without making the ten-record overview limit clear."
+  },
+  "history-000067": {
+    "verdict": "unpaired valid candidate retrieval; serious summary error",
+    "notes": "Candidate retrieves all 969 reference genes, but claims every DEG is downregulated. Full returned records actually contain 596 upregulated and 373 downregulated edges. This is a synthesis error despite an exact membership pass. Original formatter was blocked by budget, so this case is excluded from the paired comparison."
+  }
+}

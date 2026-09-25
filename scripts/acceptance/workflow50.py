@@ -26,6 +26,13 @@ def dump(path, value):
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False, default=str) + '\n')
 
 
+def plan_request(case, parent=None):
+    if case.get('parent') and not parent:
+        raise ValueError('A contextual case requires its recorded parent run')
+    return {'question':case['question'], 'session_id':parent['session_id'] if parent else None,
+            'include_context':bool(parent), 'event_source':'audit_replay'}
+
+
 def extract(selector, results):
     nodes = [n for result in results.values() for n in result.get('nodes', [])]
     typed = {str(n['id']) for n in nodes if selector.get('entity_type') in n.get('labels', [])}
@@ -71,7 +78,10 @@ def evaluate(case, frozen, run):
             'membership_equal':bool(reference['ok'] and actual == expected), 'complete':complete,
             'pass':bool(reference['ok'] and actual == expected and complete)})
     exact = [c for c in checks if c['comparison'] == 'exact']
-    return {'checks':checks, 'exact_reference_pass':all(c['pass'] for c in exact) if exact else None,
+    needs_clarification = case.get('expected_clarification',False)
+    return {'checks':checks, 'exact_reference_pass':all(c['pass'] for c in exact) if exact and not needs_clarification else None,
+            'expected_clarification_pass':bool((run.get('plan') or {}).get('clarification')
+                and (run.get('error') or {}).get('category') != 'planning_failure') if needs_clarification else None,
             'manual_review_required':True, 'answer_chars':len(run.get('graph_answer') or '')}
 
 
@@ -102,21 +112,36 @@ def summarize(rows):
         exact = [r for r in items if r.get('evaluation',{}).get('exact_reference_pass') is not None]
         metrics = {}
         for name in ('first_preview_s','settled_preview_s','elapsed_s'):
-            values = [r[name] for r in items if r.get(name) is not None and r.get('ready')]
+            values = [r[name] for r in items if r.get(name) is not None and
+                      (r.get('ready') if name=='first_preview_s' else
+                       r.get('settled_eligible') if name=='settled_preview_s' else
+                       r.get('evaluation',{}).get('answer_chars',0)>0)]
             metrics[name] = {'n':len(values),'median':statistics.median(values) if values else None}
+        stages = {}
+        for row in items:
+            for purpose, usage in row.get('accounting',{}).get('stages',{}).items():
+                aggregate = stages.setdefault(purpose, {'calls':0,'seconds':0,'cost_usd':0})
+                for field in aggregate:
+                    aggregate[field] += usage.get(field,0)
+        clarifications = [r['evaluation']['expected_clarification_pass'] for r in items
+                          if r.get('evaluation',{}).get('expected_clarification_pass') is not None]
         summary[arm] = {'attempted':len(items),'ready':sum(r.get('ready',False) for r in items),
+            'settled_eligible':sum(r.get('settled_eligible',False) for r in items),
             'answers':sum(r.get('evaluation',{}).get('answer_chars',0)>0 for r in items),
             'exact_reference_passes':sum(r['evaluation']['exact_reference_pass'] for r in exact),
             'exact_reference_cases':len(exact), 'latency_successful_only':metrics,
+            'expected_clarifications':{'passed':sum(clarifications),'cases':len(clarifications)},
+            'model_stages':stages,
             'cost_usd_all_attempts':sum(r.get('accounting',{}).get('settled_cost_usd',0) for r in items),
             'pending_bound_usd':sum(r.get('accounting',{}).get('pending_bound_usd',0) for r in items),
             'database_reads':sum(r.get('work',{}).get('retrieve',0) for r in items),
             'gpu_requests':sum(r.get('work',{}).get('generate',0) for r in items)}
     pairs = {r['case']:{x['arm']:x for x in rows if x['case']==r['case']} for r in rows}
     summary['matched_successes'] = {}
-    for name in ('first_preview_s','settled_preview_s'):
+    for name in ('first_preview_s','settled_preview_s','elapsed_s'):
         matched = [p for p in pairs.values() if set(p)=={'original','candidate'}
-                   and all(r.get('ready') and r.get(name) is not None for r in p.values())]
+                   and all(r.get('settled_eligible')
+                           and r.get(name) is not None for r in p.values())]
         summary['matched_successes'][name] = {'n':len(matched), **{arm:statistics.median(p[arm][name] for p in matched)
             if matched else None for arm in ('original','candidate')}}
     return summary
@@ -135,6 +160,14 @@ async def run(args):
     os.umask(0o077)
     args.root.mkdir(parents=True, exist_ok=True, mode=0o700)
     manifest = json.loads(args.manifest.read_text())
+    selected_keys = set(args.case_keys or [])
+    known_keys = {case['key'] for case in manifest['cases']}
+    if selected_keys-known_keys:
+        raise ValueError('Unknown case keys: '+','.join(sorted(selected_keys-known_keys)))
+    if selected_keys and not args.resume:
+        for case in manifest['cases']:
+            if case['key'] in selected_keys and case.get('parent') and case['parent'] not in selected_keys:
+                raise ValueError('Selected follow-ups require their parent cases in a fresh run')
     if not (args.ledger/'budget.sqlite3').is_file():
         raise ValueError('An existing authorized cumulative ledger is required')
     common = replace(Settings(), model=manifest['model'], budget_usd=args.ceiling,
@@ -174,15 +207,29 @@ async def run(args):
     if args.references_only:
         print(json.dumps({'reference_cases':len(frozen['cases']), 'errors':sum(not ch['ok'] for c in frozen['cases'].values() for ch in c['checks']), 'model_calls':0}),flush=True)
         return
-    if (args.root/'report.jsonl').exists():raise ValueError('Never overwrite or implicitly resume a live comparison')
+    report_path = args.root/'report.jsonl'
+    if report_path.exists() and not args.resume:
+        raise ValueError('Never overwrite or implicitly resume a live comparison; use --resume after it stops')
+    saved_manifest = json.loads((args.root/'run-manifest.json').read_text()) if args.resume else None
+    if saved_manifest and saved_manifest['manifest_sha256'] != manifest_hash:
+        raise ValueError('Cannot resume a different question manifest')
     class NoLiterature:
         async def search(self,*a,**kw):return {'status':'unavailable','perspectives':[],'note':'Graph workflow comparison; literature disabled equally.'}
         async def probe(self):return {'state':'unavailable'}
         async def close(self):pass
     keyvar = ContextVar('case',default=None)
     work = {}
-    rows = []
+    rows = [json.loads(line) for line in report_path.read_text().splitlines()] if args.resume else []
     prior = {'original':{},'candidate':{}}
+    completed = set()
+    cases_by_key = {case['key']:case for case in manifest['cases']}
+    for row in rows:
+        key = (row['case'],row['arm'])
+        if key in completed or row['question'] != cases_by_key[row['case']]['question']:
+            raise ValueError('Duplicate or changed completed case')
+        completed.add(key)
+        artifact = json.loads((args.root/row['arm']/(row['case']+'.json')).read_text())
+        prior[row['arm']][row['case']] = artifact['run']
     async with AsyncExitStack() as stack:
         arms = {}
         for arm in ('original','candidate'):
@@ -204,11 +251,22 @@ async def run(args):
             client = await stack.enter_async_context(httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://127.0.0.1',timeout=240))
             arms[arm] = (app,client,gateway,graph)
         initial_budget = await arms['original'][2].budget.asnapshot()
-        dump(args.root/'run-manifest.json',{'manifest':manifest,'manifest_sha256':manifest_hash,'budget_before':initial_budget,
+        run_manifest = {'manifest':manifest,'manifest_sha256':manifest_hash,'budget_before':initial_budget,
             'ceiling_usd':args.ceiling,'code_identity':arms['original'][3].preview_identity(),'confirmation':'settled latest preview','settings':{
-            k:getattr(common,k) for k in ['model','reasoning_effort','plan_timeout','grouped_preview_timeout','answer_timeout','graph_timeout','cypher_timeout','cypher_initial_requests','max_nodes','max_edges','max_bytes']}})
+            k:getattr(common,k) for k in ['model','reasoning_effort','plan_timeout','grouped_preview_timeout','answer_timeout','graph_timeout','cypher_timeout','cypher_initial_requests','max_nodes','max_edges','max_bytes']}}
+        if saved_manifest:
+            if any(saved_manifest[k] != run_manifest[k] for k in ('code_identity','settings','confirmation')):
+                raise ValueError('Resume requires identical backend identity, limits and models')
+            saved_manifest.setdefault('resumptions',[]).append({'at':datetime.now().isoformat(),
+                'completed_attempts':len(rows),'budget_before':initial_budget,'ceiling_usd':args.ceiling})
+            run_manifest = saved_manifest
+        dump(args.root/'run-manifest.json',run_manifest)
         for index,case in enumerate(manifest['cases'][:args.limit]):
+            if selected_keys and case['key'] not in selected_keys:
+                continue
             for arm in (('original','candidate') if index%2==0 else ('candidate','original')):
+                if (case['key'],arm) in completed:
+                    continue
                 app,client,gateway,graph = arms[arm]
                 budget = await gateway.budget.asnapshot()
                 if budget['remaining_usd'] < .12:
@@ -221,8 +279,7 @@ async def run(args):
                 raw = None
                 run_id = None
                 try:
-                    response = await client.post('/v2/plans',json={'question':case['question'],
-                        'session_id':parent.get('session_id') if parent else None,'include_context':False,'event_source':'audit_replay'})
+                    response = await client.post('/v2/plans',json=plan_request(case,parent))
                     response.raise_for_status();created=response.json();run_id=created['run_id']
                     async def wait(states):
                         async with asyncio.timeout(245):
@@ -246,6 +303,10 @@ async def run(args):
                         response = await client.post('/v2/plans/'+raw['plan_id']+'/confirm')
                         record['confirm_http_status'] = response.status_code
                         if response.status_code==202:raw=await wait({'completed','partial','failed','cancelled'})
+                        else:
+                            record['settled_eligible'] = False
+                            record['confirmation_error'] = response.json()
+                            raw = await app.state.runtime.io.call(app.state.runtime.store.get,run_id)
                     prior[arm][case['key']] = raw
                     audit = await app.state.runtime.io.call(app.state.runtime.store.audit_snapshot,run_id)
                     events = [];cursor=0
@@ -256,6 +317,8 @@ async def run(args):
                     ready_events = [e for e in events if e['type']=='plan_ready']
                     record.update(status=raw['status'],evaluation=evaluate(case,frozen['cases'][case['key']],raw),
                         accounting=model_accounting(audit),preview_versions=len(ready_events),work=work.get(key,{}))
+                    record['budget_limited'] = bool((raw.get('error') or {}).get('category') == 'budget_exhausted' or
+                        ((raw.get('evidence') or {}).get('synthesis_error') or {}).get('category') == 'budget_exhausted')
                     record['assistance_calls'] = sum(e['kind']=='execution_repair_claim' for e in audit['events'])
                     record['candidate_decisions'] = [e['payload'].get('decision') for e in audit['events'] if e['kind']=='query_candidate']
                     deltas = ''.join(e['payload'].get('text','') for e in events if e['type']=='graph_answer' and e['payload'].get('delta'))
@@ -279,11 +342,16 @@ async def run(args):
                     dump(args.root/'summary.json',{'arms':summarize(rows),'budget':await gateway.budget.asnapshot()})
                     print(json.dumps({k:v for k,v in record.items() if k not in {'evaluation','accounting','candidate_decisions','question'}}),flush=True)
                     keyvar.reset(token)
+                if record.get('budget_limited'):
+                    dump(args.root/'summary.json',{'incomplete':'model_reservation_exceeds_remaining_budget',
+                        'arms':summarize(rows),'budget':await gateway.budget.asnapshot()})
+                    return
         dump(args.root/'summary.json',{'complete':len(rows)==2*len(manifest['cases']),'arms':summarize(rows),
             'budget':await arms['original'][2].budget.asnapshot()})
 
 
 if __name__ == '__main__':
+    import fcntl
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',type=Path,required=True)
     parser.add_argument('--env',type=Path,required=True)
@@ -292,4 +360,11 @@ if __name__ == '__main__':
     parser.add_argument('--manifest',type=Path,default=REPO/'tests_vnext/fixtures/acceptance/workflow50.json')
     parser.add_argument('--references-only',action='store_true')
     parser.add_argument('--limit',type=int,default=50)
-    asyncio.run(run(parser.parse_args()))
+    parser.add_argument('--resume',action='store_true',help='Resume a stopped comparison, preserving completed attempts and cumulative accounting')
+    parser.add_argument('--case-keys',nargs='+',help='Explicit bounded subset; include parent cases in a fresh run')
+    args = parser.parse_args()
+    os.umask(0o077)
+    args.root.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (args.root/'.benchmark.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+        asyncio.run(run(args))
