@@ -1,7 +1,8 @@
 # M04 request authority candidate
 
 Candidate on the existing `Ringo` branch, based on `93b8982`. Not deployed and
-not accepted for release: the live correctness/performance gates remain pending.
+not accepted for release: live correctness found blockers; performance remains pending.
+See [the live validation report](live-validation/README.md).
 
 ## Changes
 
@@ -55,12 +56,12 @@ The exported tab was visually inspected for text fit.
 
 ## Outstanding release gate
 
-No paid calls were made and no validation ledger was reset or modified.
-The prior live-replay rejection remains applicable: HPAP validation may send
-protected donor/sample-derived evidence to the configured Claude API and still
-requires the outstanding explicit data-use approval.
+No paid calls were made during implementation. On 2026-09-24 the user explicitly
+confirmed that PanKgraph content is public and authorized its use in Claude
+validation and dev deployment. The earlier data-use approval blocker is resolved.
+The existing cumulative validation ledger remains authoritative and is not reset.
 
-After approval, run the existing frozen frontend/HPAP correctness manifest and
+Run the existing frozen frontend/HPAP correctness manifest and
 matched performance controls with the existing ledger, inspect supported answers
 and full protected memberships, and compare latency/cost against the frozen
 baseline. Do not deploy before those gates pass. Production, serving dev, results

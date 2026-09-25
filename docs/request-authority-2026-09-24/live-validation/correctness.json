@@ -1,0 +1,2123 @@
+{
+  "release": "/db/pankagent-vnext-private/operations/schema-consolidation-20260924/request-authority-3fcdb93",
+  "reports": [
+    {
+      "case": "stage-case",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 3,
+      "actual_count": 3,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1053,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 7.819,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 16719,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 14452,
+        "output_tokens": 713
+      },
+      "settled_cost_usd": 0.0778315,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 10.895,
+      "elapsed_s": 15.947,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "stage-negative",
+      "question": "How many HPAP stage 3 donors do NOT have a recorded diabetes type of T1D?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": true,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.REQUESTED_ENTITY_BINDING_MISSING"
+      ],
+      "model_seconds": 12.939,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 9102,
+        "cache_read_input_tokens": 18204,
+        "input_tokens": 14388,
+        "output_tokens": 1603
+      },
+      "settled_cost_usd": 0.07120180000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 3,
+        "lookup_batches": 0,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 13.031,
+      "elapsed_s": 13.048,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "stage3-case",
+      "question": "In Hpap, how many donors have a recorded T1D stage of 3?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 44,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.PREPARATION_FAILED"
+      ],
+      "model_seconds": 13.782,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 9102,
+        "cache_read_input_tokens": 36408,
+        "input_tokens": 31866,
+        "output_tokens": 1162
+      },
+      "settled_cost_usd": 0.1053886,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 14.035,
+      "elapsed_s": 14.049,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "nd-paraphrase",
+      "question": "Give the number of unique non-diabetic control donors in HPAP, whether or not they have samples.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 96,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.VALIDATION_FAILED"
+      ],
+      "model_seconds": 13.535,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 38423,
+        "output_tokens": 1460
+      },
+      "settled_cost_usd": 0.100548,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 14.019,
+      "elapsed_s": 14.024,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "nd-stage",
+      "question": "Count HPAP non-diabetic control donors who are recorded as T1D stage 1.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 3,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.PREPARATION_FAILED"
+      ],
+      "model_seconds": 15.189,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 33891,
+        "output_tokens": 1714
+      },
+      "settled_cost_usd": 0.094024,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 16.025,
+      "elapsed_s": 16.029,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "sample-tissues",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1163,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.196,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1266,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 19485,
+        "output_tokens": 1155
+      },
+      "settled_cost_usd": 0.0561002,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 8.027,
+      "elapsed_s": 15.12,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "multiome-optin",
+      "question": "Count RNA-capable samples from HPAP stage 1 donors, including scRNA-seq and snMultiomics. Keep the assay labels separate.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 4,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.PREPARATION_FAILED"
+      ],
+      "model_seconds": 27.854,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 44867,
+        "output_tokens": 3447
+      },
+      "settled_cost_usd": 0.133306,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 28.067,
+      "elapsed_s": 28.072,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "tissue-spleen",
+      "question": "How many scRNA-seq samples, excluding multiome assays, come from spleen in HPAP non-diabetic controls?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": true,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E03.ENTITY_CHOICE_UNVERIFIED"
+      ],
+      "model_seconds": 23.55,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 38456,
+        "output_tokens": 2747
+      },
+      "settled_cost_usd": 0.113484,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 24.036,
+      "elapsed_s": 24.042,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "cohort-comparison",
+      "question": "Compare exact scRNA-seq sample availability between HPAP ND and T1D donors. Count distinct samples separately for each cohort.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 59,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E03.ENTITY_CHOICE_UNVERIFIED"
+      ],
+      "model_seconds": 28.385,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 37721,
+        "output_tokens": 3558
+      },
+      "settled_cost_usd": 0.12012400000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 29.066,
+      "elapsed_s": 29.073,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "cftr-paraphrase",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 2,
+      "actual_count": 2,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1312,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 16.59,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 389,
+        "cache_read_input_tokens": 30280,
+        "input_tokens": 40374,
+        "output_tokens": 1268
+      },
+      "settled_cost_usd": 0.1004565,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 3,
+        "lookup_batches": 2,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 13.032,
+      "elapsed_s": 21.1,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "ins-paraphrase",
+      "question": "Is insulin (INS) only detected in beta cells in this graph, or are any other cell types recorded?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1385,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 9.648,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 358,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 13347,
+        "output_tokens": 840
+      },
+      "settled_cost_usd": 0.0384042,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.017,
+      "elapsed_s": 13.061,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "cftr-alias",
+      "question": "Is ABCC7 enriched in ductal cells? Include the canonical gene name and recorded enrichment measurements.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 2,
+      "actual_count": 1,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1078,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 10.305,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12465,
+        "input_tokens": 14188,
+        "output_tokens": 939
+      },
+      "settled_cost_usd": 0.040259,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 8.025,
+      "elapsed_s": 14.074,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "adcy3-coloc",
+      "question": "For ADCY3 and T1D, show the recorded colocalization signals, both GWAS and QTL lead variants, and PP.H4. Are the lead variants identical?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 2,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.REQUESTED_ENTITY_BINDING_MISSING"
+      ],
+      "model_seconds": 22.896,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 35606,
+        "output_tokens": 2455
+      },
+      "settled_cost_usd": 0.10486400000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 23.047,
+      "elapsed_s": 23.051,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "cftr-sqtl",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E00.UNCLASSIFIED",
+        "E02.PLANNING_FAILED"
+      ],
+      "model_seconds": 32.977,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 36408,
+        "input_tokens": 32001,
+        "output_tokens": 4250
+      },
+      "settled_cost_usd": 0.11378360000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 4,
+        "lookup_batches": 1,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 33.073,
+      "elapsed_s": 33.078,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "plekhm1-signal",
+      "question": "Show PLEKHM1 colocalization with type 1 diabetes and identify the linked GWAS and molecular QTL signals without assuming the lead SNPs are the same.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 2,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 2414,
+      "stream_match": true,
+      "codes": [
+        "E08.DEPENDENCY_UNAVAILABLE"
+      ],
+      "model_seconds": 32.807,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 889,
+        "cache_read_input_tokens": 30280,
+        "input_tokens": 31577,
+        "output_tokens": 3759
+      },
+      "settled_cost_usd": 0.10902250000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 3,
+        "lookup_batches": 0,
+        "planning_proposals": 3,
+        "outcome": "verified_independent_subset",
+        "execution_repairs": 0
+      },
+      "preview_s": 25.065,
+      "elapsed_s": 37.209,
+      "steps": [
+        [
+          "s1",
+          "failed"
+        ],
+        [
+          "s2",
+          "failed"
+        ],
+        [
+          "s3",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hla-compartments",
+      "question": "Compare HLA-DRA detection in immune cells, ductal populations, and beta cells. Distinguish missing graph records from biological absence.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 3,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E06.QUERY_VALIDATION"
+      ],
+      "model_seconds": 26.08,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 36408,
+        "input_tokens": 30347,
+        "output_tokens": 3438
+      },
+      "settled_cost_usd": 0.1023556,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 4,
+        "lookup_batches": 1,
+        "planning_proposals": 3,
+        "outcome": "verified_independent_subset",
+        "execution_repairs": 0
+      },
+      "preview_s": 33.1,
+      "elapsed_s": 33.104,
+      "steps": [
+        [
+          "s1",
+          "failed"
+        ],
+        [
+          "s2",
+          "failed"
+        ],
+        [
+          "s3",
+          "empty"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "shared-partners",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 7,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1037,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 11.144,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 11022,
+        "output_tokens": 1015
+      },
+      "settled_cost_usd": 0.0346092,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.817,
+      "elapsed_s": 25.069,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ],
+        [
+          "c1",
+          "empty"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hla-connected",
+      "question": "Which physical interaction partners of HLA-DRA are themselves annotated to MHC class II antigen presentation (Reactome R-HSA-2132295)? Require both links for the same partner.",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 5,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 1320,
+      "stream_match": true,
+      "codes": [
+        "E06.VALIDATION_FAILED",
+        "E08.DEPENDENCY_UNAVAILABLE"
+      ],
+      "model_seconds": 14.332,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 17542,
+        "output_tokens": 1349
+      },
+      "settled_cost_usd": 0.0509892,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 19.226,
+      "elapsed_s": 26.056,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "failed"
+        ],
+        [
+          "c1",
+          "failed"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "long-connected",
+      "question": "Starting from ADCY3, find connected paths through its QTL variants and their T1D GWAS memberships to HPAP stage 2 donors and their samples. Preserve the same variant, disease and donor throughout the path; count the distinct samples.",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": true,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.REQUESTED_ENTITY_BINDING_MISSING"
+      ],
+      "model_seconds": 24.734,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 8354,
+        "cache_read_input_tokens": 25062,
+        "input_tokens": 32790,
+        "output_tokens": 3125
+      },
+      "settled_cost_usd": 0.12272739999999999,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 4,
+        "lookup_batches": 1,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 25.67,
+      "elapsed_s": 25.675,
+      "steps": [],
+      "expected_clarification": false
+    },
+    {
+      "case": "typo-cohort",
+      "question": "How many T1D stage 2 donors are in nPAP?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 937,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 15.362,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 22131,
+        "input_tokens": 21916,
+        "output_tokens": 1469
+      },
+      "settled_cost_usd": 0.06294820000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 2,
+        "lookup_batches": 0,
+        "planning_proposals": 2,
+        "execution_repairs": 0
+      },
+      "preview_s": 19.044,
+      "elapsed_s": 25.092,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": true
+    },
+    {
+      "case": "followup",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 995,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.566,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 9259,
+        "cache_read_input_tokens": 13499,
+        "input_tokens": 20256,
+        "output_tokens": 1477
+      },
+      "settled_cost_usd": 0.0811293,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 2,
+        "lookup_batches": 0,
+        "planning_proposals": 2,
+        "execution_repairs": 0
+      },
+      "preview_s": 15.058,
+      "elapsed_s": 21.148,
+      "steps": [
+        [
+          "session_population",
+          "complete"
+        ],
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-ND-samples",
+      "question": "How many samples are available from HPAP ND donors?",
+      "status": "failed",
+      "reference_ok": true,
+      "reference_count": 5480,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E06.VALIDATION_FAILED",
+        "E08.DEPENDENCY_UNAVAILABLE"
+      ],
+      "model_seconds": 4.031,
+      "claude_calls": 1,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 9102,
+        "input_tokens": 3833,
+        "output_tokens": 466
+      },
+      "settled_cost_usd": 0.0141464,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.933,
+      "elapsed_s": 13.045,
+      "steps": [
+        [
+          "donors",
+          "partial"
+        ],
+        [
+          "samples",
+          "failed"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-ND-donors",
+      "question": "How many donors are available from HPAP ND donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 96,
+      "actual_count": 96,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 630,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.656,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13029,
+        "input_tokens": 17554,
+        "output_tokens": 702
+      },
+      "settled_cost_usd": 0.044733800000000004,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.654,
+      "elapsed_s": 16.785,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-T1D-donors",
+      "question": "How many donors are available from HPAP T1D donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 44,
+      "actual_count": 44,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 741,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.004,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13029,
+        "input_tokens": 13881,
+        "output_tokens": 752
+      },
+      "settled_cost_usd": 0.0378878,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.025,
+      "elapsed_s": 11.109,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-ND-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP ND donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 47,
+      "actual_count": 47,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 842,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.26,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13342,
+        "input_tokens": 17989,
+        "output_tokens": 1115
+      },
+      "settled_cost_usd": 0.0497964,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 13.053,
+      "elapsed_s": 18.282,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-T1D-samples",
+      "question": "How many samples are available from HPAP T1D donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 3064,
+      "actual_count": 3064,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1427,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 13.124,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1167,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 20826,
+        "output_tokens": 1191
+      },
+      "settled_cost_usd": 0.0588947,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.285,
+      "elapsed_s": 24.919,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-T1D-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP T1D donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 12,
+      "actual_count": 12,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 844,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 13.649,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1267,
+        "cache_read_input_tokens": 21178,
+        "input_tokens": 22461,
+        "output_tokens": 1178
+      },
+      "settled_cost_usd": 0.0641051,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 2,
+        "lookup_batches": 0,
+        "planning_proposals": 2,
+        "execution_repairs": 0
+      },
+      "preview_s": 13.789,
+      "elapsed_s": 21.532,
+      "steps": [
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage1-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 1?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 3,
+      "actual_count": 3,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 694,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.045,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13029,
+        "input_tokens": 11957,
+        "output_tokens": 516
+      },
+      "settled_cost_usd": 0.0316798,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 5.017,
+      "elapsed_s": 11.117,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage1-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 1?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 290,
+      "actual_count": 290,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1401,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.579,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13342,
+        "input_tokens": 17603,
+        "output_tokens": 1200
+      },
+      "settled_cost_usd": 0.0498744,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.052,
+      "elapsed_s": 16.395,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage1-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 1?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1036,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 9.53,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 12792,
+        "cache_read_input_tokens": 4240,
+        "input_tokens": 16045,
+        "output_tokens": 910
+      },
+      "settled_cost_usd": 0.074018,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 11.282,
+      "elapsed_s": 17.365,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage2-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 2?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 863,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 7.826,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 16719,
+        "input_tokens": 12299,
+        "output_tokens": 682
+      },
+      "settled_cost_usd": 0.0347618,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 11.006,
+      "elapsed_s": 15.539,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage2-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 2?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 52,
+      "actual_count": 52,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1134,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 10.582,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 17032,
+        "input_tokens": 16797,
+        "output_tokens": 1018
+      },
+      "settled_cost_usd": 0.0471804,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.096,
+      "elapsed_s": 18.277,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage2-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 2?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 784,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 10.211,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 17032,
+        "input_tokens": 13512,
+        "output_tokens": 889
+      },
+      "settled_cost_usd": 0.039320400000000005,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.638,
+      "elapsed_s": 18.547,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage3-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 3?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 44,
+      "actual_count": 44,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 750,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.486,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13029,
+        "input_tokens": 11970,
+        "output_tokens": 576
+      },
+      "settled_cost_usd": 0.0323058,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.74,
+      "elapsed_s": 13.753,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage3-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 3?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 3064,
+      "actual_count": 3064,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1335,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 20.842,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13342,
+        "input_tokens": 22597,
+        "output_tokens": 1110
+      },
+      "settled_cost_usd": 0.0589624,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 10.854,
+      "elapsed_s": 36.125,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "hpap-stage3-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 3?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 12,
+      "actual_count": 12,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 856,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 18.518,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13342,
+        "input_tokens": 15987,
+        "output_tokens": 1092
+      },
+      "settled_cost_usd": 0.0455624,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 12.281,
+      "elapsed_s": 26.256,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "pln-stage3",
+      "question": "How many scRNAseq PLN (pancreatic lymph node) samples are available for HPAP donors with T1D stage 3?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1198,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 13.152,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13029,
+        "input_tokens": 20337,
+        "output_tokens": 1257
+      },
+      "settled_cost_usd": 0.055849800000000005,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 19.114,
+      "elapsed_s": 25.657,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "empty"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-8b6eabf2ec8f",
+      "question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1391,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.01,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 277,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 15890,
+        "output_tokens": 1397
+      },
+      "settled_cost_usd": 0.048857700000000004,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 9.048,
+      "elapsed_s": 17.142,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "empty"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-4545d2550d6f",
+      "question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 2055,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 16.742,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1315,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 28678,
+        "output_tokens": 1859
+      },
+      "settled_cost_usd": 0.0816487,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 10.059,
+      "elapsed_s": 21.306,
+      "steps": [
+        [
+          "coloc",
+          "complete"
+        ],
+        [
+          "gwas",
+          "complete"
+        ],
+        [
+          "qtl",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-7013c6383a33",
+      "question": "Which SNP serves as the lead QTL for CFTR?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1784,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 15.373,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 22067,
+        "input_tokens": 24757,
+        "output_tokens": 1145
+      },
+      "settled_cost_usd": 0.0653774,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 2,
+        "lookup_batches": 1,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 10.559,
+      "elapsed_s": 23.057,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-4fda6e2c447e",
+      "question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 2715,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 30.898,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 561,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 51449,
+        "output_tokens": 2661
+      },
+      "settled_cost_usd": 0.13332570000000002,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 16.155,
+      "elapsed_s": 46.835,
+      "steps": [
+        [
+          "direct_annotations",
+          "complete"
+        ],
+        [
+          "interaction_partners",
+          "complete"
+        ],
+        [
+          "partner_annotations",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-9e2e44cdcd36",
+      "question": "Which SNP serves as the lead QTL for CENPO?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1728,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 16.488,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 22067,
+        "input_tokens": 23046,
+        "output_tokens": 1156
+      },
+      "settled_cost_usd": 0.06206539999999999,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 2,
+        "lookup_batches": 1,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 11.428,
+      "elapsed_s": 21.419,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-ca5a07dbcce9",
+      "question": "Which GENE is regulated by rs113869178 as a QTL?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1528,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 11.471,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12965,
+        "input_tokens": 15428,
+        "output_tokens": 1032
+      },
+      "settled_cost_usd": 0.043768999999999995,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 6.016,
+      "elapsed_s": 14.065,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-2c285c984b65",
+      "question": "Which GENE is regulated by rs12154969 as a QTL?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1312,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 13.8,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12965,
+        "input_tokens": 15433,
+        "output_tokens": 933
+      },
+      "settled_cost_usd": 0.042789,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 6.014,
+      "elapsed_s": 16.068,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-88fecb41cadf",
+      "question": "Is CFTR specifically enriched in ductal cells?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1517,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.183,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 389,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 14795,
+        "output_tokens": 1060
+      },
+      "settled_cost_usd": 0.0435777,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 8.02,
+      "elapsed_s": 16.082,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-24e85206e3e1",
+      "question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1545,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.173,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 358,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 13118,
+        "output_tokens": 1091
+      },
+      "settled_cost_usd": 0.0404562,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 8.017,
+      "elapsed_s": 16.067,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-056eef739cb6",
+      "question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 1634,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.094,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12434,
+        "input_tokens": 15176,
+        "output_tokens": 1099
+      },
+      "settled_cost_usd": 0.0438288,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.015,
+      "elapsed_s": 15.076,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-55db6980815c",
+      "question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 1540,
+      "stream_match": true,
+      "codes": [
+        "E06.VALIDATION_FAILED"
+      ],
+      "model_seconds": 11.556,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 376,
+        "cache_read_input_tokens": 12076,
+        "input_tokens": 15557,
+        "output_tokens": 1040
+      },
+      "settled_cost_usd": 0.0448692,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 7.02,
+      "elapsed_s": 15.107,
+      "steps": [
+        [
+          "s1",
+          "partial"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-ef206d99c401",
+      "question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 2336,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 19.321,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 13391,
+        "input_tokens": 29859,
+        "output_tokens": 2003
+      },
+      "settled_cost_usd": 0.0824262,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 11.046,
+      "elapsed_s": 23.286,
+      "steps": [
+        [
+          "coloc",
+          "complete"
+        ],
+        [
+          "qtl",
+          "complete"
+        ],
+        [
+          "gwas",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-349b0793d724",
+      "question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+      "status": "partial",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 2872,
+      "stream_match": true,
+      "codes": [
+        "E07.RETRIEVAL_INCOMPLETE"
+      ],
+      "model_seconds": 24.293,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1125,
+        "cache_read_input_tokens": 30280,
+        "input_tokens": 52570,
+        "output_tokens": 2394
+      },
+      "settled_cost_usd": 0.1379485,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 3,
+        "lookup_batches": 2,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 14.077,
+      "elapsed_s": 28.599,
+      "steps": [
+        [
+          "s1_check_1",
+          "complete"
+        ],
+        [
+          "s1_check_2",
+          "complete"
+        ],
+        [
+          "s2_check_1",
+          "empty"
+        ],
+        [
+          "s2_check_2",
+          "empty"
+        ],
+        [
+          "s3_check_1",
+          "partial"
+        ],
+        [
+          "s3_check_2",
+          "partial"
+        ],
+        [
+          "s4",
+          "empty"
+        ]
+      ],
+      "expected_clarification": false
+    },
+    {
+      "case": "landing-663aaab606c9",
+      "question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+      "status": "failed",
+      "reference_ok": false,
+      "reference_count": 0,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E00.UNCLASSIFIED",
+        "E02.PLANNING_FAILED"
+      ],
+      "model_seconds": 36.731,
+      "claude_calls": 5,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 45510,
+        "input_tokens": 34181,
+        "output_tokens": 3310
+      },
+      "settled_cost_usd": 0.11056400000000001,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 5,
+        "lookup_batches": 2,
+        "planning_proposals": 3,
+        "execution_repairs": 0
+      },
+      "preview_s": 37.073,
+      "elapsed_s": 37.076,
+      "steps": [],
+      "expected_clarification": false
+    }
+  ],
+  "budget": {
+    "limit_usd": 10.0,
+    "spent_usd": 6.216842,
+    "reserved_usd": 0,
+    "remaining_usd": 3.783158,
+    "calls": 272,
+    "pending_calls": 0,
+    "input_tokens": 1928928,
+    "output_tokens": 155020,
+    "cache_read_tokens": 1826666,
+    "cache_creation_tokens": 177381
+  }
+}

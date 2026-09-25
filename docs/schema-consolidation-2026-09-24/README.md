@@ -77,12 +77,13 @@ These checks used no model calls and do not substitute for final-answer replays.
 
 ## Outstanding before acceptance or deployment
 
-Automatic approval review blocked the candidate's live model replays because
-HPAP validation can send protected donor/sample-derived evidence to the configured
-Claude API. Explicit data-use approval has been requested. The blocked command
-did not run; no workaround or new budget ledger was used.
+The previous automatic approval review blocked live model replays pending
+explicit data-use approval. That command did not run. On 2026-09-24 the user
+confirmed that PanKgraph content is public and explicitly authorized Claude
+validation and dev deployment. This approval blocker is resolved; the existing
+ledger and correctness/performance gates still apply.
 
-After approval:
+Release checks:
 
 1. Stage the final reviewed candidate snapshot in private validation storage.
 2. Run all correctness cases and all 24 controls with the existing ledger.
