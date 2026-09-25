@@ -27,11 +27,28 @@ def required_evidence(step, result):
 
 def membership(result):
     """Compare typed membership, relationship evidence, paths and scalar answers."""
+    absent = object()
+    def scalar(value):
+        # GraphAdapter already materializes these native graph references into
+        # nodes/edges/path_records. Their query aliases and collect-vs-row shape
+        # are presentation, not additional membership or scalar evidence.
+        if isinstance(value, dict):
+            keys = set(value)
+            if (keys == {'node_id'} or keys == {'path'}
+                    or keys == {'edge', 'fingerprint'}):
+                return absent
+            clean = {key:item for key,v in value.items() if (item := scalar(v)) is not absent}
+            return clean if clean else absent
+        if isinstance(value, list):
+            clean = [item for v in value if (item := scalar(v)) is not absent]
+            return clean if clean else absent
+        return value
+    scalar_rows = [clean for row in result.get('rows', []) if (clean := scalar(row)) is not absent]
     return digest({
         'nodes': sorted((n['id'], tuple(sorted(n.get('labels', [])))) for n in result.get('nodes', [])),
         'edges': sorted(json.dumps(e, sort_keys=True) for e in result.get('edges', [])),
         'paths': sorted(json.dumps(p, sort_keys=True) for p in result.get('path_records', [])),
-        'rows': sorted(json.dumps(p, sort_keys=True, default=str) for p in result.get('rows', [])),
+        'rows': sorted(json.dumps(p, sort_keys=True, default=str) for p in scalar_rows),
     })
 
 

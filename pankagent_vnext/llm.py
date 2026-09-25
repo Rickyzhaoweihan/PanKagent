@@ -340,6 +340,7 @@ class ClaudeGateway:
 
     async def assist_query_structure(self, payload):
         from .query_assistance import SCHEMA, SYSTEM
+        from .planning_output import matches_schema
         body = json.dumps(payload, ensure_ascii=False, default=str)
         if len(body.encode()) > 100000:
             return {'action':'no_change','step_json':'','reason':'diagnostic_context_limit'}

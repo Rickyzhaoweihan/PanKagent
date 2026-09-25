@@ -29,6 +29,40 @@ def test_empty_and_equivalent_are_not_replaced():
     assert s.revision==1 and not s.conflict
 
 
+def test_collect_and_native_graph_rows_have_same_membership():
+    first = evidence('a',['x','y'])
+    edge = {'start_id':'x','end_id':'y','type':'LINK','properties':{}}
+    first['edges'] = [edge]
+    ref = {'edge':['x','LINK','y'],'fingerprint':'same'}
+    first['rows'] = [{'nodes':[{'node_id':'x'},{'node_id':'y'}],'edges':[ref]}]
+    second = deepcopy(first)
+    second['rows'] = [{'gene':{'node_id':'x'},'target':{'node_id':'y'},'relationship':ref}]
+    selector = Selection(STEP,{})
+    assert selector.offer(first,'template')
+    assert not selector.offer(second,'gpu')
+    assert not selector.conflict
+    second['rows'][0]['count'] = 99
+    assert selector.offer(second,'gpu') and selector.conflict
+
+
+def test_structured_assistance_validates_real_tool_reply_without_network():
+    from pankagent_vnext.llm import ClaudeGateway
+    async def run():
+        reply = SimpleNamespace(content=[SimpleNamespace(type='tool_use',name='propose_structure',
+            input={'action':'no_change','step_json':'','reason':'already correct'})],
+            usage=SimpleNamespace(model_dump=lambda:{'input_tokens':1,'output_tokens':1}))
+        async def reserve(*args):return 'reservation'
+        async def create(*args,**kwargs):return reply
+        async def settle(*args):pass
+        gateway = SimpleNamespace(settings=SimpleNamespace(model='claude-sonnet-5'),
+            _reserve=reserve,_create=create,_options=lambda:{},budget=SimpleNamespace(asettle=settle))
+        result = await ClaudeGateway.assist_query_structure(gateway,{'kind':'conflict'})
+        assert result['action']=='no_change'
+        reply.content[0].input = {'action':'invent_records'}
+        assert (await ClaudeGateway.assist_query_structure(gateway,{}))['reason']=='invalid_assistance_response'
+    asyncio.run(run())
+
+
 def test_partial_replacement_requires_new_requested_evidence_and_no_loss():
     selection = Selection({**STEP, 'relation_types':['FIRST','SECOND']}, {})
     first = evidence('a',['x'],status='partial')
