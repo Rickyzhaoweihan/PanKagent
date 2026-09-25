@@ -296,7 +296,9 @@ def _sample_witness(step, paths):
         predicates = [f.replace('d.`', 'a.`').replace('s.`', 'b.`') for f in filters]
         return {'cypher': 'MATCH (a:`donor`)-[r:`HAS_SAMPLE`]->(b:`Sample_node`)\n'
                 + 'WHERE ' + ' AND '.join(predicates) + '\n'
-                + 'RETURN collect(DISTINCT a) + collect(DISTINCT b) AS nodes, collect(DISTINCT r) AS edges',
+                + 'OPTIONAL MATCH (t:`anatomical_structure`)-[rt:`HAS_SAMPLE`]->(b)\n'
+                + 'RETURN collect(DISTINCT a) + collect(DISTINCT b) + collect(DISTINCT t) AS nodes, '
+                + 'collect(DISTINCT r) + collect(DISTINCT rt) AS edges',
                 'parameters': params, 'parameter_bindings': parameter_bindings,
                 'template_id': 'directed_relation_records', 'version': VERSION,
                 'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,

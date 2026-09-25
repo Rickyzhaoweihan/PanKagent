@@ -75,6 +75,12 @@ def normalize(plan):
             raise ValueError('invalid_plan_dependencies')
         ordered.append(ready); seen.add(ready['id']); pending.remove(ready)
     from .release_schema import REGISTRY
+    by_task = {s['id']: s for s in ordered}
+    def path_nodes(task):
+        if task.get('path_spec'): return task['path_spec']['nodes']
+        if task.get('operation'):
+            return [n for i in task['operation']['inputs'] for n in path_nodes(by_task[i['step_id']])]
+        return []
     for s in ordered:
         bindings = s.get('input_bindings', [])
         if bindings and (len(bindings) != len(s.get('depends_on', []))
@@ -99,6 +105,16 @@ def normalize(plan):
                 raise ValueError('incompatible_result_types')
             if any(i['entity_type'] not in REGISTRY['nodes'] for i in op['inputs']):
                 raise ValueError('invalid_result_type')
+            for selector in op['inputs']:
+                parent = next(p for p in ordered if p['id'] == selector['step_id'])
+                role = selector.get('role', '')
+                if role and path_nodes(parent):
+                    if not any(n['role'] == role and selector['entity_type'] in n['entity_types']
+                               for n in path_nodes(parent)):
+                        raise ValueError('combination_role_missing_from_parent_path:' + selector['step_id'] + ':' + role)
+                elif role not in ('', 'source', 'target'):
+                    raise ValueError('combination_role_requires_parent_path_spec:' + selector['step_id'] + ':' + role
+                        + ': Declare the named role in the parent path_spec, or select a verified source/target endpoint.')
     result['steps'] = ordered
     if result.get('combine_operations') and 'answer_step_ids' not in result:
         inputs = {d for s in ordered for d in s.get('depends_on', [])}

@@ -653,7 +653,7 @@ def _disease_mention_is_stage_label(text, mention):
     start, end = mention.get('start', 0), mention.get('end', 0)
     return bool(
         re.match(r'\s+stages?\b', text[end:], re.I)
-        or re.search(r'\bstage\s*(?:[-:]\s*)?(?:\d+|I{1,3})\s*$',
+        or re.search(r'\bstage\s*(?:[-:]\s*)?(?:\d+|I{1,3})\s*(?:of\s+)?$',
                      text[max(0, start - 45):start], re.I))
 
 def _diagnosis_request_text(step, vocabulary):
@@ -1687,8 +1687,9 @@ def resolve(step, vocabulary, release):
         request_mentions = clinical_mentions
     authoritative_disease_mentions = list(request_mentions)
     local_mentions = _disease_mentions(local_disease_scope_text)
-    if clinical_mentions:
-        local_mentions = [m for m in local_mentions if not _disease_mention_is_stage_label(local_disease_scope_text, m)]
+    # A generated stage label is not an added clinical diagnosis, even when
+    # the original request abbreviated it to just 'stage 1'.
+    local_mentions = [m for m in local_mentions if not _disease_mention_is_stage_label(local_disease_scope_text, m)]
     control_polarity = control_cohort_polarity(scope_source_text)
     control_requested = control_polarity['positive']
     control_excluded = control_polarity['negative']
@@ -1914,6 +1915,18 @@ def resolve(step, vocabulary, release):
             c.get('entity_type') == 'anatomical_structure'
             and c.get('property') in {'id', 'name'})]
     if len(tissues)==1:
+        # A display name copied into a sample code is a redundant mis-owned
+        # representation only when it denotes this SAME request-verified tissue.
+        tissue = tissues[0]
+        duplicates = [c for c in constraints if (
+            c.get('entity_type') == 'Sample_node' and c.get('property') == 'anatomical_structure'
+            and c.get('operator', '=') == '=' and c.get('value') == tissue.get('name'))]
+        constraints = [c for c in constraints if c not in duplicates]
+        for constraint in duplicates:
+            matches.append({'requested': deepcopy(constraint), 'match_kind': 'duplicate_tissue_owner_reconciled',
+                'canonical_binding': {'entity_type': 'anatomical_structure', 'property': 'id', 'operator': '=', 'value': tissue['id']},
+                'registry_version': VERSION, 'source': 'verified requested tissue identity and same-sample relationship',
+                'explanation': 'The tissue display name is not a sample tissue code; the verified relationship retains the requested tissue restriction.'})
         bind('id','anatomical_structure',tissues[0]['id'],kind=tissues[0].get('match_kind','exact'),requested=tissues[0].get('requested_alias',tissues[0]['name']))
     elif len(tissues)>1:
         issues.append('Multiple sample tissues were named. Separate the tissue checks so each sample remains attached to its intended tissue.')

@@ -23,6 +23,7 @@ checks with explicit unmet conditions. Never invent a relationship or weaken a f
 Verified preliminary candidates are already available for entity_choices; do not repeat a lookup
 solely to obtain a proof. Use lookup for missing evidence or ambiguity. You have two lookup batches
 of six requests and three plan proposals. Lookup turns do not consume a plan repair opportunity.
+Use inspect_schema for field ownership and interpretation, and resolve_property_values for recorded categorical codes. These share the two lookup-batch budget.
 Submit record_plan to prepare the tasks; preparation diagnostics return to this same session.
 '''
 
@@ -65,6 +66,11 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     if k not in {'minItems', 'maxItems', 'minLength', 'maxLength'}}
         if isinstance(value, list): return [provider_schema(v) for v in value]
         return value
+    from .schema_tools import SCHEMA_TOOL, VALUES_TOOL
+    tools.append(SCHEMA_TOOL)
+    graph = getattr(resolver, '__self__', None)
+    if graph is not None:
+        tools.append(VALUES_TOOL)
     tools = provider_schema(tools)
     messages = [{'role': 'user', 'content': user}]
     limits = schema_module('validation_repair')['limits']
@@ -91,6 +97,19 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
         for block in reply.content:
             if block.type != 'tool_use': continue
             tool_id = getattr(block, 'id', 'mock-tool')
+            if block.name in {'inspect_schema', 'resolve_property_values'}:
+                from .schema_tools import inspect_schema, resolve_property_values
+                if batches >= limits['lookup_batches']:
+                    outcome = {'status': 'lookup_budget_exhausted'}
+                else:
+                    batches += 1
+                    try:
+                        outcome = (inspect_schema(block.input.get('references')) if block.name == 'inspect_schema'
+                                   else await asyncio.wait_for(resolve_property_values(graph, block.input.get('reference',''), block.input.get('text','')), 10))
+                    except Exception:
+                        outcome = {'status': 'unavailable', 'diagnostic': 'E01'}
+                results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(outcome)})
+                continue
             if block.name == 'resolve_entities':
                 if batches >= limits['lookup_batches'] or turn == max_calls - 1:
                     outcome = {'status': 'lookup_budget_exhausted', 'results': []}

@@ -223,7 +223,9 @@ class ClaudeGateway:
             public_grounding = grounding or {'status': 'unavailable', 'diagnostic': 'E01'}
         if profile_gene:
             local_draft = expand_registered_profile(question, profile_gene)
+        from .schema_tools import question_guidance
         user = json.dumps({'question': question, 'history': history[-6:],
+            'schema_guidance': question_guidance(question, grounding),
             'grounding': public_grounding, 'preliminary_assessment': initial_assessment(grounding),
             'session_population': (grounding or {}).get('session_population'),
             'terminology_advisory': (grounding or {}).get('terminology_advisory'),
@@ -232,7 +234,9 @@ class ClaudeGateway:
         if (grounding or {}).get('session_population'):
             system_text += ('\nThe referenced population is verified backend evidence. Plan only the NEW connected queries '
                 'from that population. Do not invent individual IDs or repeat its donor/cohort lookup. The backend '
-                'will insert the verified parent and typed input binding. Preserve all newly requested assay/tissue filters. '
+                'will insert the verified parent and typed input binding. Use depends_on=[] for new root tasks; '
+                'if explicitly referencing the previous population use only session_population as its dependency name. '
+                'Preserve all newly requested assay/tissue filters. '
                 'An unspecified tissue is an annotation to return, not a required tissue filter.')
         if profile_gene:
             profile_gene = None

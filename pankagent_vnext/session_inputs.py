@@ -55,8 +55,10 @@ def attach(plan, reference):
     if not targets or len(targets) != len(roots):
         raise ValueError('session_population_requires_connected_queries:' + json.dumps({
             'required_relations': reference['query_relations'],
+            'verified_external_dependency': anchor,
+            'prior_step_id': reference['source_step_id'],
             'root_shapes': [{'relations': s.get('relation_types', []), 'has_path': bool(s.get('path_spec'))} for s in roots],
-            'instruction': 'Each new root must connect the saved donor population through HAS_SAMPLE. Return the sample assay and tissue as annotations; do not add separate unanchored annotation queries.'}))
+            'instruction': 'Use depends_on=[] for new root tasks, or depends_on=["session_population"]. Never invent an external task name. Each new root must connect the saved donor population through HAS_SAMPLE. Return the sample assay and tissue as annotations; do not add separate unanchored annotation queries.'}))
     for step in targets:
         if step.get('path_spec'):
             nodes = step['path_spec']['nodes']

@@ -75,6 +75,17 @@ async def lookup(graph, mention, entity_type, fuzzy=False):
     query = f'MATCH (n:`{entity_type}`) WHERE ' + ' OR '.join(predicates) + ' RETURN ' + fields + ' LIMIT 11'
     rows = await graph._small_query(query, {'mention': mention})
     method = 'exact_or_synonym'
+    reviewed = []
+    if not rows:
+        definition = active_pack().module('database_schema')['nodes'].get(entity_type, {})
+        reviewed = [a for a in definition.get('reviewed_aliases', [])
+                    if a['graph_release'] == graph.settings.graph_version
+                    and mention.casefold() in {v.casefold() for v in [a['name'], *a['aliases']]}]
+        if reviewed:
+            rows = await graph._small_query(f'MATCH (n:`{entity_type}`) WHERE n.`{id_field}` IN $ids RETURN ' + fields,
+                                            {'ids': [a['id'] for a in reviewed]})
+            rows = [row for row in rows if any(row[id_field] == a['id'] and row.get('name') == a['name'] for a in reviewed)]
+            method = 'reviewed_alias'
     incomplete = len(rows) > 10
     if not rows and fuzzy:
         # Lucene punctuation is never accepted as a user-authored query expression.
@@ -101,7 +112,7 @@ async def lookup(graph, mention, entity_type, fuzzy=False):
                  'schema_sha256': active_pack().digest,
                  'match_method': 'recorded_alias' if matches and any(m['field'] == synonym for m in matches) else
                                  'recorded_id' if row[id_field] == mention else 'recorded_name' if matches else method,
-                 'matched_fields': matches}
+                 'matched_fields': matches, 'alias_provenance': [a for a in reviewed if a['id'] == row[id_field]]}
         proof['token'] = selection_token(graph, proof)
         candidates.append({**proof, 'labels': row['labels'], 'score': row.get('score'),
                            'selection_proof': proof})
