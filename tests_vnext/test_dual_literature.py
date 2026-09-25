@@ -124,3 +124,12 @@ async def test_graph_slot_released_and_followup_before_literature(tmp_path):
         await wait_state(client,first['run_id'],{'completed','partial'})
         saved=runtime.store.get(first['run_id'])['literature']
         assert len(saved['references'])==1 and saved['references'][0]['sources']==['hirn','glkb']
+
+
+def test_reference_merge_preserves_rich_metadata():
+    registry=[]
+    append_references(registry,[{'pmid':'40875294','title':'Full publication title','authors':['Author']}],'glkb')
+    append_references(registry,[{'pmid':'40875294','title':'PMID 40875294','authors':[]}],'hirn')
+    assert registry[0]['title']=='Full publication title'
+    assert registry[0]['authors']==['Author']
+    assert registry[0]['sources']==['glkb','hirn']

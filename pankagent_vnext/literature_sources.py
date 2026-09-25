@@ -35,7 +35,13 @@ def append_references(registry, refs, source):
             found = {'number': len(registry) + 1, 'keys': keys, 'sources': []}
             registry.append(found)
         number, prior_keys, sources = found['number'], found['keys'], found['sources']
-        found.update({k: v for k, v in ref.items() if v is not None and k not in {'number', 'keys', 'sources'}})
+        for key, value in ref.items():
+            if value in (None, '', []) or key in {'number', 'keys', 'sources'}:
+                continue
+            existing = found.get(key)
+            placeholder = key == 'title' and bool(re.fullmatch(r'(?:PMID|PubMed)\s+\d+', str(existing or ''), re.I))
+            if existing in (None, '', []) or placeholder:
+                found[key] = value
         found.update(number=number, keys=list(dict.fromkeys(prior_keys + keys)), sources=list(dict.fromkeys(sources + [source])))
 
 
