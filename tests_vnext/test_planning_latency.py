@@ -25,7 +25,8 @@ def test_literature_only_revision_uses_no_planner_call(tmp_path):
             child=await wait_state(client,response.json()['run_id'],{'awaiting_confirmation'})
             assert gateway.plans==count
             assert child['plan']['literature'] is False
-            assert child['plan']['steps']==parent['plan']['steps']
+            assert [{k: v for k, v in s.items() if k != 'request_context'} for s in child['plan']['steps']] == [{k: v for k, v in s.items() if k != 'request_context'} for s in parent['plan']['steps']]
+            assert child['plan']['steps'][0]['request_context']['current_raw_input'].lower() == 'disable literature'
     asyncio.run(check())
 
 

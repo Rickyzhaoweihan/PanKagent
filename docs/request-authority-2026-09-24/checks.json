@@ -1,0 +1,56 @@
+{
+  "base_commit": "93b898221b5c8131f46a4a830b15639b65530a23",
+  "formatter_synthesize_unchanged": true,
+  "diagram": {
+    "changed_cells": [
+      "plan",
+      "claude-tools",
+      "scope"
+    ],
+    "geometry_unchanged": true,
+    "connectors_unchanged": true,
+    "tabs_02_04_byte_identical": true,
+    "before_sha256": "7e91c28316eaa9f92cf59f346d5ff6ad8a801054a6909996a5e013d3b6dd068e",
+    "after_sha256": "56f1db0f5c7d4508b5a1c84a111480914dc2ee5574a99e59782867e56d9e6bb8",
+    "protected_tab_sha256": [
+      "a517eaca50c595bf452f22bcd4c233f67648856953a5bc2246170cbded900c6b",
+      "8e7a7777ffa3292f6e12e3ae7dac1204ee54a0aee6e2a6ac2eec175c35046e66",
+      "9aad3693fd587342267f20109b3098a5af33cfc095bd18c1ee6ba2baa277ab53"
+    ],
+    "render_inspected": true
+  },
+  "paid_calls": 0,
+  "deployment": "not deployed",
+  "live_correctness": "pending data-use approval",
+  "live_performance": "pending data-use approval",
+  "offline": {
+    "command": "python -m pytest tests_vnext -q",
+    "passed": 2781,
+    "failed": 19,
+    "skipped": 5,
+    "subtests_passed": 231,
+    "elapsed_seconds": 97.47,
+    "new_failures_vs_baseline": [],
+    "existing_failures": [
+      "tests_vnext/test_audit_repairs.py::test_additive_scope_failure_retains_preview_and_blocks_confirmation",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[!=]",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[=]",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[None]",
+      "tests_vnext/test_pattern_planning.py::test_only_closed_deterministic_grammars_receive_cold_grounding_window",
+      "tests_vnext/test_persistence_ownership.py::test_results_lease_fences_old_payload_and_preserves_completed_components",
+      "tests_vnext/test_plan_preview.py::test_failed_preview_requires_explicit_retry_and_preserves_dependencies",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[complete]",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[empty]",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[partial]",
+      "tests_vnext/test_plan_preview.py::test_grouped_failed_primary_preview_has_final_recovery_without_active_popup",
+      "tests_vnext/test_plan_preview.py::test_preview_timeout_preserves_successes_and_claude_health",
+      "tests_vnext/test_plan_preview.py::test_primary_failure_cannot_be_retried_after_confirmation_to_change_run_budget",
+      "tests_vnext/test_query_ready_gate.py::test_context_dependency_of_primary_is_required",
+      "tests_vnext/test_query_ready_gate.py::test_failed_dependency_blocks_child_without_gpu_but_not_independent_checks",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[failed]",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[outcome2]",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[partial]",
+      "tests_vnext/test_query_ready_gate.py::test_preview_deadline_records_every_unfinished_primary_and_retains_success"
+    ]
+  }
+}

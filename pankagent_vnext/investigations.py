@@ -14,7 +14,11 @@ def group_plan(plan):
     groups = {}
     for step in plan.get('steps',[]):
         kinds=set(step.get('relation_types',[]))
-        group=next(((key,title) for key,title,members in GROUPS if kinds & members),('cohort','Find donors and their recorded samples'))
+        fallback = (('cohort', 'Find donors and their recorded samples')
+                    if kinds & {'HAS_DONOR', 'HAS_SAMPLE'}
+                    or any(c.get('entity_type') in {'donor', 'Sample_node'} for c in step.get('constraints', []))
+                    else ('entity', 'Entity details and recorded annotations'))
+        group=next(((key,title) for key,title,members in GROUPS if kinds & members), fallback)
         # A cohort and molecular mixed question still has at most three groups.
         if group[0] not in groups and len(groups)==3: group=(next(reversed(groups)),groups[next(reversed(groups))]['title'])
         groups.setdefault(group[0],{'id':group[0],'title':group[1],'step_ids':[]})['step_ids'].append(step['id'])

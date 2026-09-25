@@ -78,7 +78,8 @@ def generation_request(step, base_question):
             bindings.append(f"{e['entity_type']} with id {json.dumps(e['id'])} (verified name {json.dumps(e.get('name'))}); these identify the same entity")
         else:
             bindings.append(f"{c.get('entity_type') or 'recorded property'} {c.get('property')} {c.get('operator')} {json.dumps(c.get('value'))}")
-    if step.get('semantic_registry'):
+    from .semantic_registry import semantic_intent
+    if step.get('semantic_registry') and semantic_intent(step):
         requirements=step.get('sample_requirements',{})
         from .semantic_registry import sample_lookup_requested
         samples=sample_lookup_requested(step) or bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))

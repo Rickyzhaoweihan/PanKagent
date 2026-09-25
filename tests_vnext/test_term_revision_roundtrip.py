@@ -36,6 +36,8 @@ def test_apply_suggestion_reaches_planner_with_one_question(tmp_path, manual):
             assert new['plan'].get('recovery',{}).get('category')!='term_clarification'
             audit=runtime.store.audit_metadata(new['run_id'])
             assert audit.get('raw_original_question',audit.get('original_question'))==original
+            assert new['plan']['request_context']['original_raw_question'] == original
+            assert new['plan']['request_context']['current_raw_input'] == payload['question']
             assert audit['retry_submitted_text']==payload['question']
             assert gateway.plans==2
     asyncio.run(scenario())

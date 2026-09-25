@@ -175,6 +175,7 @@ class ClaudeGateway:
                 await self.budget.asettle(rid,{})
             raise
     async def plan(self,question,history, _repair=False, grounding=None, resolver=None, preparer=None):
+        from .request_context import current, AUTHORITY
         if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
         from .semantic_registry import planner_guidance
         from .investigations import generic_profile_gene, expand_registered_profile
@@ -225,11 +226,13 @@ class ClaudeGateway:
             local_draft = expand_registered_profile(question, profile_gene)
         from .schema_tools import question_guidance
         user = json.dumps({'question': question, 'history': history[-6:],
+            'request_context': current(question), 'request_authority': AUTHORITY,
             'schema_guidance': question_guidance(question, grounding),
-            'grounding': public_grounding, 'preliminary_assessment': initial_assessment(grounding),
-            'session_population': (grounding or {}).get('session_population'),
-            'terminology_advisory': (grounding or {}).get('terminology_advisory'),
-            'terminology_guidance': planner_guidance(question), 'local_draft': local_draft}, ensure_ascii=False)
+            'verified_facts': {'grounding': public_grounding,
+                               'session_population': (grounding or {}).get('session_population')},
+            'advisory_suggestions': {'preliminary_assessment': initial_assessment(grounding),
+                'terminology_advisory': (grounding or {}).get('terminology_advisory'),
+                'terminology_guidance': planner_guidance(question), 'local_draft': local_draft}}, ensure_ascii=False)
         # Even exact/local/profile cases need Claude's final semantic decision.
         if (grounding or {}).get('session_population'):
             system_text += ('\nThe referenced population is verified backend evidence. Plan only the NEW connected queries '
@@ -304,9 +307,11 @@ class ClaudeGateway:
                          resolver=resolver, preparer=preparer, initial_proofs=initial_proofs)
 
     async def interpret_revision(self, question, instruction, parent_plan):
+        from .request_context import current, AUTHORITY
         from .revision_interpreter import SCHEMA, SYSTEM
         from .planning_output import matches_schema
         body = json.dumps({'current_question': question, 'revision_instruction': instruction,
+            'request_context': current(question), 'request_authority': AUTHORITY,
             'plan_mode': parent_plan.get('execution_mode'),
             'checks': [{'question': s.get('question'), 'depends_on': s.get('depends_on'),
                         'path_spec': s.get('path_spec')} for s in parent_plan.get('steps', [])]}, ensure_ascii=False)
@@ -331,7 +336,9 @@ class ClaudeGateway:
         kinds=step.get('relation_types',[])
         schema={'type':'object','additionalProperties':False,'properties':{'cypher':{'type':'string'}},'required':['cypher']}
         system='Repair a read-only PanKgraph Cypher query. Preserve every requested entity, filter, dependency and completeness requirement. Use only the supplied schema. Never relax filters to find data. Return actual node and relationship objects with all properties. No writes, procedures, LIMIT, list slices or invented labels/properties. Return an empty cypher string if the exact scope cannot be represented safely.'
-        body=json.dumps({'question':question,'step':step,'failed_candidate':candidate,'validation_failures':failures,
+        from .request_context import current, AUTHORITY
+        body=json.dumps({'question':question,'request_context':current(stored=step.get('request_context')), 'request_authority':AUTHORITY,
+            'step':step,'failed_candidate':candidate,'validation_failures':failures,
             'schema':{k:REGISTRY['relations'].get(k) for k in kinds},'guidance':{k:RELATIONS.get(k) for k in kinds}},ensure_ascii=False)
         rid=await self._reserve('cypher_repair',system,body,1800)
         reply=await self._create(rid,model=self.settings.model,max_tokens=1800,
@@ -348,7 +355,11 @@ class ClaudeGateway:
     async def review_grounded_plan(self, question, plan, preview):
         """A bounded verification after script-compiled queries; no plan writing."""
         from .plan_verification import SYSTEM, SCHEMA, VERSION, review_input
-        body = json.dumps(review_input(question, plan, preview), ensure_ascii=False, default=str)
+        from .request_context import current, AUTHORITY
+        review = review_input(question, plan, preview)
+        review['effective_question'] = review.pop('original_question')
+        body = json.dumps({**review,
+            'request_context':current(question, plan.get('request_context')), 'request_authority':AUTHORITY}, ensure_ascii=False, default=str)
         rid = await self._reserve('plan_verification', SYSTEM, body, 400)
         reply = await self._create(rid, model=self.settings.model, max_tokens=400,
             system=[{'type': 'text', 'text': SYSTEM}], messages=[{'role': 'user', 'content': body}],
@@ -365,6 +376,7 @@ class ClaudeGateway:
         raise ValueError('invalid_plan_verification')
 
     def prepare_answer(self,question,evidence):
+        from .request_context import current, AUTHORITY
         from .output_scope import aggregate_only, project
         # Skill routing inspects schema names locally, never record values in a
         # model request.  Route before aggregate projection removes individual
@@ -410,6 +422,7 @@ class ClaudeGateway:
                 if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
             from .format_input_modes import input_structure
             return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope,
+                'request_context':current(question), 'request_authority':AUTHORITY,
                 'input_structure':input_structure(evidence),
                 'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()
                     for w in (step.get('requested_scope') or {}).get('interpretation_warnings', [])))},ensure_ascii=False,default=str)
@@ -417,7 +430,7 @@ class ClaudeGateway:
         if len(body.encode()) > MAX_BYTES:
             # Include the final question, JSON spacing and scope notes in the
             # size decision, not only the intermediate compact evidence.
-            compact=compact_evidence(evidence, max_bytes=max(1000, MAX_BYTES-len(question.encode())-20000))
+            compact=compact_evidence(evidence, max_bytes=max(1000, MAX_BYTES-len(answer_body([]).encode())-20000))
             excerpt=scientific_excerpt(compact, include_donor_details=requested_details)
             body=answer_body(excerpt)
         if len(body.encode()) > MAX_BYTES:

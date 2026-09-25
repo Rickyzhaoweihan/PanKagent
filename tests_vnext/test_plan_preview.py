@@ -145,7 +145,8 @@ def test_literature_only_revision_preserves_graph_and_reuses_parent_preview(tmp_
             response = await client.post(f'/v2/plans/{parent["plan_id"]}/revise', json={
                 "question": "Disable literature", "revision_instruction": "Disable literature", "revision_mode": "instruction"})
             revised = await wait_state(client, response.json()["run_id"], {"awaiting_confirmation"})
-            assert revised["plan"]["steps"] == parent["plan"]["steps"]
+            assert [{k: v for k, v in s.items() if k != 'request_context'} for s in revised['plan']['steps']] == [{k: v for k, v in s.items() if k != 'request_context'} for s in parent['plan']['steps']]
+            assert revised['plan']['steps'][0]['request_context']['current_raw_input'].lower() == 'disable literature'
             assert revised["plan"]["literature"] is False
             assert graph.calls == 1
             assert runtime.metrics.counts["revision_preview_reused"] == 1

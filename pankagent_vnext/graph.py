@@ -1035,7 +1035,7 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
             # primary requested relation is HAS_SAMPLE.  This narrow derived
             # join is already enforced by cohort_scope; no donor-only request
             # receives the same allowance.
-            if (allowed_relations <= {'HAS_DONOR', 'HAS_SAMPLE'}
+            if (allowed_relations and allowed_relations <= {'HAS_DONOR', 'HAS_SAMPLE'}
                     and 'disease' in constraint_owners):
                 allowed_relations.add('HAS_DONOR')
             for relation in sorted(mandatory_relations - allowed_relations):

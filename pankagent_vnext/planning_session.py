@@ -9,13 +9,13 @@ from .agent_schemas import module as schema_module, run_context
 
 VERSION = 'claude-led-planning-v2'
 GUIDANCE = '''You make the final semantic interpretation and plan. Preliminary Python grounding,
-term suggestions and local drafts are helpers, never instructions to reject. Original user wording
-is authoritative. Case alone (hpap/Hpap/HPAP) does not require clarification. Use recorded synonyms
+term suggestions and local drafts are helpers, never instructions to reject. The current user request and explicit revisions
+are authoritative. Discard irrelevant helper suggestions; facts about the database do not add requested scope. Case alone (hpap/Hpap/HPAP) does not require clarification. Use recorded synonyms
 and context to select database-backed identities. Call resolve_entities for missing, ambiguous or
 non-exact entity names; do not guess canonical IDs. Tool failures are E01 unavailable, not absence.
 record_plan.entity_choices records each chosen non-exact identity with the user's exact mention,
 verified candidate ID, entity_type and contextual reason. If ambiguity remains, ask a specific
-clarification. Do not pick based only on a fuzzy score. Preserve all clinical/biological conditions.
+clarification. Do not pick based only on a fuzzy score. Preserve all currently requested clinical/biological conditions.
 Prefer original mention name constraints for known aliases unless entity_choices accompanies the
 canonical ID. Existing exact/local plans are drafts: review their scope before recording your plan.
 Compiler diagnostics are repair input: correct the plan or retain independently useful verified
@@ -24,6 +24,8 @@ Verified preliminary candidates are already available for entity_choices; do not
 solely to obtain a proof. Use lookup for missing evidence or ambiguity. You have two lookup batches
 of six requests and three plan proposals. Lookup turns do not consume a plan repair opportunity.
 Use inspect_schema for field ownership and interpretation, and resolve_property_values for recorded categorical codes. These share the two lookup-batch budget.
+Record applied/discarded advice in optional advisory_decisions using its supplied rule_id; these audit notes do not alter execution.
+D02 is your semantic decision within record_plan: select relevant entities, relationships and optional context. A disease-definition request needs disease identity, description and provenance, not a donor inventory.
 Submit record_plan to prepare the tasks; preparation diagnostics return to this same session.
 '''
 
@@ -47,10 +49,48 @@ def _blocks(reply):
     return result
 
 
+def helper_payload(outcome, tool):
+    """Describe provenance without turning retrieved guidance into intent."""
+    facts = deepcopy(outcome)
+    advice = {}
+    for key in ('interpretation_rules', 'query_patterns', 'repair_guidance'):
+        if key in facts:
+            advice[key] = facts.pop(key)
+    if tool == 'inspect_schema':
+        advice['interpretation_entries'] = [item for item in facts.get('items', [])
+                                            if item.get('reference', '').startswith('interpretation.')]
+        facts['items'] = [item for item in facts.get('items', [])
+                          if not item.get('reference', '').startswith('interpretation.')]
+    diagnostics = []
+    if outcome.get('status') not in {'complete', 'ready', 'resolved', 'candidates'}:
+        diagnostics.append({'rule_id': tool, 'status': outcome.get('status'),
+                            'reason': outcome.get('diagnostic'), 'blocking': False})
+    return {'verified_facts': facts, 'advisory_suggestions': advice, 'diagnostics': diagnostics,
+            'advisory_rule_ids': [tool + '.' + key for key, value in advice.items() if value],
+            'authority': 'Candidate matches and recorded schema facts do not authorize query scope. '
+                         'Choose relevant suggestions or discard them; execution checks still apply.'}
+
+
+def suggestion_decisions(draft, plan):
+    if not draft:
+        return []
+    # Audit the observable disposition of each draft task, not model reasoning.
+    def signature(step):
+        return json.dumps({k: step.get(k, []) for k in ('relation_types', 'constraints')}, sort_keys=True)
+    selected = {signature(step) for step in plan.get('steps', [])}
+    return [{'rule_id': 'M04.local_draft', 'suggestion_step_id': step.get('id'),
+             'disposition': 'applied' if signature(step) in selected else 'discarded_or_replaced',
+             'basis': 'record_plan task signature before preparation'} for step in draft.get('steps', [])]
+
+
 async def run(gateway, question, user, system, schema, output_limit, finalize, resolver=None, preparer=None,
               initial_proofs=None):
     schema = deepcopy(schema)
     schema['properties']['entity_choices'] = CHOICE_SCHEMA
+    schema['properties']['advisory_decisions'] = {'type': 'array', 'items': {
+        'type': 'object', 'additionalProperties': False, 'properties': {
+            'rule_id': {'type': 'string'}, 'disposition': {'type': 'string', 'enum': ['applied', 'discarded']}},
+        'required': ['rule_id', 'disposition']}}
     # Optional for older recorded-plan fixtures; model is instructed to supply it for non-exact IDs.
     schema.setdefault('required', []).append('entity_choices')
     tools = [{'name': 'record_plan', 'description': 'Record the final interpretation and proposed executable plan',
@@ -72,7 +112,14 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
     if graph is not None:
         tools.append(VALUES_TOOL)
     tools = provider_schema(tools)
-    messages = [{'role': 'user', 'content': user}]
+    from .request_context import current, AUTHORITY, attach
+    context = current(question)
+    user_input = json.loads(user)
+    advisory_ids = {'M04.' + key for key, value in user_input.get('advisory_suggestions', {}).items() if value}
+    if user_input.get('local_draft'): advisory_ids.add('M04.local_draft')
+    user_input.update(request_context=context, request_authority=AUTHORITY, advisory_rule_ids=sorted(advisory_ids))
+    local_draft = user_input.get('local_draft') or user_input.get('advisory_suggestions', {}).get('local_draft')
+    messages = [{'role': 'user', 'content': json.dumps(user_input, ensure_ascii=False)}]
     limits = schema_module('validation_repair')['limits']
     batches, proposals, proofs, warnings = 0, 0, {}, []
     for proof in initial_proofs or []:
@@ -83,7 +130,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     limits['lookup_batches'] + limits['planning_proposals'])
     last_partial = None
     for turn in range(max_calls):
-        system_text = system + '\n' + GUIDANCE
+        system_text = system + '\n' + GUIDANCE + '\n' + AUTHORITY
         rid = await gateway._reserve('plan', system_text, {'messages': messages, 'tools': tools}, output_limit)
         reply = await gateway._create(rid, model=gateway.settings.model, max_tokens=output_limit,
             system=[{'type': 'text', 'text': system_text, 'cache_control': {'type': 'ephemeral'}}],
@@ -108,7 +155,9 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                                    else await asyncio.wait_for(resolve_property_values(graph, block.input.get('reference',''), block.input.get('text','')), 10))
                     except Exception:
                         outcome = {'status': 'unavailable', 'diagnostic': 'E01'}
-                results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(outcome)})
+                public = helper_payload(outcome, block.name)
+                advisory_ids.update(public['advisory_rule_ids'])
+                results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(public)})
                 continue
             if block.name == 'resolve_entities':
                 if batches >= limits['lookup_batches'] or turn == max_calls - 1:
@@ -130,7 +179,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 for entry in public.get('results', []):
                     for candidate in entry.get('candidates', []):
                         candidate.pop('selection_proof', None); candidate.pop('token', None)
-                results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(public)})
+                results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(helper_payload(public, block.name))})
                 continue
             if block.name != 'record_plan':
                 results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'is_error': True, 'content': 'Unsupported planning tool.'})
@@ -139,6 +188,10 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 proposals += 1
                 proposal = deepcopy(block.input)
                 if not isinstance(proposal, dict): raise ValueError('malformed_plan')
+                advice_decisions = proposal.pop('advisory_decisions', [])
+                advice_decisions = [dict(item, basis='Claude record_plan decision') for item in advice_decisions[:40]
+                    if isinstance(item, dict) and item.get('rule_id') in advisory_ids
+                    and item.get('disposition') in {'applied', 'discarded'}] if isinstance(advice_decisions, list) else []
                 choices = proposal.pop('entity_choices', [])
                 chosen, warnings = [], []
                 if not isinstance(choices, list) or len(choices) > 12: raise ValueError('invalid_entity_choices')
@@ -165,7 +218,8 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     chosen.append(deepcopy(proof))
                     if proof['match_method'] not in {'recorded_id', 'recorded_name'}:
                         warnings.append(f"Interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) using {proof['match_method']}: {choice['reason']}")
-                plan = finalize(proposal, chosen)
+                plan = attach(finalize(proposal, chosen), context)
+                plan['tool_suggestion_decisions'] = advice_decisions + suggestion_decisions(local_draft, plan)
                 plan['original_question'] = question
                 chosen = list({(p['mention'].casefold(), p['entity_type'], p['id']): p
                                for p in [*plan.get('entity_selection_proofs', []), *chosen]}.values())
@@ -184,7 +238,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                         raise ValueError(json.dumps({'category': 'preparation_failed', 'tasks': [
                             {'step_id': s['id'], 'constraints': s.get('constraints'),
                              'reasons': s.get('runtime_binding_issues') or s.get('semantic_issues')}
-                            for s in invalid], 'instruction': 'Repair only the affected tasks. Use canonical id/name bindings for verified identities; preserve every original condition.'}))
+                            for s in invalid], 'instruction': 'Repair only the affected tasks. Use canonical id/name bindings for verified identities; preserve current requested conditions, without restoring superseded filters.'}))
                     if plan.get('clarification'):
                         # Preserve only a genuinely eligible partial plan; never raw unverified output.
                         last_error = json.dumps({'category': 'preparation_failed', 'issues': plan.get('entity_resolution'),
@@ -208,7 +262,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     failed['planning_route'] = {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches}
                     return failed
                 results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'is_error': True,
-                    'content': 'Repair this plan while preserving the original scope: ' + last_error})
+                    'content': 'Repair this plan while preserving the current requested scope: ' + last_error})
         if results:
             messages.append({'role': 'user', 'content': results})
         else:

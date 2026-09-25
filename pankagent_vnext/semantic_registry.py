@@ -24,6 +24,14 @@ def donor_intent(step):
     if typed_donor:
         return True
     relations = set(step.get('relation_types') or [])
+    owners = {c.get('entity_type') for c in step.get('constraints', [])}
+    if (step.get('relation_types') == [] and owners and None not in owners
+            and not owners.intersection({'donor', 'Sample_node', 'data_modality'})
+            and not re.search(r'\bdonors?\b|\bcohorts?\b|\bsamples?\b|\bHPAP\b|\bstage\s*[123I]',
+                              step.get('question', ''), re.I)):
+        # A selected entity-only task stays entity-only even when a sibling
+        # in the same original request concerns a donor population.
+        return False
     if relations and not relations.intersection({'HAS_DONOR', 'HAS_SAMPLE'}):
         # "Between diabetic and non-diabetic donors" describes the source
         # contrast of a molecular measurement, not a donor-inventory request.
@@ -35,7 +43,9 @@ def donor_intent(step):
                 else {'positive': False, 'negative': False})
     return bool(re.search(r'\bdonors?\b|\bHPAP\b', text, re.I)
                 or clinical['positive'] or clinical['negative']
-                or _disease_mentions(text)
+                # Disease identity alone is not a cohort request.
+                or (bool(_disease_mentions(text)) and ('HAS_SAMPLE' in relations
+                    or bool(re.search(r'\bsamples?\b', text, re.I))))
                 or re.search(r'\b(?:recorded\s+)?stage\s*(?:[123]|I{1,3})\b', text, re.I)
                 or any(c.get('entity_type') == 'donor'
                        for c in step.get('constraints', [])))
@@ -2207,7 +2217,10 @@ def resolve(step, vocabulary, release):
                         'canonical_relations': deepcopy(out['relation_types'])})
     out['constraints']=constraints
     out['resolved_constraints']=matches
-    donor_required = any(c.get('entity_type') in {'donor', 'disease'} for c in constraints) or bool(re.search(r'\bdonors?\b', q, re.I))
+    donor_required = (any(c.get('entity_type') == 'donor' for c in constraints)
+                      or bool(re.search(r'\bdonors?\b', q, re.I))
+                      or (any(c.get('entity_type') == 'disease' for c in constraints)
+                          and donor_intent(out)))
     out['semantic_registry']={'version':VERSION,'sha256':DIGEST,'graph_release':release,'modality_links_verified':vocabulary.get('modality_links_verified',False),
         'inventory_sha256': vocabulary.get('inventory_sha256'),
         'donor_required': donor_required, 'diagnosis_intent': {'explicit': explicit_diagnosis, 'source': diagnosis_source},
@@ -2597,7 +2610,7 @@ def sample_lookup_requested(step):
 
 
 def generation_guidance(step):
-    if not step.get('semantic_registry'):return ''
+    if not step.get('semantic_registry') or not semantic_intent(step):return ''
     notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. A recorded T1D stage does not imply a second disease diagnosis filter: apply only the resolved disease constraint, if present. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. For stage-only questions do not add disease.id or donor.diabetes_type filters, including for stages 1 and 2; those are not necessarily recorded as diagnosed diabetes. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
     notes+=' Do not filter sample.anatomical_structure: this is descriptive text, not a tissue identifier; constrain the linked anatomy node instead.'
     if step.get('semantic_registry', {}).get('donor_required') is False:
@@ -2634,7 +2647,7 @@ def validation_errors(tokens, step, parameters, bindings, paths, predicate, choi
             supported=[set(PROPERTIES[l]) for l in labels if l in PROPERTIES]
             if supported and t.kind in {'WORD','IDENT'} and not any(t.value in props for props in supported):
                 errors.append('invalid_node_property:'+','.join(sorted(labels))+'.'+t.value)
-    if not step.get('semantic_registry'):return errors
+    if not step.get('semantic_registry') or not semantic_intent(step):return errors
     donors={v for v,labels in bindings.items() if 'donor' in labels}
     def constraints_at(variable, label):
         relevant=[group for c,group in zip(step.get('constraints',[]),choices) if c.get('entity_type')==label]

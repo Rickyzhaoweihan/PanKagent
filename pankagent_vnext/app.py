@@ -270,9 +270,20 @@ class Runtime:
     def launch(self, run_id: str, coroutine):
         async def audited():
             token = recorder.set(lambda kind, payload: self.io.record(self.store.audit_event, run_id, kind, payload, on_drop=self.store.audit_drop))
+            from .request_context import bind, from_run, reset
+            context_token = None
+            started = False
             try:
+                run = await self.io.call(self.store.get, run_id)
+                metadata = await self.io.call(self.store.audit_metadata, run_id)
+                context_token = bind(from_run(run, metadata))
+                started = True
                 return await coroutine
             finally:
+                if context_token is not None:
+                    reset(context_token)
+                if not started:
+                    coroutine.close()
                 recorder.reset(token)
         task = asyncio.create_task(audited(), name=f"vnext-{run_id}")
         self.tasks[run_id] = task
@@ -362,6 +373,8 @@ class Runtime:
                         await self.io.call(self._terminal, run_id, 'failed', error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
                         return
                     run = await self.io.call(self.store.set_effective_question, run_id, revision['new_question'])
+                    from .request_context import set_effective
+                    set_effective(run['question'])
                 from .planning_fastpath import literature_request_plan, unsupported_analysis_plan, genomic_neighborhood_plan
                 literature_plan = literature_request_plan(run["question"])
                 if revision and parent.get('plan', {}).get('steps'):
@@ -377,6 +390,8 @@ class Runtime:
                 elif literature_plan and not fast:
                     proposed = literature_plan
                 elif fast:
+                    from .request_context import set_effective
+                    set_effective(parent['plan'].get('effective_question') or parent['question'])
                     proposed = deepcopy(parent['plan'])
                     self.metrics.count('planning_model_bypassed')
                     (await self.io.call(self.store.audit_event, run_id, 'planning_model_bypassed', {'reason':'literature_only_revision'}))
@@ -479,6 +494,8 @@ class Runtime:
                 plan["contract_sha256"] = CONTRACT_DIGEST
                 plan["original_question"] = metadata.get("original_question", run["question"])
                 plan["include_context"] = run["include_context"]
+                from .request_context import attach, current
+                plan = attach(plan, current(run['question']))
                 from .output_scope import aggregate_only, VERSION as OUTPUT_SCOPE_VERSION
                 if aggregate_only(run["question"]):
                     plan["output_scope"] = {"mode": "aggregate_only", "version": OUTPUT_SCOPE_VERSION}
@@ -588,7 +605,9 @@ class Runtime:
         # credentials and the reusable-cache metadata never enter public events.
         access = [getattr(self.settings, field, "") for field in ("neo4j_user", "neo4j_password", "cypher_token")]
         raw = json.dumps({"version": 4, "readiness_contract": QUERY_READINESS_VERSION, "validator_contract": CONTRACT_DIGEST,
-                          "plan": {key: value for key, value in plan.items() if key != "review_ready"}, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
+                          "plan": {key: ([{k: v for k, v in step.items() if k != 'request_context'} for step in value]
+                                         if key == 'steps' else value)
+                                   for key, value in plan.items() if key not in {'review_ready', 'request_context'}}, "graph": graph_identity, "access": access}, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
@@ -1340,7 +1359,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             raise HTTPException(422, "Question must not be blank.")
         try:
             run = (await runtime.io.call(runtime.store.create, question, body.session_id, include_context=body.include_context,
-                audit={"original_question": body.question, "source": body.event_source, "versions": runtime.audit_identity,
+                audit={"original_question": body.question, "current_raw_input": body.question, "source": body.event_source, "versions": runtime.audit_identity,
                        "requested_options": {"include_context": body.include_context, "auto_proceed_seconds":body.auto_proceed_seconds}},
                 legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None))
         except KeyError:
@@ -1369,6 +1388,7 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         try:
             old, run = (await runtime.io.call(runtime.store.revise, plan_id, question, include_context=body.include_context if "include_context" in body.model_fields_set else old["include_context"],
                 audit={"source": body.event_source, "versions": runtime.audit_identity,
+                       "current_raw_input": body.revision_instruction if body.revision_mode == 'instruction' and body.revision_instruction is not None else body.question,
                        "revision_instruction": body.revision_instruction, "revision_mode": body.revision_mode}))
         except ValueError:
             raise HTTPException(409, "This plan was already confirmed or ended.") from None

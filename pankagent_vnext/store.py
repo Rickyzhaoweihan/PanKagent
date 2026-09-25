@@ -144,6 +144,15 @@ class Store:
         metadata = {"original_question": question, "parent_run_id": None, "parent_plan_id": None,
                     "revision_instruction": None, "revision_mode": "new_question", "revision_index": 0,
                     "source": "user", "versions": {}, **(audit or {})}
+        # Legacy correction metadata may replace original_question with a
+        # canonical question. Preserve raw wording independently, from audit
+        # evidence only; never reconstruct a historical original from run text.
+        if metadata.get('parent_run_id'):
+            prior = self.audit_metadata(metadata['parent_run_id']) or {}
+            metadata['original_raw_question'] = prior.get('original_raw_question',
+                prior.get('raw_original_question', prior.get('original_question')))
+        else:
+            metadata['original_raw_question'] = metadata.get('original_question')
         self.db.execute("INSERT INTO run_audit VALUES (?, ?)", (run_id, json.dumps(metadata, ensure_ascii=False)))
         return self.get(run_id)
 
