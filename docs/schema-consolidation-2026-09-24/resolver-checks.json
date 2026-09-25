@@ -1,0 +1,14 @@
+{
+  "model_calls": 0,
+  "pln_sample_codes": [
+    "PLN_H",
+    "PLN_T",
+    "PLN_B",
+    "PLN"
+  ],
+  "gene_alias_consistent": true,
+  "pln_resolved_to_public_tissue": true,
+  "schema_tools_status": "complete",
+  "schema_sha256": "262e3c8f4c301b467aaf266e9ddedeec89f6be3f49396a5799aecabeca6cdfd4",
+  "interpretation_rule_count": 2
+}

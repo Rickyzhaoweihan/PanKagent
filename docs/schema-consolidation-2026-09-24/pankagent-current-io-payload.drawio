@@ -1,0 +1,737 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.6 Chrome/138.0.7204.100 Electron/37.2.3 Safari/537.36" version="28.0.6" pages="4">
+  <diagram name="01 I-O and decisions" id="page0">
+    <mxGraphModel dx="1827" dy="2207" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="2000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="claude-stage" value="&lt;b&gt;Claude supervisor · 3 proposals + 2 lookup turns; 2 execution repairs (7 calls total)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf6ff;strokeColor=#8961b0;strokeWidth=2;fontSize=15;fontColor=#203344;align=left;verticalAlign=top;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="810" y="1070" width="1135" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="title" value="&lt;b&gt;PanKagent • I/O orchestration and decision points&lt;/b&gt;&lt;br&gt;Entry → entity resolution → scope/planning → execution mode → readiness → independent answer and viewer inputs&lt;br&gt;Schema consolidation candidate · 2026-09-24 · protected tabs unchanged" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="20" width="2340" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="in" value="&lt;b&gt;M01  Question + session&lt;/b&gt;&lt;br&gt;IN: raw question, history, preferences&lt;br&gt;Pin code / pack / database / model versions&lt;br&gt;OUT: immutable request + run context&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1050" y="260" width="430" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rev" target="ground">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-5" value="&lt;span style=&quot;color: rgb(38, 62, 82); font-size: 17px;&quot;&gt;user modified&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;color: rgb(38, 62, 82); font-size: 17px;&quot;&gt;question&lt;/span&gt;&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="nJrK4v0Pw7rqCHPKsujb-4">
+          <mxGeometry x="-0.1012" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rev" value="&lt;b&gt;M02  Revision interpreter&lt;/b&gt;&lt;br&gt;&lt;b&gt;IN:&lt;/b&gt; previous question + change&lt;br&gt;OUT: one standalone question&lt;br&gt;Chain change: restart; parallel: extend&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,3&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="1,4" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1730" y="517.5" width="470" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="ground" value="&lt;b&gt;M03  PYTHON ENTITY LOOKUP&lt;/b&gt;&lt;br&gt;Case-insensitive names + recorded synonyms&lt;br&gt;Shared verified candidates / alias provenance&lt;br&gt;Inventory and resolver use one proof store&lt;br&gt;All statuses continue; no rejection gate&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="2,3" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="980" y="490" width="570" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="NYkV4tobwIVgV4ygGFPI-1" value="ALWAYS continue · every status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="NYkV4tobwIVgV4ygGFPI-4" target="claude-stage">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="1010" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-6" value="&lt;span style=&quot;color: rgb(38, 62, 82); font-size: 17px;&quot;&gt;user accepts / edits correction&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="clarify" target="rev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="clarify" value="&lt;b&gt;M03a  Claude-requested clarification&lt;/b&gt;&lt;br&gt;Only when context does not settle the ambiguity&lt;br&gt;Specific alternatives + one complete question&lt;br&gt;Non-exact choice may proceed with a clear warning&lt;br&gt;User accepts / edits → M02 → M03&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="3,4,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1715" y="802.5" width="500" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="plan" target="scope">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-13" value="&lt;span style=&quot;color: rgb(38, 62, 82); font-size: 17px;&quot;&gt;prepared task&lt;/span&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="nJrK4v0Pw7rqCHPKsujb-12">
+          <mxGeometry x="-0.0039" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="plan" value="&lt;b&gt;M04  CLAUDE interpretation + planning + repair&lt;/b&gt;&lt;br&gt;Original request + context + M03 / D01 evidence&lt;br&gt;Tools: identity lookup + typed scope preparation&lt;br&gt;3 proposals; 2 lookup batches × 6 requests&lt;br&gt;Task diagnostics return here; preserve scope&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:13px&quot;&gt;E02 plan / E04 preparation diagnostics&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1–4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E02" schema_modules="2–6">
+          <mxGeometry x="835" y="1120" width="580" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="scope" value="&lt;b&gt;D02  CLAUDE&lt;br&gt;semantic decision&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px&quot;&gt;Proceed / warn / clarify&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1" decision_engine="Claude" decision_basis="Model interpretation using original wording and verified lookup candidates; Python still verifies execution." decision_source="planning_session.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="4,6">
+          <mxGeometry x="985" y="1380" width="280" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="partialscope" target="recover">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-22" value="None" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="nJrK4v0Pw7rqCHPKsujb-20">
+          <mxGeometry x="-0.0815" y="-3" relative="1" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-23" value="&lt;font style=&quot;font-size: 17px;&quot;&gt;None&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="nJrK4v0Pw7rqCHPKsujb-20">
+          <mxGeometry x="-0.042" y="-3" relative="1" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="partialscope" value="&lt;b&gt;M04R  Planning repair exhausted&lt;/b&gt;&lt;br&gt;Keep verified independent work + unmet checks&lt;br&gt;Invalidate descendants of a changed task&lt;br&gt;No exhaustive count from incomplete retrieval&lt;br&gt;No usable evidence → targeted recovery&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="665" y="1970" width="500" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="mode" value="&lt;b&gt;D3  Which execution mode?&lt;/b&gt;&lt;br&gt;Parallel / chain / mixed task DAG&lt;br&gt;CLAUDE proposes; PYTHON schedules&lt;br&gt;Verified IDs / paths bind dependent tasks&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python computes execution_mode from depends_on/path_spec and independent tasks. Claude or verified local patterns propose the plan; Python classifies it as parallel, chain or mixed." decision_source="composable_planning.py: normalize; planning_contract.py; pattern_planning.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="5,6">
+          <mxGeometry x="1325" y="1970" width="550" height="205" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="exec" target="ready">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="nJrK4v0Pw7rqCHPKsujb-25" value="&lt;span style=&quot;color: rgb(38, 62, 82); font-size: 17px;&quot;&gt;outcomes&lt;/span&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="nJrK4v0Pw7rqCHPKsujb-24">
+          <mxGeometry x="-0.0444" y="-2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="exec" value="&lt;b&gt;M06–M09  Supervised task execution&lt;/b&gt;&lt;br&gt;PYTHON: dispatch / validate / read / combine&lt;br&gt;CLAUDE: bounded query correction&lt;br&gt;Full backend IDs; task-local failure states&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="2,5,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1325" y="2270" width="550" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="ready" value="&lt;b&gt;D4  Usable verified
+evidence?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · evidence checks&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:14px&quot;&gt;E09: Evidence not ready&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python query_readiness checks preparation, verified required outcomes, terminal statuses, scope/resource guards and the partial-independent policy. It is not a Claude judgment." decision_source="evidence_status.py: query_readiness" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E09" schema_modules="4,6">
+          <mxGeometry x="1420" y="2530" width="360" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="recover" value="&lt;b&gt;M10a  Recovery / clarification&lt;/b&gt;&lt;br&gt;No useful verified result or invalid dependencies&lt;br&gt;Specific failed condition + corrected question&lt;br&gt;Retry / revise / cancel; no absence claim&lt;br&gt;Keep original request and audit history&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="4,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="630" y="2530" width="570" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="preview" value="&lt;b&gt;M10  Preview + user confirmation&lt;/b&gt;&lt;br&gt;Complete OR partial evidence + limitations&lt;br&gt;Confirm → keep checked result snapshot&lt;br&gt;Revise → M02; cancel → stop&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="4,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1355" y="2820" width="500" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="answer" value="&lt;b&gt;M11  Answer input → M12 Formatting&lt;/b&gt;&lt;br&gt;Per query: full OR identity-only evidence&lt;br&gt;Verified summaries / paths + G citations&lt;br&gt;Existing Claude writing / streaming unchanged&lt;br&gt;format_input_modes.py / evidence_context.py&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:14px&quot;&gt;E10: Answer generation failed&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E10" schema_modules="2,6">
+          <mxGeometry x="885" y="3090" width="640" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="viewer" value="&lt;b&gt;M13  Independent viewer evidence&lt;/b&gt;&lt;br&gt;Useful selected graph records + exact-ID hydration&lt;br&gt;Can retain more detail than the answer input&lt;br&gt;viewer_evidence.py → results service 8795&lt;br&gt;Excluded populations cannot reappear as answers&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="2,5" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1655" y="3090" width="700" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="policy" value="&lt;b&gt;M00  KG agent schema pack&lt;/b&gt;&lt;br&gt;JSON in PanKagent · general KG standard v0.3.0&lt;br&gt;Database / query patterns / interpretation&lt;br&gt;Validation / repair · metadata-only manifest&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" schema_modules="1–6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="310" y="420" width="550" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" value="fresh question" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="in" target="ground" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" value="IDs / values + status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="ground" target="NYkV4tobwIVgV4ygGFPI-4" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="810" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge12" value="usable subset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="partialscope" target="mode" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge14" value="selected DAG" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mode" target="exec" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge16" value="none" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" parent="1" source="ready" target="recover" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge17" value="complete / partial" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="ready" target="preview" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge18" value="confirmed answer evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" parent="1" source="preview" target="answer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge19" value="confirmed viewer evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" parent="1" source="preview" target="viewer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend / reading order&lt;/b&gt;&lt;br&gt;Solid arrows = control or data flow.&amp;nbsp;&lt;div&gt;Dashed arrows = policy/reference input.&amp;nbsp;&lt;/div&gt;&lt;div&gt;Diamonds = decisions.&amp;nbsp;&lt;br&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Green: code&lt;/div&gt;&lt;div&gt;Purple: Claude&lt;/div&gt;&lt;div&gt;Orange: GPU&amp;nbsp;&lt;/div&gt;&lt;div&gt;Teal: data&amp;nbsp;&lt;/div&gt;&lt;div&gt;Dashed yellow: proposed registry&amp;nbsp;&lt;/div&gt;&lt;div&gt;Red: failure/gap&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="100" y="2162.4" width="440" height="395.2" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-1" value="&lt;b&gt;PanKagent • three execution modes, one shared query unit&lt;/b&gt;&lt;br&gt;M06 scheduler is dependency-driven: ready tasks run; children wait for verified backend inputs; failed branches stay explicit&lt;br&gt;Schema consolidation candidate · 2026-09-24 · protected tabs unchanged" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2420" y="1770" width="2340" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-2" value="&lt;b&gt;PARALLEL • independent evidence&lt;/b&gt;&lt;br&gt;No data dependency between queries.&lt;br&gt;Retain each branch; combine only when requested." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2440" y="1925" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-3" value="&lt;b&gt;CHAIN • connected subtasks&lt;/b&gt;&lt;br&gt;A → B → C; each next task consumes typed IDs.&lt;br&gt;Fragments can compose beyond four node types." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="3250" y="1925" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-4" value="&lt;b&gt;MIXED / COMPLEX • task DAG&lt;/b&gt;&lt;br&gt;Chains and independent branches coexist.&lt;br&gt;Only a task’s required parents control its readiness." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="4060" y="1925" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-5" value="&lt;b&gt;Q1 • independent&lt;/b&gt;&lt;br&gt;Run query unit U&lt;br&gt;Return backend R1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2470" y="2120" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-6" value="&lt;b&gt;Q2 • independent&lt;/b&gt;&lt;br&gt;Run query unit U&lt;br&gt;Return backend R2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2810" y="2120" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-7" value="&lt;b&gt;D5  Branch outcomes?&lt;/b&gt;&lt;br&gt;Complete / empty / partial / failed&lt;br&gt;Failed sibling ≠ empty set&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · result statuses&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" decision_engine="Python (deterministic)" decision_basis="Python reads branch execution and validation statuses, retaining successful independent evidence and explicit failed or incomplete outcomes. No model evaluates the branch status." decision_source="composable_planning.py; evidence_status.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="6">
+          <mxGeometry x="2560" y="2350" width="430" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-8" value="&lt;b&gt;M09 • retain or combine&lt;/b&gt;&lt;br&gt;Separate evidence OR typed ID set operation&lt;br&gt;Join / union / intersection / difference&lt;br&gt;Backend membership before formatter compaction&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:13px&quot;&gt;E08 combination / binding failure&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E08" schema_modules="2,4,6">
+          <mxGeometry x="2460" y="2595" width="650" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-9" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-2" target="tK93tzaCFONGBUCUjE4C-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-10" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-2" target="tK93tzaCFONGBUCUjE4C-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-11" value="R1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-5" target="tK93tzaCFONGBUCUjE4C-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-12" value="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-6" target="tK93tzaCFONGBUCUjE4C-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-13" value="all terminal; retain usable evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-7" target="tK93tzaCFONGBUCUjE4C-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-14" value="&lt;b&gt;Q1 • donor population&lt;/b&gt;&lt;br&gt;U → full verified donor IDs / paths" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="3355" y="2105" width="470" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-15" value="&lt;b&gt;D6  Parent scope
+usable + bound?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · IDs/roles&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" vertex="1" parent="1" decision_engine="Python (deterministic)" decision_basis="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence." decision_source="composable_planning.py; dependency_scope.py; graph.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="2,5,6">
+          <mxGeometry x="3420" y="2295" width="340" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-16" value="&lt;b&gt;Q2 • connected child&lt;/b&gt;&lt;br&gt;IN: typed IDs + source/target roles&lt;br&gt;U → donor–sample path records" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="3355" y="2510" width="470" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-17" value="&lt;b&gt;Q3+ • next fragment&lt;/b&gt;&lt;br&gt;Bind real shared intermediate nodes&lt;br&gt;Preserve repeated roles / path connectivity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="3355" y="2715" width="470" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-18" value="&lt;b&gt;Dependency blocked&lt;/b&gt;&lt;br&gt;Failed / unresolved parent&lt;br&gt;Do not query without scope&lt;br&gt;Do not use formatter IDs&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="3100" y="2287.5" width="255" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-3" target="tK93tzaCFONGBUCUjE4C-14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-14" target="tK93tzaCFONGBUCUjE4C-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-21" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-15" target="tK93tzaCFONGBUCUjE4C-16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-22" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-15" target="tK93tzaCFONGBUCUjE4C-18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-23" value="verified IDs / ordered paths" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-16" target="tK93tzaCFONGBUCUjE4C-17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-24" value="&lt;b&gt;Q1 • chain seed&lt;/b&gt;&lt;br&gt;U → R1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="4065" y="2110" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-25" value="&lt;b&gt;QX • independent&lt;/b&gt;&lt;br&gt;U → RX" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="4440" y="2110" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-26" value="&lt;b&gt;D6  Parent
+scope usable?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · IDs/roles&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" vertex="1" parent="1" decision_engine="Python (deterministic)" decision_basis="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence." decision_source="composable_planning.py; dependency_scope.py; graph.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="2,5,6">
+          <mxGeometry x="4080" y="2300" width="265" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-27" value="&lt;b&gt;Q2 • child&lt;/b&gt;&lt;br&gt;R1 IDs → U → R2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="4065" y="2520" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-28" value="&lt;b&gt;M09 • join required branches&lt;/b&gt;&lt;br&gt;R1 → R2 path remains connected&lt;br&gt;RX remains independent unless explicitly joined&lt;br&gt;Sibling evidence survives a chain failure&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:14px&quot;&gt;E08: Combination / binding failed&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,3,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E08" schema_modules="2,4,6">
+          <mxGeometry x="4100" y="2725" width="580" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-29" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.23;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-4" target="tK93tzaCFONGBUCUjE4C-24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-30" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-4" target="tK93tzaCFONGBUCUjE4C-25">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-31" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-24" target="tK93tzaCFONGBUCUjE4C-26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-32" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-26" target="tK93tzaCFONGBUCUjE4C-27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-33" value="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-27" target="tK93tzaCFONGBUCUjE4C-28">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-34" value="RX" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-25" target="tK93tzaCFONGBUCUjE4C-28">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="4750" y="2175" />
+              <mxPoint x="4750" y="2805" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-35" value="&lt;b&gt;Child blocked&lt;/b&gt;&lt;br&gt;No unrestricted child query&lt;br&gt;Keep independent RX&lt;br&gt;Report unmet chain condition&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="4420" y="2287.5" width="290" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-36" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-26" target="tK93tzaCFONGBUCUjE4C-35">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-37" value="blocked state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-35" target="tK93tzaCFONGBUCUjE4C-28">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-38" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2460" y="2910" width="650" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-39" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-8" target="tK93tzaCFONGBUCUjE4C-38">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-40" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="3355" y="2910" width="470" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-41" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-17" target="tK93tzaCFONGBUCUjE4C-40">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-42" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="4100" y="2910" width="580" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-43" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-28" target="tK93tzaCFONGBUCUjE4C-42">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-44" value="&lt;b&gt;U • SHARED QUERY EXECUTION UNIT — used by every Q box below&lt;/b&gt;&lt;br&gt;M06 route → M07 candidate validation → M08 Neo4j execution → typed backend outcome. Same contract in all three modes.&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="2,5,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="2420" y="800" width="2300" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-45" value="&lt;b&gt;D7 Candidate route?&lt;/b&gt;&lt;br&gt;PYTHON dispatch / CLAUDE repair&lt;br&gt;Template, cache or GPU&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" decision_engine="Python (deterministic)" decision_basis="Python chooses ordered routes using cache/template availability, path/local-coloc restrictions, configuration and the GPU-participation flag. GPU or Claude may generate/repair candidates; they do not choose this route." decision_source="graph.py: candidate route selection; candidate_policy.py" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." schema_modules="2,5,6">
+          <mxGeometry x="2425" y="980" width="330" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-46" value="&lt;b&gt;M06a • local candidate&lt;/b&gt;&lt;br&gt;Template / verified cache&lt;br&gt;query_templates.py / bounded_paths.py&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="2,5" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="2840" y="930" width="400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-47" value="&lt;b&gt;M06b • GPU Cypher API&lt;/b&gt;&lt;br&gt;Atomic task + schema + scope&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:14px&quot;&gt;E05: Query generation failed&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,2,3&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0d9;strokeColor=#bd7b20;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E05" schema_modules="2,4,5">
+          <mxGeometry x="2840" y="1110" width="400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-48" value="&lt;b&gt;D8  Common
+validation passes?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · validation rules&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:14px&quot;&gt;E06: Query validation failed&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" vertex="1" parent="1" decision_engine="Python (deterministic)" decision_basis="Python validates Cypher read-only/schema rules, required predicates, parameter authorization and dependency bindings. The candidate may be GPU-, Claude-, or template-generated, but acceptance is deterministic." decision_source="graph.py: validate_cypher; semantic_registry.py: validation_errors" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E06" schema_modules="2,3,6">
+          <mxGeometry x="3345" y="1010" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-49" value="&lt;b&gt;M08 • Neo4j read&lt;/b&gt;&lt;br&gt;PYTHON: verified parameters → records&lt;br&gt;Optional PG OCR IDs → Neo4j hydration&lt;br&gt;PG mapping disabled until verified&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:13px&quot;&gt;E07 retrieval failed / incomplete&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E07" schema_modules="2">
+          <mxGeometry x="3780" y="1010" width="400" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-50" value="&lt;b&gt;Backend task outcome&lt;/b&gt;&lt;br&gt;complete / empty / partial / failed&lt;br&gt;Full IDs, nodes, edges, rows, paths&lt;br&gt;Feeds scheduler / M09; never samples&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="4290" y="1010" width="410" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-51" value="&lt;b&gt;D9  Repair allowance?&lt;/b&gt;&lt;br&gt;PYTHON: per-run budget + deadline&lt;br&gt;CLAUDE: correct affected query&lt;br&gt;No allowance → task failure + cause&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1" schema_modules="6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="3290" y="1300" width="430" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-52" value="supported" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.25;entryX=0;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-45" target="tK93tzaCFONGBUCUjE4C-46">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-53" value="generated" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.8;entryX=0;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-45" target="tK93tzaCFONGBUCUjE4C-47">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-54" value="candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-46" target="tK93tzaCFONGBUCUjE4C-48">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-55" value="candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-47" target="tK93tzaCFONGBUCUjE4C-48">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-56" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-48" target="tK93tzaCFONGBUCUjE4C-49">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-57" value="execution&amp;nbsp;&lt;div&gt;outcome&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-49" target="tK93tzaCFONGBUCUjE4C-50">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-58" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-48" target="tK93tzaCFONGBUCUjE4C-51">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-59" value="task diagnostics → supervisor repair" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-51" target="plan">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="3290" y="1385" />
+              <mxPoint x="3040" y="1385" />
+              <mxPoint x="3040" y="1390" />
+              <mxPoint x="1125" y="1390" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-60" value="no budget → failed task" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="tK93tzaCFONGBUCUjE4C-51" target="tK93tzaCFONGBUCUjE4C-50">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="4495" y="1385" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tK93tzaCFONGBUCUjE4C-61" value="&lt;b&gt;All modes → M10 readiness → confirmation → M11/M12 answer input + M13 viewer input&lt;/b&gt;&lt;br&gt;Complete or meaningful verified partial evidence may proceed. Exact counts, exclusions and relationships require their own verified scope." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="2420" y="1495" width="2300" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="RLjkcqQE7poUhZ4J1R-Y-1" value="" style="shape=flexArrow;endArrow=classic;html=1;rounded=1;strokeWidth=2;startSize=16;endSize=25.636363636363637;fillColor=#f5f5f5;strokeColor=#666666;endWidth=81.81818181818183;width=44.84848484848485;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="1995" y="2360" as="sourcePoint" />
+            <mxPoint x="2205" y="2360" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="claude-tools" value="&lt;b&gt;M04 tool · verified identity + preparation&lt;/b&gt;&lt;br&gt;PYTHON: exact / synonym / fuzzy candidates&lt;br&gt;Shared proofs; max 10 candidates per lookup&lt;br&gt;Schema + values + interpretation + preparation&lt;br&gt;Claude chooses; Python verifies database facts&lt;br&gt;&lt;font color=&quot;#ff1e1e&quot; style=&quot;font-size:13px&quot;&gt;E03 identity / E04 binding unverified&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1–4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontSize=18;fontColor=#203344;align=left;verticalAlign=top;spacing=14;" vertex="1" parent="1" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters." diagnostic_family="E03" schema_modules="2,3,6">
+          <mxGeometry x="1435" y="1125" width="470" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="claude-clarify" value="ask user" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=16;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="scope" target="clarify">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1965" y="1475" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="claude-proceed" value="prepared task DAG" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=16;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="scope" target="mode">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="compiler-exhaust" value="repair allowance exhausted" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=16;labelBackgroundColor=#ffffff;exitX=0;exitY=0.75;entryX=0.5;entryY=0;" edge="1" parent="1" source="plan" target="partialscope">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="600" y="1280" />
+              <mxPoint x="600" y="1910" />
+              <mxPoint x="915" y="1910" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NYkV4tobwIVgV4ygGFPI-4" value="&lt;b style=&quot;text-align: center;&quot;&gt;D01 Preliminary assessment&lt;/b&gt;&lt;br style=&quot;text-align: center;&quot;&gt;&lt;span style=&quot;text-align: center; font-size: 14px;&quot;&gt;PYTHON · advisory only&lt;br&gt;resolved / ambiguous / not found / unavailable&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;text-align: center; font-size: 14px;&quot;&gt;&lt;font style=&quot;color: rgb(255, 30, 30);&quot;&gt;E01:&amp;nbsp;&lt;/font&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; font-size: 14px;&quot;&gt;&lt;font color=&quot;#ff1e1e&quot;&gt;&amp;nbsp;Grounding/lookup unavailable; non-blocking&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;br&gt;&lt;font color=&quot;#B8860B&quot; style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Schema 1,4&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontSize=18;fontColor=#203344;align=left;verticalAlign=top;spacing=14;" vertex="1" parent="1" schema_modules="3,6" tooltip="Shared immutable PanKagent pack: Schema 1 database_schema.json; 2 query_patterns.json; 3 semantic_interpretation.json; 4 validation.json. Manifest pins KG standard v0.3.0 and the release digest. Observations are descriptive, never automatic filters.">
+          <mxGeometry x="1180" y="825" width="320" height="170" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="02 Chain parallel mixed" id="page1">
+    <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="2400" pageHeight="2150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;PanKagent • three execution modes, one shared query unit&lt;/b&gt;&lt;br&gt;M06 scheduler is dependency-driven: ready tasks run; children wait for verified backend inputs; failed branches stay explicit&lt;br&gt;Documented dev snapshot: 2026-09-23 • discovery-gate-fdfd005 • module IDs are cross-page references" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="20" width="2340" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="parallel" value="&lt;b&gt;PARALLEL • independent evidence&lt;/b&gt;&lt;br&gt;No data dependency between queries.&lt;br&gt;Retain each branch; combine only when requested." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="50" y="175" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="chain" value="&lt;b&gt;CHAIN • connected subtasks&lt;/b&gt;&lt;br&gt;A → B → C; each next task consumes typed IDs.&lt;br&gt;Fragments can compose beyond four node types." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="860" y="175" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="mixed" value="&lt;b&gt;MIXED / COMPLEX • task DAG&lt;/b&gt;&lt;br&gt;Chains and independent branches coexist.&lt;br&gt;Only a task’s required parents control its readiness." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=22;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1670" y="175" width="680" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="pa" value="&lt;b&gt;Q1 • independent&lt;/b&gt;&lt;br&gt;Run query unit U&lt;br&gt;Return backend R1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="80" y="370" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="pb" value="&lt;b&gt;Q2 • independent&lt;/b&gt;&lt;br&gt;Run query unit U&lt;br&gt;Return backend R2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="420" y="370" width="280" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="pc" value="&lt;b&gt;D5  Branch outcomes?&lt;/b&gt;&lt;br&gt;Complete / empty / partial / failed&lt;br&gt;Failed sibling ≠ empty set&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · result statuses&lt;/b&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python reads branch execution and validation statuses, retaining successful independent evidence and explicit failed or incomplete outcomes. No model evaluates the branch status." decision_source="composable_planning.py; evidence_status.py" tooltip="Python reads branch execution and validation statuses, retaining successful independent evidence and explicit failed or incomplete outcomes. No model evaluates the branch status. Source: composable_planning.py; evidence_status.py">
+          <mxGeometry x="170" y="600" width="430" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="pj" value="&lt;b&gt;M09 • retain or combine&lt;/b&gt;&lt;br&gt;Separate categories OR typed ID set operation&lt;br&gt;Intersection / union / difference when declared&lt;br&gt;Incomplete input cannot prove exclusion&lt;br&gt;Widening: new query must not use only old IDs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="70" y="845" width="650" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" parent="1" source="parallel" target="pa" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" parent="1" source="parallel" target="pb" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" value="R1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="pa" target="pc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" value="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="pb" target="pc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge5" value="all terminal; retain usable evidence" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="pc" target="pj" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ca" value="&lt;b&gt;Q1 • donor population&lt;/b&gt;&lt;br&gt;U → full verified donor IDs / paths" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="965" y="355" width="470" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="cd" value="&lt;b&gt;D6  Parent scope&#xa;usable + bound?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · IDs/roles&lt;/b&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence." decision_source="composable_planning.py; dependency_scope.py; graph.py" tooltip="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence. Source: composable_planning.py; dependency_scope.py; graph.py">
+          <mxGeometry x="1030" y="545" width="340" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="cb" value="&lt;b&gt;Q2 • connected child&lt;/b&gt;&lt;br&gt;IN: typed IDs + source/target roles&lt;br&gt;U → donor–sample path records" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="965" y="760" width="470" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="cc" value="&lt;b&gt;Q3+ • next fragment&lt;/b&gt;&lt;br&gt;Bind real shared intermediate nodes&lt;br&gt;Preserve repeated roles / path connectivity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="965" y="965" width="470" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="blocked" value="&lt;b&gt;Dependency blocked&lt;/b&gt;&lt;br&gt;Failed / unresolved parent&lt;br&gt;Do not query without scope&lt;br&gt;Do not use formatter IDs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="710" y="537.5" width="255" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="edge6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="chain" target="ca" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="ca" target="cd" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge8" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="cd" target="cb" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge9" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" parent="1" source="cd" target="blocked" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge10" value="verified IDs / ordered paths" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="cb" target="cc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ma" value="&lt;b&gt;Q1 • chain seed&lt;/b&gt;&lt;br&gt;U → R1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1675" y="360" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="mb" value="&lt;b&gt;QX • independent&lt;/b&gt;&lt;br&gt;U → RX" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="2050" y="360" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="md" value="&lt;b&gt;D6  Parent&#xa;scope usable?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · IDs/roles&lt;/b&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence." decision_source="composable_planning.py; dependency_scope.py; graph.py" tooltip="Python verifies backend parent outcomes, typed identities and source/target role bindings before issuing the child query; formatter samples are rejected as dependency evidence. Source: composable_planning.py; dependency_scope.py; graph.py">
+          <mxGeometry x="1690" y="550" width="265" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="mc" value="&lt;b&gt;Q2 • child&lt;/b&gt;&lt;br&gt;R1 IDs → U → R2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1675" y="770" width="290" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="mj" value="&lt;b&gt;M09 • join required branches&lt;/b&gt;&lt;br&gt;R1 → R2 path remains connected&lt;br&gt;RX remains independent unless explicitly joined&lt;br&gt;Sibling evidence survives a chain failure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1710" y="975" width="580" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="edge11" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.23;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mixed" target="ma" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge12" value="fork" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mixed" target="mb" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="ma" target="md" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge14" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="md" target="mc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge15" value="R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mc" target="mj" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge16" value="RX" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" parent="1" source="mb" target="mj" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2360" y="425" />
+              <mxPoint x="2360" y="1055" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mixedblocked" value="&lt;b&gt;Child blocked&lt;/b&gt;&lt;br&gt;No unrestricted child query&lt;br&gt;Keep independent RX&lt;br&gt;Report unmet chain condition" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="2030" y="537.5" width="290" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="edge17" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="md" target="mixedblocked" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge18" value="blocked state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" parent="1" source="mixedblocked" target="mj" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="po" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="70" y="1160" width="650" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="pj" target="po" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="co" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="965" y="1160" width="470" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="cc" target="co" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mo" value="&lt;b&gt;Continue to M10 readiness • page 1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1710" y="1160" width="580" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge21" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mj" target="mo" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="unit" value="&lt;b&gt;U • SHARED QUERY EXECUTION UNIT — used by every Q box above&lt;/b&gt;&lt;br&gt;M06 route → M07 candidate validation → M08 Neo4j execution → typed backend outcome. Same contract in all three modes." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="50" y="1240" width="2300" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="route" value="&lt;b&gt;D7  Query route?&lt;/b&gt;&lt;br&gt;Supported structure / cache?&lt;br&gt;GPU participation required?&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · route policy&lt;/b&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python chooses ordered routes using cache/template availability, path/local-coloc restrictions, configuration and the GPU-participation flag. GPU or Claude may generate/repair candidates; they do not choose this route." decision_source="graph.py: candidate route selection; candidate_policy.py" tooltip="Python chooses ordered routes using cache/template availability, path/local-coloc restrictions, configuration and the GPU-participation flag. GPU or Claude may generate/repair candidates; they do not choose this route. Source: graph.py: candidate route selection; candidate_policy.py">
+          <mxGeometry x="55" y="1420" width="330" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="local" value="&lt;b&gt;M06a • local candidate&lt;/b&gt;&lt;br&gt;Template / verified cache&lt;br&gt;query_templates.py / bounded_paths.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="470" y="1370" width="400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="gpu" value="&lt;b&gt;M06b • GPU Cypher API&lt;/b&gt;&lt;br&gt;Atomic task + schema + scope&lt;br&gt;Some paths allow bounded Claude repair" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0d9;strokeColor=#bd7b20;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="470" y="1550" width="400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="valid" value="&lt;b&gt;D8  Common&#xa;validation passes?&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:13px;color:#245b40&quot;&gt;&lt;b&gt;PYTHON · validation rules&lt;/b&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1" decision_engine="Python (deterministic)" decision_basis="Python validates Cypher read-only/schema rules, required predicates, parameter authorization and dependency bindings. The candidate may be GPU-, Claude-, or template-generated, but acceptance is deterministic." decision_source="graph.py: validate_cypher; semantic_registry.py: validation_errors" tooltip="Python validates Cypher read-only/schema rules, required predicates, parameter authorization and dependency bindings. The candidate may be GPU-, Claude-, or template-generated, but acceptance is deterministic. Source: graph.py: validate_cypher; semantic_registry.py: validation_errors">
+          <mxGeometry x="975" y="1450" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="db" value="&lt;b&gt;M08 • Neo4j read&lt;/b&gt;&lt;br&gt;Cypher + verified parameter bindings&lt;br&gt;PanKgraph_08_04&lt;br&gt;OUT: records + provenance + completeness" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1410" y="1450" width="400" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="out" value="&lt;b&gt;Backend task outcome&lt;/b&gt;&lt;br&gt;complete / empty / partial / failed&lt;br&gt;Full IDs, nodes, edges, rows, paths&lt;br&gt;Feeds scheduler / M09; never samples" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1920" y="1450" width="410" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="repair" value="&lt;b&gt;D9  Repair budget left?&lt;/b&gt;&lt;br&gt;Yes → regenerate / repair candidate&lt;br&gt;No → mark this task failed&lt;br&gt;Failure propagates only to dependents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="950" y="1750" width="430" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="edge22" value="supported" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.25;entryX=0;entryY=0.5;" parent="1" source="route" target="local" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge23" value="generated" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.8;entryX=0;entryY=0.5;" parent="1" source="route" target="gpu" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge24" value="candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.2;" parent="1" source="local" target="valid" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge25" value="candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.8;" parent="1" source="gpu" target="valid" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge26" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="valid" target="db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge27" value="execution outcome" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="db" target="out" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge28" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="valid" target="repair" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge29" value="bounded retry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" parent="1" source="repair" target="gpu" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="920" y="1825" />
+              <mxPoint x="670" y="1825" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge30" value="no budget → failed task" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.5;entryY=1;" parent="1" source="repair" target="out" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2125" y="1825" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="end" value="&lt;b&gt;All modes → M10 readiness → confirmation → M11/M12 answer input + M13 viewer input&lt;/b&gt;&lt;br&gt;Complete or meaningful verified partial evidence may proceed. Exact counts, exclusions and relationships require their own verified scope." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="50" y="1935" width="2300" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend / reading order&lt;/b&gt;&lt;br&gt;Solid arrows = control or data flow. Dashed arrows = policy/reference input. Diamonds = decisions. Read top to bottom.&lt;br&gt;Green: code • Purple: Claude • Orange: GPU • Teal: data • Yellow: decision • Dashed yellow: proposed registry • Red: failure/gap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="2050" width="2340" height="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="03 Payload by mode" id="page2">
+    <mxGraphModel dx="1048" dy="1619" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="2000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;PanKagent • payload flow, typed dependencies and evidence separation&lt;/b&gt;&lt;br&gt;Illustrative payload shapes; not newly executed biological results. Computation always precedes formatter compaction.&lt;br&gt;Documented dev snapshot: 2026-09-23 • discovery-gate-fdfd005 • module IDs are cross-page references" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="20" width="2340" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="r" value="&lt;b&gt;P1 • effective request [M01–M02]&lt;/b&gt;&lt;br&gt;question + immutable raw wording&lt;br&gt;session_id / revision / preferences&lt;br&gt;history; parent_run_id when applicable&lt;br&gt;Revision output: new_question + restart/extend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="190" width="500" height="195" as="geometry" />
+        </mxCell>
+        <mxCell id="g" value="&lt;b&gt;P2 • entity resolution [M03]&lt;/b&gt;&lt;br&gt;mentions → typed candidate IDs + owner roles&lt;br&gt;graph_release; inventory/schema provenance&lt;br&gt;status: ready / ambiguous / unavailable&lt;br&gt;original_requested ↔ canonical value" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="670" y="190" width="570" height="195" as="geometry" />
+        </mxCell>
+        <mxCell id="p" value="&lt;b&gt;P3 • prepared plan [M04–M05]&lt;/b&gt;&lt;br&gt;execution_mode; steps[]; depends_on[]; input_bindings[]; path_spec&lt;br&gt;constraints + request_filter_bindings + resolved_entities + resolution_key&lt;br&gt;combine_operations[]; answer_step_ids[]; per-query context_mode&lt;br&gt;Keep authorization provenance distinct from operational routing flags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1370" y="190" width="960" height="195" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" value="resolve" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="r" target="g" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" value="compile scope" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="g" target="p" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="parallel" value="&lt;b&gt;PARALLEL payload&lt;/b&gt;&lt;br&gt;Q1 {depends_on: []} → R1&lt;br&gt;Q2 {depends_on: []} → R2&lt;br&gt;&lt;br&gt;R1 and R2 retain separate query provenance.&lt;br&gt;combine {op: intersection, inputs: [R1,R2],&lt;br&gt;  entity_type: donor, key: id} when requested.&lt;br&gt;&lt;br&gt;No declared join → preserve both evidence categories.&lt;br&gt;Narrow: predicate IDs / verified local filter.&lt;br&gt;Widen: retrieve revised population; not only old IDs." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="500" width="690" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="chain" value="&lt;b&gt;CHAIN payload&lt;/b&gt;&lt;br&gt;Q1 → R1 {typed_ids, path_tuples, completeness}&lt;br&gt;Q2 {depends_on: [Q1],&lt;br&gt; input_bindings: [{step_id: Q1, entity_type: donor,&lt;br&gt; source_role: ..., target_role: source}]}&lt;br&gt;&lt;br&gt;Q2 parameters bind full verified parent IDs.&lt;br&gt;R2 returns connected ordered role/ID tuples.&lt;br&gt;Q3+ extends paths on the exact shared roles.&lt;br&gt;&lt;br&gt;Unknown / failed parent ≠ empty or unrestricted input." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="855" y="500" width="690" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="mixed" value="&lt;b&gt;MIXED / COMPLEX payload&lt;/b&gt;&lt;br&gt;Q1 → Q2 uses typed dependency binding.&lt;br&gt;QX {depends_on: []} runs independently.&lt;br&gt;&lt;br&gt;join {inputs: [R2,RX], roles/keys: explicit} only&lt;br&gt;if the question requires that join.&lt;br&gt;&lt;br&gt;Selected outputs + separate supporting evidence.&lt;br&gt;Completeness is inherited from required inputs.&lt;br&gt;A failed Q2 does not erase valid RX.&lt;br&gt;RX alone cannot establish the failed chain relation." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#477dac;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1670" y="500" width="660" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" value="mode = parallel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.15;exitY=1;entryX=0.5;entryY=0;" parent="1" source="p" target="parallel" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1514" y="445" />
+              <mxPoint x="385" y="445" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge4" value="mode = chain" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="p" target="chain" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1850" y="460" />
+              <mxPoint x="1200" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge5" value="mode = mixed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.83;exitY=1;entryX=0.5;entryY=0;" parent="1" source="p" target="mixed" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="backend" value="&lt;b&gt;P4 • backend result contract [M08]&lt;/b&gt;&lt;br&gt;result/step reference; graph release; stable G citation; Cypher + parameters&lt;br&gt;typed IDs; nodes / edges / rows; ordered role/ID path tuples; provenance&lt;br&gt;status: complete / empty / partial / failed; error; requested_scope&lt;br&gt;retrieval_execution: completed / cursor_exhausted / truncated&lt;br&gt;These full records drive counts, chaining, joins and filters." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1070" width="1010" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="combine" value="&lt;b&gt;P5 • verified result projection [M09–M10]&lt;/b&gt;&lt;br&gt;Selected IDs / supporting records + recomputed verified summaries&lt;br&gt;Parent references; join roles and keys; final requested filter coverage&lt;br&gt;Answer steps separated from inspectable intermediate history&lt;br&gt;coloc linkage: exact signal IDs ↔ GWAS/QTL credible sets + context&lt;br&gt;Readiness: complete / partial_ready / recovery; explicit unmet conditions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="1070" width="1080" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="edge6" value="R1 / R2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="parallel" target="backend" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge7" value="path results" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" parent="1" source="chain" target="backend" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="990" />
+              <mxPoint x="848" y="990" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge8" value="DAG results" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="mixed" target="combine" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge9" value="full backend inputs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="backend" target="combine" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mode" value="&lt;b&gt;D10  Per-query&#xa;context size / policy?&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2bf;strokeColor=#a57b00;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;shape=rhombus;align=center;verticalAlign=middle;spacing=5;" parent="1" vertex="1">
+          <mxGeometry x="1340" y="1410" width="410" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="full" value="&lt;b&gt;P6a • short query: FULL&lt;/b&gt;&lt;br&gt;Relationships, measurements, rows&lt;br&gt;Scope + citations + completeness&lt;br&gt;Richness ≠ exhaustive retrieval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1440" width="560" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="identity" value="&lt;b&gt;P6b • long query: IDENTITY ONLY&lt;/b&gt;&lt;br&gt;Node IDs / types / descriptions / sources&lt;br&gt;Chain: verified ordered paths + relation types&lt;br&gt;Explicit sampling / omissions; verified counts&lt;br&gt;No omitted quantitative claims" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="700" y="1650" width="650" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="viewer" value="&lt;b&gt;P7 • viewer evidence [M13]&lt;/b&gt;&lt;br&gt;Independent selection of useful graph data&lt;br&gt;Full selected backend IDs → hydration&lt;br&gt;Can include detail absent from P6&lt;br&gt;Keep provenance and graph membership&lt;br&gt;No computation from formatter samples" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f3f6;strokeColor=#347e91;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="1850" y="1450" width="480" height="245" as="geometry" />
+        </mxCell>
+        <mxCell id="envelope" value="&lt;b&gt;P6 • formatter envelope [M11–M12]&lt;/b&gt;&lt;br&gt;question + plan / dependency summary&lt;br&gt;evidence[]: per-query modes + G citations&lt;br&gt;Unchanged output generation + SSE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe7fc;strokeColor=#8961b0;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1690" width="560" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="edge10" value="answer projection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.3;exitY=1;entryX=0.5;entryY=0;" parent="1" source="combine" target="mode" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge11" value="viewer projection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.85;exitY=1;entryX=0.5;entryY=0;" parent="1" source="combine" target="viewer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge12" value="full" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" parent="1" source="mode" target="full" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge13" value="identity_only" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=1;entryY=0;" parent="1" source="mode" target="identity" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="full" target="envelope" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge15" value="one item per query" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" parent="1" source="identity" target="envelope" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend / reading order&lt;/b&gt;&lt;br&gt;Solid arrows = control or data flow. Dashed arrows = policy/reference input. Diamonds = decisions. Read top to bottom.&lt;br&gt;Green: code • Purple: Claude • Orange: GPU • Teal: data • Yellow: decision • Dashed yellow: proposed registry • Red: failure/gap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="1880" width="2340" height="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="04 Modular prompt and rule map" id="page3">
+    <mxGraphModel dx="2513" dy="3035" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;b&gt;PanKagent • clear module ownership and standalone registry boundary&lt;/b&gt;&lt;br&gt;Current prompt catalog is implemented; the richer capability manifest below is a design proposal, not a deployed execution registry.&lt;br&gt;Documented dev snapshot: 2026-09-23 • discovery-gate-fdfd005 • module IDs are cross-page references" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=23;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="20" width="2340" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="current" value="&lt;b&gt;CURRENT • M00 shared prompt catalog&lt;/b&gt;&lt;br&gt;planning_prompt_catalog.py → MODULES + content digest&lt;br&gt;coloc_planning_guidance.py • prompts/planning/donor_samples.md&lt;br&gt;prompts/planning/modalities.json: labels + alias hints (14 modalities)&lt;br&gt;Both planning_contract.SYSTEM and llm.PLAN_SYSTEM load the modules.&lt;br&gt;Changing an alias hint alone does not implement a new query capability." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="185" width="1100" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="proposal" value="&lt;b&gt;PROPOSED • versioned standalone capability registry&lt;/b&gt;&lt;br&gt;Manifest: id / version / graph-release compatibility / content digest&lt;br&gt;References to separate terminology, topology, scope, template and test modules&lt;br&gt;Loader supplies applicable modules to grounding, both planners and query generation&lt;br&gt;Executable adapters validate the manifest-backed scope and result contract.&lt;br&gt;Dashed components are proposed packaging; existing source modules remain below." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="1270" y="185" width="1060" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" value="possible consolidation" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#52697d;strokeWidth=2;fontSize=17;fontColor=#263e52;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;dashed=1;" parent="1" source="current" target="proposal" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="term" value="&lt;b&gt;R1 • terminology / entity resolution&lt;/b&gt;&lt;br&gt;Aliases + typed inventory owner + ambiguity policy&lt;br&gt;Example: scRNAseq → recorded modality label&lt;br&gt;Current: modalities.json / anatomy_resolution.py&lt;br&gt;Consumed by M03 grounding and M05 preparation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="40" y="530" width="700" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="topology" value="&lt;b&gt;R2 • database schema / topology&lt;/b&gt;&lt;br&gt;Node/edge types; direction; property owner; roles&lt;br&gt;Coloc: Gene → disease, not Gene → SNP&lt;br&gt;Current: release_schema.py / coloc guidance&lt;br&gt;Consumed by M04 planner, M06 compiler, M07 validator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="835" y="530" width="700" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="scope" value="&lt;b&gt;R3 • biological scope / capability&lt;/b&gt;&lt;br&gt;Source, stage, polarity, tissue and assay meaning&lt;br&gt;Multiome RNA capability requires source-specific proof&lt;br&gt;Current: semantic_registry.py / coloc_scope.py&lt;br&gt;Consumed by M05 compilation and M09 evidence join" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="1630" y="530" width="700" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="template" value="&lt;b&gt;R4 • query compiler / templates&lt;/b&gt;&lt;br&gt;Typed inputs/outputs; structural Cypher; operators&lt;br&gt;Donor IDs → HAS_SAMPLE → Sample_node&lt;br&gt;Current: query_templates.py / bounded_paths.py&lt;br&gt;Dependency roles: dependency_scope.py&lt;br&gt;Consumed by M06 dispatch + shared unit U" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="40" y="910" width="700" height="255" as="geometry" />
+        </mxCell>
+        <mxCell id="context" value="&lt;b&gt;R5 • context / interpretation policy&lt;/b&gt;&lt;br&gt;Recorded ≠ available for download&lt;br&gt;Tissue annotation discovery ≠ tissue filter&lt;br&gt;Identity-only paths support recorded connectivity&lt;br&gt;Current: domain guidance + evidence input modules&lt;br&gt;Consumed by planning + formatter INPUT preparation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="835" y="910" width="700" height="255" as="geometry" />
+        </mxCell>
+        <mxCell id="tests" value="&lt;b&gt;R6 • reference validation fixtures&lt;/b&gt;&lt;br&gt;Checked IDs/counts; exact joins; negative controls&lt;br&gt;Repeated-type paths; missing or incomplete inputs&lt;br&gt;Versioned against compatible graph releases&lt;br&gt;Registry digest invalidates affected cached plans&lt;br&gt;Required before adding a new modality capability" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9df;strokeColor=#a58c35;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=20;align=left;verticalAlign=top;spacing=18;arcSize=8;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="1630" y="910" width="700" height="255" as="geometry" />
+        </mxCell>
+        <mxCell id="consumers" value="&lt;b&gt;Module consumption — decision points must use structured outputs, not prompt prose alone&lt;/b&gt;&lt;br&gt;R1 → M03 entity/value decision D1  |  R2 + R3 → M05 executable-scope decision D2  |  R4 → M06 route D7 / validator D8&lt;br&gt;R2 + R4 → scheduler parent-binding D6  |  R3 → M09 final scope / readiness D4  |  R5 → per-query input mode D10&lt;br&gt;R6 validates all affected paths. Existing Formatting Agent output logic and graph-viewer presentation stay outside this registry." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf5ee;strokeColor=#428362;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=21;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1300" width="2290" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="gaps" value="&lt;b&gt;Design review priorities from the current failure cases&lt;/b&gt;&lt;br&gt;1. Preserve entity authorization: adding an operational GPU flag must not discard the T1D → canonical disease-ID proof.&lt;br&gt;2. Compile all biological scope: “pancreas splicing QTL” must become verified tissue/subtype scope, not only planning prose.&lt;br&gt;3. Carry follow-up populations: previous conversation text is not a complete typed backend-ID payload.&lt;br&gt;4. Let useful verified partial evidence proceed, while clearly distinguishing an exact answer from unmet requested conditions." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0ed;strokeColor=#ba5750;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=21;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1545" width="2290" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Legend / reading order&lt;/b&gt;&lt;br&gt;Solid arrows = control or data flow. Dashed arrows = policy/reference input. Diamonds = decisions. Read top to bottom.&lt;br&gt;Green: code • Purple: Claude • Orange: GPU • Teal: data • Yellow: decision • Dashed yellow: proposed registry • Red: failure/gap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f2f5f8;strokeColor=#8998a9;strokeWidth=2;fontColor=#203344;fontFamily=Helvetica;fontSize=18;align=left;verticalAlign=top;spacing=18;arcSize=8;" parent="1" vertex="1">
+          <mxGeometry x="30" y="1770" width="2340" height="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
