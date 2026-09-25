@@ -1,5 +1,7 @@
 # Conditional oversized-result fallback and Claude scope advice
 
+**Update:** subsequently deployed with explicit user approval; see [deployment verification](deployment.md). The candidate-stage findings below are retained as history.
+
 ## Runtime change
 
 After a query returns, the formatter-input adapter measures the serialized evidence
