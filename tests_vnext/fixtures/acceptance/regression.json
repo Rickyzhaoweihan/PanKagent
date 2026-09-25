@@ -1,0 +1,2400 @@
+{
+  "version": 2,
+  "baseline_commit": "4c723c7ed0c29a0c4b98fb284871896b6dcee29f",
+  "frontend_source_commit": "b0a0cb99828d559fa6dc471cdf504cad2aecd095",
+  "frontend_digests": {
+    "landing_sample_questions.json": "66aacb28b6915fa11d92c3b097c290a30468681b1e09b298e61a58d56a0c99de",
+    "landing_page_schema.json": "928fa62bbce958d167dd70cd93ed70687e83e6799fef15ac6b379d1c587da85e"
+  },
+  "database_release": "PanKgraph_08_04",
+  "model": "claude-sonnet-5",
+  "concurrency": 2,
+  "cases": [
+    {
+      "key": "control-donor-0",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage-case-0",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "sample-tissues-0",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "tissue-discovery-0",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "followup-0",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "parent": "control-donor-0",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-paraphrase-0",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "reference_query": "MATCH (g:Gene {id:$gene})-[:GENE_ENRICHED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "anatomical_structure",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "a7a1226b2f7074ce4e68683264861bb3e798d30bbcabb400f83d3e075188b334",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-sqtl-0",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "coloc",
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "shared-partners-0",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "reference_query": "MATCH (:Gene {id:$a})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:PHYSICAL_INTERACTION]-(:Gene {id:$b}) RETURN DISTINCT p.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "a": "ENSG00000001626",
+        "b": "ENSG00000138031"
+      },
+      "kind": "Gene",
+      "omit": [
+        "ENSG00000001626",
+        "ENSG00000138031"
+      ],
+      "group": "controls-0",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "218fb5cb6e32278fc65d66adc75454babb2c468eb8a426bb988a3a1f81cbb311",
+      "expected_scope": {
+        "entity_type": "Gene",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "a": "ENSG00000001626",
+          "b": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "control-donor-1",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage-case-1",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "sample-tissues-1",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "tissue-discovery-1",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "followup-1",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "parent": "control-donor-1",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-paraphrase-1",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "reference_query": "MATCH (g:Gene {id:$gene})-[:GENE_ENRICHED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "anatomical_structure",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "a7a1226b2f7074ce4e68683264861bb3e798d30bbcabb400f83d3e075188b334",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-sqtl-1",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "coloc",
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "shared-partners-1",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "reference_query": "MATCH (:Gene {id:$a})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:PHYSICAL_INTERACTION]-(:Gene {id:$b}) RETURN DISTINCT p.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "a": "ENSG00000001626",
+        "b": "ENSG00000138031"
+      },
+      "kind": "Gene",
+      "omit": [
+        "ENSG00000001626",
+        "ENSG00000138031"
+      ],
+      "group": "controls-1",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "218fb5cb6e32278fc65d66adc75454babb2c468eb8a426bb988a3a1f81cbb311",
+      "expected_scope": {
+        "entity_type": "Gene",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "a": "ENSG00000001626",
+          "b": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "control-donor-2",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage-case-2",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "sample-tissues-2",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "tissue-discovery-2",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "followup-2",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "parent": "control-donor-2",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-paraphrase-2",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "reference_query": "MATCH (g:Gene {id:$gene})-[:GENE_ENRICHED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "anatomical_structure",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "a7a1226b2f7074ce4e68683264861bb3e798d30bbcabb400f83d3e075188b334",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-sqtl-2",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "coloc",
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "shared-partners-2",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "reference_query": "MATCH (:Gene {id:$a})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:PHYSICAL_INTERACTION]-(:Gene {id:$b}) RETURN DISTINCT p.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "a": "ENSG00000001626",
+        "b": "ENSG00000138031"
+      },
+      "kind": "Gene",
+      "omit": [
+        "ENSG00000001626",
+        "ENSG00000138031"
+      ],
+      "group": "controls-2",
+      "suite": "controls",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "218fb5cb6e32278fc65d66adc75454babb2c468eb8a426bb988a3a1f81cbb311",
+      "expected_scope": {
+        "entity_type": "Gene",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "a": "ENSG00000001626",
+          "b": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage-case",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage3-case",
+      "question": "In Hpap, how many donors have a recorded T1D stage of 3?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage3 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "9b2f2478cb95b6fbbecd0f2def77991fff0d59eb3c69660c9c586e373bb79874",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "stage-negative",
+      "question": "How many HPAP stage 3 donors do NOT have a recorded diabetes type of T1D?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage3 AND d.diabetes_type <> $t1d_category RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "e64d1c7fb0c7fe7e7fb259add00111b0ed14c4395764cb9c9b832eb5a6f4d4dc",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "nd-paraphrase",
+      "question": "Give the number of unique non-diabetic control donors in HPAP, whether or not they have samples.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.diabetes_type=$clinical RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "74c103f7024a70201b5f9b150f45b53e2cba5748d580afac656bfcd3ec929352",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "nd-stage",
+      "question": "Count HPAP non-diabetic control donors who are recorded as T1D stage 1.",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.diabetes_type=$clinical AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "c67fb5b11f85c5c9f01fa3076b1a28d47db663f87a733957b4294423a2a0ddf3",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "sample-tissues",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "multiome-optin",
+      "question": "Count RNA-capable samples from HPAP stage 1 donors, including scRNA-seq and snMultiomics. Keep the assay labels separate.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality IN $assays RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assays": [
+          "scRNA-seq",
+          "snMultiomics"
+        ]
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "cb861c7ff0bb19ba9fa54d8c92ca402c18cbd00f1a8dfa7d5f81bfaabce1ddb5",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assays": [
+            "scRNA-seq",
+            "snMultiomics"
+          ]
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "tissue-spleen",
+      "question": "How many scRNA-seq samples, excluding multiome assays, come from spleen in HPAP non-diabetic controls?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(t:anatomical_structure) WHERE d.data_source=$source AND d.diabetes_type=$clinical AND s.data_modality=$assay AND t.id=$tissue RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq",
+        "tissue": "UBERON_0002106"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "4d877a7c36f17a45c9ff2f164954a4d40ebaad8ee01d41d5bd78443e6f352aff",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq",
+          "tissue": "UBERON_0002106"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cohort-comparison",
+      "question": "Compare exact scRNA-seq sample availability between HPAP ND and T1D donors. Count distinct samples separately for each cohort.",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND s.data_modality=$assay AND (d.diabetes_type=$clinical OR EXISTS { MATCH (:disease {id:$disease})-[:HAS_DONOR]->(d) }) RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "0a3c288774e1133ec318476491e033de6fe30373819066264590dbf6ebf6c60f",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-paraphrase",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "reference_query": "MATCH (g:Gene {id:$gene})-[:GENE_ENRICHED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "anatomical_structure",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "a7a1226b2f7074ce4e68683264861bb3e798d30bbcabb400f83d3e075188b334",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-alias",
+      "question": "Is ABCC7 enriched in ductal cells? Include the canonical gene name and recorded enrichment measurements.",
+      "reference_query": "MATCH (g:Gene {id:$gene})-[:GENE_ENRICHED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "anatomical_structure",
+      "alias_check": "ABCC7",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "a7a1226b2f7074ce4e68683264861bb3e798d30bbcabb400f83d3e075188b334",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "ins-paraphrase",
+      "question": "Is insulin (INS) only detected in beta cells in this graph, or are any other cell types recorded?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[:GENE_DETECTED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000254647"
+      },
+      "kind": "anatomical_structure",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "45422a1c4633b71f5e82b507216c81da9e02eab2ca14a30f99be7f6fa4c0b19b",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000254647"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "adcy3-coloc",
+      "question": "For ADCY3 and T1D, show the recorded colocalization signals, both GWAS and QTL lead variants, and PP.H4. Are the lead variants identical?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000138031"
+      },
+      "kind": "coloc",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "cftr-sqtl",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000001626"
+      },
+      "kind": "coloc",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000001626"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "plekhm1-signal",
+      "question": "Show PLEKHM1 colocalization with type 1 diabetes and identify the linked GWAS and molecular QTL signals without assuming the lead SNPs are the same.",
+      "reference_query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000225190"
+      },
+      "kind": "coloc",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "9c688cacfa90d02ee99f2c90a385068d060b8feef6fc1362e6d383d40efd1450",
+      "expected_scope": {
+        "entity_type": "coloc",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000225190"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hla-compartments",
+      "question": "Compare HLA-DRA detection in immune cells, ductal populations, and beta cells. Distinguish missing graph records from biological absence.",
+      "reference_query": "MATCH (:Gene {id:$gene})-[:GENE_DETECTED_IN]->(c:anatomical_structure) RETURN DISTINCT c.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000204287"
+      },
+      "kind": "anatomical_structure",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "45422a1c4633b71f5e82b507216c81da9e02eab2ca14a30f99be7f6fa4c0b19b",
+      "expected_scope": {
+        "entity_type": "anatomical_structure",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000204287"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "shared-partners",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "reference_query": "MATCH (:Gene {id:$a})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:PHYSICAL_INTERACTION]-(:Gene {id:$b}) RETURN DISTINCT p.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "a": "ENSG00000001626",
+        "b": "ENSG00000138031"
+      },
+      "kind": "Gene",
+      "omit": [
+        "ENSG00000001626",
+        "ENSG00000138031"
+      ],
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "218fb5cb6e32278fc65d66adc75454babb2c468eb8a426bb988a3a1f81cbb311",
+      "expected_scope": {
+        "entity_type": "Gene",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "a": "ENSG00000001626",
+          "b": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hla-connected",
+      "question": "Which physical interaction partners of HLA-DRA are themselves annotated to MHC class II antigen presentation (Reactome R-HSA-2132295)? Require both links for the same partner.",
+      "reference_query": "MATCH (:Gene {id:$gene})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:FUNCTION_ANNOTATION]->(w {id:$pathway}) RETURN DISTINCT p.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000204287",
+        "pathway": "R-HSA-2132295"
+      },
+      "kind": "Gene",
+      "omit": [
+        "ENSG00000204287"
+      ],
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "bd66bc78e356591e4976e3d0f72e7097f5416a8168ee100e82fe20938cbd286a",
+      "expected_scope": {
+        "entity_type": "Gene",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000204287",
+          "pathway": "R-HSA-2132295"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "long-connected",
+      "question": "Starting from ADCY3, find connected paths through its QTL variants and their T1D GWAS memberships to HPAP stage 2 donors and their samples. Preserve the same variant, disease and donor throughout the path; count the distinct samples.",
+      "reference_query": "MATCH (:Gene {id:$gene})<-[:PART_OF_QTL_SIGNAL]-(v:variants)-[:PART_OF_GWAS_SIGNAL]->(x:disease {id:$disease})-[:HAS_DONOR]->(d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "gene": "ENSG00000138031"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3f3a8389434652afe1d1953a3143da875ccf3c60e049ff31de87feedd9f111d7",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "gene": "ENSG00000138031"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "typo-cohort",
+      "question": "How many T1D stage 2 donors are in nPAP?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147"
+      },
+      "kind": "donor",
+      "expected_clarification": true,
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "0c8f03778ef96f0f62dd27f3a8bbe573b13931b562730d692c6c46cc068b8e97",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "followup",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "parent": "stage-case",
+      "suite": "correctness",
+      "group": "variants",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count",
+        "sample_tissue_relationships"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-ND-donors",
+      "question": "How many donors are available from HPAP ND donors?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.diabetes_type=$clinical RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "74c103f7024a70201b5f9b150f45b53e2cba5748d580afac656bfcd3ec929352",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-ND-samples",
+      "question": "How many samples are available from HPAP ND donors?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.diabetes_type=$clinical RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "e99dd3e54e3a69d2c1f7f744778b3fd203be98df3a4cdc93a8bc3a6c0fa9065c",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-ND-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP ND donors?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.diabetes_type=$clinical AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3b40c168cd83849a0b2d6b27da81b773bc11cdffd79c74471ae14f58f7049e60",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-T1D-donors",
+      "question": "How many donors are available from HPAP T1D donors?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND EXISTS { MATCH (:disease {id:$disease})-[:HAS_DONOR]->(d) } RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "23936fc096de79c7f38bf9aa1b97d478163186818cc3df02f7006ff9da93cbf7",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-T1D-samples",
+      "question": "How many samples are available from HPAP T1D donors?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND EXISTS { MATCH (:disease {id:$disease})-[:HAS_DONOR]->(d) } RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "6234f56a6f6b5e5ccea0bae392cdd91fe78ae768f66bc7c385aab6fa1f61b239",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-T1D-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available from HPAP T1D donors?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND EXISTS { MATCH (:disease {id:$disease})-[:HAS_DONOR]->(d) } AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "819a34fc2b4b0dbcdd4b3a287050b8042b04bf732b000d9e0c565910e2599570",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage1-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 1?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "3414478f268387c4f3e66f273e8ef66fdb5344d273b8ff6dd412bb503084360c",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage1-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 1?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "4d1f97bce3408e6ac97750f9b1d72e33d51c2734fe93be2b5c05b454100061f1",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage1-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 1?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "01a91b1b2cbe5b13d64ec5babd9d8d9db05109af2f26aa544a6e48c37fe8eef4",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage2-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 2?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "0c8f03778ef96f0f62dd27f3a8bbe573b13931b562730d692c6c46cc068b8e97",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage2-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 2?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "dd540cae9798eb22db1f5b98e6041494107f1437af79da071eaab6a011688bcf",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage2-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 2?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage2 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "26446d474fa4eeee6ec7ea16cdc5cd1ae2b2a4acf27ea20b3c5a0e8c1f122031",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage3-donors",
+      "question": "How many donors are available for HPAP donors with T1D stage 3?",
+      "reference_query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage3 RETURN DISTINCT d.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "donor",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "9b2f2478cb95b6fbbecd0f2def77991fff0d59eb3c69660c9c586e373bb79874",
+      "expected_scope": {
+        "entity_type": "donor",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage3-samples",
+      "question": "How many samples are available for HPAP donors with T1D stage 3?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage3 RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "d832f95beebf09f8a23cf9cbc78c6e4ed306da96e891aa0a5b41d5b4466ff6fc",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "hpap-stage3-scRNA-seq-samples",
+      "question": "How many scRNA-seq samples are available for HPAP donors with T1D stage 3?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage3 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "d4beeccf17bbf3ad03326e30e620dce19f4a404dd77364bcfd8d1695a9fafbdb",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "pln-stage3",
+      "question": "How many scRNAseq PLN (pancreatic lymph node) samples are available for HPAP donors with T1D stage 3?",
+      "reference_query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(t:anatomical_structure) WHERE d.data_source=$source AND d.t1d_stage=$stage3 AND s.data_modality=$assay AND t.id=$tissue RETURN DISTINCT s.id AS id",
+      "parameters": {
+        "source": "HPAP",
+        "clinical": "Control Without Diabetes",
+        "disease": "MONDO_0005147",
+        "assay": "scRNA-seq",
+        "tissue": "UBERON_0015865"
+      },
+      "kind": "Sample_node",
+      "suite": "correctness",
+      "group": "hpap",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction",
+        "complete_typed_membership",
+        "exact_count"
+      ],
+      "reference_query_id": "f867ff466ee61e75718bb3a941c06311cc269efb75c080d1633cbe4a4708b77b",
+      "expected_scope": {
+        "entity_type": "Sample_node",
+        "predicate_parameters": {
+          "source": "HPAP",
+          "clinical": "Control Without Diabetes",
+          "disease": "MONDO_0005147",
+          "assay": "scRNA-seq",
+          "tissue": "UBERON_0015865"
+        },
+        "scope_defined_by_reference": true
+      }
+    },
+    {
+      "key": "landing-4545d2550d6f",
+      "question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "search_examples",
+          "entry": 0,
+          "original_question": "For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?",
+          "link": ""
+        },
+        {
+          "group": "Explore QTL",
+          "entry": 3,
+          "original_question": "For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-8b6eabf2ec8f",
+      "question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "search_examples",
+          "entry": 1,
+          "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+          "link": ""
+        },
+        {
+          "group": "Important genes",
+          "entry": 0,
+          "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-4fda6e2c447e",
+      "question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "search_examples",
+          "entry": 2,
+          "original_question": "What pathways and interaction partners connect\u00a0HLA-DRA\u00a0to antigen presentation in T1D?",
+          "link": ""
+        },
+        {
+          "group": "T1D Mechanism",
+          "entry": 0,
+          "original_question": "What pathways and interaction partners connect\u00a0HLA-DRA\u00a0to antigen presentation in T1D?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-7013c6383a33",
+      "question": "Which SNP serves as the lead QTL for CFTR?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Explore QTL",
+          "entry": 0,
+          "original_question": "Which SNP serves as the lead QTL for CFTR?",
+          "link": "/result-new?sourceTerm=snp@rs2402203&targetTerm=gene@ENSG00000001626&relationship=QTL"
+        },
+        {
+          "group": "Explore QTL",
+          "entry": 1,
+          "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+          "link": "/match?qid=1"
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-9e2e44cdcd36",
+      "question": "Which SNP serves as the lead QTL for CENPO?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Explore QTL",
+          "entry": 1,
+          "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+          "link": "/match?qid=1"
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-ca5a07dbcce9",
+      "question": "Which GENE is regulated by rs113869178 as a QTL?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Explore QTL",
+          "entry": 2,
+          "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+          "link": "/match?qid=2"
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-2c285c984b65",
+      "question": "Which GENE is regulated by rs12154969 as a QTL?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Explore QTL",
+          "entry": 2,
+          "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+          "link": "/match?qid=2"
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-88fecb41cadf",
+      "question": "Is CFTR specifically enriched in ductal cells?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Gene expression",
+          "entry": 0,
+          "original_question": "Is\u00a0CFTR\u00a0specifically enriched in ductal cells?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-24e85206e3e1",
+      "question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Gene expression",
+          "entry": 1,
+          "original_question": "Is\u00a0INS\u00a0beta-cell restricted in the PanKgraph expression data?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-056eef739cb6",
+      "question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Gene expression",
+          "entry": 2,
+          "original_question": "Is\u00a0HLA-DRA\u00a0mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-55db6980815c",
+      "question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Important genes",
+          "entry": 1,
+          "original_question": "Does\u00a0ADCY3\u00a0connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-349b0793d724",
+      "question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "Important genes",
+          "entry": 2,
+          "original_question": "For\u00a0HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-ef206d99c401",
+      "question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "T1D Mechanism",
+          "entry": 1,
+          "original_question": "Does the T1D GWAS signal near\u00a0PLEKHM1\u00a0colocalize with a QTL signal for PLEKHM1?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    },
+    {
+      "key": "landing-663aaab606c9",
+      "question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+      "kind": "frontend",
+      "parameters": {},
+      "reference_query": null,
+      "source": [
+        {
+          "group": "T1D Mechanism",
+          "entry": 2,
+          "original_question": "For\u00a0CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+          "link": ""
+        }
+      ],
+      "suite": "correctness",
+      "group": "frontend",
+      "required_outputs": [
+        "supported_answer",
+        "stable_citations",
+        "stream_reconstruction"
+      ],
+      "expected_scope": {
+        "entity_type": "frontend",
+        "predicate_parameters": {},
+        "scope_defined_by_reference": false
+      }
+    }
+  ]
+}

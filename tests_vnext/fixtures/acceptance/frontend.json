@@ -2,7 +2,7 @@
   "version": 1,
   "source_repository": "https://github.com/wangyiqunumich/pank_frontend",
   "source_branch": "xuteng/react",
-  "source_commit": "38c8f454eaecf79cacd7ef42d6b109595798791a",
+  "source_commit": "b0a0cb99828d559fa6dc471cdf504cad2aecd095",
   "files": {
     "landing_sample_questions.json": "66aacb28b6915fa11d92c3b097c290a30468681b1e09b298e61a58d56a0c99de",
     "landing_page_schema.json": "928fa62bbce958d167dd70cd93ed70687e83e6799fef15ac6b379d1c587da85e"
@@ -16,13 +16,13 @@
         {
           "group": "search_examples",
           "entry": 0,
-          "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+          "original_question": "For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?",
           "link": ""
         },
         {
           "group": "Explore QTL",
           "entry": 3,
-          "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+          "original_question": "For\u00a0ADCY3, does the T1D-associated GWAS signal\u00a0rs13393590\u00a0colocalize with ADCY3 molecular QTL evidence?",
           "link": ""
         }
       ],
@@ -54,13 +54,13 @@
         {
           "group": "search_examples",
           "entry": 2,
-          "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+          "original_question": "What pathways and interaction partners connect\u00a0HLA-DRA\u00a0to antigen presentation in T1D?",
           "link": ""
         },
         {
           "group": "T1D Mechanism",
           "entry": 0,
-          "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+          "original_question": "What pathways and interaction partners connect\u00a0HLA-DRA\u00a0to antigen presentation in T1D?",
           "link": ""
         }
       ],
@@ -137,7 +137,7 @@
         {
           "group": "Gene expression",
           "entry": 0,
-          "original_question": "Is CFTR specifically enriched in ductal cells?",
+          "original_question": "Is\u00a0CFTR\u00a0specifically enriched in ductal cells?",
           "link": ""
         }
       ],
@@ -150,7 +150,7 @@
         {
           "group": "Gene expression",
           "entry": 1,
-          "original_question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+          "original_question": "Is\u00a0INS\u00a0beta-cell restricted in the PanKgraph expression data?",
           "link": ""
         }
       ],
@@ -163,7 +163,7 @@
         {
           "group": "Gene expression",
           "entry": 2,
-          "original_question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+          "original_question": "Is\u00a0HLA-DRA\u00a0mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
           "link": ""
         }
       ],
@@ -176,7 +176,7 @@
         {
           "group": "Important genes",
           "entry": 1,
-          "original_question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+          "original_question": "Does\u00a0ADCY3\u00a0connect to signaling pathways that may be relevant to endocrine or immune regulation?",
           "link": ""
         }
       ],
@@ -189,7 +189,7 @@
         {
           "group": "Important genes",
           "entry": 2,
-          "original_question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+          "original_question": "For\u00a0HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
           "link": ""
         }
       ],
@@ -202,7 +202,7 @@
         {
           "group": "T1D Mechanism",
           "entry": 1,
-          "original_question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+          "original_question": "Does the T1D GWAS signal near\u00a0PLEKHM1\u00a0colocalize with a QTL signal for PLEKHM1?",
           "link": ""
         }
       ],
@@ -215,7 +215,7 @@
         {
           "group": "T1D Mechanism",
           "entry": 2,
-          "original_question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+          "original_question": "For\u00a0CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
           "link": ""
         }
       ],

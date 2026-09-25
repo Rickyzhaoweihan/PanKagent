@@ -7,7 +7,7 @@ import re
 import subprocess
 
 
-def freeze(frontend):
+def freeze(frontend, source_commit=None):
     root = Path(frontend)
     names = ('landing_sample_questions.json', 'landing_page_schema.json')
     raw = {name: (root / 'src/schema' / name).read_bytes() for name in names}
@@ -31,7 +31,7 @@ def freeze(frontend):
                                     'link': entry['link']})
     return {'version': 1, 'source_repository': 'https://github.com/wangyiqunumich/pank_frontend',
             'source_branch': 'xuteng/react',
-            'source_commit': subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
+            'source_commit': source_commit or subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
             'files': {name: hashlib.sha256(value).hexdigest() for name, value in raw.items()},
             'displayed_entries': len(entries), 'cases': list(cases.values())}
 

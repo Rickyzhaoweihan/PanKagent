@@ -1,0 +1,807 @@
+{
+  "source": "isolated same-application baseline replay",
+  "code_version": "6d7340d",
+  "accounting_source": "Per-run audit_events: model_reserved/model_settled, including streaming synthesis.",
+  "grading_note": "CFTR enrichment compares GENE_ENRICHED_IN endpoints; independent detection context is not counted as a mismatched answer population.",
+  "reports": [
+    {
+      "case": "control-donor-0",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "status": "partial",
+      "reference_count": 3,
+      "actual_count": 3,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 641,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 6.628969,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 16027,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11280,
+        "output_tokens": 546
+      },
+      "settled_cost_usd": 0.0680875,
+      "preview_s": 10.834,
+      "elapsed_s": 14.877,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "stage-case-0",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "status": "completed",
+      "reference_count": 3,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 253,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 7.724835000000001,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 8410,
+        "cache_read_input_tokens": 8410,
+        "input_tokens": 6652,
+        "output_tokens": 917
+      },
+      "settled_cost_usd": 0.045181,
+      "preview_s": 11.028,
+      "elapsed_s": 12.042,
+      "steps": [
+        [
+          "s1",
+          "empty"
+        ]
+      ]
+    },
+    {
+      "case": "sample-tissues-0",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1477,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.735989,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 9577,
+        "cache_read_input_tokens": 2974,
+        "input_tokens": 17507,
+        "output_tokens": 1314
+      },
+      "settled_cost_usd": 0.0726913,
+      "preview_s": 9.029,
+      "elapsed_s": 18.137,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "followup-0",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "status": "failed",
+      "reference_count": 1,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.SESSION_POPULATION_BINDING_MISSING"
+      ],
+      "model_seconds": 11.043275,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 8527,
+        "cache_read_input_tokens": 17054,
+        "input_tokens": 12545,
+        "output_tokens": 1354
+      },
+      "settled_cost_usd": 0.0633583,
+      "preview_s": 12.022,
+      "elapsed_s": 12.026,
+      "steps": []
+    },
+    {
+      "case": "tissue-discovery-0",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1317,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 19.384299,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12551,
+        "input_tokens": 20561,
+        "output_tokens": 1398
+      },
+      "settled_cost_usd": 0.0576122,
+      "preview_s": 18.054,
+      "elapsed_s": 25.151,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-paraphrase-0",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "status": "partial",
+      "reference_count": 2,
+      "actual_count": 2,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1513,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 13.576478999999999,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 553,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 17848,
+        "output_tokens": 1198
+      },
+      "settled_cost_usd": 0.0513353,
+      "preview_s": 9.036,
+      "elapsed_s": 17.132,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-sqtl-0",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1937,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 22.798349,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 1315,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 28857,
+        "output_tokens": 1895
+      },
+      "settled_cost_usd": 0.0822283,
+      "preview_s": 12.057,
+      "elapsed_s": 28.301,
+      "steps": [
+        [
+          "coloc",
+          "complete"
+        ],
+        [
+          "gwas",
+          "complete"
+        ],
+        [
+          "qtl",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "shared-partners-0",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "status": "partial",
+      "reference_count": 7,
+      "actual_count": 7,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1360,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 12.754237,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 95,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 12532,
+        "output_tokens": 1268
+      },
+      "settled_cost_usd": 0.0402583,
+      "preview_s": 12.897,
+      "elapsed_s": 27.548,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ],
+        [
+          "c1",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "control-donor-1",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "status": "partial",
+      "reference_count": 3,
+      "actual_count": 3,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 757,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 7.775102,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12337,
+        "input_tokens": 13220,
+        "output_tokens": 738
+      },
+      "settled_cost_usd": 0.0362874,
+      "preview_s": 7.017,
+      "elapsed_s": 11.049,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "stage-case-1",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "status": "completed",
+      "reference_count": 3,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 253,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 4.134305,
+      "claude_calls": 1,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 8410,
+        "input_tokens": 3056,
+        "output_tokens": 439
+      },
+      "settled_cost_usd": 0.012184,
+      "preview_s": 7.021,
+      "elapsed_s": 8.035,
+      "steps": [
+        [
+          "s1",
+          "empty"
+        ]
+      ]
+    },
+    {
+      "case": "sample-tissues-1",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "status": "failed",
+      "reference_count": 1,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.PREPARATION_FAILED"
+      ],
+      "model_seconds": 16.680436,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 25230,
+        "input_tokens": 14904,
+        "output_tokens": 2096
+      },
+      "settled_cost_usd": 0.055814,
+      "preview_s": 17.043,
+      "elapsed_s": 17.048,
+      "steps": []
+    },
+    {
+      "case": "tissue-discovery-1",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1484,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.413794,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12551,
+        "input_tokens": 16802,
+        "output_tokens": 1330
+      },
+      "settled_cost_usd": 0.04941419999999999,
+      "preview_s": 9.023,
+      "elapsed_s": 17.119,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "followup-1",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 882,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 17.755748,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 29722,
+        "input_tokens": 22288,
+        "output_tokens": 1999
+      },
+      "settled_cost_usd": 0.0705104,
+      "preview_s": 16.042,
+      "elapsed_s": 21.104,
+      "steps": [
+        [
+          "session_population",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-paraphrase-1",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "status": "partial",
+      "reference_count": 2,
+      "actual_count": 2,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1371,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 11.783322,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 389,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 13688,
+        "output_tokens": 1016
+      },
+      "settled_cost_usd": 0.0407853,
+      "preview_s": 8.017,
+      "elapsed_s": 15.067,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "shared-partners-1",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "status": "partial",
+      "reference_count": 7,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 1165,
+      "stream_match": true,
+      "codes": [
+        "E08.DEPENDENCY_UNAVAILABLE"
+      ],
+      "model_seconds": 12.035897,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 9212,
+        "output_tokens": 1036
+      },
+      "settled_cost_usd": 0.0310608,
+      "preview_s": 10.869,
+      "elapsed_s": 22.243,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ],
+        [
+          "c1",
+          "failed"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-sqtl-1",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1992,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 21.175793,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12699,
+        "input_tokens": 29038,
+        "output_tokens": 1987
+      },
+      "settled_cost_usd": 0.0804858,
+      "preview_s": 17.006,
+      "elapsed_s": 29.311,
+      "steps": [
+        [
+          "coloc",
+          "complete"
+        ],
+        [
+          "gwas",
+          "complete"
+        ],
+        [
+          "qtl",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "control-donor-2",
+      "question": "How many T1D stage 1 donors are available in HPAP?",
+      "status": "partial",
+      "reference_count": 3,
+      "actual_count": 3,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 772,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.459753,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12337,
+        "input_tokens": 13230,
+        "output_tokens": 760
+      },
+      "settled_cost_usd": 0.0365274,
+      "preview_s": 7.02,
+      "elapsed_s": 12.063,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "stage-case-2",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "status": "completed",
+      "reference_count": 3,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": true,
+      "answer_chars": 253,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 8.837487,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 16820,
+        "input_tokens": 6686,
+        "output_tokens": 1004
+      },
+      "settled_cost_usd": 0.026776,
+      "preview_s": 12.029,
+      "elapsed_s": 13.043,
+      "steps": [
+        [
+          "s1",
+          "empty"
+        ]
+      ]
+    },
+    {
+      "case": "sample-tissues-2",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "status": "failed",
+      "reference_count": 1,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 0,
+      "stream_match": true,
+      "codes": [
+        "E04.PREPARATION_FAILED"
+      ],
+      "model_seconds": 14.851652000000001,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 25230,
+        "input_tokens": 14839,
+        "output_tokens": 1984
+      },
+      "settled_cost_usd": 0.054564,
+      "preview_s": 15.035,
+      "elapsed_s": 15.041,
+      "steps": []
+    },
+    {
+      "case": "tissue-discovery-2",
+      "question": "For HPAP stage 1 donors, how many scRNA-seq samples are available and which tissues are they from?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1176,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.563885,
+      "claude_calls": 3,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12551,
+        "input_tokens": 20380,
+        "output_tokens": 1272
+      },
+      "settled_cost_usd": 0.055990200000000004,
+      "preview_s": 15.044,
+      "elapsed_s": 22.154,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "followup-2",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1043,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 17.11831,
+      "claude_calls": 4,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 29722,
+        "input_tokens": 21988,
+        "output_tokens": 1713
+      },
+      "settled_cost_usd": 0.0670504,
+      "preview_s": 18.058,
+      "elapsed_s": 24.142,
+      "steps": [
+        [
+          "session_population",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-paraphrase-2",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "status": "partial",
+      "reference_count": 2,
+      "actual_count": 2,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1812,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 14.570454999999999,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 669,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 22307,
+        "output_tokens": 1509
+      },
+      "settled_cost_usd": 0.0636533,
+      "preview_s": 10.037,
+      "elapsed_s": 18.157,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ],
+        [
+          "s3",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "cftr-sqtl-2",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "status": "partial",
+      "reference_count": 1,
+      "actual_count": 1,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1965,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 20.96945,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 12699,
+        "input_tokens": 28787,
+        "output_tokens": 1977
+      },
+      "settled_cost_usd": 0.0798838,
+      "preview_s": 12.045,
+      "elapsed_s": 24.473,
+      "steps": [
+        [
+          "coloc_check",
+          "complete"
+        ],
+        [
+          "gwas_check",
+          "complete"
+        ],
+        [
+          "qtl_check",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "case": "shared-partners-2",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "status": "partial",
+      "reference_count": 7,
+      "actual_count": 0,
+      "membership_match": false,
+      "retrieval_complete": false,
+      "answer_chars": 1026,
+      "stream_match": true,
+      "codes": [
+        "E08.DEPENDENCY_UNAVAILABLE"
+      ],
+      "model_seconds": 10.892418,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 11384,
+        "input_tokens": 9212,
+        "output_tokens": 960
+      },
+      "settled_cost_usd": 0.0303008,
+      "preview_s": 11.118,
+      "elapsed_s": 20.236,
+      "steps": [
+        [
+          "s1",
+          "complete"
+        ],
+        [
+          "s2",
+          "complete"
+        ],
+        [
+          "c1",
+          "failed"
+        ]
+      ]
+    }
+  ]
+}

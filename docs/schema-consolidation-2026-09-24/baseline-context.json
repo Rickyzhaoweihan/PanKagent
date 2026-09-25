@@ -1,0 +1,31 @@
+{
+  "run_context": {
+    "application_sha256": "c2447c5c2e0cc3d30a178f86a145cc18fb6460998b478ce4512757e93b3f2264",
+    "agent_schema": {
+      "id": "pankgraph",
+      "version": "1.0.0",
+      "sha256": "b1edebc5541fc9e8a390961e58101179e6a4615f6bcfa3d21817206117c13632",
+      "graph_release": "PanKgraph_08_04",
+      "standard": {
+        "repository": "https://github.com/RingoMao/KG_agent",
+        "branch": "kg-standard",
+        "version": "0.3.0",
+        "commit": "414c2732b5c8a50ba3a4d18561cfe12785a8b535",
+        "contract_sha256": "6b6116dc0cd4adbd058082ec7f013ab764332f6c75312e2629af02e44f7e6593"
+      }
+    },
+    "model": "claude-sonnet-5",
+    "prompt_sha256": "0a90783bfa98f3e4f6501b9cb911493169691175fab2bf40a80cbf5225efb321",
+    "database": {
+      "backend": "neo4j",
+      "release": "PanKgraph_08_04",
+      "name": "pankgraph"
+    }
+  },
+  "concurrency": 2,
+  "sessions": "isolated private baseline database",
+  "grounding_cache": "new isolated baseline directory; retained within all three repetitions",
+  "model_cache_state": "usage reported per call; no forced provider cache clearing",
+  "application_path": "plan-preview-confirm-answer",
+  "literature": "disabled identically for both versions"
+}
