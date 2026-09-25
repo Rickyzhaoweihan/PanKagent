@@ -287,6 +287,20 @@ class Store:
                 "AND status NOT IN ('completed','partial','failed','cancelled','interrupted','superseded')",
                 (graph_answer, utc_now(), run_id))
 
+    def persist_answer_event(self, run_id, graph_answer, payload):
+        """Commit the answer prefix and its replayable delta together.
+
+        Cancellation may abandon the caller while SQLite finishes. Neither half
+        may survive alone, and a cancelled/superseded run cannot accept late text.
+        """
+        with self.transaction():
+            status = self.run_status(run_id)
+            if status is None or status in TERMINAL:
+                return None
+            self.db.execute("UPDATE runs SET graph_answer=?,updated_at=? WHERE run_id=?",
+                            (graph_answer, utc_now(), run_id))
+            return self._event_in_transaction(run_id, 'graph_answer', payload)
+
     def event_context(self, run_id):
         """Metadata and identity redaction context, cached until evidence changes."""
         with self.lock:
@@ -380,19 +394,22 @@ class Store:
 
     def event(self, run_id: str, event_type: str, payload: dict | None = None) -> dict:
         with self.transaction():
-            row = self.db.execute("SELECT session_id,stage,status,created_epoch FROM runs WHERE run_id=?", (run_id,)).fetchone()
-            if row is None:
-                raise KeyError("run")
-            run = dict(row)
-            seq = self.db.execute("SELECT COALESCE(MAX(sequence),0)+1 FROM events WHERE run_id=?", (run_id,)).fetchone()[0]
-            envelope = {
-                "version": 2, "run_id": run_id, "session_id": run["session_id"],
-                "sequence": seq, "timestamp": utc_now(), "type": event_type,
-                "stage": run["stage"], "status": run["status"],
-                "elapsed_ms": max(0, round((time.time() - run["created_epoch"]) * 1000)),
-                "payload": payload or {},
-            }
-            self.db.execute("INSERT INTO events VALUES (?,?,?)", (run_id, seq, json.dumps(envelope, ensure_ascii=False)))
+            return self._event_in_transaction(run_id, event_type, payload)
+
+    def _event_in_transaction(self, run_id, event_type, payload):
+        row = self.db.execute("SELECT session_id,stage,status,created_epoch FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        if row is None:
+            raise KeyError("run")
+        run = dict(row)
+        seq = self.db.execute("SELECT COALESCE(MAX(sequence),0)+1 FROM events WHERE run_id=?", (run_id,)).fetchone()[0]
+        envelope = {
+            "version": 2, "run_id": run_id, "session_id": run["session_id"],
+            "sequence": seq, "timestamp": utc_now(), "type": event_type,
+            "stage": run["stage"], "status": run["status"],
+            "elapsed_ms": max(0, round((time.time() - run["created_epoch"]) * 1000)),
+            "payload": payload or {},
+        }
+        self.db.execute("INSERT INTO events VALUES (?,?,?)", (run_id, seq, json.dumps(envelope, ensure_ascii=False)))
         return envelope
 
     def events_after(self, run_id: str, sequence: int, limit: int = 200) -> list[dict]:

@@ -1,0 +1,60 @@
+{
+  "release": "/db/pankagent-vnext-private/operations/schema-consolidation-20260924/nd-answer-candidate",
+  "reports": [
+    {
+      "case": "hpap-ND-samples",
+      "question": "How many samples are available from HPAP ND donors?",
+      "status": "partial",
+      "reference_ok": true,
+      "reference_count": 5480,
+      "actual_count": 5480,
+      "membership_match": true,
+      "retrieval_complete": true,
+      "answer_chars": 1359,
+      "stream_match": true,
+      "codes": [],
+      "model_seconds": 55.456,
+      "claude_calls": 2,
+      "cost_settled": true,
+      "usage": {
+        "cache_creation_input_tokens": 17225,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 20662,
+        "output_tokens": 1133
+      },
+      "settled_cost_usd": 0.0957165,
+      "planning_route": {
+        "kind": "claude-led-planning-v2",
+        "claude_calls": 1,
+        "lookup_batches": 0,
+        "planning_proposals": 1,
+        "execution_repairs": 0
+      },
+      "preview_s": 16.097,
+      "elapsed_s": 81.932,
+      "steps": [
+        [
+          "donors",
+          "complete"
+        ],
+        [
+          "samples",
+          "complete"
+        ]
+      ],
+      "expected_clarification": false
+    }
+  ],
+  "budget": {
+    "limit_usd": 10.0,
+    "spent_usd": 6.730489,
+    "reserved_usd": 0.213457,
+    "remaining_usd": 3.056053,
+    "calls": 300,
+    "pending_calls": 1,
+    "input_tokens": 2046898,
+    "output_tokens": 164823,
+    "cache_read_tokens": 2024515,
+    "cache_creation_tokens": 233424
+  }
+}

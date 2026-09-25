@@ -26,6 +26,7 @@ class Settings:
     grouped_preview_timeout: float = field(default_factory=lambda: float(env('GROUPED_PREVIEW_TIMEOUT','120')))
     preview_ttl_seconds: float = field(default_factory=lambda: float(env('PREVIEW_TTL_SECONDS','300')))
     run_timeout: float = 40.0
+    answer_timeout: float = field(default_factory=lambda: float(env('ANSWER_TIMEOUT', '60')))
     provider_status_url: str = "https://status.claude.com/api/v2/summary.json"
     literature_api_version: str = field(default_factory=lambda: env('LITERATURE_API_VERSION','hirn-agent-v1'))
     health_interval: float = 30.0
@@ -65,6 +66,8 @@ class Settings:
             raise ValueError('invalid preview deadline or reuse window')
         if not 0 < self.plan_timeout <= 60:
             raise ValueError('invalid planning deadline')
+        if not 0 < self.answer_timeout <= 120:
+            raise ValueError('invalid answer deadline')
         if self.cypher_initial_requests not in (1, 2, 4):
             raise ValueError('initial Cypher requests must be one, two or four')
         if self.cypher_generation_concurrency not in (1, 2, 4):

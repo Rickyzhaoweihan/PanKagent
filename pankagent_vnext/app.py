@@ -315,6 +315,11 @@ class Runtime:
                 return
             (await self.io.call(self.store.event_if_active, run_id, "heartbeat", {"activity": run["stage"]}))
 
+    async def answer_delta(self, run_id, answer, text):
+        context = await self.io.call(self.store.event_context, run_id)
+        payload = public_payload({'text': text, 'delta': True}, context=context)
+        await self.io.call(self.store.persist_answer_event, run_id, answer, payload)
+
     def planning_history(self, run):
         from .revision_context import parent_context
         history = self.store.history(run["session_id"])
@@ -1073,6 +1078,20 @@ class Runtime:
             else:
                 async for token in self.gateway.synthesize(question, answer_evidence, **options):
                     yield token
+
+        async def write_tokens():
+            nonlocal answer
+            async for token in tokens():
+                await self.io.call(self.check_active, run_id)
+                visible = citation_filter.feed(token)
+                if visible:
+                    answer += visible
+                    await self.answer_delta(run_id, answer, visible)
+            tail = citation_filter.feed("", final=True)
+            await self.io.call(self.check_active, run_id)
+            if tail:
+                answer += tail
+                await self.answer_delta(run_id, answer, tail)
         try:
             question = run["plan"].get("interpreted_question", run["question"])
             options = {}
@@ -1085,19 +1104,9 @@ class Runtime:
                 await self.emit(run_id, "answer_profile", {"profile": prepared.profile})
                 options["prepared"] = prepared
             synthesis_started = not bool(status_message)
-            async for token in tokens():
-                (await self.io.call(self.check_active, run_id))
-                visible = citation_filter.feed(token)
-                if visible:
-                    answer += visible
-                    (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
-                    await self.emit(run_id, "graph_answer", {"text": visible, "delta": True})
-            tail = citation_filter.feed("", final=True)
-            (await self.io.call(self.check_active, run_id))
-            if tail:
-                answer += tail
-                (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
-                await self.emit(run_id, "graph_answer", {"text": tail, "delta": True})
+            # Retrieval and writing have independent bounded deadlines. A large
+            # successful cohort must not consume the formatter's writing time.
+            await asyncio.wait_for(write_tokens(), self.settings.answer_timeout)
 
             if synthesis_started:
                 self.health.record_inference("claude", True)
@@ -1119,10 +1128,19 @@ class Runtime:
                 synthesis_error = {"category": "answer_preparation", "message": "The retrieved evidence could not be prepared for an answer."}
                 self.metrics.count("answer_preparation_errors")
                 evidence["answer_preparation_error"] = synthesis_error
-            answer = answer + "\n\n" + synthesis_error["message"] if answer else synthesis_error["message"] + " The graph evidence is available below."
+            # A timeout can land before a submitted delta commits. Drain the
+            # serialized queue and use its durable prefix, never an uncommitted
+            # local token or an answer-only fallback absent from the SSE log.
+            current = await self.io.call(self.store.get, run_id)
+            answer = current.get('graph_answer') or ''
+            suffix = ("\n\n" + synthesis_error["message"] if answer else
+                      synthesis_error["message"] + " The graph evidence is available below.")
+            answer += suffix
+            await self.answer_delta(run_id, answer, suffix)
         if not answer.strip():
             answer = "No answer text was returned. Inspect the graph evidence and step outcomes below."
             synthesis_error = {"category": "invalid_response", "message": "No answer text was returned."}
+            await self.answer_delta(run_id, answer, answer)
         reference_validation = {
             "valid": not citation_filter.invalid, "scope": "reference_ids_only",
             "model_references_present": bool(citation_filter.seen), "application_fallback": False,
@@ -1138,8 +1156,7 @@ class Runtime:
                 footer = "\n\nGraph evidence supplied: " + ", ".join(supplied) + "."
                 answer += footer
                 reference_validation["application_fallback"] = True
-                (await self.io.call(self.store.persist_answer, run_id, graph_answer=answer))
-                await self.emit(run_id, "graph_answer", {"text": footer, "delta": True})
+                await self.answer_delta(run_id, answer, footer)
 
         evidence["follow_up_questions"] = [] if status_message else followup_questions(previous)
         evidence["answer_reference_validation"] = reference_validation
@@ -1190,15 +1207,20 @@ class Runtime:
                         return {"status": "unavailable", "perspectives": list(literature_perspectives), "error": error}
 
                 try:
-                    _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run), 160 if len(run["plan"]["steps"]) > 2 else self.settings.run_timeout)
+                    retrieval_window = 120 if len(run["plan"]["steps"]) > 2 else self.settings.run_timeout
+                    _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run),
+                        retrieval_window + self.settings.answer_timeout)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
                     error = safe_error(exc)
                     current = (await self.io.call(self.store.get, run_id))
+                    error['stage'] = current.get('stage')
                     if (current.get('error') or {}).get('category') == 'preview_revalidation_required':
                         error = current['error']
                     answer = current["graph_answer"] or error["message"]
+                    if not current["graph_answer"]:
+                        await self.answer_delta(run_id, answer, answer)
                     from .interrupted_evidence import complete_interrupted_evidence
                     evidence = complete_interrupted_evidence(run["plan"], current["evidence"], error,
                         self.started_graph_checks.get(run_id, set()))

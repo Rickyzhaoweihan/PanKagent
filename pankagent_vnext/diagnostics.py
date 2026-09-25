@@ -112,7 +112,7 @@ def annotate(value, context=None):
             reason=reasons[-1] if reasons else 'retrieval_incomplete' if item.get('status')=='partial' else 'failed'
             stage_hint='validating' if reasons else 'querying_graph'
             found.append(diagnostic(reason,stage_hint,run_id=run_id,step_id=item['step_id']))
-        for key in ('plan','preview','evidence','error','recovery','payload'):
+        for key in ('plan','preview','evidence','error','synthesis_error','recovery','payload'):
             child=out.get(key)
             if isinstance(child,dict): found.extend(child.get('diagnostics',[]))
         for child in out.get('steps',[]) if isinstance(out.get('steps'),list) else []:
