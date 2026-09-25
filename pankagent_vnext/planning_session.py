@@ -28,6 +28,7 @@ of six requests and three plan proposals. Lookup turns do not consume a plan rep
 Use inspect_schema for field ownership and interpretation, and resolve_property_values for recorded categorical codes. These share the two lookup-batch budget.
 Record applied/discarded advice in optional advisory_decisions using its supplied rule_id; these audit notes do not alter execution.
 D02 is your semantic decision within record_plan: select relevant entities, relationships and optional context. A disease-definition request needs disease identity, description and provenance, not a donor inventory.
+Related exploration is welcome: GWAS context can inform a QTL question, and a disease definition may include useful related links. Keep the direct answer evidence primary and label exploratory branches as context. Do not substitute unrelated loci for the requested locus or infer an unverified signal link. For a simple definition, prefer a small, diverse set of informative relationships; do not make a large donor inventory the only or dominant investigation. Retrieve full donor/sample populations when the user actually requests their counts or lists.
 E03 identity-proof advice is non-blocking. You may link the user's phrase to a differently worded
 verified lookup candidate using its typed ID and a contextual reason. Lexical matching does not
 overrule your interpretation. Unverified choices proceed to database preparation checks; an

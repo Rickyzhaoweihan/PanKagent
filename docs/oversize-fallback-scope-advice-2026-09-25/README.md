@@ -83,3 +83,13 @@ production change, database write, or formatter output-generation change is incl
 The broader correctness/performance gates and GWAS scope issue still prevent a
 release-acceptance claim. Live trace artifacts stay in the service-owned operations
 directory `schema-consolidation-20260924/scope-advice-v2-cftr-check`.
+
+## Subsequent user direction
+
+The user accepts broad related GWAS retrieval as useful exploration, and permits
+related links for simple disease definitions. Broad retrieval is not itself a
+release blocker. The planner now explicitly keeps direct answer evidence primary,
+labels exploration as context, and avoids making a large donor inventory the sole
+or dominant evidence for a definition. It must still distinguish another locus
+from the requested CFTR signal. The user authorized deployment of this candidate
+to the single active dev agent; deployment evidence is recorded separately.
