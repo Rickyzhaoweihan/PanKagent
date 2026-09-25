@@ -1,0 +1,1979 @@
+{
+  "version": 1,
+  "title": "Original versus competing-candidate workflow: 50 questions",
+  "graph_release": "PanKgraph_08_04",
+  "baseline_commit": "5c5cf2bc76502e10c9bf8bc5235adcb6fbf5961f",
+  "candidate_commit": "5cd7234c0c5c11831e568936591a093bb9a6a387",
+  "model": "claude-sonnet-5",
+  "frontend_source": {
+    "version": 1,
+    "source_repository": "https://github.com/wangyiqunumich/pank_frontend",
+    "source_branch": "xuteng/react",
+    "source_commit": "6dcea1d7e269f358ab9486d1f6ee52bfa66af181",
+    "files": {
+      "landing_sample_questions.json": "66aacb28b6915fa11d92c3b097c290a30468681b1e09b298e61a58d56a0c99de",
+      "landing_page_schema.json": "928fa62bbce958d167dd70cd93ed70687e83e6799fef15ac6b379d1c587da85e"
+    },
+    "displayed_entries": 16
+  },
+  "history_artifact_sha256": "1857ffd5cceb167405fda6339aa81fbe691e685f6b545faf6609930bb84549cb",
+  "design": {
+    "question_count": 50,
+    "current_examples": 14,
+    "existing_regressions": 20,
+    "history_questions": 16,
+    "order": "paired sequential, alternate original/new first by index",
+    "repeats": 1,
+    "confirmation": "wait for candidate settlement then confirm latest plan_id",
+    "literature": "disabled in both arms; graph workflow comparison",
+    "cache": "planning cache disabled; query cache cleared per question; entity index warmed equally; provider prompt caching retained and reported",
+    "reference_policy": "Membership gates do not replace answer review. References frozen before model runs; no row-count ranking."
+  },
+  "cases": [
+    {
+      "key": "landing-4545d2550d6f",
+      "question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "search_examples",
+            "entry": 0,
+            "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+            "link": ""
+          },
+          {
+            "group": "Explore QTL",
+            "entry": 3,
+            "original_question": "For ADCY3, does the T1D-associated GWAS signal rs13393590 colocalize with ADCY3 molecular QTL evidence?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000138031",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000138031",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Distinguish GWAS lead from QTL lead; do not assume rs13393590 is the ADCY3 GWAS lead. Verify tissue/assay from linked QTL evidence."
+      ]
+    },
+    {
+      "key": "landing-8b6eabf2ec8f",
+      "question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "search_examples",
+            "entry": 1,
+            "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+            "link": ""
+          },
+          {
+            "group": "Important genes",
+            "entry": 0,
+            "original_question": "Is PLEKHM1 a T1D effector gene or key marker gene in pancreatic cell types?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "EFFECTOR_GENE_OF",
+          "query": "MATCH (g:Gene {id:$gene})-[r:EFFECTOR_GENE_OF]->(n:disease) WHERE n.id=$disease RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000225190",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "EFFECTOR_GENE_OF",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000225190",
+            "entity_type": "disease",
+            "only_ids": [
+              "MONDO_0005147"
+            ]
+          },
+          "requires_relation": "EFFECTOR_GENE_OF",
+          "comparison": "supporting_evidence"
+        },
+        {
+          "name": "MARKER_GENE_OF",
+          "query": "MATCH (g:Gene {id:$gene})-[r:MARKER_GENE_OF]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000225190"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "MARKER_GENE_OF",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000225190",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "MARKER_GENE_OF",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "landing-4fda6e2c447e",
+      "question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "search_examples",
+            "entry": 2,
+            "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+            "link": ""
+          },
+          {
+            "group": "T1D Mechanism",
+            "entry": 0,
+            "original_question": "What pathways and interaction partners connect HLA-DRA to antigen presentation in T1D?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "FUNCTION_ANNOTATION",
+          "query": "MATCH (g:Gene {id:$gene})-[r:FUNCTION_ANNOTATION]->(n:ontology) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000204287"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "FUNCTION_ANNOTATION",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000204287",
+            "entity_type": "ontology"
+          },
+          "requires_relation": "FUNCTION_ANNOTATION",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Interaction partners require a recorded physical-interaction edge and a relevant annotation; contextual pathways are not mechanistic proof."
+      ]
+    },
+    {
+      "key": "landing-7013c6383a33",
+      "question": "Which SNP serves as the lead QTL for CFTR?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Explore QTL",
+            "entry": 0,
+            "original_question": "Which SNP serves as the lead QTL for CFTR?",
+            "link": "/result-new?sourceTerm=snp@rs2402203&targetTerm=gene@ENSG00000001626&relationship=QTL"
+          },
+          {
+            "group": "Explore QTL",
+            "entry": 1,
+            "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+            "link": "/match?qid=1"
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "PART_OF_QTL_SIGNAL",
+          "query": "MATCH (g:Gene {id:$gene})<-[r:PART_OF_QTL_SIGNAL]-(n:variants) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "PART_OF_QTL_SIGNAL",
+            "endpoint": "start_id",
+            "anchor_endpoint": "end_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "variants"
+          },
+          "requires_relation": "PART_OF_QTL_SIGNAL",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "A credible-set member is not automatically a lead variant; qualify absent lead/PIP proof."
+      ]
+    },
+    {
+      "key": "landing-9e2e44cdcd36",
+      "question": "Which SNP serves as the lead QTL for CENPO?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Explore QTL",
+            "entry": 1,
+            "original_question": "Which SNP serves as the lead QTL for [GENE]?",
+            "link": "/match?qid=1"
+          }
+        ],
+        "substitutions": {
+          "gene": "CENPO(ENSG00000138092)"
+        }
+      },
+      "checks": [
+        {
+          "name": "PART_OF_QTL_SIGNAL",
+          "query": "MATCH (g:Gene {id:$gene})<-[r:PART_OF_QTL_SIGNAL]-(n:variants) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000138092"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "PART_OF_QTL_SIGNAL",
+            "endpoint": "start_id",
+            "anchor_endpoint": "end_id",
+            "anchor_id": "ENSG00000138092",
+            "entity_type": "variants"
+          },
+          "requires_relation": "PART_OF_QTL_SIGNAL",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "A credible-set member is not automatically a lead variant; qualify absent lead/PIP proof."
+      ]
+    },
+    {
+      "key": "landing-ca5a07dbcce9",
+      "question": "Which GENE is regulated by rs113869178 as a QTL?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Explore QTL",
+            "entry": 2,
+            "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+            "link": "/match?qid=2"
+          }
+        ],
+        "substitutions": {
+          "snp": "rs113869178"
+        }
+      },
+      "checks": [
+        {
+          "name": "QTL targets",
+          "query": "MATCH (v:variants)-[:PART_OF_QTL_SIGNAL]->(g:Gene) WHERE v.name=$snp OR v.id=$snp RETURN DISTINCT g.id AS id",
+          "parameters": {
+            "snp": "rs113869178"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "PART_OF_QTL_SIGNAL",
+            "endpoint": "end_id",
+            "entity_type": "Gene"
+          },
+          "requires_relation": "PART_OF_QTL_SIGNAL",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "landing-2c285c984b65",
+      "question": "Which GENE is regulated by rs12154969 as a QTL?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Explore QTL",
+            "entry": 2,
+            "original_question": "Which GENE is regulated by [SNP] as a QTL?",
+            "link": "/match?qid=2"
+          }
+        ],
+        "substitutions": {
+          "snp": "rs12154969"
+        }
+      },
+      "checks": [
+        {
+          "name": "QTL targets",
+          "query": "MATCH (v:variants)-[:PART_OF_QTL_SIGNAL]->(g:Gene) WHERE v.name=$snp OR v.id=$snp RETURN DISTINCT g.id AS id",
+          "parameters": {
+            "snp": "rs12154969"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "PART_OF_QTL_SIGNAL",
+            "endpoint": "end_id",
+            "entity_type": "Gene"
+          },
+          "requires_relation": "PART_OF_QTL_SIGNAL",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "landing-88fecb41cadf",
+      "question": "Is CFTR specifically enriched in ductal cells?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Gene expression",
+            "entry": 0,
+            "original_question": "Is CFTR specifically enriched in ductal cells?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "GENE_ENRICHED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_ENRICHED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_ENRICHED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_ENRICHED_IN",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Compare enrichment, not pooled detection, and retain cell-subtype distinctions."
+      ]
+    },
+    {
+      "key": "landing-24e85206e3e1",
+      "question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Gene expression",
+            "entry": 1,
+            "original_question": "Is INS beta-cell restricted in the PanKgraph expression data?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000254647",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "landing-056eef739cb6",
+      "question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Gene expression",
+            "entry": 2,
+            "original_question": "Is HLA-DRA mainly detected in immune cells, or does it also appear in pancreatic epithelial/endocrine compartments?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000204287"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000204287",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Keep observed cell-type evidence separate from inferred immune/beta-cell mechanism."
+      ]
+    },
+    {
+      "key": "landing-55db6980815c",
+      "question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Important genes",
+            "entry": 1,
+            "original_question": "Does ADCY3 connect to signaling pathways that may be relevant to endocrine or immune regulation?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "FUNCTION_ANNOTATION",
+          "query": "MATCH (g:Gene {id:$gene})-[r:FUNCTION_ANNOTATION]->(n:ontology) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000138031"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "FUNCTION_ANNOTATION",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000138031",
+            "entity_type": "ontology"
+          },
+          "requires_relation": "FUNCTION_ANNOTATION",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "landing-349b0793d724",
+      "question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "Important genes",
+            "entry": 2,
+            "original_question": "For HLA-DRA, does PanKgraph support an immune antigen-presentation use case more strongly than a beta-cell intrinsic use case?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000204287"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000204287",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Keep observed cell-type evidence separate from inferred immune/beta-cell mechanism."
+      ]
+    },
+    {
+      "key": "landing-ef206d99c401",
+      "question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "T1D Mechanism",
+            "entry": 1,
+            "original_question": "Does the T1D GWAS signal near PLEKHM1 colocalize with a QTL signal for PLEKHM1?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000225190",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000225190",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Distinguish GWAS lead from QTL lead; do not assume rs13393590 is the ADCY3 GWAS lead. Verify tissue/assay from linked QTL evidence."
+      ]
+    },
+    {
+      "key": "landing-663aaab606c9",
+      "question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+      "group": "current_examples",
+      "source": {
+        "kind": "frontend",
+        "occurrences": [
+          {
+            "group": "T1D Mechanism",
+            "entry": 2,
+            "original_question": "For CFTR, does the T1D GWAS signal colocalize with a pancreas splicing QTL?",
+            "link": ""
+          }
+        ],
+        "substitutions": {}
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000001626",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Distinguish GWAS lead from QTL lead; do not assume rs13393590 is the ADCY3 GWAS lead. Verify tissue/assay from linked QTL evidence."
+      ]
+    },
+    {
+      "key": "stage-case",
+      "question": "Count the hpap donors recorded as stage 1 of type 1 diabetes.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "stage-case"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "stage3-case",
+      "question": "In Hpap, how many donors have a recorded T1D stage of 3?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "stage3-case"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage3 RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "stage-negative",
+      "question": "How many HPAP stage 3 donors do NOT have a recorded diabetes type of T1D?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "stage-negative"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage3 AND d.diabetes_type <> $t1d_category RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "nd-paraphrase",
+      "question": "Give the number of unique non-diabetic control donors in HPAP, whether or not they have samples.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "nd-paraphrase"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.diabetes_type=$clinical RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "nd-stage",
+      "question": "Count HPAP non-diabetic control donors who are recorded as T1D stage 1.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "nd-stage"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.diabetes_type=$clinical AND d.t1d_stage=$stage1 RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "sample-tissues",
+      "question": "For HPAP stage 1 donors, count exact scRNA-seq samples and describe every recorded tissue; do not require a specific tissue.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "sample-tissues"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "assay": "scRNA-seq"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "multiome-optin",
+      "question": "Count RNA-capable samples from HPAP stage 1 donors, including scRNA-seq and snMultiomics. Keep the assay labels separate.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "multiome-optin"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality IN $assays RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "assays": [
+              "scRNA-seq",
+              "snMultiomics"
+            ]
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "tissue-spleen",
+      "question": "How many scRNA-seq samples, excluding multiome assays, come from spleen in HPAP non-diabetic controls?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "tissue-spleen"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(t:anatomical_structure) WHERE d.data_source=$source AND d.diabetes_type=$clinical AND s.data_modality=$assay AND t.id=$tissue RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "assay": "scRNA-seq",
+            "tissue": "UBERON_0002106"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "cohort-comparison",
+      "question": "Compare exact scRNA-seq sample availability between HPAP ND and T1D donors. Count distinct samples separately for each cohort.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "cohort-comparison"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND s.data_modality=$assay AND d.diabetes_type IN [$clinical,$t1d_category] RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "assay": "scRNA-seq"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Report separate clinical ND and T1D denominators, not disease-source HAS_DONOR provenance."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "cftr-paraphrase",
+      "question": "Which ductal populations have higher CFTR expression than the other profiled cell types? Give effect sizes and adjusted p-values.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "cftr-paraphrase"
+      },
+      "checks": [
+        {
+          "name": "GENE_ENRICHED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_ENRICHED_IN]->(n:anatomical_structure) WHERE n.id IN $ductal_ids RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626",
+            "ductal_ids": [
+              "CL_0002079",
+              "CL_0002079_MUC5B"
+            ]
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_ENRICHED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "anatomical_structure",
+            "only_ids": [
+              "CL_0002079",
+              "CL_0002079_MUC5B"
+            ]
+          },
+          "requires_relation": "GENE_ENRICHED_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Reference explicitly includes the two recorded ductal identities; unrelated enrichment endpoints do not count."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "cftr-alias",
+      "question": "Is ABCC7 enriched in ductal cells? Include the canonical gene name and recorded enrichment measurements.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "cftr-alias"
+      },
+      "checks": [
+        {
+          "name": "GENE_ENRICHED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_ENRICHED_IN]->(n:anatomical_structure) WHERE n.id IN $ductal_ids RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626",
+            "ductal_ids": [
+              "CL_0002079",
+              "CL_0002079_MUC5B"
+            ]
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_ENRICHED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "anatomical_structure",
+            "only_ids": [
+              "CL_0002079",
+              "CL_0002079_MUC5B"
+            ]
+          },
+          "requires_relation": "GENE_ENRICHED_IN",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Reference explicitly includes the two recorded ductal identities; unrelated enrichment endpoints do not count."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "adcy3-coloc",
+      "question": "For ADCY3 and T1D, show the recorded colocalization signals, both GWAS and QTL lead variants, and PP.H4. Are the lead variants identical?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "adcy3-coloc"
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000138031",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000138031",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "cftr-sqtl",
+      "question": "Does CFTR have statistical colocalization between T1D GWAS and a pancreatic sQTL? Which signal and tissue support that?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "cftr-sqtl"
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000001626",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "plekhm1-signal",
+      "question": "Show PLEKHM1 colocalization with type 1 diabetes and identify the linked GWAS and molecular QTL signals without assuming the lead SNPs are the same.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "plekhm1-signal"
+      },
+      "checks": [
+        {
+          "name": "SIGNAL_COLOC_WITH",
+          "query": "MATCH (:Gene {id:$gene})-[r:SIGNAL_COLOC_WITH]->(:disease {id:$disease}) RETURN DISTINCT coalesce(toString(r.gwas_signal_id),'')+'|'+coalesce(toString(r.qtl_signal_id),'') AS id",
+          "parameters": {
+            "gene": "ENSG00000225190",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "coloc",
+            "relation": "SIGNAL_COLOC_WITH",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000225190",
+            "entity_type": "disease"
+          },
+          "requires_relation": "SIGNAL_COLOC_WITH",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "hla-compartments",
+      "question": "Compare HLA-DRA detection in immune cells, ductal populations, and beta cells. Distinguish missing graph records from biological absence.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "hla-compartments"
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000204287"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000204287",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "supporting_evidence"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "shared-partners",
+      "question": "Which genes physically interact with BOTH CFTR and ADCY3? Return only the shared partners.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "shared-partners"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (:Gene {id:$a})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:PHYSICAL_INTERACTION]-(:Gene {id:$b}) RETURN DISTINCT p.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "a": "ENSG00000001626",
+            "b": "ENSG00000138031"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "omit": [
+              "ENSG00000001626",
+              "ENSG00000138031"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "hla-connected",
+      "question": "Which physical interaction partners of HLA-DRA are themselves annotated to MHC class II antigen presentation (Reactome R-HSA-2132295)? Require both links for the same partner.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "hla-connected"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (:Gene {id:$gene})-[:PHYSICAL_INTERACTION]-(p:Gene)-[:FUNCTION_ANNOTATION]->(w {id:$pathway}) RETURN DISTINCT p.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "gene": "ENSG00000204287",
+            "pathway": "R-HSA-2132295"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "omit": [
+              "ENSG00000204287"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "long-connected",
+      "question": "Starting from ADCY3, find connected paths through its QTL variants and their T1D GWAS memberships to HPAP stage 2 donors and their samples. Preserve the same variant, disease and donor throughout the path; count the distinct samples.",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "long-connected"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (:Gene {id:$gene})<-[:PART_OF_QTL_SIGNAL]-(v:variants)-[:PART_OF_GWAS_SIGNAL]->(x:disease {id:$disease})-[:HAS_DONOR]->(d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "gene": "ENSG00000138031"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "typo-cohort",
+      "question": "How many T1D stage 2 donors are in nPAP?",
+      "group": "existing_regressions",
+      "parent": null,
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "typo-cohort"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor) WHERE d.data_source=$source AND d.t1d_stage=$stage2 RETURN DISTINCT d.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "donor",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": true
+    },
+    {
+      "key": "followup",
+      "question": "For those donors, how many exact scRNA-seq samples are recorded, and which tissues are they from?",
+      "group": "existing_regressions",
+      "parent": "stage-case",
+      "source": {
+        "kind": "regression",
+        "file": "tests_vnext/fixtures/acceptance/regression.json",
+        "key": "followup"
+      },
+      "checks": [
+        {
+          "name": "exact requested membership",
+          "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage1 AND s.data_modality=$assay RETURN DISTINCT s.id AS id",
+          "parameters": {
+            "source": "HPAP",
+            "clinical": "Control Without Diabetes",
+            "disease": "MONDO_0005147",
+            "assay": "scRNA-seq"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Sample_node",
+            "omit": []
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ],
+      "expected_clarification": false
+    },
+    {
+      "key": "history-000002",
+      "question": "Tell me about gene INS",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000002",
+        "question_sha256": "66e311755f4801f5205c577e2518de2cb31f486b6fc67551f821bf86391c6adb",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "gene identity",
+          "query": "MATCH (g:Gene {id:$gene}) RETURN g.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "only_ids": [
+              "ENSG00000254647"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000005",
+      "question": "Summarize that in one sentence",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000005",
+        "question_sha256": "5a675b779bdf520d0915bf1b2ff5cb4afdde68a68d166cabbd22d34fb51f203d",
+        "action": "followup"
+      },
+      "checks": [],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Summarize the preceding INS answer in one sentence without new graph claims."
+      ],
+      "parent": "history-000002",
+      "assessment_mode": "contextual_answer"
+    },
+    {
+      "key": "history-000003",
+      "question": "Find T1D effector genes",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000003",
+        "question_sha256": "85cdf5aad5a4c6552c1b0ee25af4e412688d5b83697694a09bc688f38798e6fa",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "T1D effector genes",
+          "query": "MATCH (g:Gene)-[:EFFECTOR_GENE_OF]->(:disease {id:$disease}) RETURN DISTINCT g.id AS id",
+          "parameters": {
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene"
+          },
+          "requires_relation": "EFFECTOR_GENE_OF",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000014",
+      "question": "What GO terms are associated with TCF7L2?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000014",
+        "question_sha256": "40d947a434825ece309ecb04561a046cc79150770094f3eaf43fc325e114b236",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "ASSOCIATED_WITH_GO",
+          "query": "MATCH (g:Gene {id:$gene})-[r:ASSOCIATED_WITH_GO]->(n:GO_term) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000148737"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "ASSOCIATED_WITH_GO",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000148737",
+            "entity_type": "GO_term"
+          },
+          "requires_relation": "ASSOCIATED_WITH_GO",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000016",
+      "question": "Is PLEKHM1 differentially expressed in any cell type in T1D?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000016",
+        "question_sha256": "a415202b0bb928fd214f0a3f037b43da61ae43f0fe10b0518bfaafe9456ed44e",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "T1D_DEG_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:T1D_DEG_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000225190"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "T1D_DEG_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000225190",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "T1D_DEG_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000018",
+      "question": "What is CFTR?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000018",
+        "question_sha256": "7df246223f4df675696e7c2213a5afdd43e4855fd8f901f21e1485363eb2cac1",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "gene identity",
+          "query": "MATCH (g:Gene {id:$gene}) RETURN g.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "only_ids": [
+              "ENSG00000001626"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000019",
+      "question": "CTLA4 is annotated with which biological processes/functions?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000019",
+        "question_sha256": "a5f735c0e1cb3ea0ffac513fe5c2c70d662ab06cdc66d911ffe8a1b9364c144c",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "ASSOCIATED_WITH_GO",
+          "query": "MATCH (g:Gene {id:$gene})-[r:ASSOCIATED_WITH_GO]->(n:GO_term) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000163599"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "ASSOCIATED_WITH_GO",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000163599",
+            "entity_type": "GO_term"
+          },
+          "requires_relation": "ASSOCIATED_WITH_GO",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000020",
+      "question": "What GO terms are associated with PTPN22?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000020",
+        "question_sha256": "db8f2f4a1921e849a0c0cf7185de1818032edf360a1c3de962e965f472f4e1a9",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "ASSOCIATED_WITH_GO",
+          "query": "MATCH (g:Gene {id:$gene})-[r:ASSOCIATED_WITH_GO]->(n:GO_term) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000134242"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "ASSOCIATED_WITH_GO",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000134242",
+            "entity_type": "GO_term"
+          },
+          "requires_relation": "ASSOCIATED_WITH_GO",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000054",
+      "question": "What is PLEKHM1?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000054",
+        "question_sha256": "ddc358e0cf87cb1b580193c50f5befcd6387dfcdb1f0c9e05fd68f62caeb37e2",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "gene identity",
+          "query": "MATCH (g:Gene {id:$gene}) RETURN g.id AS id",
+          "parameters": {
+            "gene": "ENSG00000225190"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "only_ids": [
+              "ENSG00000225190"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000067",
+      "question": "Which genes are differentially expressed in beta cells in T1D?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000067",
+        "question_sha256": "252ccb70bbc1d13b1b316b7c97161074fd72633be22c1de8e66642b6b8ff18da",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "beta cell DEG",
+          "query": "MATCH (g:Gene)-[:T1D_DEG_IN]->(:anatomical_structure {id:$cell}) RETURN DISTINCT g.id AS id",
+          "parameters": {
+            "cell": "CL_0000169"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "T1D_DEG_IN",
+            "endpoint": "start_id",
+            "anchor_endpoint": "end_id",
+            "anchor_id": "CL_0000169",
+            "entity_type": "Gene"
+          },
+          "requires_relation": "T1D_DEG_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000071",
+      "question": "What is the expression of INS in beta cells and how does it change in T1D?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000071",
+        "question_sha256": "7c616fd38223696f35624d21b3c1c3ab7adec637f3eb21eeb93febe6394ef7fb",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) WHERE n.id=$cell RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647",
+            "cell": "CL_0000169"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000254647",
+            "entity_type": "anatomical_structure",
+            "only_ids": [
+              "CL_0000169"
+            ]
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "exact"
+        },
+        {
+          "name": "T1D_DEG_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:T1D_DEG_IN]->(n:anatomical_structure) WHERE n.id=$cell RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647",
+            "cell": "CL_0000169"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "T1D_DEG_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000254647",
+            "entity_type": "anatomical_structure",
+            "only_ids": [
+              "CL_0000169"
+            ]
+          },
+          "requires_relation": "T1D_DEG_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000074",
+      "question": "Is CFTR an effector gene for type 1 diabetes?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000074",
+        "question_sha256": "b867cef7f334c2071670bcfa94bc167f1ba1cf7f9ef027972d1e1810d7b92c2f",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "EFFECTOR_GENE_OF",
+          "query": "MATCH (g:Gene {id:$gene})-[r:EFFECTOR_GENE_OF]->(n:disease) WHERE n.id=$disease RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000001626",
+            "disease": "MONDO_0005147"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "EFFECTOR_GENE_OF",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000001626",
+            "entity_type": "disease",
+            "only_ids": [
+              "MONDO_0005147"
+            ]
+          },
+          "requires_relation": "EFFECTOR_GENE_OF",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000076",
+      "question": "Find SNVs that are QTLs for gene INS",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000076",
+        "question_sha256": "a819e6bb0f9e5f6acf89834ebdef591e969309cd3aceb4f3bc8c19a7c7a3e092",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "PART_OF_QTL_SIGNAL",
+          "query": "MATCH (g:Gene {id:$gene})<-[r:PART_OF_QTL_SIGNAL]-(n:snv) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "PART_OF_QTL_SIGNAL",
+            "endpoint": "start_id",
+            "anchor_endpoint": "end_id",
+            "anchor_id": "ENSG00000254647",
+            "entity_type": "snv"
+          },
+          "requires_relation": "PART_OF_QTL_SIGNAL",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000077",
+      "question": "What is gene TP53?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000077",
+        "question_sha256": "b1b02f864b00d6b63f26b5286cf1e349209f4bbf30365b54433c57ec7f054b35",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "gene identity",
+          "query": "MATCH (g:Gene {id:$gene}) RETURN g.id AS id",
+          "parameters": {
+            "gene": "ENSG00000141510"
+          },
+          "selector": {
+            "mode": "nodes",
+            "entity_type": "Gene",
+            "only_ids": [
+              "ENSG00000141510"
+            ]
+          },
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    },
+    {
+      "key": "history-000105",
+      "question": "Find 50 OCR peaks around CFTR",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-000105",
+        "question_sha256": "55a9f3ddfae91223d8da5e5ec6d410779e7a7c554d20647b8ca3fb6d78ef4664",
+        "action": "new_question"
+      },
+      "checks": [],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid.",
+        "Define or request the meaning of near CFTR. If returning peaks, show coordinate/proximity evidence; maximum 50 unique OCRs; no invented nearest ordering."
+      ],
+      "assessment_mode": "bounded_scope_review"
+    },
+    {
+      "key": "history-001394",
+      "question": "Which cell types express INS?",
+      "group": "historical_questions",
+      "source": {
+        "kind": "history",
+        "source_corpus": "queries.jsonl",
+        "source_corpus_sha256": "45a373dd283191ec2c83deb63bad672e845478ded4f27f536cd3daf22332ff33",
+        "case_id": "case-001394",
+        "question_sha256": "21120da56a398c2efb2aeade64bc8589d2b33d9bfba2d61d6d5023ccf5c833a5",
+        "action": "new_question"
+      },
+      "checks": [
+        {
+          "name": "GENE_DETECTED_IN",
+          "query": "MATCH (g:Gene {id:$gene})-[r:GENE_DETECTED_IN]->(n:anatomical_structure) RETURN DISTINCT n.id AS id",
+          "parameters": {
+            "gene": "ENSG00000254647"
+          },
+          "selector": {
+            "mode": "edge_endpoint",
+            "relation": "GENE_DETECTED_IN",
+            "endpoint": "end_id",
+            "anchor_endpoint": "start_id",
+            "anchor_id": "ENSG00000254647",
+            "entity_type": "anatomical_structure"
+          },
+          "requires_relation": "GENE_DETECTED_IN",
+          "comparison": "exact"
+        }
+      ],
+      "review_requirements": [
+        "Answer the specific requested scope; disclose unavailable or incomplete categories.",
+        "Every numerical or biological claim must be supported by returned evidence; no causal claims from association.",
+        "Preserve typed identities, recorded assay/tissue distinctions and provenance; a verified empty result is valid."
+      ]
+    }
+  ],
+  "pilot_commit": "79f9720"
+}
