@@ -44,6 +44,7 @@ class RevisionRequest(BaseModel):
 
 
 class PlanRequest(RevisionRequest):
+    parent_run_id: str | None = Field(default=None, max_length=100)
     auto_proceed_seconds: int | None = Field(default=None, ge=5, le=120)
     session_id: str | None = Field(default=None, max_length=100)
 
@@ -187,6 +188,7 @@ class Runtime:
         self.tasks: dict[str, asyncio.Task] = {}
         self.started_graph_checks: dict[str, set[str]] = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent)
+        self.literature_runs = set()
         self.active = 0
         self.metrics = Metrics()
         self.health = HealthMonitor(settings, gateway, graph, literature, self.store, self.queue_snapshot, io=self.io)
@@ -233,12 +235,12 @@ class Runtime:
         task.add_done_callback(self.auto_proceed_tasks.discard)
 
     def queue_snapshot(self):
-        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped, "owner_state": self.store.owner.snapshot()["state"] if self.store.owner else "unclaimed", "owner_epoch": self.store.owner.epoch if self.store.owner else None, "persistence_queue_depth": self.io.pending}
+        return {"active_queries": self.active, "queue_depth": max(0, len(self.tasks) - len(self.literature_runs) - self.active), "capacity": self.settings.max_concurrent, "audit_dropped": self.store.audit_dropped, "owner_state": self.store.owner.snapshot()["state"] if self.store.owner else "unclaimed", "owner_epoch": self.store.owner.epoch if self.store.owner else None, "persistence_queue_depth": self.io.pending}
 
     def check_capacity(self, replacing=None):
         if self.store.owner and self.store.owner.snapshot()["state"] != "active":
             raise HTTPException(503, "The service no longer owns its execution lease.")
-        queued = len(self.tasks) - int(replacing in self.tasks)
+        queued = len(self.tasks) - len(self.literature_runs) - int(replacing in self.tasks and replacing not in self.literature_runs)
         if self.shutting_down or queued >= self.settings.max_concurrent + getattr(self.settings, "max_queue", 8):
             raise HTTPException(429, "The development queue is full; retry shortly.", headers={"Retry-After": "2"})
         budget = self.gateway.budget.snapshot()
@@ -308,8 +310,10 @@ class Runtime:
 
     def planning_history(self, run):
         from .revision_context import parent_context
-        history = self.store.history(run["session_id"])
         metadata = self.store.audit_metadata(run["run_id"]) or {}
+        history = metadata.get('history_snapshot')
+        if history is None:
+            history = self.store.history(run["session_id"], through_run_id=run["run_id"])
         parent = self.store.get(metadata.get("parent_run_id")) if metadata.get("parent_run_id") else None
         if parent and metadata.get("revision_mode") == "instruction":
             parent_plan, preview_summary = parent_context(parent)
@@ -371,7 +375,9 @@ class Runtime:
                 if revision and parent.get('plan', {}).get('steps'):
                     literature_plan = None
                 from .session_summary import plan as summary_plan
-                prior_answer = await self.io.call(self.store.latest_answered_run, run['session_id']) if run['include_context'] else None
+                prior_answer = ((await self.io.call(self.store.audit_metadata, run['run_id'])) or {}).get('followup_parent_snapshot') if run['include_context'] else None
+                if prior_answer is None and run['include_context']:
+                    prior_answer = await self.io.call(self.store.latest_answered_run, run['session_id'])
                 summary = summary_plan(run['question'], prior_answer)
                 unsupported = unsupported_analysis_plan(run['question']) or (genomic_neighborhood_plan(run['question']) if not literature_plan else None)
                 if unsupported:
@@ -905,6 +911,13 @@ class Runtime:
             from .interrupted_evidence import complete_interrupted_evidence
             fields["evidence"] = complete_interrupted_evidence(run["plan"], fields.get("evidence", run["evidence"]),
                 {"category": status}, self.started_graph_checks.get(run_id, set()))
+        if status in {'cancelled', 'interrupted', 'failed'} and (run.get('literature') or {}).get('sources'):
+            literature = run['literature']
+            for source in literature['sources'].values():
+                if source.get('status') in {'pending', 'running', 'queued'}:
+                    source['status'] = status
+            literature['status'] = 'partial'
+            fields['literature'] = literature
         if isinstance(fields.get('error'), dict):
             fields['error'] = {**fields['error'], 'stage': fields['error'].get('stage') or run.get('stage')}
         self.store.update(run_id, status=status, stage=status, **fields)
@@ -942,7 +955,9 @@ class Runtime:
     async def graph_answer(self, run_id: str, run: dict) -> tuple[dict, bool]:
         if run['plan'].get('plan_mode') == 'session_summary':
             from .session_summary import answer as summarize, VERSION
-            source = await self.io.call(self.store.get, run['plan']['session_summary']['source_run_id'])
+            source = ((await self.io.call(self.store.audit_metadata, run_id)) or {}).get('followup_parent_snapshot')
+            if not source or source['run_id'] != run['plan']['session_summary']['source_run_id']:
+                source = await self.io.call(self.store.get, run['plan']['session_summary']['source_run_id'])
             if not source or source['session_id'] != run['session_id']:
                 raise ValueError('summary_source_unavailable')
             answer = summarize(source)
@@ -1168,30 +1183,6 @@ class Runtime:
                 run = (await self.io.call(self.store.update_if_active, run_id, status="running", stage="preparing_execution"))
                 await self.emit(run_id, "progress", {"stage": "preparing_execution"})
 
-                async def literature_emit(kind, payload):
-                    (await self.io.call(self.check_active, run_id))
-                    if kind == "literature_perspective":
-                        literature_perspectives.append(payload)
-                        if graph_visible:
-                            (await self.io.call(self.store.update_if_active, run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)}))
-                            await self.emit(run_id, kind, payload)
-                        else:
-                            literature_buffer.append((kind, payload))
-                    elif kind == "literature_progress":
-                        await self.emit(run_id, kind, {**payload, "parallel": True})
-
-                async def retrieve_literature():
-                    try:
-                        answer = await asyncio.wait_for(self.literature.search(run["plan"].get("interpreted_question", run["question"]), (await self.io.call(self.store.history, run["session_id"])), literature_emit), self.settings.literature_timeout)
-                        self.health.record_inference("hirn", answer.get("status") not in {"failed", "unavailable", "timeout"})
-                        return answer
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as exc:
-                        error = safe_error(exc)
-                        self.health.record_inference("hirn", False, error["category"])
-                        return {"status": "unavailable", "perspectives": list(literature_perspectives), "error": error}
-
                 try:
                     retrieval_window = 120 if len(run["plan"]["steps"]) > 2 else self.settings.run_timeout
                     _, graph_ok = await asyncio.wait_for(self.graph_answer(run_id, run),
@@ -1214,33 +1205,65 @@ class Runtime:
                     (await self.io.call(self.store.update_if_active, run_id, graph_answer=answer, evidence=evidence, error=error))
                     await self.emit(run_id, "graph_answer", {"answer": answer, "evidence": evidence, "delta": False})
                     graph_ok = False
-                from .literature_gate import literature_gate, VERSION as LITERATURE_GATE_VERSION
-                current = (await self.io.call(self.store.get, run_id))
-                allowed, gate_reason = literature_gate(run["plan"], current.get("evidence") or {}, current.get("graph_answer"))
-                (await self.io.call(self.store.event_if_active, run_id, "literature_gate", {"allowed": allowed, "reason": gate_reason, "version": LITERATURE_GATE_VERSION}))
-                if allowed and (graph_ok or (run["plan"].get("literature_intent") or {}).get("reason") == "explicit_request" or run["plan"].get("plan_mode") == "literature_only"):
-                    (await self.io.call(self.store.event_if_active, run_id, "progress", {"stage": "searching_literature", "parallel": False}))
-                    literature_task = asyncio.create_task(retrieve_literature())
-                graph_visible = True
-                self.metrics.observe("graph_answer", time.monotonic() - started)
-                if literature_perspectives:
-                    (await self.io.call(self.store.update_if_active, run_id, literature={"status": "partial", "perspectives": list(literature_perspectives)}))
-                for kind, payload in literature_buffer:
+                self.active -= 1
+                entered = False
+                self.literature_runs.add(run_id)
+            # Literature has its own bounded pool and never occupies a graph slot.
+            from .literature_gate import literature_gate, VERSION as LITERATURE_GATE_VERSION
+            from .literature_sources import LiteratureSources, graph_references, append_references, normalize_sources
+            current = await self.io.call(self.store.get, run_id)
+            registry = []
+            append_references(registry, graph_references(current.get('evidence') or {}, current.get('graph_answer') or ''), 'graph')
+            await self.io.call(self.store.update_if_active, run_id, literature={'status': 'pending', 'references': registry, 'perspectives': []})
+            graph_ready = bool(current.get('graph_answer')) and not (current.get('evidence') or {}).get('literature_mode')
+            if graph_ready:
+                await self.io.call(self.store.update_if_active, run_id, followup_ready=True)
+                await self.emit(run_id, 'followup_ready', {'followup_ready': True, 'references': registry})
+            allowed, gate_reason = literature_gate(run['plan'], current.get('evidence') or {}, current.get('graph_answer'))
+            await self.io.call(self.store.event_if_active, run_id, 'literature_gate', {'allowed': allowed, 'reason': gate_reason, 'version': LITERATURE_GATE_VERSION})
+            source_event_lock = asyncio.Lock()
+            async def literature_emit(kind, payload):
+                async with source_event_lock:
+                    await persist_literature_event(kind, payload)
+            async def persist_literature_event(kind, payload):
+                await self.io.call(self.check_active, run_id)
+                if kind == 'literature_sources':
+                    payload = normalize_sources(payload, registry)
+                    ready = graph_ready or any(unit.get('answer') for source in payload['sources'].values()
+                                              for unit in (source.get('perspectives') or [source]))
+                    await self.io.call(self.store.update_if_active, run_id, literature=payload, followup_ready=ready)
                     await self.emit(run_id, kind, payload)
-                if literature_task:
-                    if not literature_task.done():
-                        await self.emit(run_id, "progress", {"stage": "searching_literature"})
-                    literature_answer = await literature_task
-                    (await self.io.call(self.check_active, run_id))
-                    (await self.io.call(self.store.update_if_active, run_id, literature=literature_answer))
-                    await self.emit(run_id, "literature_complete", literature_answer)
-                    literature_ok = literature_answer.get("status") not in {"failed", "unavailable", "timeout", "partial"}
+                    if ready:
+                        await self.emit(run_id, 'followup_ready', {'followup_ready': True, 'references': registry})
+                elif kind == 'literature_perspective':
+                    literature_perspectives.append(payload)
+                    await self.emit(run_id, kind, payload)
+                elif kind == 'literature_progress':
+                    await self.emit(run_id, kind, payload)
+            self.metrics.observe('graph_answer', time.monotonic() - started)
+            if allowed and (graph_ok or (run['plan'].get('literature_intent') or {}).get('reason') == 'explicit_request' or run['plan'].get('plan_mode') == 'literature_only'):
+                await self.emit(run_id, 'progress', {'stage': 'searching_literature', 'parallel': True})
+                history = await self.io.call(self.planning_history, run)
+                if isinstance(self.literature, LiteratureSources):
+                    literature_task = asyncio.create_task(self.literature.search(run['plan'].get('interpreted_question', run['question']), history, literature_emit, current.get('graph_answer') or ''))
+                    literature_answer = normalize_sources(await literature_task, registry)
+                    for source, value in literature_answer['sources'].items():
+                        self.health.record_inference(source, value.get('status') in {'complete', 'no_evidence'}, value.get('error_category'))
                 else:
-                    literature_answer = {"status": "not_requested", "perspectives": [], "reason": gate_reason if graph_ok else "graph_answer_failed", "policy_version": LITERATURE_GATE_VERSION}
-                    (await self.io.call(self.store.update_if_active, run_id, literature=literature_answer))
-                    literature_ok = True
-                self.metrics.observe("run_complete", time.monotonic() - started)
-                (await self.io.call(self._terminal, run_id, "completed" if graph_ok and literature_ok else "partial"))
+                    # Dependency-injected/legacy adapter compatibility.
+                    try:
+                        literature_answer = await asyncio.wait_for(self.literature.search(run['plan'].get('interpreted_question', run['question']), history, literature_emit), self.settings.literature_timeout)
+                    except Exception as exc:
+                        literature_answer = {'status': 'unavailable', 'perspectives': literature_perspectives, 'error': safe_error(exc)}
+                await self.io.call(self.check_active, run_id)
+                await self.io.call(self.store.update_if_active, run_id, literature=literature_answer)
+                await self.emit(run_id, 'literature_complete', literature_answer)
+                literature_ok = literature_answer.get('status') not in {'failed', 'unavailable', 'timeout', 'partial'}
+            else:
+                await self.io.call(self.store.update_if_active, run_id, literature={'status': 'not_requested', 'perspectives': [], 'references': registry, 'reason': gate_reason, 'policy_version': LITERATURE_GATE_VERSION})
+                literature_ok = True
+            self.metrics.observe('run_complete', time.monotonic() - started)
+            await self.io.call(self._terminal, run_id, 'completed' if graph_ok and literature_ok else 'partial')
         except asyncio.CancelledError:
             (await self.io.call(self._cancelled, run_id))
             raise
@@ -1248,6 +1271,7 @@ class Runtime:
             (await self.io.call(self._terminal, run_id, "failed", error=safe_error(exc)))
         finally:
             self.started_graph_checks.pop(run_id, None)
+            self.literature_runs.discard(run_id)
             if entered:
                 self.active -= 1
             for task in (beat, literature_task):
@@ -1286,8 +1310,8 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
         from .graph import GraphAdapter
         graph = GraphAdapter(settings)
     if literature is None:
-        from .literature import LiteratureAdapter
-        literature = LiteratureAdapter(settings)
+        from .literature_sources import LiteratureSources
+        literature = LiteratureSources(settings)
     runtime = Runtime(settings, gateway, graph, literature)
 
     @asynccontextmanager
@@ -1369,9 +1393,12 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
             run = (await runtime.io.call(runtime.store.create, question, body.session_id, include_context=body.include_context,
                 audit={"original_question": body.question, "current_raw_input": body.question, "source": body.event_source, "versions": runtime.audit_identity,
                        "requested_options": {"include_context": body.include_context, "auto_proceed_seconds":body.auto_proceed_seconds}},
+                parent_run_id=body.parent_run_id,
                 legacy_retry_submission=body.question if body.revision_mode == "legacy_replacement" and body.revision_instruction is None else None))
         except KeyError:
-            raise HTTPException(404, "Session not found.") from None
+            raise HTTPException(404, "Session or parent run not found.") from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
         try:
             await runtime.io.call(runtime.store.event_if_active, run["run_id"], "progress", {"stage": "queued"})
         finally:

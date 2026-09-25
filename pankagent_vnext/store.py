@@ -76,6 +76,8 @@ class Store:
         for name, kind in (("owner_id", "TEXT"), ("owner_epoch", "INTEGER")):
             if name not in columns:
                 self.db.execute(f"ALTER TABLE runs ADD COLUMN {name} {kind}")
+        if "followup_ready" not in columns:
+            self.db.execute("ALTER TABLE runs ADD COLUMN followup_ready INTEGER NOT NULL DEFAULT 0")
         OwnerLease.initialize(self.db)
         self.db.commit()
 
@@ -121,6 +123,7 @@ class Store:
         value.pop("owner_id", None)
         value.pop("owner_epoch", None)
         value["include_context"] = bool(value["include_context"])
+        value["followup_ready"] = bool(value.get("followup_ready"))
         for key in ("plan", "evidence", "literature", "error", "preview", "preview_cache"):
             value[key] = json.loads(value[key]) if value[key] is not None else None
         return value
@@ -156,8 +159,19 @@ class Store:
         self.db.execute("INSERT INTO run_audit VALUES (?, ?)", (run_id, json.dumps(metadata, ensure_ascii=False)))
         return self.get(run_id)
 
-    def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None, legacy_retry_submission: str | None = None) -> dict:
+    def create(self, question: str, session_id: str | None = None, *, include_context: bool = True, audit: dict | None = None, legacy_retry_submission: str | None = None, parent_run_id: str | None = None) -> dict:
         with self.transaction():
+            if parent_run_id:
+                parent = self.get(parent_run_id)
+                if not parent or parent['session_id'] != session_id:
+                    raise KeyError('parent_run')
+                if not parent.get('followup_ready') and parent['status'] not in TERMINAL:
+                    raise ValueError('Parent answer is not ready for follow-up.')
+                # Freeze within the same transaction as run creation. No future turns.
+                audit = {**(audit or {}), 'followup_parent_run_id': parent_run_id,
+                         'followup_parent_snapshot': parent,
+                         'history_snapshot': self.history(session_id, through_run_id=parent_run_id) if include_context else []}
+                legacy_retry_submission = None
             if legacy_retry_submission is not None and session_id:
                 from .terminal_retry import accepted_term_correction, terminal_clarification_revision
                 accepted = accepted_term_correction(self.latest_run(session_id), legacy_retry_submission)
@@ -253,7 +267,7 @@ class Store:
             return self.get(run_id)
 
     def update(self, run_id: str, **fields: Any) -> dict:
-        allowed = {"status", "stage", "plan", "graph_answer", "evidence", "literature", "error", "preview", "preview_cache"}
+        allowed = {"followup_ready", "status", "stage", "plan", "graph_answer", "evidence", "literature", "error", "preview", "preview_cache"}
         if not fields or not set(fields).issubset(allowed):
             raise ValueError("Unsupported run update")
         values = []
@@ -408,15 +422,17 @@ class Store:
 
     def latest_answered_run(self, session_id):
         with self.lock:
-            row = self.db.execute("SELECT run_id FROM runs WHERE session_id=? AND status IN ('completed','partial') ORDER BY created_epoch DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
+            row = self.db.execute("SELECT run_id FROM runs WHERE session_id=? AND (status IN ('completed','partial') OR followup_ready=1) ORDER BY created_epoch DESC, rowid DESC LIMIT 1", (session_id,)).fetchone()
         return self.get(row[0]) if row else None
 
-    def history(self, session_id: str, limit: int = 3) -> list[dict]:
+    def history(self, session_id: str, limit: int = 3, through_run_id: str | None = None) -> list[dict]:
         with self.lock:
             rows = self.db.execute(
                 "SELECT question,graph_answer,literature FROM runs WHERE session_id=? AND (graph_answer IS NOT NULL OR literature IS NOT NULL) "
-                "AND status IN ('completed','partial') ORDER BY created_epoch DESC LIMIT ?",
-                (session_id, limit),
+                "AND (status IN ('completed','partial') OR followup_ready=1) "
+                "AND created_epoch <= COALESCE((SELECT created_epoch FROM runs WHERE run_id=?), 1e30) "
+                "ORDER BY created_epoch DESC LIMIT ?",
+                (session_id, through_run_id, limit),
             ).fetchall()
         result = []
         for row in reversed(rows):
@@ -455,6 +471,13 @@ class Store:
                     started = None if started_graph_checks is None else started_graph_checks.get(run_id, set())
                     fields["evidence"] = complete_interrupted_evidence(run["plan"], run["evidence"],
                         {"category": "service_restarted"}, started)
+                if (run.get('literature') or {}).get('sources'):
+                    literature = run['literature']
+                    for source in literature['sources'].values():
+                        if source.get('status') in {'pending', 'running', 'queued'}:
+                            source['status'] = 'interrupted'
+                    literature['status'] = 'partial'
+                    fields['literature'] = literature
                 self.update(run_id, status="interrupted", stage="interrupted", error={"category": "service_restarted", "message": "Service restarted; submit a new plan to continue."}, **fields)
                 self.event(run_id, "terminal", {"status": "interrupted"})
         return ids
