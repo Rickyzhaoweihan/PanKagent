@@ -159,28 +159,29 @@ def test_nd_and_t1d_request_preserves_separate_positive_cohorts():
     assert not any(c.get('property')=='diabetes_type' for c in results[1])
 
 
-def test_large_identity_redaction_keeps_boundaries_and_overlapping_identifiers():
+def test_large_public_identity_projection_preserves_all_identifiers():
     from pankagent_vnext.output_scope import project
     nodes=[{'id':f'SAMPLE-{i:05d}','labels':['Sample_node'],'properties':{}} for i in range(5500)]
     nodes += [{'id':'SAMPLE-00000-extra','labels':['Sample_node'],'properties':{}}]
     value={'nodes':nodes,'note':'SAMPLE-00000-extra, SAMPLE-05499; xSAMPLE-00000z and nothing else.'}
     result=project(value)
-    assert result['nodes']==[]
-    assert result['note']=='[individual identifier withheld], [individual identifier withheld]; xSAMPLE-00000z and nothing else.'
+    assert result['nodes']==nodes
+    assert result['note']==value['note']
 
 
-def test_redaction_optimization_preserves_previous_input_projection():
-    import subprocess
+def test_aggregate_presentation_preserves_public_records_and_input():
     from pankagent_vnext.output_scope import project
-    namespace={'__package__':'pankagent_vnext','__name__':'pankagent_vnext.previous_output_scope'}
-    exec(subprocess.check_output(['git','show','e062fff:pankagent_vnext/output_scope.py']),namespace)
     fixture={'nodes':[{'id':'DONOR-A','labels':['donor'],'properties':{'name':'Donor Alpha'}},
                       {'id':'SAMPLE-1','labels':['Sample_node'],'properties':{'name':'Sample one'}},
                       {'id':'TISSUE-X','labels':['anatomical_structure'],'properties':{'name':'tissue'}}],
              'note':'DONOR-A has SAMPLE-1; not xDONOR-Ax. Sample one is recorded.',
              'rows':[{'donor_id':'DONOR-A','sample_id':'SAMPLE-1'}],
              'answer_facts':{'unique_donors':1,'unique_samples':1},'queries':[]}
-    assert project(fixture)==namespace['project'](fixture)
+    original=deepcopy(fixture)
+    result=project(fixture)
+    assert fixture==original
+    for field in ('nodes','rows','note','answer_facts','queries'):
+        assert result[field]==fixture[field]
 
 
 def test_two_request_aliases_for_same_verified_id_do_not_force_lookup():

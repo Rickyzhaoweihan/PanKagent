@@ -558,7 +558,7 @@ def test_missing_model_references_get_only_supplied_graph_evidence_footer(
     asyncio.run(scenario())
 
 
-def test_count_question_omits_incidental_functional_sample_details(monkeypatch, tmp_path):
+def test_count_question_keeps_public_sample_evidence_and_full_count(monkeypatch, tmp_path):
     async def scenario():
         gateway, _, _ = gateway_with_mock(monkeypatch, tmp_path, [])
         evidence = {'s1': {'step_id': 's1', 'status': 'complete', 'truncated': False, 'graph_version': 'PanKgraph_08_04',
@@ -569,8 +569,8 @@ def test_count_question_omits_incidental_functional_sample_details(monkeypatch, 
             prepared = gateway.prepare_answer('How many samples are recorded?', evidence)
             assert prepared.profile['functional_features']
             assert not prepared.profile['model_context']['individual_donor_details_requested']
-            assert 'private-sample-example' not in prepared.body
-            assert 'private-contact' not in prepared.body
+            assert 'private-sample-example' in prepared.body
+            assert 'private-contact' in prepared.body
             assert json.loads(prepared.body)['evidence'][0]['answer_facts']['sample_counts']['unique_retrieved_samples'] == 1
             assert evidence['s1']['nodes'][0]['id'] == 'private-sample-example'
         finally:

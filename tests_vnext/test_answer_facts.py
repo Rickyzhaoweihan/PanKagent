@@ -40,16 +40,10 @@ class AnswerFactsTests(unittest.TestCase):
             # Relationship provenance is not the donor-source aggregate alias.
             'recorded_source': {'value': 'PUBLIC_RELATION_SOURCE'},
         }
-        hidden = sanitize_unrequested_classifications(payload)
-        self.assertEqual(hidden, {
-            'donor_summary': {'rows': [{'donor_id': 'HPAP-041'}]},
-            'recorded_source': {'value': 'PUBLIC_RELATION_SOURCE'},
-        })
-        stage_visible = sanitize_unrequested_classifications(payload, {'t1d_stage'})
-        self.assertEqual(stage_visible['donor_summary']['rows'][0]['recorded_stage'],
-                         'PRIVATE_STAGE')
-        self.assertEqual(stage_visible['recorded_stage_counts'], {'PRIVATE_STAGE': 1})
-        self.assertNotIn('recorded_diabetes_type_counts', stage_visible)
+        visible = sanitize_unrequested_classifications(payload)
+        self.assertEqual(visible, payload)
+        self.assertIsNot(visible, payload)
+        self.assertEqual(sanitize_unrequested_classifications(payload, {'t1d_stage'}), payload)
 
     def test_stage_requests_do_not_expose_diabetes_type_from_the_stage_qualifier(self):
         questions = [
@@ -360,12 +354,12 @@ class AnswerFactsTests(unittest.TestCase):
         self.assertEqual(result['conflicting_node_identities'],1);self.assertFalse(result['complete_for_executed_scope'])
         self.assertEqual(result['sample_counts']['unique_retrieved_samples'],0)
 
-    def test_aggregate_excerpt_hides_donor_examples_but_raw_and_explicit_list_survive(self):
+    def test_aggregate_excerpt_preserves_public_donor_examples_and_counts(self):
         item=evidence([node('private-donor','donor',age=42),node('private-sample','Sample_node',data_modality='BCR-seq'),node('a','anatomical_structure')],
             [edge('private-donor','private-sample','HAS_SAMPLE'),edge('a','private-sample','HAS_SAMPLE')],
             donor_summary={'unique_donors':1,'unique_samples':1,'rows':[{'donor_id':'private-donor','sample_count':1}]})
         before=copy.deepcopy(item);compact=compact_evidence([item]);aggregate=scientific_excerpt(compact)
-        self.assertNotIn('private-donor',json.dumps(aggregate));self.assertNotIn('private-sample',json.dumps(aggregate))
+        self.assertIn('private-donor',json.dumps(aggregate));self.assertIn('private-sample',json.dumps(aggregate))
         self.assertEqual(aggregate[0]['answer_facts']['sample_counts']['unique_retrieved_samples'],1)
         self.assertEqual(item,before)
         details=scientific_excerpt(compact,include_donor_details=True)
@@ -382,14 +376,14 @@ if __name__ == '__main__':
     unittest.main()
 
 
-def test_sample_only_aggregate_excerpt_omits_individual_records():
+def test_sample_only_aggregate_excerpt_preserves_public_records():
     item=evidence([node('t','anatomical_structure'),
         node('sample-private-id','Sample_node',data_modality='snMultiomics',contact='private-contact')],
         [edge('t','sample-private-id','HAS_SAMPLE')])
     compact=compact_evidence([item])
     excerpt=scientific_excerpt(compact)[0]
-    assert 'sample-private-id' not in json.dumps(excerpt)
-    assert 'private-contact' not in json.dumps(excerpt)
+    assert 'sample-private-id' in json.dumps(excerpt)
+    assert 'private-contact' in json.dumps(excerpt)
     assert excerpt['answer_facts']['sample_counts']['unique_retrieved_samples'] == 1
     assert scientific_excerpt(compact,include_donor_details=True)[0]['nodes'] == compact[0]['nodes']
     assert item['nodes'][1]['id'] == 'sample-private-id'

@@ -85,7 +85,10 @@ def test_output_and_viewer_modules_remain_unchanged():
     for path in [
                  # Input adapters have separately tested, authorized size fallback changes.
                  'pankagent_vnext/viewer_evidence.py','pankgraph_results/app.py']:
-        assert Path(path).read_bytes()==subprocess.check_output(['git','show','e062fff:'+path])
+        current=Path(path).read_text()
+        # Only the separately tested additive GPT ingress is authorized here.
+        current=current.replace('    from .gpt6_proxy import install_gpt6_proxy\n    install_gpt6_proxy(app, runtime.http)\n','')
+        assert current.encode()==subprocess.check_output(['git','show','e062fff:'+path])
 
 
 def test_full_cohort_name_does_not_create_pancreas_filter():

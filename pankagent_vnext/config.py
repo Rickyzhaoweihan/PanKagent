@@ -15,6 +15,9 @@ class Settings:
     port: int = field(default_factory=lambda: int(env('PORT','8794')))
     state_dir: Path = field(default_factory=lambda: Path(env('STATE_DIR','var/vnext')))
     model: str = field(default_factory=lambda: env('MODEL','claude-sonnet-5'))
+    openai_key: str = field(default_factory=lambda: os.environ.get('OPENAI_API_KEY',''))
+    reasoning_effort: str = field(default_factory=lambda: env('REASONING_EFFORT','none'))
+    budget_dir: str = field(default_factory=lambda: env('BUDGET_DIR',''))
     anthropic_key: str = field(default_factory=lambda: os.environ.get('ANTHROPIC_API_KEY',''))
     budget_usd: float = field(default_factory=lambda: float(env('BUDGET_USD','10')))
     operator_token: str = field(default_factory=lambda: env('OPERATOR_TOKEN'))
@@ -58,8 +61,12 @@ class Settings:
         self.state_dir = Path(self.state_dir)
         if self.host not in ('127.0.0.1','::1'):
             raise ValueError('vNext development service must bind to loopback')
-        if self.model not in ('claude-sonnet-5','claude-haiku-4-5-20251001'):
+        if self.model not in ('claude-sonnet-5','claude-haiku-4-5-20251001','gpt-6-sol'):
             raise ValueError('model must have an explicitly configured price')
+        if self.reasoning_effort not in ('none','low','medium','high','xhigh','max'):
+            raise ValueError('unsupported reasoning effort')
+        if self.model == 'gpt-6-sol':
+            self.provider_status_url = ''  # Do not report Anthropic status as OpenAI health.
         if not 0 < self.budget_usd <= 30 or not 1 <= self.max_concurrent <= 4 or not 1 <= self.max_queue <= 32:
             raise ValueError('invalid development budget or queue limits')
         if not 0 < self.preview_timeout <= 120 or not 0 < self.grouped_preview_timeout <= 120 or not 0 <= self.preview_ttl_seconds <= 3600:

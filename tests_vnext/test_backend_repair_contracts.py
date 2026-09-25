@@ -47,7 +47,7 @@ def test_skipped_is_not_executed_empty_and_partial_records_survive():
     assert 'executed query returned no matching records' in fallback(catalogue([empty]))
 
 
-def test_aggregate_projection_covers_reopening_edges_rows_and_strings():
+def test_aggregate_presentation_preserves_public_records_on_reopening():
     donor='PRIVATE-DONOR-17';sample='PRIVATE-SAMPLE-9'
     step={'status':'complete','truncated':False,'nodes':[
         {'id':donor,'labels':['donor'],'properties':{'name':donor}},
@@ -57,8 +57,8 @@ def test_aggregate_projection_covers_reopening_edges_rows_and_strings():
     run={'plan':{'output_scope':{'mode':'aggregate_only','version':VERSION}},'evidence':step,
          'graph_answer':f'Identifier {donor}', 'preview':{'evidence':step}}
     before=deepcopy(run);visible=public_run(run)
-    assert donor not in json.dumps(visible) and sample not in json.dumps(visible)
-    assert not visible['evidence']['nodes'] and not visible['evidence']['edges']
+    assert donor in json.dumps(visible) and sample in json.dumps(visible)
+    assert visible['evidence']['nodes'] == step['nodes'] and visible['evidence']['edges'] == step['edges']
     assert visible['evidence']['donor_summary']['unique_donors']==1
     assert visible['evidence']['aggregate_record_counts']['samples']==1
     assert run==before
@@ -67,7 +67,7 @@ def test_aggregate_projection_covers_reopening_edges_rows_and_strings():
     assert '1 unique donors and 1 assay/sample records' in fallback(catalogue([project(step)]))
 
 
-def test_nonaggregate_public_run_removes_unrequested_classifications_and_summary_aliases():
+def test_nonaggregate_public_run_preserves_public_classifications_and_aliases():
     donor = {'id': 'HPAP-041', 'labels': ['donor'], 'properties': {
         'diabetes_type': 'PRIVATE_TYPE',
         'derived_diabetes_status': 'PRIVATE_STATUS',
@@ -88,7 +88,7 @@ def test_nonaggregate_public_run_removes_unrequested_classifications_and_summary
     encoded = json.dumps(visible)
     assert 'HPAP-041' in encoded
     for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
-        assert sentinel not in encoded
+        assert sentinel in encoded
 
 
 def test_literature_only_confirmation_and_explicit_mixed_independence():
@@ -402,7 +402,7 @@ def test_exact_signal_memberships_retain_cross_evidence_citations_and_tissue():
     assert fact['supporting_evidence_ids']==['G2'] and 'rs2' not in fact['text']
 
 
-def test_aggregate_cohort_suppresses_unrequested_classifications_but_keeps_assay_denominators():
+def test_aggregate_cohort_preserves_public_classifications_and_assay_denominators():
     step={'evidence_id':'G1','status':'complete','truncated':False,'nodes':[
         {'id':'private-donor','labels':['donor'],'properties':{
             'diabetes_type':'Control Without Diabetes','derived_diabetes_status':'Prediabetes',
@@ -411,16 +411,14 @@ def test_aggregate_cohort_suppresses_unrequested_classifications_but_keeps_assay
         {'id':'private-sample-b','labels':['Sample_node'],'properties':{'data_modality':'scRNA-seq'}}],
         'edges':[{'type':'HAS_SAMPLE','start_id':'private-donor','end_id':s} for s in ['private-sample-a','private-sample-b']]}
     visible=project(step);answer=fallback(catalogue([visible]))
-    assert 'Control Without Diabetes' not in answer
-    assert 'Prediabetes' not in answer and 'Stage 1' not in answer
-    assert 'Recorded donor sources' not in answer
-    assert not any(key.startswith('recorded_') for key in visible['aggregate_cohort_facts'])
-    assert '2 assay/sample records linked to 1 unique donors' in answer
-    assert 'private-' not in json.dumps(visible) and 'private-' not in answer
+    assert visible['aggregate_cohort_facts']['recorded_diabetes_type_counts'] == {'Control Without Diabetes':1}
+    assert visible['aggregate_cohort_facts']['recorded_stage_counts'] == {'Stage 1':1}
+    assert visible['aggregate_cohort_facts']['assays']['scRNA-seq'] == {'sample_count':2,'donor_count':1}
+    assert 'private-donor' in json.dumps(visible)
     assert project(visible)['aggregate_cohort_facts']==visible['aggregate_cohort_facts']
 
 
-def test_model_evidence_context_suppresses_unrequested_donor_classifications():
+def test_model_evidence_context_preserves_public_donor_classifications():
     from pankagent_vnext.evidence_context import compact_evidence
     step = {'evidence_id': 'G1', 'question': 'Count spleen samples.',
         'status': 'complete', 'truncated': False, 'nodes': [
@@ -437,10 +435,10 @@ def test_model_evidence_context_suppresses_unrequested_donor_classifications():
                             'constraints': [], 'relation_types': ['HAS_SAMPLE']}}
     compact = compact_evidence([step])
     serialized = json.dumps(compact)
-    assert 'PRIVATE_DIABETES_SENTINEL' not in serialized
-    assert 'PRIVATE_DERIVED_SENTINEL' not in serialized
-    assert 'PRIVATE_STAGE_SENTINEL' not in serialized
-    assert 'PRIVATE_SOURCE_SENTINEL' not in serialized
+    assert 'PRIVATE_DIABETES_SENTINEL' in serialized
+    assert 'PRIVATE_DERIVED_SENTINEL' in serialized
+    assert 'PRIVATE_STAGE_SENTINEL' in serialized
+    assert 'PRIVATE_SOURCE_SENTINEL' in serialized
 
 
 def test_full_record_cohort_facts_are_mandatory_and_nd_mismatch_fails_closed():

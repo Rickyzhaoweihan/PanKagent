@@ -1,9 +1,9 @@
-"""Versioned aggregate-only boundary. Historical unmarked runs are unchanged."""
+"""Aggregate answer presentation over public evidence; no privacy redaction."""
 from copy import deepcopy
 import re
 
-VERSION = 'aggregate-output-v5-donor-classifications'
-PRIVATE_TYPES = {'donor', 'Sample_node'}
+VERSION = 'public-evidence-v6-aggregate-presentation'
+COHORT_TYPES = {'donor', 'Sample_node'}
 
 
 def aggregate_only(question):
@@ -21,85 +21,26 @@ def enabled(run):
 
 
 def project(value, *, context=None):
-    """Remove record-level channels on a copy; retain computed aggregate facts.
+    """Copy public records and add authoritative aggregates for count answers.
 
-    This is applied before synthesis, at public snapshots and SSE replay. Results
-    consumes the same public snapshot, so its graphs/tables/downloads inherit it.
-    Raw canonical evidence stays private for query and count validation.
+    Aggregate-only is an answer presentation preference, not a restriction on
+    public graph evidence, identifiers, clinical fields, API output or downloads.
     """
-    from .answer_facts import requested_classification_fields, minimize_answer_facts_for_request
-    classification_keys = {
-        'diabetes_type':'recorded_diabetes_type_counts',
-        'derived_diabetes_status':'recorded_derived_diabetes_status_counts',
-        't1d_stage':'recorded_stage_counts',
-        'data_source':'recorded_source_counts',
-    }
-    hidden = set()
-    def private(obj):
-        return isinstance(obj, dict) and bool(set(obj.get('labels') or []) & PRIVATE_TYPES)
-    def collect(obj):
+    def clean(obj):
         if isinstance(obj, list):
-            for item in obj: collect(item)
-        elif isinstance(obj, dict):
-            if private(obj):
-                for key in ('id', 'name'):
-                    for source in (obj, obj.get('properties') or {}):
-                        if source.get(key) is not None: hidden.add(str(source[key]))
-            for key, item in obj.items():
-                if key in {'donor_id', 'sample_id'} and item is not None: hidden.add(str(item))
-                collect(item)
-    collect(value)
-    if context is not None: collect(context)
-    # Compile once per projection. Recompiling thousands of identifiers for
-    # every string made large backend populations block the event loop. Longest
-    # alternatives first preserve the existing overlapping-ID preference.
-    identifiers = sorted((i for i in hidden if len(i) >= 4), key=lambda i: (-len(i), i))
-    identifier_pattern = (re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, identifiers)) + r')(?!\w)')
-                          if identifiers else None)
-    def clean(obj, visible_classifications=None, evidence_record=None):
-        if isinstance(obj, list):
-            return [clean(x, visible_classifications, evidence_record) for x in obj if not private(x)]
-        if isinstance(obj, str):
-            if obj in hidden: return '[individual identifier withheld]'
-            return identifier_pattern.sub('[individual identifier withheld]', obj) if identifier_pattern else obj
-        if not isinstance(obj, dict): return obj
-        if any(key in obj for key in ('nodes', 'edges', 'answer_facts',
-                                      'aggregate_cohort_facts', 'step_id', 'evidence_id')):
-            evidence_record = obj
-            visible_classifications = requested_classification_fields(obj)
-        visible_classifications = visible_classifications or set()
-        result = {}
-        for key, item in obj.items():
-            if key == 'answer_facts' and isinstance(item, dict):
-                result[key] = clean(minimize_answer_facts_for_request(
-                    evidence_record or obj, item), visible_classifications, evidence_record)
-                continue
-            if key == 'aggregate_cohort_facts' and isinstance(item, dict):
-                item = {name:field_value for name, field_value in item.items()
-                        if name not in classification_keys.values()
-                        or name in {classification_keys[field] for field in visible_classifications}}
-            if key == 'rows' and isinstance(item, list) and item and all(isinstance(row, dict) and {'time_minutes','mean_response'} <= set(row) <= {'time_minutes','mean_response','unit'} for row in item):
-                result[key] = clean(item, visible_classifications, evidence_record)
-                continue
-            if key in {'queries', 'validation', 'generator_attempts', 'resolved_entities',
-                       'resolved_constraints', 'rows', 'series', 'donor_id', 'sample_id',
-                       'donor_ids', 'sample_ids', 'parameters', 'candidate_cypher', 'cypher'}:
-                continue
-            if key == 'edges' and isinstance(item, list):
-                item = [e for e in item if not isinstance(e, dict) or
-                        (str(e.get('start_id')) not in hidden and str(e.get('end_id')) not in hidden)]
-            result[key] = clean(item, visible_classifications, evidence_record)
-        if isinstance(obj.get('nodes'), list) and any(private(n) for n in obj['nodes']):
+            return [clean(x) for x in obj]
+        if not isinstance(obj, dict):
+            return obj
+        result = {key: clean(item) for key, item in obj.items()}
+        nodes = [n for n in obj.get('nodes', []) if isinstance(n, dict)] if isinstance(obj.get('nodes'), list) else []
+        if any(set(n.get('labels') or []) & COHORT_TYPES for n in nodes):
             from .semantic_registry import donor_summary
             summary = donor_summary(obj)
             if summary:
-                # Aggregate-only output keeps totals, never reconstructed
-                # per-donor rows (even after identifiers are redacted).
-                summary = {key:item for key,item in summary.items() if key != 'rows'}
-                result['donor_summary'] = clean(summary, visible_classifications, evidence_record)
+                result['donor_summary'] = clean(summary)
             from collections import Counter
-            donors = {n.get('id'):n for n in obj['nodes'] if 'donor' in n.get('labels', [])}
-            samples = {n.get('id'):n for n in obj['nodes'] if 'Sample_node' in n.get('labels', [])}
+            donors = {n.get('id'):n for n in nodes if 'donor' in n.get('labels', [])}
+            samples = {n.get('id'):n for n in nodes if 'Sample_node' in n.get('labels', [])}
             diabetes_types = Counter(str((n.get('properties') or {}).get('diabetes_type') or 'not recorded')
                                      for n in donors.values())
             derived_statuses = Counter(str((n.get('properties') or {}).get('derived_diabetes_status') or 'not recorded')
@@ -109,6 +50,7 @@ def project(value, *, context=None):
             assays = {}
             sample_donors = {}
             for edge in obj.get('edges', []):
+                if not isinstance(edge, dict): continue
                 if edge.get('type') == 'HAS_SAMPLE' and edge.get('start_id') in donors:
                     sample_donors.setdefault(edge.get('end_id'), set()).add(edge['start_id'])
             for sample_id, sample in samples.items():
@@ -122,16 +64,13 @@ def project(value, *, context=None):
                 'recorded_stage_counts':dict(stages),
                 'recorded_source_counts':dict(sources),
             }
-            classifications = {key:value for key,value in classifications.items()
-                               if key in {classification_keys[field]
-                                          for field in visible_classifications}}
             result['aggregate_cohort_facts'] = clean({
                 **classifications, 'assays':{name:{'sample_count':len(group['sample_ids']),
                     'donor_count':len(group['donor_ids'])} for name,group in assays.items()},
                 'count_scope':'all retrieved donor nodes; diabetes type, derived status and stage remain separate',
-                'file_availability':'not_verified'}, visible_classifications, evidence_record)
+                'file_availability':'not_verified'})
             result['aggregate_record_counts'] = {
-                'donors': len({n.get('id') for n in obj['nodes'] if 'donor' in n.get('labels', [])}),
+                'donors': len({n.get('id') for n in nodes if 'donor' in n.get('labels', [])}),
                 'samples': len(samples) if samples else None,
                 'count_scope': 'retrieved records', 'complete': obj.get('status') == 'complete' and obj.get('truncated') is False}
         return result

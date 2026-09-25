@@ -237,7 +237,7 @@ def test_graph_answer_precedes_early_literature_and_heartbeats(tmp_path):
     asyncio.run(scenario())
 
 
-def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tmp_path):
+def test_live_and_replayed_events_preserve_public_classifications(tmp_path):
     async def scenario():
         async with service(tmp_path) as (client, runtime, *_):
             run = runtime.store.create('List donor IDs.')
@@ -254,14 +254,14 @@ def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tm
                 'aggregate_cohort_facts': {
                     'recorded_stage_counts': {'PRIVATE_STAGE': 1}}}
 
-            # Live emission is sanitized before durable storage.
+            # Public classifications are retained in durable storage.
             await runtime.emit(run_id, 'graph_step', raw)
             stored = runtime.store.events_after(run_id, 0)[0]
             assert 'HPAP-041' in json.dumps(stored)
-            assert not any(sentinel in json.dumps(stored) for sentinel in (
+            assert all(sentinel in json.dumps(stored) for sentinel in (
                 'PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'))
 
-            # A historical/raw stored event is also sanitized during replay.
+            # Historical public records are retained during replay.
             legacy = runtime.store.event(run_id, 'preview_step', raw)
             assert 'PRIVATE_STAGE' in json.dumps(legacy)
             runtime.store.update(run_id, status='completed', stage='completed')
@@ -269,7 +269,7 @@ def test_live_and_replayed_events_share_nonaggregate_classification_sanitizer(tm
             assert response.status_code == 200
             assert 'HPAP-041' in response.text
             for sentinel in ('PRIVATE_TYPE', 'PRIVATE_STATUS', 'PRIVATE_STAGE', 'PRIVATE_SOURCE'):
-                assert sentinel not in response.text
+                assert sentinel in response.text
     asyncio.run(scenario())
 
 

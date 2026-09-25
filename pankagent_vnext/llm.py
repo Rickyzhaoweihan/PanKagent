@@ -11,6 +11,7 @@ from pathlib import Path
 import anthropic
 from .answer_router import AnswerSkillRouter
 from .budget import Budget
+from .openai_provider import OpenAIClient, ProviderStatusError
 from .evidence_context import MAX_BYTES, NODE_ONLY_MODE, compact_evidence, node_only_evidence, scientific_excerpt
 from .constraint_values import VALUE_SCHEMA
 from .plan_constraints import repair_step_constraints
@@ -154,12 +155,20 @@ def plan_structure_issue(plan):
 class ClaudeGateway:
     def __init__(self,settings):
         self.settings=settings
-        self.budget=Budget(settings.state_dir/'budget.sqlite3',settings.budget_usd)
-        self.client=anthropic.AsyncAnthropic(api_key=settings.anthropic_key or 'not-configured',max_retries=0,timeout=self.settings.plan_timeout)
+        self.budget=Budget(Path(getattr(settings, 'budget_dir', '') or settings.state_dir)/'budget.sqlite3',settings.budget_usd)
+        self.provider = 'openai' if getattr(settings, 'model', '') == 'gpt-6-sol' else 'anthropic'
+        if self.provider == 'openai':
+            self.client = OpenAIClient(settings.openai_key or 'not-configured', max(settings.plan_timeout, settings.answer_timeout), settings.reasoning_effort)
+        else:
+            self.client=anthropic.AsyncAnthropic(api_key=settings.anthropic_key or 'not-configured',max_retries=0,timeout=self.settings.plan_timeout)
         self.last_success=None
         self.answer_router=AnswerSkillRouter()
         from .planning_contract import VerifiedCache
         self.plan_cache=VerifiedCache()
+    @property
+    def api_key(self):
+        return (getattr(self.settings, 'openai_key', '') if getattr(self.settings, 'model', '') == 'gpt-6-sol'
+                else self.settings.anthropic_key)
     def _options(self):
         return {'thinking':{'type':'disabled'}} if self.settings.model=='claude-sonnet-5' else {}
     async def _reserve(self,purpose,system,body,max_tokens):
@@ -169,14 +178,14 @@ class ClaudeGateway:
     async def _create(self,rid,**kwargs):
         try:
             return await self.client.messages.create(**kwargs)
-        except anthropic.APIStatusError as exc:
+        except (anthropic.APIStatusError, ProviderStatusError) as exc:
             # Definitive pre-generation rejections consumed no inference tokens.
             if exc.status_code in (400,401,403,404,413,422,429):
                 await self.budget.asettle(rid,{})
             raise
     async def plan(self,question,history, _repair=False, grounding=None, resolver=None, preparer=None):
         from .request_context import current, AUTHORITY
-        if not self.settings.anthropic_key: raise RuntimeError('claude_key_not_configured')
+        if not self.api_key: raise RuntimeError('model_key_not_configured')
         from .semantic_registry import planner_guidance
         from .investigations import generic_profile_gene, expand_registered_profile
         profile_gene=generic_profile_gene(question) if not history else None
@@ -378,18 +387,16 @@ class ClaudeGateway:
     def prepare_answer(self,question,evidence):
         from .request_context import current, AUTHORITY
         from .output_scope import aggregate_only, project
-        # Skill routing inspects schema names locally, never record values in a
-        # model request.  Route before aggregate projection removes individual
-        # sample nodes so assay-specific interpretation remains available while
-        # IDs, contacts and measurements stay outside the synthesis payload.
+        # Route on schema and preserve public record evidence. Context-size
+        # compaction is independent of the project's public-data authorization.
         routed=self.answer_router.select(evidence)
         if aggregate_only(question):
-            # Compute donor/sample summaries before suppressing raw examples.
+            # Compute full donor/sample facts before context-size compaction.
             from .answer_facts import build_answer_facts
             evidence = {key: {**step, 'answer_facts': build_answer_facts(step)}
                         for key, step in evidence.items()}
             evidence = {key: project(step) for key, step in evidence.items()}
-        # Compact only the public/projected evidence before synthesis.
+        # Compact evidence for model context size; no cohort privacy suppression.
         compact=compact_evidence(evidence)
         profile={**routed.profile,'style_version':STYLE_VERSION,'evidence_coverage_version':COVERAGE_VERSION}
         profile['context_sampled']=any(item.get('context_sampled',False) for item in compact)
@@ -469,8 +476,8 @@ class ClaudeGateway:
         return PreparedAnswer(body,system,profile)
 
     async def synthesize(self,question,evidence,*,prepared=None):
-        if not self.settings.anthropic_key:
-            raise RuntimeError('claude_key_not_configured')
+        if not self.api_key:
+            raise RuntimeError('model_key_not_configured')
         prepared = prepared or self.prepare_answer(question, evidence)
         body = prepared.body
         output_limit = prepared.profile.get('answer_budget', {}).get('max_output_tokens', 1600)
@@ -492,7 +499,7 @@ class ClaudeGateway:
                     if visible:
                         yield visible
                 final = await stream.get_final_message()
-        except anthropic.APIStatusError as exc:
+        except (anthropic.APIStatusError, ProviderStatusError) as exc:
             if exc.status_code in (400,401,403,404,413,422,429):
                 await self.budget.asettle(rid,{})
             raise
@@ -513,7 +520,7 @@ class ClaudeGateway:
             yield '\n\n[Answer reached its output limit.]'
 
     async def probe(self):
-        if not self.settings.anthropic_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}
+        if not self.api_key: return {'state':'unavailable','error_category':'not_configured','model':self.settings.model}
         try:
             response=await asyncio.wait_for(self.client.models.retrieve(self.settings.model),10)
             return {'state':'healthy','model':response.id,'auth_ok':True,'inference_verified':self.last_success is not None,'last_inference_success':self.last_success}

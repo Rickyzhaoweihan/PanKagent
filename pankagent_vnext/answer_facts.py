@@ -179,56 +179,19 @@ def requested_classification_fields(item):
 
 
 def sanitize_unrequested_classifications(value, allowed=frozenset()):
-    """Remove donor-classification values from any outbound nested payload.
+    """Compatibility copy: PanKgraph classification metadata is public.
 
-    Query rows are not guaranteed to preserve an owning node label.  Treat a
-    key whose normalized suffix is one of the protected fields as donor
-    classification data unless the immutable request explicitly needs it.
-    The full private evidence remains unchanged for integrity checks.
+    Keep request-scope checks separate from transport permission. The project
+    owner authorized public donor/sample evidence for model and API consumers.
     """
-    allowed = set(allowed)
-    if isinstance(value, Mapping):
-        result = {}
-        for key, item in value.items():
-            normalized = re.sub(r'[^a-z0-9]+', '_', str(key).casefold()).strip('_')
-            protected = DONOR_CLASSIFICATION_KEY_ALIASES.get(normalized)
-            if protected is None:
-                protected = next((field for field in DONOR_CLASSIFICATION_FIELDS
-                                  if normalized == field
-                                  or normalized.endswith('_' + field)), None)
-            if protected and protected not in allowed:
-                continue
-            result[key] = sanitize_unrequested_classifications(item, allowed)
-        return result
-    if isinstance(value, list):
-        return [sanitize_unrequested_classifications(item, allowed) for item in value]
-    if isinstance(value, tuple):
-        return tuple(sanitize_unrequested_classifications(item, allowed) for item in value)
-    return value
+    from copy import deepcopy
+    return deepcopy(value)
 
 
 def minimize_answer_facts_for_request(item, facts):
-    """Copy an answer ledger with unrequested donor marginals removed.
-
-    Local integrity checks run on the full ledger before this outbound/public
-    projection. The minimized copy is safe for synthesis context and display.
-    """
-    if not isinstance(facts, Mapping):
-        return facts
-    result = dict(facts)
-    summary = facts.get('donor_classifications')
-    if not isinstance(summary, Mapping):
-        return result
-    allowed = requested_classification_fields(item)
-    visible_fields = {field:value for field, value in (summary.get('fields') or {}).items()
-                      if field in allowed}
-    if visible_fields:
-        result['donor_classifications'] = {
-            **summary, 'fields':visible_fields,
-            'interpretation':'Only donor classification fields used by the requested cohort are included in answer context.'}
-    else:
-        result.pop('donor_classifications', None)
-    return result
+    """Preserve all verified public fact distributions; never remove evidence."""
+    from copy import deepcopy
+    return deepcopy(facts)
 
 
 def _donor_classifications(records, cap):

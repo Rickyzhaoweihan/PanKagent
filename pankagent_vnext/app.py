@@ -49,28 +49,14 @@ class PlanRequest(RevisionRequest):
 
 
 def public_payload(value, *, context=None):
-    """Return one public copy for REST snapshots and live/replayed events.
-
-    Stored evidence remains private and complete for integrity checks.  Every
-    public transport uses this same boundary so replaying an older raw event
-    cannot bypass the current donor-classification policy.
-    """
+    """Apply diagnostics and aggregate presentation without masking public data."""
     from .diagnostics import annotate
-    value = annotate(value, context=context)
     from .output_scope import aggregate_only, enabled, project
+    value = annotate(value, context=context)
     source = context if isinstance(context, dict) else value if isinstance(value, dict) else {}
-    aggregate = enabled(source) or aggregate_only(str(source.get('question') or ''))
-    if aggregate:
+    if enabled(source) or aggregate_only(str(source.get('question') or '')):
         return project(value, context=source)
-    # Record-level output may keep requested identifiers, but unrelated donor
-    # classifications never become public merely because they were present on
-    # a returned node.
-    from .answer_facts import (requested_classification_fields,
-                               sanitize_unrequested_classifications)
-    allowed = requested_classification_fields(source)
-    for step in ((source.get('plan') or {}).get('steps') or []):
-        allowed.update(requested_classification_fields(step))
-    return sanitize_unrequested_classifications(value, allowed)
+    return value
 
 
 def public_run(run: dict) -> dict:

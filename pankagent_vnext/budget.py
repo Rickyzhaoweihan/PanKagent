@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-PRICES = {'claude-sonnet-5':(2.0,10.0), 'claude-haiku-4-5-20251001':(1.0,5.0)}
+PRICES = {'gpt-6-sol':(2.0,10.0), 'claude-sonnet-5':(2.0,10.0), 'claude-haiku-4-5-20251001':(1.0,5.0)}
 
 class BudgetExceeded(RuntimeError):
     pass
@@ -34,6 +34,8 @@ class Budget:
     def reserve(self,model,purpose,input_bound,max_output):
         ip,op=PRICES[model]
         # Covers uncached input or a 1.25x five-minute cache write, whichever is larger.
+        if model == 'gpt-6-sol' and input_bound > 272000:
+            ip,op=ip*2,op*1.5
         amount=(input_bound*ip*1.25+max_output*op)/1e6
         with self.lock,self._db() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -48,6 +50,8 @@ class Budget:
         with self.lock,self._db() as db:
             row=db.execute('SELECT model FROM usage WHERE id=?',(rid,)).fetchone()
             ip,op=PRICES[row[0]]
+            if row[0] == 'gpt-6-sol' and usage.get('total_input_tokens', usage.get('input_tokens',0)) > 272000:
+                ip,op=ip*2,op*1.5
             actual=(usage.get('input_tokens',0)*ip+usage.get('output_tokens',0)*op+
                     usage.get('cache_creation_input_tokens',0)*ip*1.25+
                     usage.get('cache_read_input_tokens',0)*ip*.1)/1e6

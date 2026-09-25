@@ -111,10 +111,6 @@ def _compact_node(node: Mapping, limits: _Limits, changes: Counter,
     # Stable identifiers and type labels are never shortened. An unexpectedly
     # huge identity therefore fails the total-size gate instead of changing IDs.
     properties = dict(node.get("properties") or {})
-    if 'donor' in (node.get('labels') or []):
-        from .answer_facts import DONOR_CLASSIFICATION_FIELDS
-        for field in set(DONOR_CLASSIFICATION_FIELDS) - set(visible_classifications):
-            properties.pop(field, None)
     return {
         "id": str(node["id"]),
         "labels": list(node.get("labels") or []),
@@ -309,11 +305,7 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
             for kind in sorted({e.get("type") or "unknown" for e in edges})},
     }
     from .answer_facts import build_answer_facts, minimize_answer_facts_for_request
-    # Aggregate projection intentionally removes private donor/sample nodes.
-    # Reuse the full-record anonymous ledger computed immediately before that
-    # projection; rebuilding from the redacted node list would erase correct
-    # sample/assay totals.  Only the versioned aggregate boundary authorizes
-    # this path, and the request-specific classification minimizer still runs.
+    # Reuse facts computed on full records before any context-size sampling.
     projected_facts = (item.get('answer_facts')
                        if (item.get('output_scope') or {}).get('mode') == 'aggregate_only'
                        else None)
@@ -503,9 +495,6 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
                 description = None
             source = {}
             for key in ("source", "data_source", "data_source_url", "data_version"):
-                if ('donor' in (node.get('labels') or []) and key == 'data_source'
-                        and 'data_source' not in visible_classifications):
-                    continue
                 value = properties.get(key)
                 if key in {"data_source_url", "data_version"} and isinstance(value, str) and len(value) > limits.string_chars:
                     changes["omitted_oversized_source_identities"] += 1
@@ -591,18 +580,6 @@ def scientific_excerpt(compact, *, include_donor_details=False):
             result.append(entry)
             continue
         donor_details_hidden = False
-        if not include_donor_details and any(set(node.get('labels') or []) & {'donor', 'Sample_node'} for node in entry.get('nodes', [])):
-            # Aggregate requests need the full computed facts, not incidental
-            # clinical or sample examples, including tissue-only sample queries. The caller enables details for explicit lists.
-            hidden_ids = {node['id'] for node in entry.get('nodes', [])
-                          if set(node.get('labels') or []) & {'donor', 'Sample_node'}}
-            entry['nodes'] = [node for node in entry.get('nodes', []) if node['id'] not in hidden_ids]
-            entry['edges'] = [edge for edge in entry.get('edges', [])
-                              if edge.get('start_id') not in hidden_ids and edge.get('end_id') not in hidden_ids]
-            entry['rows'] = []
-            if isinstance(entry.get('donor_summary'), dict):
-                entry['donor_summary'].pop('rows', None)
-            donor_details_hidden = True
         entry['answer_evidence_scope']={
             'individual_donor_details_hidden':donor_details_hidden,
             'individual_records_are_selected_examples':bool(item.get('context_sampled')),

@@ -302,30 +302,16 @@ class Store:
             return self._event_in_transaction(run_id, 'graph_answer', payload)
 
     def event_context(self, run_id):
-        """Metadata and identity redaction context, cached until evidence changes."""
+        """Metadata and plan context for public event diagnostics."""
         with self.lock:
             row = self.db.execute("SELECT run_id,session_id,question,status,stage,created_epoch FROM runs WHERE run_id=?", (run_id,)).fetchone()
             if row is None:
                 return None
             if run_id not in self._event_contexts:
                 run = self.get(run_id)
-                identities = set()
-                def collect(value):
-                    if isinstance(value, list):
-                        for item in value: collect(item)
-                    elif isinstance(value, dict):
-                        if set(value.get('labels') or []) & {'donor','Sample_node'}:
-                            for source in (value, value.get('properties') or {}):
-                                for key in ('id','name'):
-                                    if source.get(key) is not None: identities.add(str(source[key]))
-                        for key,item in value.items():
-                            if key in {'donor_id','sample_id'} and item is not None: identities.add(str(item))
-                            collect(item)
-                collect(run)
                 if len(self._event_contexts) >= 16:
                     self._event_contexts.pop(next(iter(self._event_contexts)))
-                self._event_contexts[run_id] = {'plan':run.get('plan'),
-                    '_redaction_context':[{'donor_id':i} for i in identities]}
+                self._event_contexts[run_id] = {'plan':run.get('plan')}
             return {**dict(row), **self._event_contexts[run_id]}
 
     def confirm(self, run_id: str) -> bool:

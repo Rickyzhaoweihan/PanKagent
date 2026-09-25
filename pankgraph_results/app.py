@@ -320,6 +320,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
 
     app = FastAPI(title="PanKgraph results", version="1", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = runtime
+    from .gpt6_proxy import install_gpt6_proxy
+    install_gpt6_proxy(app, runtime.http)
     app.add_middleware(JSONResponseLimitMiddleware)
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)

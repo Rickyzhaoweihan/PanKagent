@@ -60,7 +60,7 @@ def test_model_can_name_verified_prior_task_as_dependency():
         attach(bad,ref)
 
 
-def test_stream_storage_avoids_graph_reads_and_preserves_public_redaction(tmp_path, monkeypatch):
+def test_stream_storage_avoids_graph_reads_and_preserves_public_records(tmp_path, monkeypatch):
     from pankagent_vnext.store import Store
     from pankagent_vnext.app import public_payload
     store=Store(tmp_path)
@@ -69,8 +69,8 @@ def test_stream_storage_avoids_graph_reads_and_preserves_public_redaction(tmp_pa
     store.update(key,status='running',evidence={'nodes':[
         {'id':'PRIVATE-DONOR','labels':['donor'],'properties':{'name':'Private Name'}}]})
     context=store.event_context(key)
-    assert 'PRIVATE-DONOR' not in str(public_payload({'text':'PRIVATE-DONOR'},context=context))
-    assert 'Private Name' not in str(public_payload({'text':'Private Name'},context=context))
+    assert 'PRIVATE-DONOR' in str(public_payload({'text':'PRIVATE-DONOR'},context=context))
+    assert 'Private Name' in str(public_payload({'text':'Private Name'},context=context))
     original=store.get
     monkeypatch.setattr(store,'get',lambda *a: (_ for _ in ()).throw(AssertionError('graph read during streaming')))
     store.persist_answer(key,'A supported answer [G1].')
