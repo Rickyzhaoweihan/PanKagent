@@ -238,6 +238,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                                         f"from verified lookup {proof['lookup_mention']!r}: {choice['reason']}")
                     elif proof['match_method'] not in {'recorded_id', 'recorded_name'}:
                         warnings.append(f"Interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) using {proof['match_method']}: {choice['reason']}")
+                model_scope = deepcopy(proposal.get('steps', []))
                 plan = attach(finalize(proposal, chosen), context)
                 plan['identity_selection_diagnostics'] = identity_diagnostics
                 plan['tool_suggestion_decisions'] = advice_decisions + suggestion_decisions(local_draft, plan)
@@ -248,6 +249,12 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 plan['interpretation_warnings'] = list(dict.fromkeys([*plan.get('interpretation_warnings', []), *warnings]))
                 plan['run_context'] = run_context(gateway.settings)
                 for step in plan.get('steps', []):
+                    from .semantic_decision import record
+                    selected = next((s for s in model_scope if s.get('id') == step.get('id')), None)
+                    # Server-owned metadata; never accept a model-authored proof.
+                    step.pop('model_scope_decision', None)
+                    if selected is not None:
+                        step['model_scope_decision'] = record(selected, plan.get('effective_question') or question)
                     step['entity_selection_proofs'] = deepcopy(chosen)
                     step['interpretation_warnings'] = list(plan['interpretation_warnings'])
                 if preparer and plan.get('steps') and not plan.get('clarification'):

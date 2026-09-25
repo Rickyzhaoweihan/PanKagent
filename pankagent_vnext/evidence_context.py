@@ -16,6 +16,7 @@ from typing import Any
 
 from .evidence_coverage import coverage_for_answer
 from .evidence_identity import evidence_id
+from .result_size_policy import EXAMPLE_LIMIT, oversized_result_metadata
 
 
 TARGET_BYTES = 75_000
@@ -222,7 +223,8 @@ def _interaction_totals(item: Mapping, edges: list, node_index: dict, coverage: 
     return result
 
 
-def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict) -> dict:
+def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict,
+                  fallback: dict | None = None) -> dict:
     changes = Counter()
     entry = {key: _bounded(item[key], limits, changes) for key in _SUMMARY_FIELDS if key in item}
     entry["evidence_id"] = evidence_id(item, index)
@@ -368,6 +370,24 @@ def _compact_step(item: Mapping, index: int, limits: _Limits, node_context: dict
         entry["context_content_omissions"] = dict(sorted(changes.items()))
     entry["context_sampled"] = bool(dropped_nodes or dropped_edges or len(rows) > limits.rows or stubs or changes)
     entry["context_compaction"] = "standard" if limits is _NORMAL else "reduced"
+    # Counts and facts above use the full backend set. Bound only the model's
+    # illustrative records after a measured overflow, including endpoint stubs.
+    if fallback:
+        entry['result_size_fallback'] = deepcopy(fallback)
+    omitted = {n['id'] for n in entry['nodes'][EXAMPLE_LIMIT:]} if fallback else set()
+    if omitted:
+        removed_edges = [e for e in entry['edges'] if e['start_id'] in omitted or e['end_id'] in omitted]
+        entry['nodes'] = [n for n in entry['nodes'] if n['id'] not in omitted]
+        entry['edges'] = [e for e in entry['edges'] if e not in removed_edges]
+        entry['context_counts'].update(
+            full_nodes_selected=sum(not n.get('context_stub') for n in entry['nodes']),
+            endpoint_stubs=sum(bool(n.get('context_stub')) for n in entry['nodes']),
+            edges_selected=len(entry['edges']))
+        entry['context_sampled'] = True
+        entry['record_selection'] = {'scope': 'formatter_input_only', 'record_limit': EXAMPLE_LIMIT,
+                                    'additional_records_omitted': len(omitted),
+                                    'additional_edges_omitted': len(removed_edges),
+                                    'counts_basis': 'full_backend_results_before_sampling'}
     return entry
 
 
@@ -394,7 +414,9 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
     def size(value):
         return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode())
 
-    result = [_compact_step(item, index, _NORMAL, node_context) for index, item in enumerate(steps)]
+    fallbacks = [oversized_result_metadata(item, max_bytes) for item in steps]
+    result = [_compact_step(item, index, _NORMAL, node_context, fallbacks[index])
+              for index, item in enumerate(steps)]
     forced = {i for i, step in enumerate(steps) if step.get('context_mode') == 'identity_only'}
     for index in forced:
         result[index] = node_only_evidence([steps[index]], max_bytes=max(1000, max_bytes // max(1, len(steps))))[0]
@@ -405,7 +427,7 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
     while size(result) > max_bytes and len(identity) < len(steps):
         index = max((i for i in range(len(steps)) if i not in identity), key=lambda i: size(result[i]))
         if index not in reduced:
-            candidate = _compact_step(steps[index], index, _REDUCED, node_context)
+            candidate = _compact_step(steps[index], index, _REDUCED, node_context, fallbacks[index])
             if size(candidate) < size(result[index]):
                 result[index] = candidate
             reduced.add(index)
@@ -465,7 +487,10 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
                 entry[key] = value
         entries.append(entry)
         # Interleave rare types first, rather than dropping an entire category.
-        selected, _ = _sample(nodes, min(len(nodes), 200), _node_type)
+        fallback = oversized_result_metadata(step, max_bytes)
+        if fallback:
+            entry['result_size_fallback'] = fallback
+        selected, _ = _sample(nodes, min(len(nodes), EXAMPLE_LIMIT if fallback else 200), _node_type)
         type_counts = Counter(_node_type(node) for node in nodes)
         selected.sort(key=lambda node: (type_counts[_node_type(node)], _node_type(node)))
         projected = []

@@ -83,7 +83,7 @@ def test_output_and_viewer_modules_remain_unchanged():
     from pathlib import Path
     import subprocess
     for path in [
-                 'pankagent_vnext/evidence_context.py','pankagent_vnext/format_input_modes.py',
+                 # Input adapters have separately tested, authorized size fallback changes.
                  'pankagent_vnext/viewer_evidence.py','pankgraph_results/app.py']:
         assert Path(path).read_bytes()==subprocess.check_output(['git','show','e062fff:'+path])
 

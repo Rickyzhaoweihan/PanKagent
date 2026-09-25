@@ -1,6 +1,7 @@
 """Per-query input capabilities. This module never generates or rewrites output."""
 from copy import deepcopy
 import json
+from .result_size_policy import EXAMPLE_LIMIT, oversized_result_metadata
 
 
 def add_chain_identities(entry, evidence, max_bytes):
@@ -8,6 +9,9 @@ def add_chain_identities(entry, evidence, max_bytes):
     if not paths:
         return entry
     result = deepcopy(entry)
+    fallback = result.get('result_size_fallback') or oversized_result_metadata(evidence, max_bytes)
+    if fallback:
+        result['result_size_fallback'] = fallback
     result['identity_path_records'] = []
     for path in paths:
         # Keep a whole ordered witness or omit it. No clipped IDs or orphan edges.
@@ -17,7 +21,7 @@ def add_chain_identities(entry, evidence, max_bytes):
         if len(json.dumps(result, ensure_ascii=False).encode()) > max_bytes - 600:
             result['identity_path_records'].pop()
             break
-        if len(result['identity_path_records']) >= 200:
+        if len(result['identity_path_records']) >= (EXAMPLE_LIMIT if fallback else 200):
             break
     result['path_input_scope'] = {'verified_connectivity': True, 'measurements_available': False,
         'selected_path_count': len(result['identity_path_records']),

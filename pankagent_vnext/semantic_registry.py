@@ -2574,6 +2574,19 @@ def attach_request_authorizations(step):
                            for name in names)):
                 kind = 'verified_request_entity'
         if kind is None:
+            from .semantic_decision import covers
+            if covers(out, index, constraint, question):
+                kind = 'claude_semantic_interpretation'
+                advisory = {'rule_id': 'request_authorization', 'constraint_index': index,
+                            'reason': 'python_request_interpretation_unverified', 'blocking': False,
+                            'decision_owner': 'M04/D02'}
+                if advisory not in out.setdefault('preparation_advice', []):
+                    out['preparation_advice'].append(advisory)
+                warning = ('Python could not independently match a filter to the wording; '
+                           'the filter selected by Claude is retained and checked against the database schema.')
+                if warning not in out.setdefault('interpretation_warnings', []):
+                    out['interpretation_warnings'].append(warning)
+        if kind is None:
             issues.append('A query filter lacks one unambiguous immutable-request authorization.')
             continue
         bindings.append({
