@@ -2307,7 +2307,17 @@ class GraphAdapter:
             routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         if step.get('gpu_participation_required'):
             routes = ['gpu_initial'] + [r for r in routes if r != 'gpu_initial']
+        candidate_route = getattr(self, '_candidate_route', None)
+        if candidate_route == 'local':
+            routes = [r for r in routes if r in {'cache', 'template'}]
+        elif candidate_route == 'gpu':
+            # All generated candidates still pass the common query/result contract.
+            routes = ['gpu_initial', 'gpu_repair', 'claude_repair']
+        emitted_candidate = False
+        initial_base = deepcopy(base)
         for route in routes:
+            if emitted_candidate:
+                break
             local_route = route in {'template', 'cache'}
             template_audit = None
             if not local_route and question is None:
@@ -2432,7 +2442,7 @@ class GraphAdapter:
                         except Exception as exc:
                             base.setdefault('telemetry_failures', []).append({
                                 'event': 'cypher_validation', 'category': type(exc).__name__})
-                        if local_coloc_required and route.startswith('gpu_'):
+                        if local_coloc_required and route.startswith('gpu_') and not candidate_route:
                             validation_record['candidate_only'] = True
                             continue
                         if reasons:
@@ -2461,9 +2471,13 @@ class GraphAdapter:
                             result = await asyncio.wait_for(self._retrieve(query, candidate_parameters, limits), timeout=self.settings.graph_timeout + 1)
                         except Exception as exc:
                             base["validation"].append({"valid": False, "reasons": ["graph_execution_failed:" + type(exc).__name__]})
+                            if getattr(self, "_candidate_result", None):
+                                await self._candidate_result(deepcopy(base))
+                                base = deepcopy(initial_base)
+                                continue
                             return base
-                        outcome.attempt["selected"] = True
-                        outcome.attempt["selected_query_sha256"] = hashlib.sha256(query.encode()).hexdigest()
+                        outcome.attempt["evaluated" if candidate_route else "selected"] = True
+                        outcome.attempt["evaluated_query_sha256" if candidate_route else "selected_query_sha256"] = hashlib.sha256(query.encode()).hexdigest()
                         base.update(result)
                         base["retrieval_ms"] = round((time.monotonic()-retrieval_started)*1000,3)
                         base["query_route"] = route
@@ -2526,6 +2540,10 @@ class GraphAdapter:
                                                            "reasons": [reason]})
                                 base["error"] = {"category": "invalid_bounded_path_evidence",
                                                  "message": "The bounded path result did not preserve its verified node and relationship roles."}
+                                if getattr(self, "_candidate_result", None):
+                                    await self._candidate_result(deepcopy(base))
+                                    base = deepcopy(initial_base)
+                                    continue
                                 return base
                             base["path_records"] = path_records
                             if overfetch:
@@ -2538,7 +2556,7 @@ class GraphAdapter:
                             # record.  Preserve its materialization accounting,
                             # but expose only role-preserving path evidence.
                             base["rows"] = []
-                        if (grounded or path_requested or local_coloc_required) and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
+                        if not candidate_route and (grounded or path_requested or local_coloc_required) and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
                             cached_query = {"cypher":query,"parameters":candidate_parameters}
                             if template_audit:
                                 cached_query.update(deepcopy(template_audit))
@@ -2575,5 +2593,12 @@ class GraphAdapter:
                             base["colocalization_record_derivation"] = coloc["derivation"]
                             base["colocalization_record_completeness"] = coloc["completeness"]
                             base["colocalization_record_interpretation"] = coloc["interpretation"]
+                        if getattr(self, '_candidate_result', None):
+                            usable = await self._candidate_result(deepcopy(base))
+                            # Keep pending generated candidates alive; every result
+                            # gets its own records rather than earlier query history.
+                            emitted_candidate = emitted_candidate or bool(usable)
+                            base = deepcopy(initial_base)
+                            continue
                         return base
         return base

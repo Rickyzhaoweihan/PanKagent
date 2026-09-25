@@ -1,0 +1,17 @@
+# Competing Cypher candidates (disabled by default)
+
+Set `PANK_VNEXT_COMPETING_CANDIDATES=1` only in an isolated evaluation process. No frontend changes or deployment are required or included. The default path retains existing behavior.
+
+M06a runs verified cache/templates alongside M06b GPU generation. Unsupported local structure invokes a schema-constrained planning-model proposal, sharing the existing two execution-assistance / seven total supervisor-call allowance. Concrete values and predicates cannot be changed by assistance. Structural changes are normalized/prepared again. Combination assistance can correct verified roles or request repair of an existing dependency. Missing user intent requires clarification; arbitrary new constraints and dependency expansion are rejected.
+
+D8/M08 apply the existing Cypher guards, EXPLAIN, retrieval limits and evidence contracts to every candidate. Identical query/parameter/limit reads share one in-flight result per task. Candidate adapter views never write query caches. Both routes retain pending candidates after the first useful result. The selection compares verified completeness and exact typed membership, not size. Different complete results are held as a conflict; an LLM diagnosis can propose a structural patch, but cannot vote a result correct. Unresolved conflicts remain failed checks and cannot establish exhaustive absence.
+
+The revision-aware preview DAG accepts provisional results, recomputes affected descendants after replacements, and preserves independent branches. Only coherent snapshots replace the review page, using the existing `plan_ready` event and a fresh `plan_id`. SQLite transactions serialize publication and confirmation. Stale plan IDs return 409; confirmation records plan/evidence hashes and cancels pending candidate work. No late candidate can modify a confirmed snapshot.
+
+All proposal/candidate/selection diagnostics go into the existing run audit. `candidate_preview_timing` records first usable preview and elapsed candidate processing time; `candidate_batch_finished` records distinct database reads. Standard model reservation/settlement events retain usage/cost. Diagnostic examples are explicitly sampled, never membership evidence.
+
+Limits: This is a backend experiment, not an enabled deployment. No live model benchmark or measured quality improvement is claimed. Candidate disagreements are deliberately conservative: differing projections may require repair or remain unresolved. An assistance proposal cannot silently expand the task DAG or add a predicate absent from the approved task. Offline reference replay validates selection/result algebra, not generation quality or network latency.
+
+Validation: `tests_vnext/test_competing_candidates.py` covers arbitration, duplicate reads through the actual GraphAdapter pipeline, late replacement/dependency recomputation, stale confirmation, cancellation, deadlines, scoped proposals and shared call limits. Run existing graph/template/composable/runtime suites as well. Seven older `test_plan_preview.py` failures were reproduced on the untouched baseline; they expect all-or-nothing readiness. The first failed-primary case in `test_query_ready_gate.py` also fails on baseline. These are tracked separately from this feature.
+
+Recorded-evidence replay: 40 saved Claude/GPT cases retained identical membership; 28 matched their existing references. This is equivalent-candidate replay, not a new model comparison. New API spend: $0.

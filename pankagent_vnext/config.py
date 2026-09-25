@@ -51,6 +51,7 @@ class Settings:
     cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '2')))
     cypher_initial_scope: str = field(default_factory=lambda: env('CYPHER_INITIAL_SCOPE', 'all'))
     cypher_generation_concurrency: int = field(default_factory=lambda: int(env('CYPHER_GENERATION_CONCURRENCY', '4')))
+    competing_candidates: bool = field(default_factory=lambda: env('COMPETING_CANDIDATES','0') == '1')
     plan_cache_enabled: bool = field(default_factory=lambda: env('PLAN_CACHE_ENABLED','1') == '1')
     grounded_query_policy: bool = field(default_factory=lambda: env('GROUNDED_QUERY_POLICY','1') == '1')
     max_nodes: int = field(default_factory=lambda: schema_module('validation_repair')['backend_materialization']['max_nodes'])

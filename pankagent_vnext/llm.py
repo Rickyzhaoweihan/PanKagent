@@ -338,6 +338,23 @@ class ClaudeGateway:
                     return result
         raise ValueError('invalid_revision_interpretation')
 
+    async def assist_query_structure(self, payload):
+        from .query_assistance import SCHEMA, SYSTEM
+        body = json.dumps(payload, ensure_ascii=False, default=str)
+        if len(body.encode()) > 100000:
+            return {'action':'no_change','step_json':'','reason':'diagnostic_context_limit'}
+        rid = await self._reserve('query_structure_assistance', SYSTEM, body, 2400)
+        reply = await self._create(rid, model=self.settings.model, max_tokens=2400,
+            system=[{'type':'text','text':SYSTEM}], messages=[{'role':'user','content':body}],
+            tools=[{'name':'propose_structure','description':'Propose a validated structural repair',
+                    'input_schema':SCHEMA,'strict':True}],
+            tool_choice={'type':'tool','name':'propose_structure'}, **self._options())
+        await self.budget.asettle(rid, reply.usage.model_dump())
+        for block in reply.content:
+            if block.type == 'tool_use' and block.name == 'propose_structure' and matches_schema(block.input, SCHEMA):
+                return block.input
+        return {'action':'no_change','step_json':'','reason':'invalid_assistance_response'}
+
     async def repair_cypher(self, step, question, failures, candidate):
         """One grounded, budgeted fallback; the caller must revalidate and EXPLAIN."""
         from .release_schema import REGISTRY
