@@ -1,6 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Query Patterns",
   "type": "object",
   "required": [
     "schema",
@@ -13,17 +11,119 @@
     "schema": {
       "const": {
         "id": "kg-agent.query-patterns",
-        "version": "1.0.0"
+        "version": "2.0.0"
       }
     },
     "library": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "version",
+        "graph_release",
+        "rules"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "graph_release": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "guidance": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "relations": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "required_paths": {
+                    "items": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "id",
+                  "relations",
+                  "required_paths",
+                  "guidance"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "guidance": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "relations": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "required_paths": {
+                    "items": {},
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "id",
+                  "relations",
+                  "required_paths",
+                  "guidance"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        }
+      }
     },
     "providers": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "neo4j",
+        "postgresql"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "neo4j": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "postgresql": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "gpu_participation_required": {
       "type": "boolean"
     }
-  }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

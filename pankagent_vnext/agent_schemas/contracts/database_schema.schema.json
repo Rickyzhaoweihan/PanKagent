@@ -1,0 +1,664 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "release",
+    "registry_version",
+    "identity_strength",
+    "nodes",
+    "relationships",
+    "lookup",
+    "postgresql",
+    "profiling",
+    "observations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.database",
+        "version": "2.0.0"
+      }
+    },
+    "release": {
+      "type": "string"
+    },
+    "registry_version": {
+      "type": "string"
+    },
+    "identity_strength": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "labels",
+          "description",
+          "properties",
+          "identity",
+          "aliases",
+          "reviewed_aliases",
+          "query_terms",
+          "observations",
+          "record_export"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "storage_name",
+                "description",
+                "role",
+                "declared_types",
+                "units",
+                "pattern",
+                "export",
+                "query_terms",
+                "request_pattern",
+                "interpretation_refs",
+                "observations"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "storage_name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "declared_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "units": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "pattern": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "export": {
+                  "type": "string"
+                },
+                "query_terms": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "request_pattern": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "interpretation_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "observations": {
+                  "type": "object"
+                },
+                "related_entity": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "relationship",
+                    "direction"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "reviewed_values": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "identity": {
+            "type": "object",
+            "required": [
+              "id_field",
+              "name_fields",
+              "synonym_field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id_field": {
+                "type": "string"
+              },
+              "name_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "synonym_field": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            }
+          },
+          "aliases": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "reviewed_aliases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "aliases",
+                "mapping_kind",
+                "source",
+                "graph_release"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "mapping_kind": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "graph_release": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "query_terms": {
+            "type": [
+              "array",
+              "string"
+            ]
+          },
+          "observations": {
+            "type": "object"
+          },
+          "record_export": {
+            "enum": [
+              "public",
+              "protected"
+            ]
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "endpoints",
+          "properties",
+          "query_terms",
+          "annotation_links",
+          "observations"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "records": {
+                  "type": "integer"
+                },
+                "source": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "source",
+                "target",
+                "records"
+              ],
+              "type": "object"
+            }
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "storage_name",
+                "description",
+                "role",
+                "declared_types",
+                "units",
+                "pattern",
+                "export",
+                "query_terms",
+                "request_pattern",
+                "interpretation_refs",
+                "observations"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "storage_name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "declared_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "units": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "pattern": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "export": {
+                  "type": "string"
+                },
+                "query_terms": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "request_pattern": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
+                "interpretation_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "observations": {
+                  "type": "object"
+                },
+                "related_entity": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "relationship",
+                    "direction"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "reviewed_values": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "query_terms": {
+            "type": [
+              "array",
+              "string"
+            ]
+          },
+          "annotation_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source_property",
+                "target_relationship",
+                "target_property",
+                "status",
+                "match"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "source_property": {
+                  "type": "string"
+                },
+                "target_relationship": {
+                  "type": "string"
+                },
+                "target_property": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "match": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "observations": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "lookup": {
+      "type": "object",
+      "required": [
+        "public_labels",
+        "index_name",
+        "id_field",
+        "name_fields",
+        "synonym_field",
+        "lookup_order",
+        "max_candidates",
+        "fuzzy_selection",
+        "case_variants_require_clarification",
+        "exact_only_labels",
+        "session_references"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "public_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "index_name": {
+          "type": "string"
+        },
+        "id_field": {
+          "type": "string"
+        },
+        "name_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "synonym_field": {
+          "type": "string"
+        },
+        "lookup_order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_candidates": {
+          "type": "integer"
+        },
+        "fuzzy_selection": {
+          "type": "string"
+        },
+        "case_variants_require_clarification": {
+          "type": "boolean"
+        },
+        "exact_only_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_references": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "entity_type": {
+                "type": "string"
+              },
+              "mention_pattern": {
+                "type": "string"
+              },
+              "query_relations": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "entity_type",
+              "mention_pattern",
+              "query_relations"
+            ],
+            "type": "object"
+          }
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "status",
+        "role",
+        "mappings",
+        "requires"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "mappings": {
+          "type": "object",
+          "required": [
+            "ocr_peak_node",
+            "ensembl_genes_node",
+            "gwas_snp_id_node",
+            "qtl_snp_node"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ocr_peak_node": {
+              "type": "object",
+              "required": [
+                "node_type",
+                "id",
+                "properties"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "node_type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "properties": {
+                  "type": "object",
+                  "required": [
+                    "chr",
+                    "start",
+                    "end"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "chr": {
+                      "type": "string"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "end": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "ensembl_genes_node": {
+              "type": "object",
+              "required": [
+                "node_type",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "node_type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "gwas_snp_id_node": {
+              "type": "object",
+              "required": [
+                "node_type",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "node_type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "qtl_snp_node": {
+              "type": "object",
+              "required": [
+                "node_type",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "node_type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "profiling": {
+      "type": "object",
+      "required": [
+        "small_domain_threshold",
+        "examples",
+        "frequency",
+        "incomplete_is_exhaustive"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "small_domain_threshold": {
+          "type": "integer"
+        },
+        "examples": {
+          "type": "integer"
+        },
+        "frequency": {
+          "type": "string"
+        },
+        "incomplete_is_exhaustive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "observations": {
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,7 +1,7 @@
 {
   "schema": {
-    "id": "kg-agent.validation-repair",
-    "version": "1.0.0"
+    "id": "kg-agent.validation",
+    "version": "2.0.0"
   },
   "limits": {
     "lookup_batches": 2,
@@ -31,12 +31,20 @@
   "diagnostic_reasons": {
     "missing_requested_scope:Gene": "REQUESTED_ENTITY_BINDING_MISSING",
     "invalid_dependency_target_role": "DEPENDENCY_ROLE_INVALID",
-    "missing_requested_scope:tissue": "REQUESTED_TISSUE_BINDING_MISSING"
+    "missing_requested_scope:tissue": "REQUESTED_TISSUE_BINDING_MISSING",
+    "combination_role_requires_parent_path_spec": "COMBINATION_ROLE_UNBOUND",
+    "combination_role_missing_from_parent_path": "COMBINATION_ROLE_UNBOUND"
   },
   "backend_materialization": {
     "max_nodes": 12000,
     "max_edges": 20000,
     "max_bytes": 12000000,
     "on_exhaustion": "partial_never_exhaustive_count"
+  },
+  "repair_guidance": {
+    "value_owner_mismatch": "Inspect the owner property and related entity. Reconcile duplicate tissue-name predicates with the verified tissue-ID relationship; retain the requested tissue restriction.",
+    "stage_not_diagnosis": "A stage predicate does not authorize a diagnosis join.",
+    "annotation_projection": "Retrieve requested annotation relationships without making optional annotations mandatory matches.",
+    "combination_role": "Custom role selectors require matching typed roles in the parent path_spec; otherwise select verified source/target endpoints. Do not invent a role after query execution."
   }
 }

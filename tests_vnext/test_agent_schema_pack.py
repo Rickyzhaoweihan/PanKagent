@@ -24,8 +24,8 @@ def test_pack_validates_relationship_endpoints_and_pins_digest(tmp_path):
     source = ROOT / 'packs/pankgraph'
     for path in source.glob('*.json'): (tmp_path / path.name).write_bytes(path.read_bytes())
     before = SchemaPack(tmp_path)
-    path = tmp_path / 'graph_storage.json'; data = json.loads(path.read_text())
-    data['registry']['relations']['SIGNAL_COLOC_WITH']['paths'][0]['target'] = ['Invented']
+    path = tmp_path / 'database_schema.json'; data = json.loads(path.read_text())
+    data['relationships']['SIGNAL_COLOC_WITH']['endpoints'][0]['target'] = ['Invented']
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError, match='endpoints'): SchemaPack(tmp_path)
     assert before.module('graph_storage')['registry']['relations']['SIGNAL_COLOC_WITH']['paths'][0]['target'] != ['Invented']

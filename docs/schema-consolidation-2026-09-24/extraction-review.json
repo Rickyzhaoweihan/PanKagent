@@ -1,0 +1,18 @@
+{
+  "graph_release": "PanKgraph_08_04",
+  "database_schema_sha256": "dfb178184ff44491f7eda59d2133dfcd69d51118a3bd02a959dea6fed5b73eee",
+  "node_types": 19,
+  "relationship_types": 24,
+  "property_definitions": 542,
+  "status": "complete",
+  "unknown_definitions": [],
+  "profile_failures": [],
+  "privacy_audit": {
+    "passed": true,
+    "protected_identifiers_checked": 9180,
+    "strings_checked": 8118,
+    "identifier_matches": 0,
+    "policy_violations": 0
+  },
+  "model_calls": 0
+}

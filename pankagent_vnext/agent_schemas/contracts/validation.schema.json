@@ -1,0 +1,102 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "limits",
+    "scope_compilers",
+    "invariants",
+    "diagnostic_reasons",
+    "backend_materialization",
+    "repair_guidance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.validation",
+        "version": "2.0.0"
+      }
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "lookup_batches",
+        "requests_per_batch",
+        "candidates_per_request",
+        "planning_proposals",
+        "execution_repairs",
+        "total_claude_calls"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lookup_batches": {
+          "type": "integer"
+        },
+        "requests_per_batch": {
+          "type": "integer"
+        },
+        "candidates_per_request": {
+          "type": "integer"
+        },
+        "planning_proposals": {
+          "type": "integer"
+        },
+        "execution_repairs": {
+          "type": "integer"
+        },
+        "total_claude_calls": {
+          "type": "integer"
+        }
+      }
+    },
+    "scope_compilers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "diagnostic_reasons": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "backend_materialization": {
+      "type": "object",
+      "required": [
+        "max_nodes",
+        "max_edges",
+        "max_bytes",
+        "on_exhaustion"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_nodes": {
+          "type": "integer"
+        },
+        "max_edges": {
+          "type": "integer"
+        },
+        "max_bytes": {
+          "type": "integer"
+        },
+        "on_exhaustion": {
+          "type": "string"
+        }
+      }
+    },
+    "repair_guidance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

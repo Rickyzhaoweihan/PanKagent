@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-MODULES = ('graph_storage', 'identity', 'semantics_modalities', 'query_patterns', 'validation_repair')
+MODULES = ('database_schema', 'query_patterns', 'semantic_interpretation', 'validation')
 COMPILERS = ('cohort_scope', 'property_owners', 'independent_measurements', 'coloc_tissue',
              'requested_scope', 'genomic_scope', 'dependency_bindings')
 
@@ -19,7 +19,7 @@ class SchemaPack:
         directory = Path(directory).resolve()
         self._data = {'manifest': json.loads((directory / 'manifest.json').read_text())}
         manifest = self._data['manifest']
-        if manifest.get('schema') != {'id': 'kg-agent.pack', 'version': '1.0.0'}:
+        if manifest.get('schema') != {'id': 'kg-agent.pack', 'version': '2.0.0'}:
             raise ValueError('unsupported_agent_schema_contract')
         if set(manifest.get('modules', {})) != set(MODULES):
             raise ValueError('invalid_agent_schema_modules')
@@ -33,22 +33,30 @@ class SchemaPack:
                                                ensure_ascii=False).encode()).hexdigest()
 
     def _validate(self):
-        data = self._data
-        for name in MODULES:
-            if data[name].get('schema', {}).get('version') != '1.0.0':
-                raise ValueError('unsupported_agent_schema_module:' + name)
-        # JSON Schema documents are available to editors/scripts; enforce their
-        # top-level field/type contract without adding a runtime dependency.
-        types = {'object': dict, 'array': list, 'string': str, 'integer': int, 'boolean': bool}
-        for name, value in data.items():
+        from jsonschema import Draft202012Validator
+        from .views import project
+        for name, value in self._data.items():
             contract = json.loads((ROOT / 'contracts' / (name + '.schema.json')).read_text())
-            if set(value) != set(contract['required']):
-                raise ValueError('invalid_agent_schema_fields:' + name)
-            for key, spec in contract['properties'].items():
-                if 'const' in spec and value[key] != spec['const']:
-                    raise ValueError('invalid_agent_schema_value:' + name + ':' + key)
-                if 'type' in spec and type(value[key]) is not types[spec['type']]:
-                    raise ValueError('invalid_agent_schema_type:' + name + ':' + key)
+            errors = list(Draft202012Validator(contract).iter_errors(value))
+            if errors:
+                raise ValueError('invalid_agent_schema:' + name + ':' + str(errors[0].json_path))
+        data = {name: project(self._data, name) for name in
+                ('graph_storage', 'identity', 'semantics_modalities', 'query_patterns', 'validation_repair')}
+        db = self._data['database_schema']
+        for relationship, spec in db['relationships'].items():
+            for link in spec['annotation_links']:
+                target = db['relationships'].get(link['target_relationship'], {})
+                if link['source_property'] not in spec['properties'] or link['target_property'] not in target.get('properties', {}):
+                    raise ValueError('invalid_annotation_link:' + relationship)
+        rules = self._data['semantic_interpretation']['bim']['rules']
+        if len({r['id'] for r in rules}) != len(rules):
+            raise ValueError('duplicate_interpretation_rule')
+        for rule in rules:
+            for ref in rule['database_refs']:
+                self.resolve_ref(ref)
+        coverage = self._data['semantic_interpretation']['bim']['coverage']
+        if {r['rule_id'] for r in coverage} != {r['id'] for r in rules}:
+            raise ValueError('incomplete_bim_coverage')
         registry = data['graph_storage']['registry']
         labels = set(registry['nodes'])
         symbols = list(labels) + list(registry['relations'])
@@ -94,12 +102,21 @@ class SchemaPack:
             raise ValueError('invalid_agent_schema_limits')
 
     def module(self, name):
-        return deepcopy(self._data[name])
+        from .views import project
+        return deepcopy(project(self._data, name))
+
+    def resolve_ref(self, ref):
+        value = self._data['database_schema']
+        for part in ref.split('.'):
+            if not isinstance(value, dict) or part not in value:
+                raise ValueError('invalid_database_reference:' + ref)
+            value = value[part]
+        return deepcopy(value)
 
     def identity(self):
         manifest = self._data['manifest']
         return {'id': manifest['pack']['id'], 'version': manifest['pack']['version'],
-                'sha256': self.digest, 'graph_release': self._data['graph_storage']['registry']['release'],
+                'sha256': self.digest, 'graph_release': self._data['database_schema']['release'],
                 'standard': deepcopy(manifest['standard'])}
 
 

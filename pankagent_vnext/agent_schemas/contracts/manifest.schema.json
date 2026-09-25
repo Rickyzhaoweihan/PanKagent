@@ -1,6 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "KG agent schema pack manifest",
   "type": "object",
   "required": [
     "schema",
@@ -13,20 +11,10 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "type": "object",
-      "required": [
-        "id",
-        "version"
-      ],
-      "properties": {
-        "id": {
-          "const": "kg-agent.pack"
-        },
-        "version": {
-          "const": "1.0.0"
-        }
-      },
-      "additionalProperties": false
+      "const": {
+        "id": "kg-agent.pack",
+        "version": "2.0.0"
+      }
     },
     "pack": {
       "type": "object",
@@ -34,16 +22,15 @@
         "id",
         "version"
       ],
+      "additionalProperties": false,
       "properties": {
         "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]+$"
+          "type": "string"
         },
         "version": {
           "type": "string"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "standard": {
       "type": "object",
@@ -54,6 +41,7 @@
         "commit",
         "contract_sha256"
       ],
+      "additionalProperties": false,
       "properties": {
         "repository": {
           "type": "string"
@@ -70,46 +58,41 @@
         "contract_sha256": {
           "type": "string"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "modules": {
       "type": "object",
       "required": [
-        "graph_storage",
-        "identity",
-        "semantics_modalities",
+        "database_schema",
         "query_patterns",
-        "validation_repair"
+        "semantic_interpretation",
+        "validation"
       ],
+      "additionalProperties": false,
       "properties": {
-        "graph_storage": {
-          "const": "graph_storage.json"
-        },
-        "identity": {
-          "const": "identity.json"
-        },
-        "semantics_modalities": {
-          "const": "semantics_modalities.json"
+        "database_schema": {
+          "type": "string"
         },
         "query_patterns": {
-          "const": "query_patterns.json"
+          "type": "string"
         },
-        "validation_repair": {
-          "const": "validation_repair.json"
+        "semantic_interpretation": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "string"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "execution_modes": {
-      "const": [
-        "parallel",
-        "chain",
-        "mixed"
-      ]
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "primary_backend": {
-      "const": "neo4j"
+      "type": "string"
     }
-  }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

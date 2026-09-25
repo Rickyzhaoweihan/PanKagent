@@ -1,0 +1,510 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "terminology",
+    "modalities",
+    "prompt_modules",
+    "clinical_distinctions",
+    "planning_instructions",
+    "cohort_comparison_patterns",
+    "relation_guidance",
+    "display_labels",
+    "bim"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.semantic-interpretation",
+        "version": "2.0.0"
+      }
+    },
+    "terminology": {
+      "type": "object",
+      "required": [
+        "VERSION",
+        "RELEASE",
+        "SOURCE",
+        "STAGES",
+        "ALIASES",
+        "CAPABILITIES",
+        "property_type_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "VERSION": {
+          "type": "string"
+        },
+        "RELEASE": {
+          "type": "string"
+        },
+        "SOURCE": {
+          "type": "string"
+        },
+        "STAGES": {
+          "type": "object",
+          "required": [
+            "1",
+            "3"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "1": {
+              "type": "string"
+            },
+            "3": {
+              "type": "string"
+            }
+          }
+        },
+        "ALIASES": {
+          "type": "object",
+          "required": [
+            "scrnaseq",
+            "singlecellrnaseq",
+            "snmultiomics",
+            "multiome",
+            "multiomics",
+            "snrnaseq",
+            "scatacseq",
+            "singlecellatacseq",
+            "snatacseq",
+            "citeseqprotein"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "scrnaseq": {
+              "type": "string"
+            },
+            "singlecellrnaseq": {
+              "type": "string"
+            },
+            "snmultiomics": {
+              "type": "string"
+            },
+            "multiome": {
+              "type": "string"
+            },
+            "multiomics": {
+              "type": "string"
+            },
+            "snrnaseq": {
+              "type": "string"
+            },
+            "scatacseq": {
+              "type": "string"
+            },
+            "singlecellatacseq": {
+              "type": "string"
+            },
+            "snatacseq": {
+              "type": "string"
+            },
+            "citeseqprotein": {
+              "type": "string"
+            }
+          }
+        },
+        "CAPABILITIES": {
+          "type": "object",
+          "required": [
+            "scRNA-seq",
+            "scATAC-seq",
+            "snMultiomics",
+            "CITE-seq Protein"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "scRNA-seq": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "scATAC-seq": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "snMultiomics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "CITE-seq Protein": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "property_type_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "modalities": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "aliases"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {},
+                "type": "array"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "aliases"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "prompt_modules": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "type": "object"
+      }
+    },
+    "clinical_distinctions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "planning_instructions": {
+      "type": "object",
+      "required": [
+        "grounded",
+        "fallback"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "grounded": {
+          "type": "string"
+        },
+        "fallback": {
+          "type": "string"
+        }
+      }
+    },
+    "cohort_comparison_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "relation_guidance": {
+      "type": "object",
+      "required": [
+        "GENE_ENRICHED_IN",
+        "GENE_DETECTED_IN",
+        "MARKER_GENE_OF",
+        "T1D_DEG_IN",
+        "EFFECTOR_GENE_OF",
+        "FUNCTION_ANNOTATION",
+        "ASSOCIATED_WITH_GO",
+        "PHYSICAL_INTERACTION",
+        "GENETIC_INTERACTION",
+        "PART_OF_QTL_SIGNAL",
+        "PART_OF_GWAS_SIGNAL",
+        "SIGNAL_COLOC_WITH",
+        "GENE_ACTIVITY_SCORE_IN",
+        "HAS_DONOR",
+        "HAS_SAMPLE",
+        "OCR_PEAK_IN",
+        "FGSEA_ENRICHED_IN",
+        "PART_OF",
+        "HAS_CELL_TYPE",
+        "SUBCLASS_OF",
+        "HAS_STATE",
+        "REPRESENTS_COMPOSITE_LABEL",
+        "LYMPH_FLOWS_TO",
+        "ADJACENT_TO"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "GENE_ENRICHED_IN": {
+          "type": "string"
+        },
+        "GENE_DETECTED_IN": {
+          "type": "string"
+        },
+        "MARKER_GENE_OF": {
+          "type": "string"
+        },
+        "T1D_DEG_IN": {
+          "type": "string"
+        },
+        "EFFECTOR_GENE_OF": {
+          "type": "string"
+        },
+        "FUNCTION_ANNOTATION": {
+          "type": "string"
+        },
+        "ASSOCIATED_WITH_GO": {
+          "type": "string"
+        },
+        "PHYSICAL_INTERACTION": {
+          "type": "string"
+        },
+        "GENETIC_INTERACTION": {
+          "type": "string"
+        },
+        "PART_OF_QTL_SIGNAL": {
+          "type": "string"
+        },
+        "PART_OF_GWAS_SIGNAL": {
+          "type": "string"
+        },
+        "SIGNAL_COLOC_WITH": {
+          "type": "string"
+        },
+        "GENE_ACTIVITY_SCORE_IN": {
+          "type": "string"
+        },
+        "HAS_DONOR": {
+          "type": "string"
+        },
+        "HAS_SAMPLE": {
+          "type": "string"
+        },
+        "OCR_PEAK_IN": {
+          "type": "string"
+        },
+        "FGSEA_ENRICHED_IN": {
+          "type": "string"
+        },
+        "PART_OF": {
+          "type": "string"
+        },
+        "HAS_CELL_TYPE": {
+          "type": "string"
+        },
+        "SUBCLASS_OF": {
+          "type": "string"
+        },
+        "HAS_STATE": {
+          "type": "string"
+        },
+        "REPRESENTS_COMPOSITE_LABEL": {
+          "type": "string"
+        },
+        "LYMPH_FLOWS_TO": {
+          "type": "string"
+        },
+        "ADJACENT_TO": {
+          "type": "string"
+        }
+      }
+    },
+    "display_labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bim": {
+      "type": "object",
+      "required": [
+        "source",
+        "rules",
+        "coverage",
+        "syntax_normalization"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "object",
+          "required": [
+            "repository",
+            "commit",
+            "path"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "source",
+              "database_refs",
+              "applicability",
+              "content"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "section",
+                  "key",
+                  "sha256"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "section": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                }
+              },
+              "database_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "applicability": {
+                "type": "string"
+              },
+              "content": {}
+            }
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "rule_id": {
+                "type": "string"
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "section": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "section",
+                  "key",
+                  "sha256"
+                ],
+                "type": "object"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "rule_id",
+              "status"
+            ],
+            "type": "object"
+          }
+        },
+        "syntax_normalization": {
+          "type": "array",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "character_offsets": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "file": {
+                "type": "string"
+              },
+              "transformation": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file",
+              "transformation",
+              "character_offsets"
+            ],
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
