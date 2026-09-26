@@ -1,0 +1,10 @@
+{
+  "graph_release": "PanKgraph_08_04",
+  "nodes_checked": 1012,
+  "edges_checked": 1013,
+  "missing_nodes": [],
+  "missing_edges": [],
+  "model_calls": 0,
+  "fixture_sha256": "e245a2a9dfddb0e62b2761a00040632ed05c5fd71e0012f7fae0e0f2bc8ef44a",
+  "scope": "Node and stored edge identity existence only; not full semantic or answer-quality acceptance."
+}
