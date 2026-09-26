@@ -1,3 +1,5 @@
+> Retired: the competing workflow and activation flag have been removed. This directory retains historical design and evaluation evidence; it does not describe an available runtime.
+
 # Competing Cypher candidates (disabled by default)
 
 Set `PANK_VNEXT_COMPETING_CANDIDATES=1` only in an isolated evaluation process. No frontend changes or deployment are required or included. The default path retains existing behavior.

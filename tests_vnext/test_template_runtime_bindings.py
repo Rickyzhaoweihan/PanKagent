@@ -66,7 +66,7 @@ def test_entity_and_runtime_parameter_bindings_are_auditable_without_values():
     })
     add_runtime_proof(step, len(step['constraints']) - 1, 'verified_runtime_source')
     compiled = compile_query(step)
-    assert compiled and compiled['version'] == 'typed-relation-templates-v5-request-authority'
+    assert compiled and compiled['version'] == 'typed-relation-templates-v6-full-annotations-node-records'
     assert set(compiled['parameter_bindings']) == set(compiled['parameters'])
     assert {key: compiled['parameter_bindings']['template_0'][key] for key in (
             'constraint_index', 'owner', 'property', 'operator', 'proof_source',
@@ -271,3 +271,25 @@ def test_generic_nonsemantic_template_remains_compatible_without_request_gate():
         'graph_version': templates.REGISTRY['release'], 'relation_types': [],
         'constraints': [], 'resolved_entities': []}
     assert runtime_binding_errors(step) == []
+
+
+def test_direct_donor_population_keeps_request_and_inventory_proofs():
+    from pankagent_vnext.release_schema import REGISTRY
+    from pankagent_vnext.graph import validate_cypher
+    step = {'id': 'donors', 'complete': True, 'relation_types': [],
+            'graph_version': REGISTRY['release'],
+            'constraints': [{'entity_type': 'donor', 'property': 't1d_stage',
+                             'operator': '=', 'value': 'Stage 3'}],
+            'semantic_registry': {'inventory_sha256': 'test-current-inventory'},
+            'semantic_request': {'source': 'user_request', 'question': 'List stage 3 donors'}}
+    add_runtime_proof(step, 0, 'verified_runtime_stage')
+    compiled = compile_query(step)
+    assert compiled and compiled['template_id'] == 'verified_node_records'
+    assert 'HAS_SAMPLE' not in compiled['cypher']
+    assert validate_cypher(compiled['cypher'], step, compiled['parameters']) == []
+    stale = deepcopy(step)
+    stale['resolved_constraints'][0]['inventory_sha256'] = 'stale'
+    assert compile_query(stale) is None
+    unrequested = deepcopy(step)
+    unrequested['request_filter_bindings'] = []
+    assert compile_query(unrequested) is None

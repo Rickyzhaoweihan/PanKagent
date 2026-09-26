@@ -37,18 +37,17 @@ def compile_query(step):
 
 
 @pytest.mark.parametrize('kind', ['FUNCTION_ANNOTATION', 'ASSOCIATED_WITH_GO'])
-def test_annotation_limit_precedes_aggregation_and_preserves_constraints(kind):
+def test_annotation_default_retrieves_full_membership(kind):
     source = step(kind)
-    bounded = apply_default(source, 'What is the role of CFTR?')
-    query = compile_query(bounded)
+    selected = apply_default(source, 'What is the role of CFTR?')
+    query = compile_query(selected)
     assert source['complete'] is True
-    assert bounded['complete'] is False
-    assert query and query['cypher'].index('LIMIT 10') < query['cypher'].index('RETURN collect')
+    assert selected['complete'] is True
+    assert 'retrieval_selection' not in selected
+    assert query and 'LIMIT' not in query['cypher']
     assert query['parameters'] == {'template_0': 'ENSG00000001626'}
-    assert validate_cypher(query['cypher'], _authorized(bounded), query['parameters']) == []
-    bad = query['cypher'].replace(' LIMIT 10', '') + ' LIMIT 10'
-    assert 'annotation_overview_requires_bounded_template' in validate_cypher(
-        bad, _authorized(bounded), query['parameters'])
+    assert validate_cypher(query['cypher'], _authorized(selected), query['parameters']) == []
+    assert validate_cypher(query['cypher'] + ' LIMIT 10', _authorized(selected), query['parameters'])
 
 
 @pytest.mark.parametrize('question', ['How many GO terms?', 'List all annotations', '全部功能注释', '有多少个注释', 'Top 20 pathways', 'What proportion?', 'Count the pathways', 'Limit 5 terms'])
@@ -85,7 +84,8 @@ def test_large_branch_does_not_erase_small_verified_measurements():
 
 def test_default_is_user_owned_even_if_model_already_marked_step_partial():
     selected = apply_default(step('FUNCTION_ANNOTATION', complete=False), 'Explain the role of INS in T1D')
-    assert selected['retrieval_selection']['limit'] == 10
+    assert selected['complete'] is True
+    assert 'retrieval_selection' not in selected
     assert compile_query(selected)
 
 

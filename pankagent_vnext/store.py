@@ -40,7 +40,6 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript("""
-            CREATE TABLE IF NOT EXISTS retired_plan_ids (plan_id TEXT PRIMARY KEY, run_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY, created_at TEXT NOT NULL
             );
@@ -238,29 +237,6 @@ class Store:
         with self.lock:
             return self._decode(self.db.execute("SELECT * FROM runs WHERE plan_id=?", (plan_id,)).fetchone())
 
-    def retired_plan(self, plan_id):
-        with self.lock:
-            return self.db.execute("SELECT run_id FROM retired_plan_ids WHERE plan_id=?", (plan_id,)).fetchone() is not None
-
-    def publish_candidate_preview(self, run_id, plan, preview, cache):
-        """Atomic snapshot replacement and event; confirmation uses this same lock."""
-        with self.transaction():
-            current = self.get(run_id)
-            if not current or current['status'] not in {'planning','awaiting_confirmation'}:
-                return False
-            plan_id = current['plan_id']
-            publishing = current['status'] == 'awaiting_confirmation'
-            if publishing:
-                self.db.execute('INSERT OR IGNORE INTO retired_plan_ids VALUES (?,?)', (plan_id,run_id))
-                plan_id = str(uuid4())
-                plan = {**plan, 'review_ready':True}
-            self.db.execute('UPDATE runs SET plan_id=?,plan=?,preview=?,preview_cache=?,updated_at=? WHERE run_id=?',
-                (plan_id,json.dumps(plan),json.dumps(preview),json.dumps(cache),utc_now(),run_id))
-            self._event_contexts.pop(run_id, None)
-            if publishing:
-                self._event_in_transaction(run_id,'plan_ready',{'plan_id':plan_id,'plan':plan,'preview':preview})
-            return True
-
     def set_effective_question(self, run_id, question):
         """Persist interpreted scope while retaining the submitted text in audit."""
         if not isinstance(question, str) or not question.strip():
@@ -338,15 +314,8 @@ class Store:
                 self._event_contexts[run_id] = {'plan':run.get('plan')}
             return {**dict(row), **self._event_contexts[run_id]}
 
-    def confirm(self, run_id: str, expected_plan_id=None) -> bool:
+    def confirm(self, run_id: str) -> bool:
         with self.transaction():
-            current = self.get(run_id)
-            if expected_plan_id is not None and (not current or current["plan_id"] != expected_plan_id):
-                return False
-            if (current or {}).get("preview_cache", {}) and current["preview_cache"].get("competing_candidates"):
-                from .evidence_status import confirmation_eligible
-                if not confirmation_eligible(current["plan"], current["preview"]):
-                    return False
             cursor = self.db.execute(
                 "UPDATE runs SET status='queued',stage='queued',updated_at=? "
                 "WHERE run_id=? AND status='awaiting_confirmation'",
@@ -357,9 +326,7 @@ class Store:
                     self.db.execute("UPDATE runs SET owner_id=?,owner_epoch=? WHERE run_id=?", (self.owner.owner_id, self.owner.epoch, run_id))
                 metadata = self.audit_metadata(run_id)
                 if metadata is not None:
-                    metadata.update(confirmed_at=utc_now(), confirmed_plan_sha256=self.content_hash(self.get(run_id)["plan"]),
-                                    confirmed_preview_sha256=self.content_hash(self.get(run_id)["preview"]),
-                                    confirmed_plan_id=self.get(run_id)["plan_id"])
+                    metadata.update(confirmed_at=utc_now(), confirmed_plan_sha256=self.content_hash(self.get(run_id)["plan"]))
                     self.db.execute("UPDATE run_audit SET metadata=? WHERE run_id=?", (json.dumps(metadata), run_id))
             return cursor.rowcount == 1
 
@@ -389,15 +356,13 @@ class Store:
             self.audit_dropped += 1
             return "unavailable"
 
-    def claim_execution_repair(self, run_id, step_id, limits, allowed_statuses=None):
+    def claim_execution_repair(self, run_id, step_id, limits):
         """Persist the attempt before inference; crashes/retries cannot reset it."""
         with self.transaction():
             run = self.get(run_id)
             if not run or run['status'] in TERMINAL:
                 return False
             plan = run.get('plan') or {}
-            if allowed_statuses is not None and run['status'] not in allowed_statuses:
-                return False
             planned = (plan.get('planning_route') or {}).get('claude_calls', 0)
             used = self.db.execute(
                 "SELECT COUNT(*) FROM audit_events WHERE run_id=? AND kind='execution_repair_claim'",

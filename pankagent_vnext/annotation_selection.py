@@ -1,4 +1,4 @@
-"""Bound ordinary annotation overviews without changing explicit set requests."""
+"""Retrieve full annotation evidence by default; preserve explicit user limits."""
 import re
 from copy import deepcopy
 
@@ -7,17 +7,15 @@ _EXPLICIT = re.compile(r'\b(?:all|every|entire|complete|exhaustive|count|counts|
 
 
 def apply_default(step, question):
-    """Only a user-authored question can authorize the overview default."""
+    """Ordinary annotation questions require complete retrieval within hard caps."""
     if (step.get('path_spec') or not question or _EXPLICIT.search(question) or step.get('ranking')
             or step.get('depends_on')
             or len(step.get('relation_types', [])) != 1
             or step['relation_types'][0] not in RELATIONS):
         return step
     result = deepcopy(step)
-    result['complete'] = False
-    result['retrieval_selection'] = {'mode': 'annotation_overview', 'limit': 10,
-        'exhaustive': False, 'ordering': 'stable_identifiers',
-        'note': 'Up to 10 annotation relationships for this check; not ranked by importance and not a total count.'}
+    result['complete'] = True
+    result.pop('retrieval_selection', None)
     return result
 
 

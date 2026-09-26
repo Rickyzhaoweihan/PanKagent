@@ -72,7 +72,7 @@ def test_variant_subtypes_share_one_complete_parent_path(kind, target):
     assert validate_cypher(result['cypher'], s, result['parameters']) == []
 
 
-@pytest.mark.parametrize('kind', ['FUNCTION_ANNOTATION', 'FGSEA_ENRICHED_IN', 'HAS_SAMPLE', 'PHYSICAL_INTERACTION', 'HAS_CELL_TYPE'])
+@pytest.mark.parametrize('kind', ['FGSEA_ENRICHED_IN', 'HAS_SAMPLE', 'PHYSICAL_INTERACTION', 'HAS_CELL_TYPE'])
 def test_distinct_scopes_and_same_type_roles_fall_through_to_gpu(kind):
     assert compile_query(step(kind)) is None
 
@@ -238,3 +238,30 @@ def test_general_not_and_not_in_remain_unsupported():
     s['constraints'].append({'entity_type': 'anatomical_structure', 'property': 'id', 'operator': 'NOT IN', 'value': '["CL_0000171"]'})
     assert compile_query(s) is None
     assert validate_cypher('MATCH (a:Gene)-[r:GENE_ENRICHED_IN]->(b:anatomical_structure) WHERE a.name="CFTR" AND NOT b.id IN ["CL_0000171"] RETURN r', s)
+
+
+def test_direct_node_template_needs_verified_identity_and_no_invented_join():
+    source = step(relation_types=[])
+    compiled = compile_query(source)
+    assert compiled and compiled['template_id'] == 'verified_node_records'
+    assert compiled['parameters'] == {'template_0': 'ENSG00000001626'}
+    assert 'MATCH (n:`Gene`)' in compiled['cypher']
+    assert '[] AS edges' in compiled['cypher']
+    assert validate_cypher(compiled['cypher'], _authorized(source), compiled['parameters']) == []
+    source['resolved_entities'] = []
+    assert compile_query(source) is None
+
+
+def test_direct_node_template_rejects_unconstrained_or_mixed_scope():
+    assert compile_query(step(constraints=[], relation_types=[])) is None
+    source = step(relation_types=[])
+    source['constraints'].append({'entity_type': 'donor', 'property': 'data_source', 'value': 'HPAP'})
+    assert compile_query(source) is None
+
+
+def test_complete_function_annotation_covers_all_registered_target_types():
+    source = step('FUNCTION_ANNOTATION')
+    compiled = compile_query(source)
+    assert compiled and 'LIMIT' not in compiled['cypher']
+    assert '[r:`FUNCTION_ANNOTATION`]->(b)' in compiled['cypher']
+    assert validate_cypher(compiled['cypher'], _authorized(source), compiled['parameters']) == []

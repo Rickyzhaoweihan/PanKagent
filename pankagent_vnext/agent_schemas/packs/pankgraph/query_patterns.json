@@ -4,7 +4,7 @@
     "version": "2.0.0"
   },
   "library": {
-    "version": "pankgraph-query-patterns-v1",
+    "version": "pankgraph-query-patterns-v2-original-workflow",
     "graph_release": "PanKgraph_08_04",
     "rules": [
       {
@@ -47,7 +47,7 @@
             "disease"
           ]
         ],
-        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. Apply the release-scoped temporary QTL/GWAS comment for indexed KG lead-signal representatives; do not require a missing lead_status flag. Preserve explicit stored annotations, exact signal identity and the requested disease."
+        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. Apply the release-scoped temporary QTL/GWAS comment for indexed KG lead-signal representatives; do not require a missing lead_status flag. Preserve explicit stored annotations, exact signal identity and the requested disease. P value and PIP are relationship statistics, not gene mentions. For top-k requests retrieve the authorized full population and rank distinct variants by the requested recorded statistic; do not use result order as significance order."
       },
       {
         "id": "same_sample",
@@ -91,7 +91,35 @@
           "ASSOCIATED_WITH_GO"
         ],
         "required_paths": [],
-        "guidance": "Keep explicit annotation resource and GO-domain predicates. Reactome/KEGG pathway records and GO records are separate categories; do not add an unrequested category."
+        "guidance": "Keep explicit annotation resource and GO-domain predicates. Reactome/KEGG pathway records and GO records are separate categories; do not add an unrequested category. Retrieve the full requested annotation set under materialization limits; do not silently select the first ten relationships. Preserve all requested GO domains and KEGG/Reactome types. A bounded display does not authorize bounded retrieval."
+      },
+      {
+        "id": "direct_node_scope",
+        "relations": [
+          "HAS_DONOR",
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [],
+        "guidance": "A donor count independent of sample availability is a direct donor-node query. Bind data_source, t1d_stage and diabetes_type to donor properties using verified runtime categories. Do not invent HAS_DONOR.id or HAS_DONOR.donor_stage properties. Do not add a disease or sample join unless requested. Clinical stage and diabetes category are separate predicates; retain explicit exclusions."
+      },
+      {
+        "id": "same_partner_annotation",
+        "relations": [
+          "PHYSICAL_INTERACTION",
+          "GENETIC_INTERACTION",
+          "FUNCTION_ANNOTATION",
+          "ASSOCIATED_WITH_GO"
+        ],
+        "required_paths": [],
+        "guidance": "For interaction partners annotated to a requested term, use a connected focus Gene\u2014interaction\u2014partner Gene\u2014annotation\u2192term path and put the annotation on the partner role. Bind only focus to the requested gene; never copy its ID to the partner/annotation gene. For shared partners of two genes, require both interaction links to the same partner; then retrieve annotations for those verified partners. Include physical or genetic interaction types exactly as requested."
+      },
+      {
+        "id": "independent_assay_counts",
+        "relations": [
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [],
+        "guidance": "For multiple alternative assays, retrieve separate sample sets for each requested recorded modality and count distinct sample IDs independently. Two assay alternatives do not require one sample to have both labels. Keep donor predicates on donor, modality on sample and anatomy linked to that same sample; do not require anatomy when the user asks for all tissues."
       }
     ]
   },

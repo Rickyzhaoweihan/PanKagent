@@ -192,7 +192,6 @@ class Runtime:
         self.health = HealthMonitor(settings, gateway, graph, literature, self.store, self.queue_snapshot, io=self.io)
         self.shutting_down = False
         self.auto_proceed_tasks = set()
-        self.candidate_previews = {}
 
     async def start(self):
         await self.io.call(self.store.acquire_owner)
@@ -552,10 +551,6 @@ class Runtime:
                     "validation_scope": "Only the verified checks succeeded; remaining checks are unavailable." if current["preview"]["query_readiness"].get("partial_ready") else "required graph queries executed successfully; zero matches are valid checked outcomes",
                     "query_readiness": current["preview"]["query_readiness"]}))
                 (await self.io.call(self.store.event_if_active, run_id, "plan_ready", {"plan_id": run["plan_id"], "plan": plan, "preview": current["preview"]}))
-                if run_id in self.candidate_previews:
-                    race = self.candidate_previews[run_id]
-                    race.publish_enabled.set()
-                    race.changed.set()
                 delay = ((await self.io.call(self.store.audit_metadata, run_id)) or {}).get('requested_options',{}).get('auto_proceed_seconds')
                 if delay and not current['preview']['query_readiness']['blocked_step_ids']:
                     (await self.io.call(self.store.event_if_active, run_id, 'auto_proceed_scheduled', {'delay_seconds':delay,'plan_id':run['plan_id']}))
@@ -619,17 +614,17 @@ class Runtime:
                 previous[primary_id]['coloc_linkage'] = deepcopy(group)
         return linkage
 
-    def save_preview(self, run_id, previous, cache, *, error=None, preparation_complete=False, candidate_plan=None):
+    def save_preview(self, run_id, previous, cache, *, error=None, preparation_complete=False):
         self.check_active(run_id)
-        plan = candidate_plan if candidate_plan is not None else self.store.get(run_id)['plan'] or {}
-        linkage = self.annotate_plan_evidence(plan, previous)
-        evidence = aggregate_evidence(previous, plan)
+        linkage = self.annotate_plan_evidence(self.store.get(run_id)['plan'] or {}, previous)
+        evidence = aggregate_evidence(previous, self.store.get(run_id)["plan"] or {})
         if linkage.get('groups'):
             evidence['coloc_linkage'] = linkage
         from .investigations import coverage
-        evidence["category_outcomes"] = coverage(plan, previous)
+        evidence["category_outcomes"] = coverage(self.store.get(run_id)["plan"] or {}, previous)
         states = [step.get("status") for step in previous.values()]
         status = "not_requested" if not states else "failed" if error or all(state == "failed" for state in states) else evidence["completeness"]
+        plan = self.store.get(run_id)["plan"] or {}
         pending = [step["id"] for step in plan.get("steps", []) if step["id"] not in previous]
         if pending:
             evidence["completeness"] = "partial"
@@ -659,10 +654,7 @@ class Runtime:
             preview['query_resource_limit_exceeded'] = True
         preview["query_readiness"] = query_readiness(plan, preview)
         preview["confirmation_eligible"] = preview["query_readiness"]["ready"]
-        if candidate_plan is not None:
-            self.store.publish_candidate_preview(run_id, plan, preview, cache)
-        else:
-            self.store.update(run_id, preview=preview, preview_cache=cache)
+        self.store.update(run_id, preview=preview, preview_cache=cache)
         return preview
 
     async def repair_query(self, step, question, failures, candidate):
@@ -776,9 +768,6 @@ class Runtime:
                 previous = {s['step_id']: deepcopy(s) for s in ((parent.get('preview') or {}).get('evidence') or {}).get('steps', [])}
             (await self.io.call(self.save_preview, run_id, previous, {"identity": None, "step_completed_epochs": {}}, preparation_complete=True))
             return
-        if self.settings.competing_candidates and hasattr(self.graph, '_retrieve'):
-            from .candidate_preview import preflight as competing_preflight
-            return await competing_preflight(self, run_id, plan, max(.001, self.settings.grouped_preview_timeout - (time.monotonic()-preflight_started)))
         metadata = (await self.io.call(self.store.audit_metadata, run_id)) or {}
         parent = (await self.io.call(self.store.get, metadata.get("parent_run_id"))) if metadata.get("parent_run_id") else None
         parent_cache = (parent or {}).get("preview_cache") or {}
@@ -909,10 +898,6 @@ class Runtime:
         return None
 
     def _terminal(self, run_id, status, **fields):
-        race = self.candidate_previews.get(run_id)
-        if race and race.task and not race.task.done():
-            race.closed = True
-            race.task.get_loop().call_soon_threadsafe(race.task.cancel)
         run = self.store.get(run_id)
         if run["status"] in TERMINAL:
             return
@@ -996,13 +981,11 @@ class Runtime:
                 matching = False
             cached = cached_steps.get(step["id"], {})
             reason = self.preview_reuse_reason(step, cached, cache, matching, reused, previous,
-                check_freshness=step['id'] not in required_ids and not cache.get('competing_candidates'))
+                check_freshness=step['id'] not in required_ids)
             accepted_failed = (matching and preview.get('query_readiness',{}).get('partial_ready')
                 and step['id'] in preview['query_readiness']['blocked_step_ids']
                 and step['id'] in preview['query_readiness'].get('retained_failed_step_ids', []))
-            if cache.get('competing_candidates') and matching and cached.get('status') in {'failed', 'blocked'}:
-                accepted_failed = True
-            if reason is not None and (step['id'] in required_ids or cache.get('competing_candidates')) and not accepted_failed:
+            if reason is not None and step['id'] in required_ids and not accepted_failed:
                 recovery = self.preview_recovery(run, reason)
                 (await self.io.call(self.store.update_if_active, run_id, error={'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery}))
                 raise ValueError('checked_preview_identity_changed')
@@ -1275,7 +1258,6 @@ class Runtime:
     async def close(self):
         self.shutting_down = True
         await self.admission.close()
-        await asyncio.gather(*(race.close() for race in self.candidate_previews.values()), return_exceptions=True)
         if self.store.owner and self.store.owner.snapshot()["state"] == "active":
             await self.io.call(self.store.interrupt_active, self.started_graph_checks)
         for task in self.tasks.values():
@@ -1442,8 +1424,6 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
     async def confirm(plan_id: str):
         run = (await runtime.io.call(runtime.store.by_plan, plan_id))
         if run is None:
-            if await runtime.io.call(runtime.store.retired_plan, plan_id):
-                raise HTTPException(409, "Preview changed; confirm the latest plan.")
             raise HTTPException(404, "Plan not found.")
         if run["status"] == "planning":
             raise HTTPException(409, "The plan is still being prepared.")
@@ -1461,18 +1441,11 @@ def create_app(settings=None, gateway=None, graph=None, literature=None) -> Fast
                     'message': recovery['message'], 'recovery': recovery}))
                 raise HTTPException(409, {'category': recovery['category'], 'message': recovery['message'], 'recovery': recovery})
             (await runtime.io.call(runtime.check_capacity))
-            if (await runtime.io.call(runtime.store.confirm, run["run_id"], plan_id)):
+            if (await runtime.io.call(runtime.store.confirm, run["run_id"])):
                 try:
                     await runtime.io.call(runtime.store.event_if_active, run["run_id"], "progress", {"stage": "queued"})
                 finally:
-                    race = runtime.candidate_previews.get(run["run_id"])
-                    if race:
-                        await race.close()
                     runtime.launch(run["run_id"], runtime.execution(run["run_id"]))
-            else:
-                latest = await runtime.io.call(runtime.store.get, run["run_id"])
-                if latest["plan_id"] != plan_id or latest["status"] == "awaiting_confirmation":
-                    raise HTTPException(409, "Preview changed; confirm the latest plan.")
         elif run["status"] in {"cancelled", "interrupted", "failed", "superseded"}:
             raise HTTPException(409, "This run has ended; create a new plan.")
         current = (await runtime.io.call(runtime.store.get, run["run_id"]))

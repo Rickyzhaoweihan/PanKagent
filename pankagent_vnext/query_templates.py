@@ -18,7 +18,7 @@ from .constraint_values import list_value, DIGEST as VALUE_DIGEST
 from .donor_categories import CATEGORICAL_FIELDS, DIGEST as DONOR_CATEGORY_DIGEST
 from .genomic_scope import DIGEST as GENOMIC_DIGEST
 
-VERSION = 'typed-relation-templates-v5-request-authority'
+VERSION = 'typed-relation-templates-v6-full-annotations-node-records'
 DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()
                        + VALUE_DIGEST.encode() + DONOR_CATEGORY_DIGEST.encode()
                        + GENOMIC_DIGEST.encode()
@@ -358,8 +358,49 @@ def _region_gene_records(step):
                                   'scope_basis': 'verified_complete_gene_interval'}}
 
 
+def _node_records(step):
+    """Return a single verified node population without inventing a join."""
+    constraints = step.get('constraints') or []
+    owners = {c.get('entity_type') for c in constraints}
+    if len(owners) != 1 or not constraints:
+        return None
+    owner = next(iter(owners))
+    if owner not in REGISTRY['nodes']:
+        return None
+    filters, params, bindings = [], {}, {}
+    try:
+        for index, constraint in enumerate(constraints):
+            if constraint.get('owner_kind') not in (None, 'node') or constraint.get('relationship_type'):
+                return None
+            prop = constraint.get('property')
+            operator = constraint.get('operator', '=')
+            if prop not in REGISTRY['nodes'][owner] or operator not in {'=', '!=', '<>', 'IN', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}:
+                return None
+            if owner == 'donor' and prop == 'age':
+                return None  # Age needs the existing unit-aware compiler.
+            resolved = _resolved_entity(step, index, constraint)
+            if resolved is not None and resolved['entity_type'] != owner:
+                return None
+            value = resolved['id'] if resolved is not None else constraint.get('value')
+            prop = 'id' if resolved is not None else prop
+            name = 'template_' + str(index)
+            params[name] = _value(value, operator)
+            bindings[name] = _parameter_binding(step, index, constraint, owner, prop, operator, resolved)
+            op = '<>' if operator == '!=' else operator
+            filters.append(f'n.`{prop}` {op} ${name}')
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return {'cypher': f'MATCH (n:`{owner}`)\nWHERE ' + ' AND '.join(filters)
+                     + '\nRETURN collect(DISTINCT n) AS nodes, [] AS edges',
+            'parameters': params, 'parameter_bindings': bindings,
+            'template_id': 'verified_node_records', 'version': VERSION,
+            'sha256': DIGEST, 'schema_sha256': SCHEMA_DIGEST,
+            'endpoint_coverage': {'source': owner, 'all_requested_paths_covered': True,
+                                  'scope_basis': 'verified_single_node_scope'}}
+
+
 def compile_query(step):
-    from .annotation_selection import overview
+    from .annotation_selection import overview, RELATIONS as ANNOTATION_RELATIONS
     bounded_annotation = overview(step)
     if step.get('graph_version') != REGISTRY['release'] or (not step.get('complete', True) and not bounded_annotation):
         return None
@@ -367,7 +408,7 @@ def compile_query(step):
         return None
     kinds = step.get('relation_types', [])
     if not kinds:
-        return _region_gene_records(step)
+        return _region_gene_records(step) or _node_records(step)
     if len(kinds) != 1 or kinds[0] not in REGISTRY['relations']:
         return None
     kind = kinds[0]
@@ -398,7 +439,7 @@ def compile_query(step):
         if not selected_paths:
             return None
         left, right = (_common_endpoint(selected_paths, side) for side in ('source', 'target'))
-    if not left or (not right and not bounded_annotation) or left == right:
+    if not left or (not right and kind not in ANNOTATION_RELATIONS) or left == right:
         return None
     from .genomic_scope import has_verified_region_scope, is_verified_region_constraint
     region_scope = has_verified_region_scope(step)
