@@ -42,9 +42,17 @@ executed relevant empty evidence and accurate reporting, not vacuous set matchin
 Keep all 57 in the overall denominator; show reference-gap and verified-empty
 categories separately. Eighty percent requires at least 46 usable answers.
 
-The prior paid ledger was nearly exhausted. An additional ceiling must be
-explicitly authorized before this rerun. No fresh model outcomes are implied by
-fixture validation or by replaying the scorer on synthetic examples.
+The user authorized a new $10 Claude budget and a separate $10 GPT budget.
+The completed run used $9.517674 for the two Claude arms and $1.483354 for
+57 blinded advisory GPT-6 Sol reviews, with no pending reservations.
+See `workflow57-results.md` and its machine-readable summary for results.
+A new paid replay still requires an explicitly authorized remaining budget.
+
+During evidence review, optional lead memberships (Q13–Q16) and cell/disease
+context in broad introductions (Q42/Q44/Q45) moved from core to extra.
+The graph-verified union is unchanged. Both arms were rescored equally offline;
+`workflow57-core-refinement.json` records every change. Frozen scores remain
+available. Failed/conflicted retained payload is excluded from verified coverage.
 
 Example, after authorization and deployment of the test files to an isolated directory:
 

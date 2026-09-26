@@ -5,6 +5,8 @@
   "missing_nodes": [],
   "missing_edges": [],
   "model_calls": 0,
-  "fixture_sha256": "e245a2a9dfddb0e62b2761a00040632ed05c5fd71e0012f7fae0e0f2bc8ef44a",
-  "scope": "Node and stored edge identity existence only; not full semantic or answer-quality acceptance."
+  "scope": "Node and stored edge identity existence only; not full semantic or answer-quality acceptance.",
+  "frozen_fixture_sha256": "e245a2a9dfddb0e62b2761a00040632ed05c5fd71e0012f7fae0e0f2bc8ef44a",
+  "fixture_sha256": "ad6b30eea100dac6109d9d61ed7bb4cbd4406bdb3842bd6a6006f3206318c446",
+  "rescore": "Q13\u2013Q16: optional lead memberships moved to extras; Q42/Q44/Q45: optional cell/disease context moved to extras. Verified node/edge union and questions unchanged."
 }

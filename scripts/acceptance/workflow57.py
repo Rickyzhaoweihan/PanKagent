@@ -60,6 +60,12 @@ def evaluate(reference, run):
     previous = {s['step_id']:s for s in evidence.get('steps', [])}
     selected = answer_results(run.get('plan') or {}, previous)
     result = coverage(reference, selected)
+    # Retained payload from a failed/conflicted candidate is diagnostic evidence,
+    # not an accepted result. Report its presence separately from usable coverage.
+    verified = {key:value for key,value in selected.items()
+                if value.get('status') in {'complete','partial','empty'}
+                and not value.get('error')}
+    result['verified_core_covered'] = coverage(reference, verified)['core_covered']
     result['atomic_coverage'] = coverage(reference, previous)
     result['answer_chars'] = len(run.get('graph_answer') or '')
     result['manual_review_required'] = True

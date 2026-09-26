@@ -39,3 +39,15 @@ def test_missing_edge_cannot_pass_with_nodes_only():
 def test_empty_reference_is_not_automatic_success():
     ref={'core':{'nodes':[],'edges':[]},'extra':{'nodes':[],'edges':[]}}
     assert not module.coverage(ref,{})['core_covered']
+
+
+def test_conflicted_retained_payload_is_not_verified_coverage():
+    ref={**reference(),'id':'Q49'}
+    step={**result()['s'],'step_id':'s','status':'failed',
+          'error':{'category':'candidate_membership_conflict'}}
+    scored=module.evaluate(ref,{'plan':{'answer_step_ids':['s']},
+                                'evidence':{'steps':[step]}})
+    assert scored['core_covered']
+    assert not scored['verified_core_covered']
+    step['status']='complete';step['error']=None
+    assert module.evaluate(ref,{'evidence':{'steps':[step]}})['verified_core_covered']

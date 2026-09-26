@@ -1,0 +1,379 @@
+{
+  "disclosed_during_run": true,
+  "runtime_inputs_and_outputs_unchanged": true,
+  "apply_equally_to_both_arms": true,
+  "changes": [
+    {
+      "case": "Q13",
+      "reason": "Question requests coloc signal/tissue evidence, not lead-variant membership retrieval. Coloc record properties carry the requested signal IDs; variant membership is optional supporting exploration.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs62064652",
+            "name": "rs62064652",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs62065450",
+            "name": "rs62065450",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62064652",
+            "end_id": "ENSG00000225190"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62065450",
+            "end_id": "ENSG00000225190"
+          },
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      }
+    },
+    {
+      "case": "Q14",
+      "reason": "Question requests coloc signal/tissue evidence, not lead-variant membership retrieval. Coloc record properties carry the requested signal IDs; variant membership is optional supporting exploration.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs62064652",
+            "name": "rs62064652",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs62065450",
+            "name": "rs62065450",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62064652",
+            "end_id": "ENSG00000225190"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62065450",
+            "end_id": "ENSG00000225190"
+          },
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      }
+    },
+    {
+      "case": "Q15",
+      "reason": "Question requests coloc signal/tissue evidence, not lead-variant membership retrieval. Coloc record properties carry the requested signal IDs; variant membership is optional supporting exploration.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs177069",
+            "name": "rs177069",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs35320372",
+            "name": "rs35320372",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs35320372",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs177069",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      }
+    },
+    {
+      "case": "Q16",
+      "reason": "Question requests coloc signal/tissue evidence, not lead-variant membership retrieval. Coloc record properties carry the requested signal IDs; variant membership is optional supporting exploration.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs177069",
+            "name": "rs177069",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs35320372",
+            "name": "rs35320372",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs35320372",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs177069",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      }
+    },
+    {
+      "case": "Q42",
+      "reason": "Broad gene introduction requires identity and defining function where referenced; specific pancreatic expression or T1D evidence is optional context, not explicitly requested.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": [
+          {
+            "type": "GENE_DETECTED_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": []
+      }
+    },
+    {
+      "case": "Q44",
+      "reason": "Broad gene introduction requires identity and defining function where referenced; specific pancreatic expression or T1D evidence is optional context, not explicitly requested.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "CL_0002079",
+            "name": "ductal cell"
+          },
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "GO:0005254",
+            "name": "chloride channel activity"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000001626",
+            "end_id": "GO:0005254"
+          },
+          {
+            "type": "GENE_ENRICHED_IN",
+            "start_id": "ENSG00000001626",
+            "end_id": "CL_0002079"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "GO:0005254",
+            "name": "chloride channel activity"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000001626",
+            "end_id": "GO:0005254"
+          }
+        ]
+      }
+    },
+    {
+      "case": "Q45",
+      "reason": "Broad gene introduction requires identity and defining function where referenced; specific pancreatic expression or T1D evidence is optional context, not explicitly requested.",
+      "old_core": {
+        "nodes": [
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000225190",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "new_core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          }
+        ],
+        "edges": []
+      }
+    }
+  ]
+}

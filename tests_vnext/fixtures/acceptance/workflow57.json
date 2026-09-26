@@ -1,5 +1,5 @@
 {
-  "version": "3-review-57-core",
+  "version": "3-review-57-core-3",
   "status": "draft_for_user_review_not_active",
   "graph_release": "PanKgraph_08_04",
   "source_manifest_sha256": "4c8490df1ac72d6dde243098b486ddee6e9cb39bf05027135eb4aa12d41e8f9f",
@@ -821,7 +821,18 @@
           {
             "id": "MONDO_0005147",
             "name": "type 1 diabetes"
-          },
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
           {
             "id": "rs62064652",
             "name": "rs62064652",
@@ -843,17 +854,8 @@
             "type": "PART_OF_QTL_SIGNAL",
             "start_id": "rs62065450",
             "end_id": "ENSG00000225190"
-          },
-          {
-            "type": "SIGNAL_COLOC_WITH",
-            "start_id": "ENSG00000225190",
-            "end_id": "MONDO_0005147"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
@@ -869,7 +871,18 @@
           {
             "id": "MONDO_0005147",
             "name": "type 1 diabetes"
-          },
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
           {
             "id": "rs62064652",
             "name": "rs62064652",
@@ -891,17 +904,8 @@
             "type": "PART_OF_QTL_SIGNAL",
             "start_id": "rs62065450",
             "end_id": "ENSG00000225190"
-          },
-          {
-            "type": "SIGNAL_COLOC_WITH",
-            "start_id": "ENSG00000225190",
-            "end_id": "MONDO_0005147"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
@@ -917,7 +921,18 @@
           {
             "id": "MONDO_0005147",
             "name": "type 1 diabetes"
-          },
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
           {
             "id": "rs177069",
             "name": "rs177069",
@@ -939,17 +954,8 @@
             "type": "PART_OF_QTL_SIGNAL",
             "start_id": "rs177069",
             "end_id": "ENSG00000001626"
-          },
-          {
-            "type": "SIGNAL_COLOC_WITH",
-            "start_id": "ENSG00000001626",
-            "end_id": "MONDO_0005147"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
@@ -965,7 +971,18 @@
           {
             "id": "MONDO_0005147",
             "name": "type 1 diabetes"
-          },
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
           {
             "id": "rs177069",
             "name": "rs177069",
@@ -987,17 +1004,8 @@
             "type": "PART_OF_QTL_SIGNAL",
             "start_id": "rs177069",
             "end_id": "ENSG00000001626"
-          },
-          {
-            "type": "SIGNAL_COLOC_WITH",
-            "start_id": "ENSG00000001626",
-            "end_id": "MONDO_0005147"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
@@ -9905,18 +9913,20 @@
       "id": "Q42",
       "question": "Tell me about gene INS",
       "source_key": "history-000002",
-      "notes": [
-        "Representative core reference, not an exhaustive list. Other supported relevant answers are allowed."
-      ],
       "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
         "nodes": [
           {
             "id": "CL_0000169",
             "name": "beta cell"
-          },
-          {
-            "id": "ENSG00000254647",
-            "name": "INS"
           }
         ],
         "edges": [
@@ -9926,10 +9936,6 @@
             "end_id": "CL_0000169"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
@@ -9992,15 +9998,8 @@
       "id": "Q44",
       "question": "What is CFTR?",
       "source_key": "history-000018",
-      "notes": [
-        "Representative core reference, not an exhaustive list. Other supported relevant answers are allowed."
-      ],
       "core": {
         "nodes": [
-          {
-            "id": "CL_0002079",
-            "name": "ductal cell"
-          },
           {
             "id": "ENSG00000001626",
             "name": "CFTR"
@@ -10015,35 +10014,43 @@
             "type": "ASSOCIATED_WITH_GO",
             "start_id": "ENSG00000001626",
             "end_id": "GO:0005254"
-          },
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
+          {
+            "id": "CL_0002079",
+            "name": "ductal cell"
+          }
+        ],
+        "edges": [
           {
             "type": "GENE_ENRICHED_IN",
             "start_id": "ENSG00000001626",
             "end_id": "CL_0002079"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
       "id": "Q45",
       "question": "What is PLEKHM1?",
       "source_key": "history-000054",
-      "notes": [
-        "Representative core reference, not an exhaustive list. Other supported relevant answers are allowed."
-      ],
       "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
         "nodes": [
           {
             "id": "CL_0000169",
             "name": "beta cell"
-          },
-          {
-            "id": "ENSG00000225190",
-            "name": "PLEKHM1"
           },
           {
             "id": "MONDO_0005147",
@@ -10062,10 +10069,6 @@
             "end_id": "CL_0000169"
           }
         ]
-      },
-      "extra": {
-        "nodes": [],
-        "edges": []
       }
     },
     {
