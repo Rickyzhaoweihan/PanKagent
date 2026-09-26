@@ -47,7 +47,7 @@
             "disease"
           ]
         ],
-        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. A member variant is not automatically the lead. Preserve the requested disease."
+        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. Apply the release-scoped temporary QTL/GWAS comment for indexed KG lead-signal representatives; do not require a missing lead_status flag. Preserve explicit stored annotations, exact signal identity and the requested disease."
       },
       {
         "id": "same_sample",

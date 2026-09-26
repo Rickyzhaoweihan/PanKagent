@@ -2,6 +2,14 @@
 from copy import deepcopy
 
 
+def temporary_comment_text(sem, release, relation=None):
+    """Render reviewed release-scoped notes without modifying stored graph facts."""
+    return '\n'.join('Temporary schema comment — '+c['section']+': '+c['text']
+                     for c in sem.get('temporary_comments', [])
+                     if c['graph_release'] == release
+                     and (relation is None or relation in c['relations']))
+
+
 def project(data, name):
     db, sem = data['database_schema'], data['semantic_interpretation']
     if name == 'identity':
@@ -16,10 +24,14 @@ def project(data, name):
                                    for p, spec in v['properties'].items() if 'reviewed_values' in spec},
                     'aliases': {k: v['aliases'] for k, v in db['nodes'].items() if v['aliases']}}
         return {'schema': {'id': 'kg-agent.graph-storage', 'version': '2.0.0'},
-                'registry': registry, 'relationship_guidance': sem['relation_guidance'],
+                'registry': registry, 'relationship_guidance': {k: v+'\n'+temporary_comment_text(sem, db['release'], k)
+                                              for k,v in sem['relation_guidance'].items()},
                 'labels': sem['display_labels'], 'postgresql': db['postgresql']}
     if name == 'semantics_modalities':
         result = deepcopy({k: v for k, v in sem.items() if k not in {'bim','relation_guidance','display_labels'}})
+        comments = temporary_comment_text(sem, db['release'])
+        if comments:
+            result['planning_instructions'] = {k:v+'\n'+comments for k,v in result['planning_instructions'].items()}
         result['terminology']['PROPERTIES'] = {k: list(db['nodes'][k]['properties'])
                                               for k in result['terminology'].pop('property_type_refs')}
         result['anatomy'] = {'ALIASES': {r['id']: [r['name'], r['aliases']]

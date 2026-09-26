@@ -504,6 +504,50 @@
           }
         }
       }
+    },
+    "temporary_comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "section",
+          "graph_release",
+          "relations",
+          "text",
+          "remove_when"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "section": {
+            "type": "string",
+            "minLength": 1
+          },
+          "graph_release": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "remove_when": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

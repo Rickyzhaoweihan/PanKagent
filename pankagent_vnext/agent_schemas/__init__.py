@@ -43,6 +43,9 @@ class SchemaPack:
         data = {name: project(self._data, name) for name in
                 ('graph_storage', 'identity', 'semantics_modalities', 'query_patterns', 'validation_repair')}
         db = self._data['database_schema']
+        for comment in self._data['semantic_interpretation'].get('temporary_comments', []):
+            if not set(comment['relations']) <= set(db['relationships']):
+                raise ValueError('invalid_temporary_comment_relationship')
         for relationship, spec in db['relationships'].items():
             for link in spec['annotation_links']:
                 target = db['relationships'].get(link['target_relationship'], {})

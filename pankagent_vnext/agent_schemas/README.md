@@ -102,3 +102,20 @@ constitute live acceptance.
 synthetic gene, disease and relationship records. It is not a second schema pack
 or evidence for a biological answer. The production dictionary's public examples
 come from the pinned graph scan; clinical records are not used as Git examples.
+
+## Temporary interpretation comments
+
+`semantic_interpretation.json.temporary_comments` is a reviewed, release-scoped
+bridge for meanings that are not yet explicit in KG properties. Each comment
+names its section, relationships, graph release, agent guidance and removal
+condition. The same text reaches grounded/fallback planning, relationship
+interpretation and answer generation; it is included in the immutable pack hash.
+
+The PanKgraph_08_04 QTL/GWAS comment records the project convention that indexed
+edges represent lead signals. Missing lead flags must not cause a blanket
+"lead cannot be established" answer or an extra mandatory filter. Stored explicit
+annotations remain unchanged, and coloc signal/lead identity must still be read
+from the coloc record. S3 or future all-variant layers do not inherit this rule.
+Replace this temporary comment when the next KG release directly encodes the
+roles and the migration has been validated. This source update does not activate
+a deployed service or rewrite existing answers.

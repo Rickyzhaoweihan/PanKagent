@@ -2408,5 +2408,18 @@
         ]
       }
     ]
-  }
+  },
+  "temporary_comments": [
+    {
+      "id": "lead_signal_edges_0804",
+      "section": "QTL / GWAS",
+      "graph_release": "PanKgraph_08_04",
+      "relations": [
+        "PART_OF_QTL_SIGNAL",
+        "PART_OF_GWAS_SIGNAL"
+      ],
+      "text": "Temporary QTL/GWAS interpretation for PanKgraph_08_04: the project imports KG PART_OF_QTL_SIGNAL and PART_OF_GWAS_SIGNAL edges as lead-signal representatives. For these indexed KG records, interpret the linked variants as the recorded lead representatives for their respective signals; do not demand an additional lead_status flag or say that lead status cannot be established merely because that flag or a derived lead_role is missing/unknown. This is a project import convention, not a new measured property. Preserve all returned variants, full signal IDs, source and tissue context; different full credible-set IDs remain different signals even when their suffixes match. Do not add a mandatory lead_status filter that would drop valid records without that property. Do not extend this convention to S3 association tables, future all-QTL search results, or other graph releases. Explicit stored lead/nonlead annotations must remain visible and unchanged; if a record explicitly contradicts the convention, identify that particular metadata discrepancy rather than silently relabeling it or questioning every unflagged KG edge. For colocalization, only gwas_signal_id/qtl_signal_id and gwas_lead_vars/qtl_lead_vars on the coloc record identify the signals and lead variants that actually colocalized. A KG lead representative is not automatically a lead of every coloc signal, and does not establish causality or a QTL molecular subtype.",
+      "remove_when": "Next KG release explicitly models lead-signal roles on relationships and documents any all-variant/non-lead association layer. Replace this temporary interpretation with the verified native schema after validating the migration."
+    }
+  ]
 }
