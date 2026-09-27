@@ -23,21 +23,14 @@ DIGEST = hashlib.sha256(Path(__file__).read_bytes() + SCHEMA_DIGEST.encode()
                        + VALUE_DIGEST.encode() + DONOR_CATEGORY_DIGEST.encode()
                        + GENOMIC_DIGEST.encode()
                        + Path(__file__).with_name('annotation_selection.py').read_bytes()).hexdigest()
-_SECONDARY_LABELS = {'ontology', 'sequence_variant', 'snv', 'insertion', 'indel',
-                     'deletion', 'provenance'}
+from .agent_schemas import module as schema_module
+_METADATA = schema_module('database_schema')['execution_metadata']
+_SECONDARY_LABELS = set(_METADATA['secondary_labels'])
 _OPERATORS = {'=', '!=', '<>', 'IN', '>', '>=', '<', '<=', 'CONTAINS', 'STARTS WITH', 'ENDS WITH'}
-# Reuse the reviewed measurement inventory. Expression_call is categorical.
-_NUMERIC_FIELDS = {kind: set(fields) - {'expression_call'}
-                   for kind, fields in MEASUREMENT_FIELDS.items()}
-# Quantitative membership fields independently inspected in the locus audit.
-_NUMERIC_FIELDS.update({'PART_OF_QTL_SIGNAL': {'pip', 'rank', 'nominal_p'},
-                        'PART_OF_GWAS_SIGNAL': {'pip', 'rank'}})
-_REGION_FIELDS = {'chr', 'assembly', 'genome_assembly', 'start_loc', 'end_loc'}
-_RUNTIME_INVENTORY_FIELDS = {('donor', field) for field in CATEGORICAL_FIELDS} | {
-    ('donor', 't1d_stage'),
-    ('Sample_node', 'data_source'),
-    ('Sample_node', 'data_modality'),
-}
+_NUMERIC_FIELDS = {kind: set(fields) for kind, fields in _METADATA['numeric_measurement_fields'].items()}
+_NUMERIC_FIELDS.update({k: set(v) for k, v in _METADATA['numeric_membership_fields'].items()})
+_REGION_FIELDS = set(_METADATA['coordinate_fields'])
+_RUNTIME_INVENTORY_FIELDS = {tuple(value) for value in _METADATA['runtime_inventory_fields']}
 
 
 def _common_endpoint(paths, side):
@@ -399,6 +392,53 @@ def _node_records(step):
                                   'scope_basis': 'verified_single_node_scope'}}
 
 
+
+def interval_overlap_requested(step):
+    import re
+    question = (step.get('semantic_request') or {}).get('question') or step.get('question', '')
+    return any(step.get('relation_types') == [recipe['relation']] and re.search(recipe['request_pattern'], question, re.I)
+               for recipe in schema_module('query_patterns').get('interval_overlap_patterns', []))
+
+
+def _interval_overlap_records(step):
+    import re
+    for recipe in schema_module('query_patterns').get('interval_overlap_patterns', []):
+        if step.get('relation_types') != [recipe['relation']] or not re.search(
+                recipe['request_pattern'], (step.get('semantic_request') or {}).get('question') or step.get('question', ''), re.I):
+            continue
+        variables = {recipe['anchor']: 'g', recipe['context']: 'c'}
+        params, bindings, filters, bound = {}, {}, [], set()
+        for index, constraint in enumerate(step.get('constraints', [])):
+            owner = constraint.get('entity_type')
+            if (owner not in variables or constraint.get('property') not in {'id', 'name'}
+                    or constraint.get('operator', '=') != '=' or constraint.get('owner_kind') not in (None, 'node')
+                    or constraint.get('relationship_type')):
+                return None
+            resolved = _resolved_entity(step, index, constraint)
+            if resolved is None or resolved['entity_type'] != owner:
+                return None
+            parameter = 'template_' + str(index)
+            params[parameter] = resolved['id']
+            bindings[parameter] = _parameter_binding(step, index, constraint, owner, 'id', '=', resolved)
+            filters.append(f"{variables[owner]}.`id` = ${parameter}")
+            bound.add(owner)
+        if bound != set(variables) or len(params) != 2:
+            return None
+        for field in ('chromosome', 'assembly'):
+            prop = recipe[field]
+            filters.append(f"p.`{prop}` = g.`{prop}`")
+        start, end = recipe['start'], recipe['end']
+        filters.extend([f"p.`{start}` <= g.`{end}`", f"p.`{end}` >= g.`{start}`"])
+        query = (f"MATCH (g:`{recipe['anchor']}`), (p:`{recipe['member']}`)-[r:`{recipe['relation']}`]->(c:`{recipe['context']}`)\n"
+                 + 'WHERE ' + ' AND '.join(filters)
+                 + '\nRETURN collect(DISTINCT g) + collect(DISTINCT p) + collect(DISTINCT c) AS nodes, collect(DISTINCT r) AS edges')
+        return {'cypher': query, 'parameters': params, 'parameter_bindings': bindings,
+                'template_id': 'interval_overlap_records', 'version': VERSION, 'sha256': DIGEST,
+                'schema_sha256': SCHEMA_DIGEST, 'endpoint_coverage': {'all_requested_paths_covered': True,
+                'scope_basis': recipe['id'], 'interpretation': 'recorded coordinate overlap only'}}
+    return None
+
+
 def compile_query(step):
     from .annotation_selection import overview, RELATIONS as ANNOTATION_RELATIONS
     bounded_annotation = overview(step)
@@ -411,6 +451,9 @@ def compile_query(step):
         return _region_gene_records(step) or _node_records(step)
     if len(kinds) != 1 or kinds[0] not in REGISTRY['relations']:
         return None
+    overlap = _interval_overlap_records(step)
+    if overlap:
+        return overlap
     kind = kinds[0]
     paths = REGISTRY['relations'][kind]['paths']
     if not paths:

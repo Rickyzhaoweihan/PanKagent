@@ -76,4 +76,39 @@ def question_guidance(question, grounding=None):
     rules=[{'reference':'interpretation.'+r['id'],'applies_to':r['database_refs'],'applicability':r['applicability']} for r in sem['bim']['rules'] if refs.intersection(r['database_refs'])]
     return {'schema_sha256':pack.digest,'available_references':sorted(refs),'expert_interpretation':rules,
             'interpretation_catalog': 'All retained BIM rules can be inspected by interpretation.<rule id>. Historical, functional-feature and combination rules apply only to the specified representation. Do not infer a filter from an interpretation.',
+            'structural_patterns': [r for r in pack.module('query_patterns')['library']['rules'] if any('relationships.' + rel in refs for rel in r['relations'])],
+            'population_groups': (grounding or {}).get('population_groups', []),
+            'interval_patterns': [r for r in pack.module('query_patterns').get('interval_overlap_patterns', []) if 'relationships.' + r['relation'] in refs],
             'instruction':'Use inspect_schema for exact fields and examples. Use resolve_property_values for recorded codes. A tissue display name is not a Sample_node tissue code. Interpretation describes evidence; it never adds unrequested diagnosis or assay predicates.'}
+
+
+def merge_property_facts(grounding, outcome):
+    """Retain current tool observations without authorizing any new filter.
+
+    A searched or capped result proves returned values, never a closed universe.
+    Only server-produced tool outcomes with matching pack/release enter this view.
+    """
+    from copy import deepcopy
+    result = deepcopy(grounding or {})
+    pack = active_pack()
+    if (outcome.get('status') != 'complete' or outcome.get('schema_sha256') != pack.digest
+            or outcome.get('graph_release') != pack.module('database_schema')['release']):
+        return result
+    ref = outcome.get('reference', '')
+    try:
+        pack.resolve_ref(ref)
+    except ValueError:
+        return result
+    parts = ref.split('.')
+    if len(parts) != 4 or parts[0] not in {'nodes', 'relationships'} or parts[2] != 'properties':
+        return result
+    values = [row['value'] for row in outcome.get('values', [])
+              if isinstance(row, dict) and isinstance(row.get('value'), (str, int, float, bool))]
+    key = parts[1] + '.' + parts[3]
+    categories = result.setdefault('schema', {}).setdefault('categories', {})
+    categories[key] = list(dict.fromkeys([*categories.get(key, []), *values]))
+    result.setdefault('property_observations', {})[key] = {
+        'reference': ref, 'graph_release': outcome['graph_release'],
+        'complete_inventory': outcome.get('values_complete') is True and outcome.get('search_text') == '',
+        'search_text': outcome.get('search_text'), 'values': values}
+    return result

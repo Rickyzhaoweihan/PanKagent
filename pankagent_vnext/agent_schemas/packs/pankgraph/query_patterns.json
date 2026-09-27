@@ -132,5 +132,38 @@
       "verified_coordinate_pattern"
     ]
   },
-  "gpu_participation_required": true
+  "gpu_participation_required": false,
+  "referenced_dependency_entities": [
+    {
+      "relation": "PART_OF_GWAS_SIGNAL",
+      "source_relation": "SIGNAL_COLOC_WITH",
+      "source_property": "gwas_lead_vars",
+      "entity_type": "variants",
+      "id_pattern": "rs\\d+",
+      "max_ids": 8
+    },
+    {
+      "relation": "PART_OF_QTL_SIGNAL",
+      "source_relation": "SIGNAL_COLOC_WITH",
+      "source_property": "qtl_lead_vars",
+      "entity_type": "variants",
+      "id_pattern": "rs\\d+",
+      "max_ids": 8
+    }
+  ],
+  "interval_overlap_patterns": [
+    {
+      "id": "recorded_gene_body_peak_overlap",
+      "anchor": "Gene",
+      "member": "OCR_peak",
+      "context": "anatomical_structure",
+      "relation": "OCR_PEAK_IN",
+      "chromosome": "chr",
+      "assembly": "genome_assembly",
+      "start": "start_loc",
+      "end": "end_loc",
+      "request_pattern": "\\boverlap\\w*\\b.{0,80}\\bgene body\\b|\\bgene body\\b.{0,80}\\boverlap\\w*\\b",
+      "guidance": "For gene-body OCR overlap, use an independent OCR_PEAK_IN task with explicit Gene and anatomical_structure identities and request gene-body overlap in its question. The structural compiler compares recorded chromosome, genome assembly and interval endpoints. Keep the gene-activity task separate. Return overlapping peaks and OCR_PEAK_IN annotations; overlap is not a regulatory edge."
+    }
+  ]
 }

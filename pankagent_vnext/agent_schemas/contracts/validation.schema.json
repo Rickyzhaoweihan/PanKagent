@@ -96,6 +96,60 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "result_checks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "completed_execution",
+          "materialized_endpoints"
+        ]
+      }
+    },
+    "structural_budget_hints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "graph_release",
+          "basis",
+          "route_kind",
+          "version",
+          "shapes",
+          "weights"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "graph_release": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "route_kind": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "shapes": {
+            "type": "object"
+          },
+          "weights": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

@@ -13296,7 +13296,7 @@
               "data_version": "10/24/25",
               "end_id": "MONDO_0005147",
               "start_id": "ENSG00000005020",
-              "evidence": "[{\"summary\": \"SKAP2 classified as Moderate (overall score 3)\"}, {\"Perturbation evidence\": \"1P (experimental perturbation evidence — for detail please see datasource)\"}, {\"Regulatory evidence\": \"1R (regulatory (eQTL/caQTL/Hi-C) evidence — for detail please see datasource)\"}, {\"eQTL\": \"Top=SKAP2; Others=HOTAIRM1; HOXA2; HOXA5; HOXA1; HOXA-AS2; HOXA9; HOXA3\"}, {\"Mouse phenotype\": \"abnormal B cell activation; decreased B cell proliferation; decreased IgM level; decreased IgG2a level; decreased susceptibility to experimental autoimmune encephalomyelitis; ...\"}]",
+              "evidence": "[{\"summary\": \"SKAP2 classified as Moderate (overall score 3)\"}, {\"Perturbation evidence\": \"1P (experimental perturbation evidence \u2014 for detail please see datasource)\"}, {\"Regulatory evidence\": \"1R (regulatory (eQTL/caQTL/Hi-C) evidence \u2014 for detail please see datasource)\"}, {\"eQTL\": \"Top=SKAP2; Others=HOTAIRM1; HOXA2; HOXA5; HOXA1; HOXA-AS2; HOXA9; HOXA3\"}, {\"Mouse phenotype\": \"abnormal B cell activation; decreased B cell proliferation; decreased IgM level; decreased IgG2a level; decreased susceptibility to experimental autoimmune encephalomyelitis; ...\"}]",
               "data_source": "Type 1 diabetes predicted effector genes (Onengut-Gumuscu S and Rich SS, 2022)",
               "data_source_url": "https://t1d.hugeamp.org/research.html?pageid=T1D_UVa_168#:~:text=SKAP2",
               "effector_gene_list_url": "https://t1d.hugeamp.org/research.html?pageid=T1D_UVa_168"
@@ -13372,7 +13372,7 @@
                   "data_version": "10/24/25",
                   "end_id": "MONDO_0005147",
                   "start_id": "ENSG00000005020",
-                  "evidence": "[{\"summary\": \"SKAP2 classified as Moderate (overall score 3)\"}, {\"Perturbation evidence\": \"1P (experimental perturbation evidence — for detail please see datasource)\"}, {\"Regulatory evidence\": \"1R (regulatory (eQTL/caQTL/Hi-C) evidence — for detail please see datasource)\"}, {\"eQTL\": \"Top=SKAP2; Others=HOTAIRM1; HOXA2; HOXA5; HOXA1; HOXA-AS2; HOXA9; HOXA3\"}, {\"Mouse phenotype\": \"abnormal B cell activation; decreased B cell proliferation; decreased IgM level; decreased IgG2a level; decreased susceptibility to experimental autoimmune encephalomyelitis; ...\"}]",
+                  "evidence": "[{\"summary\": \"SKAP2 classified as Moderate (overall score 3)\"}, {\"Perturbation evidence\": \"1P (experimental perturbation evidence \u2014 for detail please see datasource)\"}, {\"Regulatory evidence\": \"1R (regulatory (eQTL/caQTL/Hi-C) evidence \u2014 for detail please see datasource)\"}, {\"eQTL\": \"Top=SKAP2; Others=HOTAIRM1; HOXA2; HOXA5; HOXA1; HOXA-AS2; HOXA9; HOXA3\"}, {\"Mouse phenotype\": \"abnormal B cell activation; decreased B cell proliferation; decreased IgM level; decreased IgG2a level; decreased susceptibility to experimental autoimmune encephalomyelitis; ...\"}]",
                   "data_source": "Type 1 diabetes predicted effector genes (Onengut-Gumuscu S and Rich SS, 2022)",
                   "data_source_url": "https://t1d.hugeamp.org/research.html?pageid=T1D_UVa_168#:~:text=SKAP2",
                   "effector_gene_list_url": "https://t1d.hugeamp.org/research.html?pageid=T1D_UVa_168"
@@ -29142,5 +29142,210 @@
       "fc615387cfab9159c475f511492b464a78e83a7302cf381d619b37068e7c5568",
       "fced701c8c15715b4ab986b54246ef2f1eac1633298880b114a6c7c8460b3c52"
     ]
+  },
+  "execution_metadata": {
+    "measurement_fields": {
+      "GENE_ENRICHED_IN": [
+        "base_mean",
+        "lfc_se",
+        "log2_fold_change",
+        "padj",
+        "pvalue",
+        "rank_in_cell_type",
+        "stat"
+      ],
+      "GENE_DETECTED_IN": [
+        "expression_call",
+        "max_donor_log_cpm",
+        "max_pct_cells_expressing",
+        "mean_donor_cpm",
+        "mean_donor_log_cpm",
+        "mean_pct_cells_expressing",
+        "median_donor_cpm",
+        "median_donor_log_cpm",
+        "median_pct_cells_expressing",
+        "min_donor_log_cpm",
+        "total_cells"
+      ],
+      "T1D_DEG_IN": [
+        "adjusted_p_value",
+        "log2_fold_change",
+        "p_value",
+        "se_of_log2_fold_change"
+      ],
+      "GENE_ACTIVITY_SCORE_IN": [
+        "aab_pos_ocr_gene_activity_score_mean",
+        "aab_pos_ocr_gene_activity_score_median",
+        "non_diabetic_ocr_gene_activity_score_mean",
+        "non_diabetic_ocr_gene_activity_score_median",
+        "ocr_gene_activity_score_mean",
+        "ocr_gene_activity_score_median",
+        "type_1_diabetes_ocr_gene_activity_score_mean",
+        "type_1_diabetes_ocr_gene_activity_score_median",
+        "type_2_diabetes_ocr_gene_activity_score_mean",
+        "type_2_diabetes_ocr_gene_activity_score_median"
+      ],
+      "SIGNAL_COLOC_WITH": [
+        "nsnp",
+        "pp_h0_abf",
+        "pp_h1_abf",
+        "pp_h2_abf",
+        "pp_h3_abf",
+        "pp_h4_abf"
+      ],
+      "MARKER_GENE_OF": []
+    },
+    "measurement_relations": [
+      "GENE_ACTIVITY_SCORE_IN",
+      "GENE_DETECTED_IN",
+      "GENE_ENRICHED_IN",
+      "MARKER_GENE_OF",
+      "SIGNAL_COLOC_WITH",
+      "T1D_DEG_IN"
+    ],
+    "signal_relations": [
+      "PART_OF_GWAS_SIGNAL",
+      "PART_OF_QTL_SIGNAL",
+      "SIGNAL_COLOC_WITH"
+    ],
+    "secondary_labels": [
+      "ontology",
+      "sequence_variant",
+      "snv",
+      "insertion",
+      "indel",
+      "deletion",
+      "provenance"
+    ],
+    "numeric_membership_fields": {
+      "PART_OF_QTL_SIGNAL": [
+        "pip",
+        "rank",
+        "nominal_p"
+      ],
+      "PART_OF_GWAS_SIGNAL": [
+        "pip",
+        "rank"
+      ]
+    },
+    "coordinate_fields": [
+      "chr",
+      "assembly",
+      "genome_assembly",
+      "start_loc",
+      "end_loc"
+    ],
+    "categorical_owner": "donor",
+    "categorical_fields": [
+      "gender",
+      "sex_at_birth",
+      "race",
+      "donation_type",
+      "aab_state",
+      "hla_status",
+      "diabetes_type",
+      "derived_diabetes_status",
+      "data_source"
+    ],
+    "runtime_inventory_fields": [
+      [
+        "donor",
+        "gender"
+      ],
+      [
+        "donor",
+        "sex_at_birth"
+      ],
+      [
+        "donor",
+        "race"
+      ],
+      [
+        "donor",
+        "donation_type"
+      ],
+      [
+        "donor",
+        "aab_state"
+      ],
+      [
+        "donor",
+        "hla_status"
+      ],
+      [
+        "donor",
+        "diabetes_type"
+      ],
+      [
+        "donor",
+        "derived_diabetes_status"
+      ],
+      [
+        "donor",
+        "data_source"
+      ],
+      [
+        "donor",
+        "t1d_stage"
+      ],
+      [
+        "Sample_node",
+        "data_source"
+      ],
+      [
+        "Sample_node",
+        "data_modality"
+      ]
+    ],
+    "numeric_measurement_fields": {
+      "GENE_ENRICHED_IN": [
+        "base_mean",
+        "lfc_se",
+        "log2_fold_change",
+        "padj",
+        "pvalue",
+        "rank_in_cell_type",
+        "stat"
+      ],
+      "GENE_DETECTED_IN": [
+        "max_donor_log_cpm",
+        "max_pct_cells_expressing",
+        "mean_donor_cpm",
+        "mean_donor_log_cpm",
+        "mean_pct_cells_expressing",
+        "median_donor_cpm",
+        "median_donor_log_cpm",
+        "median_pct_cells_expressing",
+        "min_donor_log_cpm",
+        "total_cells"
+      ],
+      "T1D_DEG_IN": [
+        "adjusted_p_value",
+        "log2_fold_change",
+        "p_value",
+        "se_of_log2_fold_change"
+      ],
+      "GENE_ACTIVITY_SCORE_IN": [
+        "aab_pos_ocr_gene_activity_score_mean",
+        "aab_pos_ocr_gene_activity_score_median",
+        "non_diabetic_ocr_gene_activity_score_mean",
+        "non_diabetic_ocr_gene_activity_score_median",
+        "ocr_gene_activity_score_mean",
+        "ocr_gene_activity_score_median",
+        "type_1_diabetes_ocr_gene_activity_score_mean",
+        "type_1_diabetes_ocr_gene_activity_score_median",
+        "type_2_diabetes_ocr_gene_activity_score_mean",
+        "type_2_diabetes_ocr_gene_activity_score_median"
+      ],
+      "SIGNAL_COLOC_WITH": [
+        "nsnp",
+        "pp_h0_abf",
+        "pp_h1_abf",
+        "pp_h2_abf",
+        "pp_h3_abf",
+        "pp_h4_abf"
+      ],
+      "MARKER_GENE_OF": []
+    }
   }
 }

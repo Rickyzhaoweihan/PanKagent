@@ -658,6 +658,94 @@
     },
     "observations": {
       "type": "object"
+    },
+    "execution_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measurement_fields",
+        "measurement_relations",
+        "signal_relations",
+        "secondary_labels",
+        "numeric_membership_fields",
+        "coordinate_fields",
+        "categorical_owner",
+        "categorical_fields",
+        "runtime_inventory_fields"
+      ],
+      "properties": {
+        "measurement_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "measurement_relations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signal_relations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "secondary_labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "numeric_membership_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "coordinate_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "categorical_owner": {
+          "type": "string"
+        },
+        "categorical_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runtime_inventory_fields": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "numeric_measurement_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

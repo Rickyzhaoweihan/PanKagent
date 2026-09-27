@@ -77,7 +77,7 @@ class ResolverGraph(GraphAdapter):
 
     async def _retrieve(self, query, parameters, limits=None):
         self.retrieved.append(query)
-        return {"status": "complete", "truncated": False, "nodes": [
+        return {"status": "complete", "truncated": False, "retrieval_execution": {"completed": True, "cursor_exhausted": True, "mode": "read_only"}, "nodes": [
             {"id": row["id"], "labels": row["labels"], "properties": {"id": row["id"], "name": row["name"]}}
             for row in self.rows[:2]], "edges": [], "rows": []}
 

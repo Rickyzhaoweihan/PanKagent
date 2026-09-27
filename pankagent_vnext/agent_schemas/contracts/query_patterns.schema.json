@@ -123,6 +123,98 @@
     },
     "gpu_participation_required": {
       "type": "boolean"
+    },
+    "referenced_dependency_entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "source_relation",
+          "source_property",
+          "entity_type",
+          "id_pattern",
+          "max_ids"
+        ],
+        "properties": {
+          "relation": {
+            "type": "string"
+          },
+          "source_relation": {
+            "type": "string"
+          },
+          "source_property": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "id_pattern": {
+            "type": "string"
+          },
+          "max_ids": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          }
+        }
+      }
+    },
+    "interval_overlap_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "anchor",
+          "member",
+          "context",
+          "relation",
+          "chromosome",
+          "assembly",
+          "start",
+          "end",
+          "request_pattern",
+          "guidance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "anchor": {
+            "type": "string"
+          },
+          "member": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "chromosome": {
+            "type": "string"
+          },
+          "assembly": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "request_pattern": {
+            "type": "string"
+          },
+          "guidance": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

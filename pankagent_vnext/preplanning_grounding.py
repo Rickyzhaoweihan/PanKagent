@@ -33,18 +33,7 @@ _GREEK = str.maketrans({"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta
 # These are linguistic roles, not excluded gene symbols. An explicit gene
 # request always retains a recorded alias, including aliases that are words.
 _REQUEST_VERBS = {"find", "show", "list", "count", "compare", "describe", "explain", "identify", "retrieve", "search", "get", "check", "tell", "give"}
-_SCHEMA_ROLE_PATTERNS = {
-    "ontology_vocabulary": r"\b(?:GO|gene ontology)(?:\s+(?:term|annotation|evidence|biological|molecular|cellular|for|of))|\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\s+(?:GO|annotation|term)",
-    "analysis_collection_vocabulary": r"\b(?:gene[- ]sets?|effector[- ]sets?|result[- ]sets?|set of (?:genes|variants|records))\b",
-    "signal_context_vocabulary": r"\b(?:credible[- ]sets?|lead[- ]variants?|fine[- ]mapping)\b",
-    "evidence_class_vocabulary": r"\b(?:evidence|measurement|assay|record|relationship)[- ]types?\b",
-    "entity_class_vocabulary": r"\b(?:cell[- ]types?|cell[- ]states?|donors?|samples?|assays?|cohorts?)\b",
-    "assay_vocabulary": r"\b(?:single|multi)[- ](?:cell|nucleus|nuclear)(?:\s+RNA[- ]?seq)?\b|\b(?:RNA|ATAC|DNA|CITE|BCR|TCR)[- ](?:seq|sequencing)\b|\b(?:RNA|ATAC|DNA)\s+(?:component|data|assay|measurement)s?\b|\bATAC\s+gene\s+activity\b|\bRNA\s+expression\b|\b(?:ATAC|RNA)\s+(?:distinct from|versus|vs\.?)\s+(?:ATAC|RNA)\b",
-    "analysis_vocabulary": r"\b(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\s+(?:evidence|signal|association|annotation|analysis|enrichment|data|record|support|for|of|in|with|between)|\b(?:evidence|signal|association|analysis|enrichment)\s+(?:from|for|of|in)?\s*(?:eQTL|sQTL|QTL|GWAS|fGSEA|GSEA|coloc)\b",
-    "identifier_vocabulary": r"\b(?:Ensembl|Entrez|gene|transcript|variant|stable)\s+(?:IDs?|identifiers?)\b",
-    "coordinate_unit": r"\b\d+(?:\.\d+)?\s*(?:bp|kb|Mb|Gb)\b",
-    "ranking_vocabulary": r"\b(?:top|bottom|first)\s+\d+\b",
-}
+_SCHEMA_ROLE_PATTERNS = schema_module('semantic_interpretation')['grounding_role_patterns']
 
 
 def phrase_tokens(text):
@@ -424,8 +413,23 @@ class Grounder:
         self.index_expires_at = None
         self.lock = asyncio.Lock()
         self.last_error = None
+        self.refresh_task = None
+
+    async def close(self):
+        if self.refresh_task and not self.refresh_task.done():
+            self.refresh_task.cancel()
+            await asyncio.gather(self.refresh_task, return_exceptions=True)
 
     async def warm(self, force=False):
+        # A short caller deadline must not repeatedly discard a nearly built index.
+        # Never return an expired index: callers can use tools while refresh finishes.
+        if self.refresh_task is None or self.refresh_task.done():
+            self.refresh_task = asyncio.create_task(self._warm(force=force))
+            self.refresh_task.add_done_callback(
+                lambda task: task.exception() if not task.cancelled() else None)
+        return await asyncio.shield(self.refresh_task)
+
+    async def _warm(self, force=False):
         async with self.lock:
             identity = inventory_identity(self.graph)
             if (not force and self.index and self.index.identity == identity
@@ -495,6 +499,18 @@ class Grounder:
                            "Schema and metadata matches are not retrieved scientific evidence.",
                            "Do not silently remove a filter, invent an identity, or turn unavailable grounding into zero matches."],
                  "latency_ms": round((time.monotonic() - start) * 1000, 2)}
+        value['population_groups'] = []
+        from .agent_schemas import module
+        for group in module('semantic_interpretation').get('population_groups', []):
+            if not re.search(group['request_pattern'], scope_question, re.I) or re.search(group['exclude_pattern'], scope_question, re.I):
+                continue
+            candidates = []
+            for name in group['recorded_names']:
+                for match in index.match(name):
+                    candidates.extend(c for c in match.get('candidates', [])
+                                      if c.get('entity_type') == group['entity_type'] and c.get('name') == name)
+            value['population_groups'].append({'id': group['id'], 'interpretation': group['interpretation'],
+                'candidates': candidates, 'complete': {c['name'] for c in candidates} == set(group['recorded_names'])})
         region = genomic_scope(question)
         if region:
             value['genomic_scope'] = region

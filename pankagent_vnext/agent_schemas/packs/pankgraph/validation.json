@@ -45,6 +45,128 @@
     "value_owner_mismatch": "Inspect the owner property and related entity. Reconcile duplicate tissue-name predicates with the verified tissue-ID relationship; retain the requested tissue restriction.",
     "stage_not_diagnosis": "A stage predicate does not authorize a diagnosis join.",
     "annotation_projection": "Retrieve requested annotation relationships without making optional annotations mandatory matches.",
-    "combination_role": "Custom role selectors require matching typed roles in the parent path_spec; otherwise select verified source/target endpoints. Do not invent a role after query execution."
-  }
+    "combination_role": "Custom role selectors require matching typed roles in the parent path_spec; otherwise select verified source/target endpoints. Do not invent a role after query execution.",
+    "invalid_measurement_property": "Inspect the requested relationship property definitions and use their exact owned fields. Do not invent measurement thresholds.",
+    "unrequested_clinical_join": "Use only verified requested donor stage/cohort and sample/tissue predicates. A stage does not authorize a disease-node identity or diagnosed-diabetes predicate. Preserve explicitly approved clinical predicates exactly."
+  },
+  "result_checks": [
+    "completed_execution",
+    "materialized_endpoints"
+  ],
+  "structural_budget_hints": [
+    {
+      "id": "reviewed_interaction_annotation_fanout",
+      "graph_release": "PanKgraph_08_04",
+      "basis": "Historical measured fan-out for the three bounded interaction/annotation branches; retains existing allocation pending independent generic calibration. No entity IDs or question matching.",
+      "route_kind": "verified_bounded_path",
+      "version": "bounded-path-v1",
+      "shapes": {
+        "direct_annotations": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "process",
+              [
+                "kegg",
+                "reactome"
+              ]
+            ]
+          ],
+          [
+            [
+              "annotation",
+              "focus",
+              "process",
+              [
+                "FUNCTION_ANNOTATION"
+              ],
+              "out"
+            ]
+          ]
+        ],
+        "interaction_partners": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "partner",
+              [
+                "Gene"
+              ]
+            ]
+          ],
+          [
+            [
+              "interaction",
+              "focus",
+              "partner",
+              [
+                "GENETIC_INTERACTION",
+                "PHYSICAL_INTERACTION"
+              ],
+              "either"
+            ]
+          ]
+        ],
+        "partner_annotations": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "partner",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "process",
+              [
+                "kegg",
+                "reactome"
+              ]
+            ]
+          ],
+          [
+            [
+              "interaction",
+              "focus",
+              "partner",
+              [
+                "GENETIC_INTERACTION",
+                "PHYSICAL_INTERACTION"
+              ],
+              "either"
+            ],
+            [
+              "annotation",
+              "partner",
+              "process",
+              [
+                "FUNCTION_ANNOTATION"
+              ],
+              "out"
+            ]
+          ]
+        ]
+      },
+      "weights": {
+        "direct_annotations": 1,
+        "interaction_partners": 6,
+        "partner_annotations": 14
+      }
+    }
+  ]
 }

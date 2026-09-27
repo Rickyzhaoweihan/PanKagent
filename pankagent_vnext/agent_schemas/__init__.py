@@ -43,6 +43,24 @@ class SchemaPack:
         data = {name: project(self._data, name) for name in
                 ('graph_storage', 'identity', 'semantics_modalities', 'query_patterns', 'validation_repair')}
         db = self._data['database_schema']
+        metadata = db.get('execution_metadata', {})
+        for category in ('measurement_fields', 'numeric_measurement_fields'):
+            for relation, fields in metadata.get(category, {}).items():
+                if relation not in db['relationships'] or not set(fields) <= set(db['relationships'][relation]['properties']):
+                    raise ValueError('invalid_execution_metadata:' + category + ':' + relation)
+        operations = self._data['semantic_interpretation'].get('fact_operations', {})
+        for rule in operations.get('ranking', []):
+            self.resolve_ref('relationships.' + rule['relation'] + '.properties.' + rule['field'])
+            if rule['endpoint'] not in {'start_id', 'end_id'}:
+                raise ValueError('invalid_fact_endpoint')
+            re.compile(rule['request_pattern']); re.compile(rule['limit_pattern'])
+        for rule in operations.get('comparisons', []):
+            for field in ('left', 'right'):
+                self.resolve_ref('relationships.' + rule['relation'] + '.properties.' + rule[field])
+            if rule['group_endpoint'] not in {'start_id', 'end_id'}:
+                raise ValueError('invalid_fact_endpoint')
+        for pattern in self._data['semantic_interpretation'].get('grounding_role_patterns', {}).values():
+            re.compile(pattern)
         for comment in self._data['semantic_interpretation'].get('temporary_comments', []):
             if not set(comment['relations']) <= set(db['relationships']):
                 raise ValueError('invalid_temporary_comment_relationship')
@@ -81,6 +99,20 @@ class SchemaPack:
                     or not set(reference['query_relations']) <= set(registry['relations'])):
                 raise ValueError('invalid_agent_schema_session_reference')
             re.compile(reference['mention_pattern'])
+        for rule in self._data['query_patterns'].get('interval_overlap_patterns', []):
+            for owner in ('anchor', 'member'):
+                for field in ('chromosome', 'assembly', 'start', 'end'):
+                    self.resolve_ref('nodes.' + rule[owner] + '.properties.' + rule[field])
+            self.resolve_ref('nodes.' + rule['context'])
+            relation = self.resolve_ref('relationships.' + rule['relation'])
+            if not any(rule['member'] in path['source'] and rule['context'] in path['target'] for path in relation['endpoints']):
+                raise ValueError('invalid_interval_pattern_endpoints')
+            re.compile(rule['request_pattern'])
+        for rule in self._data['query_patterns'].get('referenced_dependency_entities', []):
+            self.resolve_ref('relationships.' + rule['source_relation'] + '.properties.' + rule['source_property'])
+            if rule['relation'] not in db['relationships'] or rule['entity_type'] not in db['nodes']:
+                raise ValueError('invalid_dependency_reference')
+            re.compile(rule['id_pattern'])
         library = data['query_patterns']['library']
         if library['graph_release'] != registry['release']:
             raise ValueError('agent_schema_release_mismatch')

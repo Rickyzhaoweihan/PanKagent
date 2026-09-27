@@ -34,6 +34,13 @@ def bind_unique_requested_identities(question, grounding, plan):
         for step in result.get('steps', []):
             if step.get('depends_on') or step.get('operation') or step.get('purpose') == 'context':
                 continue
+            task_question = step.get('question')
+            if task_question:
+                from .preplanning_grounding import phrase_tokens
+                task_words = phrase_tokens(task_question)
+                if not any(task_words[i:i + len(form)] == form for form in forms if form
+                           for i in range(len(task_words) - len(form) + 1)):
+                    continue
             if not any(_compatible(kind, relation) for relation in step.get('relation_types', [])):
                 continue
             # A variant is not a node endpoint of a gene-to-disease coloc edge.

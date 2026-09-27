@@ -8,16 +8,16 @@ import json
 from pathlib import Path
 
 VERSION = 'donor-categorical-runtime-v2'
-CATEGORICAL_FIELDS = ('gender', 'sex_at_birth', 'race', 'donation_type',
-                      'aab_state', 'hla_status', 'diabetes_type',
-                      'derived_diabetes_status', 'data_source')
+from .agent_schemas import module as schema_module
+_DATABASE = schema_module('database_schema')
+CATEGORICAL_FIELDS = tuple(_DATABASE['execution_metadata']['categorical_fields'])
 DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def resolve_categories(constraints, vocabulary, properties, release):
     result = deepcopy(constraints)
     matches = []
-    if release != 'PanKgraph_08_04':
+    if release != _DATABASE['release']:
         return result, matches
     values = vocabulary.get('donor_categorical_values') or {}
     for c in result:

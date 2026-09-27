@@ -91,7 +91,7 @@ def suggestion_decisions(draft, plan):
 
 
 async def run(gateway, question, user, system, schema, output_limit, finalize, resolver=None, preparer=None,
-              initial_proofs=None):
+              initial_proofs=None, property_facts=None):
     schema = deepcopy(schema)
     schema['properties']['entity_choices'] = CHOICE_SCHEMA
     schema['properties']['advisory_decisions'] = {'type': 'array', 'items': {
@@ -162,6 +162,8 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                                    else await asyncio.wait_for(resolve_property_values(graph, block.input.get('reference',''), block.input.get('text','')), 10))
                     except Exception:
                         outcome = {'status': 'unavailable', 'diagnostic': 'E01'}
+                if block.name == 'resolve_property_values' and property_facts:
+                    property_facts(outcome)
                 public = helper_payload(outcome, block.name)
                 advisory_ids.update(public['advisory_rule_ids'])
                 results.append({'type': 'tool_result', 'tool_use_id': tool_id, 'content': json.dumps(public)})

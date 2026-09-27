@@ -368,7 +368,7 @@ def _unresolved_tissue_role(text, vocabulary, matched):
             return not matched
     stop = {'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
             'donor', 'donors', 'and', 'or', 'their', 'nd', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
-            'seq', 'multiome', 'multiomics', 'assay'}
+            'seq', 'multiome', 'multiomics', 'assay', 'have', 'has', 'recorded', 'exact', 'capable', 'rna-capable'}
     for occurrence in re.finditer(r'\b([A-Za-z][A-Za-z0-9_-]*)\s+(?:samples?|specimens?)\b', text, re.I):
         modifier = occurrence.group(1).casefold()
         if (modifier in stop or modifier in known or modifier in matched_aliases
@@ -499,6 +499,8 @@ def _negated_at(text, start, end=None):
         return False
     if re.search(r'\bnot\s+(?:only|just)\s*$', before, re.I):
         return False
+    # A negated adjective belongs to its own noun, not a later source/value.
+    before = re.sub(r'\bnon[- ]\w+\b', ' ', before, flags=re.I)
     prefix_negative = bool(re.search(
         r'(?:\b(?:not|no|never|neither|nor|non|without|excluding|exclude|except|omit|omitting|remove|removing|lacking)\b'
         r'|\b(?:other\s+than|free\s+of|negative\s+for)\b|\bdo\s+not\s+(?:include|use|select)\b)[^.!?;,()]{0,35}$',

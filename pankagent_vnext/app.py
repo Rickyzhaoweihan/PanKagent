@@ -1,6 +1,7 @@
 """Isolated graph-first workflow and replayable HTTP/SSE interface."""
 
 from __future__ import annotations
+from .agent_schemas import module as schema_module
 
 import asyncio
 from copy import deepcopy
@@ -750,7 +751,7 @@ class Runtime:
                 self.health.record_inference("neo4j", False, safe_error(exc)["category"])
                 raise
             (await self.io.call(self.store.update_if_active, run_id, plan=plan))
-        if plan.get('execution_mode') in {'chain', 'parallel', 'mixed'}:
+        if schema_module('query_patterns')['gpu_participation_required'] and plan.get('execution_mode') in {'chain', 'parallel', 'mixed'}:
             queries = [s for s in plan['steps'] if not s.get('operation') and not s.get('session_input') and s.get('purpose') != 'context'
                        and not s.get('semantic_issues') and not s.get('recovery')
                        and (s.get('entity_resolution') or {}).get('state') != 'needs_clarification']

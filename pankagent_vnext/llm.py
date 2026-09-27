@@ -316,9 +316,13 @@ class ClaudeGateway:
             plan['retrieval_policy'] = 'partial_independent_v1'
             self.last_success = time.time()
             return plan
+        def property_facts(outcome):
+            nonlocal grounding
+            from .schema_tools import merge_property_facts
+            grounding = merge_property_facts(grounding, outcome)
         from .planning_session import run
         return await run(self, question, user, system_text, schema, output_limit, finalize,
-                         resolver=resolver, preparer=preparer, initial_proofs=initial_proofs)
+                         resolver=resolver, preparer=preparer, initial_proofs=initial_proofs, property_facts=property_facts)
 
     async def interpret_revision(self, question, instruction, parent_plan):
         from .request_context import current, AUTHORITY
@@ -395,6 +399,8 @@ class ClaudeGateway:
         # Route on schema and preserve public record evidence. Context-size
         # compaction is independent of the project's public-data authorization.
         routed=self.answer_router.select(evidence)
+        from .verified_facts import build as build_verified_facts
+        verified_facts = build_verified_facts(question, evidence)
         if aggregate_only(question):
             # Compute full donor/sample facts before context-size compaction.
             from .answer_facts import build_answer_facts
@@ -436,6 +442,8 @@ class ClaudeGateway:
             return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope,
                 'request_context':current(question), 'request_authority':AUTHORITY,
                 'input_structure':input_structure(evidence),
+                'verified_facts':verified_facts,
+                'fact_authority':'Use these calculated facts for rankings, numerical comparisons and counts. Partial task statistics describe retrieved records only. Sampled examples cannot override full-record facts.',
                 'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()
                     for w in (step.get('requested_scope') or {}).get('interpretation_warnings', [])))},ensure_ascii=False,default=str)
         body=answer_body(excerpt)

@@ -1,0 +1,4414 @@
+{
+  "version": "original-workflow-transfer32-v1",
+  "graph_release": "PanKgraph_08_04",
+  "reference_fixture_sha256": "ad6b30eea100dac6109d9d61ed7bb4cbd4406bdb3842bd6a6006f3206318c446",
+  "reference_policy": "Same requested scope and inherited reviewed memberships. Frozen before improved end-to-end replay. These test wording transfer, not unseen entities. No runtime consumer may load this file.",
+  "cases": [
+    {
+      "id": "T01",
+      "question": "For CFTR, list the recorded lead QTL variants.",
+      "source_key": "landing-7013c6383a33",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "rs177069",
+            "name": "rs177069",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs2402203",
+            "name": "rs2402203",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs7784156",
+            "name": "rs7784156",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs177069",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs2402203",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs7784156",
+            "end_id": "ENSG00000001626"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q01",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T02",
+      "question": "Which recorded lead QTL variants point to CENPO?",
+      "source_key": "landing-9e2e44cdcd36",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000138092",
+            "name": "CENPO"
+          },
+          {
+            "id": "rs73920612",
+            "name": "rs73920612",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs7579762",
+            "name": "rs7579762",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs73920612",
+            "end_id": "ENSG00000138092"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs7579762",
+            "end_id": "ENSG00000138092"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q02",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T03",
+      "question": "List the genes with a QTL link from variant rs113869178.",
+      "source_key": "landing-ca5a07dbcce9",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000006042",
+            "name": "TMEM98"
+          },
+          {
+            "id": "rs113869178",
+            "name": "rs113869178",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs113869178",
+            "end_id": "ENSG00000006042"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q03",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T04",
+      "question": "For variant rs12154969, return its recorded QTL target genes.",
+      "source_key": "landing-2c285c984b65",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000006652",
+            "name": "IFRD1"
+          },
+          {
+            "id": "rs12154969",
+            "name": "rs12154969",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs12154969",
+            "end_id": "ENSG00000006652"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q04",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T05",
+      "question": "Resolve ABCC7 to its canonical gene, then return every recorded QTL SNV and its annotations.",
+      "source_key": "review-abcc7-qtl-alias",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "rs177069",
+            "name": "rs177069",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs2402203",
+            "name": "rs2402203",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs7784156",
+            "name": "rs7784156",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs177069",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs2402203",
+            "end_id": "ENSG00000001626"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs7784156",
+            "end_id": "ENSG00000001626"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q05",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T06",
+      "question": "Retrieve the T1D GWAS record for rs689, including P value, posterior inclusion probability, effect allele, other allele and credible set.",
+      "source_key": "review-gwas-rs689",
+      "core": {
+        "nodes": [
+          {
+            "id": "rs689",
+            "name": "rs689",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs689",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "A",
+              "credible_set_purity": 0.999053483861362,
+              "effect_allele": "T",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000254647",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 2,
+              "end_id": "MONDO_0005147",
+              "lbf": 734.298930132703,
+              "credible_set_id": "INS__credibleSet1",
+              "start_id": "rs689",
+              "pip": 0.917348161318225,
+              "method": "GWAS",
+              "p_value": 0.0
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q07",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T07",
+      "question": "Return GWAS evidence connecting rs2476601 with type 1 diabetes, with statistics and signal annotations.",
+      "source_key": "review-gwas-rs2476601",
+      "core": {
+        "nodes": [
+          {
+            "id": "rs2476601",
+            "name": "rs2476601",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs2476601",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "A",
+              "credible_set_purity": 1.0,
+              "effect_allele": "G",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000134242",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 1,
+              "end_id": "MONDO_0005147",
+              "lbf": 469.573001385163,
+              "credible_set_id": "PTPN22__credibleSet1",
+              "start_id": "rs2476601",
+              "pip": 0.978706475126235,
+              "method": "GWAS",
+              "p_value": 5.9080696413623e-208
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q08",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T08",
+      "question": "For rs3184504, list GWAS-associated diseases together with recorded P value, PIP and credible-set support.",
+      "source_key": "review-gwas-rs3184504",
+      "core": {
+        "nodes": [
+          {
+            "id": "rs3184504",
+            "name": "rs3184504",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs3184504",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "T",
+              "credible_set_purity": 0.992227222881451,
+              "effect_allele": "C",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000111252",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 5,
+              "end_id": "MONDO_0005147",
+              "lbf": 131.748905751766,
+              "credible_set_id": "SH2B3__credibleSet1",
+              "start_id": "rs3184504",
+              "pip": 0.434427682560166,
+              "method": "GWAS",
+              "p_value": 1.0819346633964701e-60
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q09",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T09",
+      "question": "Show the recorded T1D GWAS signal containing rs13393590, with P value, PIP and allele annotations.",
+      "source_key": "review-gwas-rs13393590",
+      "core": {
+        "nodes": [
+          {
+            "id": "rs13393590",
+            "name": "rs13393590",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs13393590",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "T",
+              "credible_set_purity": 0.214782104690671,
+              "effect_allele": "C",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000138031",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 6,
+              "credible_set_size": 102,
+              "end_id": "MONDO_0005147",
+              "lbf": 11.4992224060956,
+              "credible_set_id": "ADCY3__credibleSet1",
+              "start_id": "rs13393590",
+              "pip": 0.0355837329953211,
+              "method": "GWAS",
+              "p_value": 1.7358545569943e-07
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q10",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T10",
+      "question": "Return the 10 distinct variants with the lowest recorded T1D GWAS P values. Use each variant's minimum valid stored P, sort ties by variant ID, and retain PIP, alleles and credible-set annotations. Preserve recorded zeros.",
+      "source_key": "review-gwas-top10",
+      "core": {
+        "nodes": [
+          {
+            "id": "rs3842753",
+            "name": "rs3842753",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs689",
+            "name": "rs689",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs2476601",
+            "name": "rs2476601",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs1701704",
+            "name": "rs1701704",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs10876866",
+            "name": "rs10876866",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs2456973",
+            "name": "rs2456973",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "12:56422639_CGTG_C",
+            "name": "12:56422639_CGTG_C",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs705704",
+            "name": "rs705704",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs61938963",
+            "name": "rs61938963",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs772921",
+            "name": "rs772921",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs3842753",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "T",
+              "credible_set_purity": 0.999053483861362,
+              "effect_allele": "G",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000254647",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 2,
+              "credible_set_size": 2,
+              "end_id": "MONDO_0005147",
+              "lbf": 731.892080128844,
+              "credible_set_id": "INS__credibleSet1",
+              "start_id": "rs3842753",
+              "pip": 0.0826518386817746,
+              "method": "GWAS",
+              "p_value": 0.0
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs689",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "A",
+              "credible_set_purity": 0.999053483861362,
+              "effect_allele": "T",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000254647",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 2,
+              "end_id": "MONDO_0005147",
+              "lbf": 734.298930132703,
+              "credible_set_id": "INS__credibleSet1",
+              "start_id": "rs689",
+              "pip": 0.917348161318225,
+              "method": "GWAS",
+              "p_value": 0.0
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs2476601",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "A",
+              "credible_set_purity": 1.0,
+              "effect_allele": "G",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000134242",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 1,
+              "end_id": "MONDO_0005147",
+              "lbf": 469.573001385163,
+              "credible_set_id": "PTPN22__credibleSet1",
+              "start_id": "rs2476601",
+              "pip": 0.978706475126235,
+              "method": "GWAS",
+              "p_value": 5.9080696413623e-208
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs1701704",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "T",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "G",
+              "lead_status": "lead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 1,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 137.193948735793,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs1701704",
+              "pip": 0.270013085279712,
+              "method": "GWAS",
+              "p_value": 4.52255262206402e-63
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs10876866",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "G",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "A",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 2,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 136.188656767545,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs10876866",
+              "pip": 0.0988079881864732,
+              "method": "GWAS",
+              "p_value": 1.2424123038848899e-62
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs2456973",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "A",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "C",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 3,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 136.082175731176,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs2456973",
+              "pip": 0.0888276004164998,
+              "method": "GWAS",
+              "p_value": 1.3697766037855199e-62
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "12:56422639_CGTG_C",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "CGTG",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "C",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 4,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 136.02893949677,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "12:56422639_CGTG_C",
+              "pip": 0.0842224222076012,
+              "method": "GWAS",
+              "p_value": 1.43868733586317e-62
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs705704",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "G",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "A",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 5,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 135.965710099942,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs705704",
+              "pip": 0.079061955028056,
+              "method": "GWAS",
+              "p_value": 1.53247735062365e-62
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs61938963",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "C",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "T",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 6,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 135.91065332056,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs61938963",
+              "pip": 0.0748267174667996,
+              "method": "GWAS",
+              "p_value": 1.61947657426014e-62
+            }
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs772921",
+            "end_id": "MONDO_0005147",
+            "properties": {
+              "data_version": "10/18/2025",
+              "non_effect_allele": "C",
+              "credible_set_purity": 0.993576746349522,
+              "effect_allele": "T",
+              "lead_status": "nonlead",
+              "locus_name": "ENSG00000123411",
+              "data_source": "GWAS_finemapping_V1",
+              "data_source_url": "https://pubmed.ncbi.nlm.nih.gov/34012112/",
+              "pip_rank": 7,
+              "credible_set_size": 10,
+              "end_id": "MONDO_0005147",
+              "lbf": 135.896175355424,
+              "credible_set_id": "IKZF4__credibleSet1",
+              "start_id": "rs772921",
+              "pip": 0.073751183419289,
+              "method": "GWAS",
+              "p_value": 1.66552844628061e-62
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q11",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T11",
+      "question": "List ADCY3\u2013T1D colocalization records, PP.H4 and both GWAS and QTL lead variants. Do the two lead sets agree?",
+      "source_key": "adcy3-coloc",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000138031",
+            "name": "ADCY3"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          },
+          {
+            "id": "rs13393590",
+            "name": "rs13393590",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs55893453",
+            "name": "rs55893453",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs10176214",
+            "name": "rs10176214",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000138031",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "PART_OF_GWAS_SIGNAL",
+            "start_id": "rs55893453",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs10176214",
+            "end_id": "ENSG00000138031"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs13393590",
+            "end_id": "ENSG00000138031"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q12",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T12",
+      "question": "Retrieve the PLEKHM1\u2013type 1 diabetes colocalization records and identify both exact signals. Do not assume identical GWAS and QTL leads.",
+      "source_key": "plekhm1-signal",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "SIGNAL_COLOC_WITH",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
+          {
+            "id": "rs62064652",
+            "name": "rs62064652",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "rs62065450",
+            "name": "rs62065450",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62064652",
+            "end_id": "ENSG00000225190"
+          },
+          {
+            "type": "PART_OF_QTL_SIGNAL",
+            "start_id": "rs62065450",
+            "end_id": "ENSG00000225190"
+          }
+        ]
+      },
+      "reference_from": "Q14",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T13",
+      "question": "For INS in each recorded pancreatic cell type, compare non-diabetic versus type 1 diabetes gene-activity means and medians.",
+      "source_key": "review-ins-gene-activity",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          },
+          {
+            "id": "CL_0000738",
+            "name": "leukocyte (immune cell)"
+          },
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "CL_0000173",
+            "name": "delta cell"
+          },
+          {
+            "id": "CL_0002079",
+            "name": "ductal cell"
+          },
+          {
+            "id": "CL_0000115",
+            "name": "endothelial cell"
+          },
+          {
+            "id": "CL_0002064",
+            "name": "pancreatic acinar cell"
+          },
+          {
+            "id": "CL_0000171",
+            "name": "alpha cell"
+          }
+        ],
+        "edges": [
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000738",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 0.2373,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 0.0,
+              "aab_pos_ocr_gene_activity_score_median": 0.0,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 0.2418,
+              "ocr_gene_activity_score_mean": 0.28,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 0.0,
+              "aab_pos_ocr_gene_activity_score_mean": 0.7034,
+              "ocr_gene_activity_score_median": 0.0,
+              "end_id": "CL_0000738",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 0.0,
+              "type_1_diabetes_ocr_gene_activity_score_median": 0.0
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000169",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 211.7155,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 165.7644,
+              "aab_pos_ocr_gene_activity_score_median": 104.4651,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 104.1158,
+              "ocr_gene_activity_score_mean": 163.4175,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 66.2116,
+              "aab_pos_ocr_gene_activity_score_mean": 139.6935,
+              "ocr_gene_activity_score_median": 127.0271,
+              "end_id": "CL_0000169",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 73.9266,
+              "type_1_diabetes_ocr_gene_activity_score_median": 37.1188
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000173",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 2.6062,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 1.4608,
+              "aab_pos_ocr_gene_activity_score_median": 1.6076,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 1.2235,
+              "ocr_gene_activity_score_mean": 2.0338,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 0.9585,
+              "aab_pos_ocr_gene_activity_score_mean": 1.9429,
+              "ocr_gene_activity_score_median": 1.2533,
+              "end_id": "CL_0000173",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 0.0,
+              "type_1_diabetes_ocr_gene_activity_score_median": 0.0
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0002079",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 4.7651,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 1.2701,
+              "aab_pos_ocr_gene_activity_score_median": 0.0,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 4.936,
+              "ocr_gene_activity_score_mean": 4.4826,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 2.5897,
+              "aab_pos_ocr_gene_activity_score_mean": 3.3778,
+              "ocr_gene_activity_score_median": 1.3288,
+              "end_id": "CL_0002079",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 2.0742,
+              "type_1_diabetes_ocr_gene_activity_score_median": 1.4148
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000115",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 1.1432,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 0.31,
+              "aab_pos_ocr_gene_activity_score_median": 0.0,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 1.3592,
+              "ocr_gene_activity_score_mean": 1.0748,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 0.1983,
+              "aab_pos_ocr_gene_activity_score_mean": 0.6738,
+              "ocr_gene_activity_score_median": 0.3165,
+              "end_id": "CL_0000115",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 1.059,
+              "type_1_diabetes_ocr_gene_activity_score_median": 0.0
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0002064",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 6.0213,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 3.1419,
+              "aab_pos_ocr_gene_activity_score_median": 5.3012,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 7.3666,
+              "ocr_gene_activity_score_mean": 6.6744,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 3.9656,
+              "aab_pos_ocr_gene_activity_score_mean": 9.5195,
+              "ocr_gene_activity_score_median": 3.2483,
+              "end_id": "CL_0002064",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 3.1424,
+              "type_1_diabetes_ocr_gene_activity_score_median": 3.1946
+            }
+          },
+          {
+            "type": "GENE_ACTIVITY_SCORE_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000171",
+            "properties": {
+              "data_version": "2025_05_28",
+              "non_diabetic_ocr_gene_activity_score_mean": 13.7078,
+              "data_source": "PanKbase",
+              "non_diabetic_ocr_gene_activity_score_median": 11.3232,
+              "aab_pos_ocr_gene_activity_score_median": 3.4073,
+              "type_2_diabetes_ocr_gene_activity_score_mean": 10.1153,
+              "ocr_gene_activity_score_mean": 11.3002,
+              "type_1_diabetes_ocr_gene_activity_score_mean": 9.6857,
+              "aab_pos_ocr_gene_activity_score_mean": 4.2825,
+              "ocr_gene_activity_score_median": 9.1372,
+              "end_id": "CL_0000171",
+              "start_id": "ENSG00000254647",
+              "type_2_diabetes_ocr_gene_activity_score_median": 8.114,
+              "type_1_diabetes_ocr_gene_activity_score_median": 10.544
+            }
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q18",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T14",
+      "question": "What recorded evidence identifies PLEKHM1 as a type 1 diabetes effector or pancreatic cell marker?",
+      "source_key": "landing-8b6eabf2ec8f",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000225190",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q20",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T15",
+      "question": "List the genes recorded as effectors of type 1 diabetes.",
+      "source_key": "history-000003",
+      "notes": [
+        "Representative core reference, not an exhaustive list. Other supported relevant answers are allowed."
+      ],
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "ENSG00000007341",
+            "name": "ST7L"
+          },
+          {
+            "id": "ENSG00000013725",
+            "name": "CD6"
+          },
+          {
+            "id": "ENSG00000107249",
+            "name": "GLIS3"
+          },
+          {
+            "id": "ENSG00000185559",
+            "name": "DLK1"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000007341",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000013725",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000107249",
+            "end_id": "MONDO_0005147"
+          },
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000185559",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q21",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T16",
+      "question": "Is there a recorded effector-gene link between CFTR and type 1 diabetes?",
+      "source_key": "history-000074",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          },
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": [
+          {
+            "type": "EFFECTOR_GENE_OF",
+            "start_id": "ENSG00000001626",
+            "end_id": "MONDO_0005147"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q22",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T17",
+      "question": "Return the complete set of beta-cell marker genes and their recorded marker annotations.",
+      "source_key": "review-beta-cell-markers",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          },
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000168032",
+            "name": "ENTPD3"
+          },
+          {
+            "id": "ENSG00000139515",
+            "name": "PDX1"
+          },
+          {
+            "id": "ENSG00000182759",
+            "name": "MAFA"
+          },
+          {
+            "id": "ENSG00000100604",
+            "name": "CHGA"
+          },
+          {
+            "id": "ENSG00000102003",
+            "name": "SYP"
+          },
+          {
+            "id": "ENSG00000154277",
+            "name": "UCHL1"
+          },
+          {
+            "id": "ENSG00000163623",
+            "name": "NKX6-1"
+          }
+        ],
+        "edges": [
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000168032",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000139515",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000182759",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000100604",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000102003",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000154277",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "MARKER_GENE_OF",
+            "start_id": "ENSG00000163623",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q23",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T18",
+      "question": "What evidence shows enrichment of CFTR in ductal cells?",
+      "source_key": "landing-88fecb41cadf",
+      "core": {
+        "nodes": [
+          {
+            "id": "CL_0002079",
+            "name": "ductal cell"
+          },
+          {
+            "id": "CL_0002079_MUC5B",
+            "name": "pancreatic ductal cell MUC5B+"
+          },
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          }
+        ],
+        "edges": [
+          {
+            "type": "GENE_ENRICHED_IN",
+            "start_id": "ENSG00000001626",
+            "end_id": "CL_0002079"
+          },
+          {
+            "type": "GENE_ENRICHED_IN",
+            "start_id": "ENSG00000001626",
+            "end_id": "CL_0002079_MUC5B"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q24",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T19",
+      "question": "Resolve ABCC7 and return its ductal-cell enrichment measurements and canonical gene name.",
+      "source_key": "cftr-alias",
+      "core": {
+        "nodes": [
+          {
+            "id": "CL_0002079",
+            "name": "ductal cell"
+          },
+          {
+            "id": "CL_0002079_MUC5B",
+            "name": "pancreatic ductal cell MUC5B+"
+          },
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          }
+        ],
+        "edges": [
+          {
+            "type": "GENE_ENRICHED_IN",
+            "start_id": "ENSG00000001626",
+            "end_id": "CL_0002079"
+          },
+          {
+            "type": "GENE_ENRICHED_IN",
+            "start_id": "ENSG00000001626",
+            "end_id": "CL_0002079_MUC5B"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q26",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T20",
+      "question": "Return all cell types with recorded INS expression.",
+      "source_key": "history-001394",
+      "notes": [
+        "Absence claims apply only to the checked expression evidence; do not infer biological exclusivity."
+      ],
+      "core": {
+        "nodes": [
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": [
+          {
+            "type": "GENE_DETECTED_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q28",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T21",
+      "question": "In which cell types is PLEKHM1 recorded as differentially expressed in type 1 diabetes?",
+      "source_key": "history-000016",
+      "core": {
+        "nodes": [
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          }
+        ],
+        "edges": [
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000225190",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q32",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T22",
+      "question": "Return the genes with recorded differential expression in beta cells in type 1 diabetes.",
+      "source_key": "history-000067",
+      "notes": [
+        "Representative core reference, not an exhaustive list. Other supported relevant answers are allowed."
+      ],
+      "core": {
+        "nodes": [
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "ENSG00000125144",
+            "name": "MT1G"
+          },
+          {
+            "id": "ENSG00000125398",
+            "name": "SOX9"
+          },
+          {
+            "id": "ENSG00000225190",
+            "name": "PLEKHM1"
+          },
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": [
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000125144",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000125398",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000225190",
+            "end_id": "CL_0000169"
+          },
+          {
+            "type": "T1D_DEG_IN",
+            "start_id": "ENSG00000254647",
+            "end_id": "CL_0000169"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q33",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T23",
+      "question": "Find genes physically interacting with HLA-DRA that also have a Reactome R-HSA-2132295 annotation. Both edges must involve the same partner gene.",
+      "source_key": "hla-connected",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000019582",
+            "name": "CD74"
+          },
+          {
+            "id": "ENSG00000196126",
+            "name": "HLA-DRB1"
+          },
+          {
+            "id": "ENSG00000196735",
+            "name": "HLA-DQA1"
+          },
+          {
+            "id": "ENSG00000198502",
+            "name": "HLA-DRB5"
+          },
+          {
+            "id": "ENSG00000204287",
+            "name": "HLA-DRA"
+          },
+          {
+            "id": "ENSG00000242574",
+            "name": "HLA-DMB"
+          },
+          {
+            "id": "R-HSA-2132295",
+            "name": "MHC class II antigen presentation"
+          }
+        ],
+        "edges": [
+          {
+            "type": "FUNCTION_ANNOTATION",
+            "start_id": "ENSG00000019582",
+            "end_id": "R-HSA-2132295"
+          },
+          {
+            "type": "FUNCTION_ANNOTATION",
+            "start_id": "ENSG00000196126",
+            "end_id": "R-HSA-2132295"
+          },
+          {
+            "type": "FUNCTION_ANNOTATION",
+            "start_id": "ENSG00000196735",
+            "end_id": "R-HSA-2132295"
+          },
+          {
+            "type": "FUNCTION_ANNOTATION",
+            "start_id": "ENSG00000198502",
+            "end_id": "R-HSA-2132295"
+          },
+          {
+            "type": "FUNCTION_ANNOTATION",
+            "start_id": "ENSG00000242574",
+            "end_id": "R-HSA-2132295"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000019582",
+            "end_id": "ENSG00000204287"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000196126",
+            "end_id": "ENSG00000204287"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000196735",
+            "end_id": "ENSG00000204287"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000198502",
+            "end_id": "ENSG00000204287"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000204287",
+            "end_id": "ENSG00000196126"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000204287",
+            "end_id": "ENSG00000198502"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000204287",
+            "end_id": "ENSG00000242574"
+          },
+          {
+            "type": "PHYSICAL_INTERACTION",
+            "start_id": "ENSG00000242574",
+            "end_id": "ENSG00000204287"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q35",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T24",
+      "question": "List TCF7L2 GO annotations in all three domains: biological process, molecular function and cellular component.",
+      "source_key": "history-000014",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000148737",
+            "name": "TCF7L2"
+          },
+          {
+            "id": "GO:0070369",
+            "name": "beta-catenin-TCF7L2 complex"
+          },
+          {
+            "id": "GO:0060070",
+            "name": "canonical Wnt signaling pathway"
+          },
+          {
+            "id": "GO:0000981",
+            "name": "DNA-binding transcription factor activity, RNA polymerase II-specific"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0070369"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0060070"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0000981"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
+          {
+            "id": "GO:2001237",
+            "name": "GO:2001237",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:2000675",
+            "name": "GO:2000675",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:1990907",
+            "name": "beta-catenin-TCF complex"
+          },
+          {
+            "id": "GO:1900182",
+            "name": "positive regulation of protein localization to nucleus"
+          },
+          {
+            "id": "GO:0090090",
+            "name": "negative regulation of canonical Wnt signaling pathway"
+          },
+          {
+            "id": "GO:0071664",
+            "name": "catenin-TCF7L2 complex"
+          },
+          {
+            "id": "GO:0070016",
+            "name": "armadillo repeat domain binding"
+          },
+          {
+            "id": "GO:0061629",
+            "name": "RNA polymerase II-specific DNA-binding transcription factor binding"
+          },
+          {
+            "id": "GO:0060766",
+            "name": "negative regulation of androgen receptor signaling pathway"
+          },
+          {
+            "id": "GO:0051897",
+            "name": "positive regulation of phosphatidylinositol 3-kinase/protein kinase B signal transduction"
+          },
+          {
+            "id": "GO:0050679",
+            "name": "positive regulation of epithelial cell proliferation"
+          },
+          {
+            "id": "GO:0048660",
+            "name": "regulation of smooth muscle cell proliferation"
+          },
+          {
+            "id": "GO:0048625",
+            "name": "myoblast fate commitment"
+          },
+          {
+            "id": "GO:0045944",
+            "name": "positive regulation of transcription by RNA polymerase II"
+          },
+          {
+            "id": "GO:0045892",
+            "name": "negative regulation of DNA-templated transcription"
+          },
+          {
+            "id": "GO:0045444",
+            "name": "fat cell differentiation"
+          },
+          {
+            "id": "GO:0045295",
+            "name": "gamma-catenin binding"
+          },
+          {
+            "id": "GO:0043570",
+            "name": "maintenance of DNA repeat elements"
+          },
+          {
+            "id": "GO:0043565",
+            "name": "sequence-specific DNA binding"
+          },
+          {
+            "id": "GO:0042593",
+            "name": "glucose homeostasis"
+          },
+          {
+            "id": "GO:0032993",
+            "name": "protein-DNA complex"
+          },
+          {
+            "id": "GO:0032350",
+            "name": "regulation of hormone metabolic process"
+          },
+          {
+            "id": "GO:0032024",
+            "name": "positive regulation of insulin secretion"
+          },
+          {
+            "id": "GO:0031016",
+            "name": "GO:0031016",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:0019901",
+            "name": "protein kinase binding"
+          },
+          {
+            "id": "GO:0016922",
+            "name": "nuclear receptor binding"
+          },
+          {
+            "id": "GO:0016605",
+            "name": "PML body"
+          },
+          {
+            "id": "GO:0016604",
+            "name": "nuclear body"
+          },
+          {
+            "id": "GO:0016055",
+            "name": "Wnt signaling pathway"
+          },
+          {
+            "id": "GO:0010909",
+            "name": "positive regulation of heparan sulfate proteoglycan biosynthetic process"
+          },
+          {
+            "id": "GO:0010718",
+            "name": "positive regulation of epithelial to mesenchymal transition"
+          },
+          {
+            "id": "GO:0009749",
+            "name": "response to glucose"
+          },
+          {
+            "id": "GO:0008013",
+            "name": "beta-catenin binding"
+          },
+          {
+            "id": "GO:0006357",
+            "name": "regulation of transcription by RNA polymerase II"
+          },
+          {
+            "id": "GO:0006111",
+            "name": "regulation of gluconeogenesis"
+          },
+          {
+            "id": "GO:0005654",
+            "name": "nucleoplasm"
+          },
+          {
+            "id": "GO:0005634",
+            "name": "nucleus"
+          },
+          {
+            "id": "GO:0005515",
+            "name": "protein binding"
+          },
+          {
+            "id": "GO:0003700",
+            "name": "DNA-binding transcription factor activity"
+          },
+          {
+            "id": "GO:0003677",
+            "name": "DNA binding"
+          },
+          {
+            "id": "GO:0001568",
+            "name": "blood vessel development"
+          },
+          {
+            "id": "GO:0001227",
+            "name": "DNA-binding transcription repressor activity, RNA polymerase II-specific"
+          },
+          {
+            "id": "GO:0001222",
+            "name": "transcription corepressor binding"
+          },
+          {
+            "id": "GO:0000978",
+            "name": "RNA polymerase II cis-regulatory region sequence-specific DNA binding"
+          },
+          {
+            "id": "GO:0000976",
+            "name": "transcription cis-regulatory region binding"
+          },
+          {
+            "id": "GO:0000785",
+            "name": "chromatin"
+          },
+          {
+            "id": "GO:0000122",
+            "name": "negative regulation of transcription by RNA polymerase II"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:2001237"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:2000675"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:1990907"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:1900182"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0090090"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0071664"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0070016"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0061629"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0060766"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0051897"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0050679"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0048660"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0048625"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0045944"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0045892"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0045444"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0045295"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0043570"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0043565"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0042593"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0032993"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0032350"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0032024"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0031016"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0019901"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0016922"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0016605"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0016604"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0016055"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0010909"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0010718"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0009749"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0008013"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0006357"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0006111"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0005654"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0005634"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0005515"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0003700"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0003677"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0001568"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0001227"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0001222"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0000978"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0000976"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0000785"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000148737",
+            "end_id": "GO:0000122"
+          }
+        ]
+      },
+      "reference_from": "Q39",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T25",
+      "question": "List the recorded GO annotations of PTPN22.",
+      "source_key": "history-000020",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000134242",
+            "name": "PTPN22"
+          },
+          {
+            "id": "GO:0050860",
+            "name": "negative regulation of T cell receptor signaling pathway"
+          },
+          {
+            "id": "GO:0006470",
+            "name": "protein dephosphorylation"
+          },
+          {
+            "id": "GO:0005737",
+            "name": "cytoplasm"
+          },
+          {
+            "id": "GO:0004725",
+            "name": "protein tyrosine phosphatase activity"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0050860"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0006470"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0005737"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0004725"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [
+          {
+            "id": "GO:2000566",
+            "name": "GO:2000566",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:1903753",
+            "name": "GO:1903753",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:1902523",
+            "name": "GO:1902523",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:1901222",
+            "name": "GO:1901222",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:1900227",
+            "name": "GO:1900227",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:0071663",
+            "name": "positive regulation of granzyme B production"
+          },
+          {
+            "id": "GO:0071225",
+            "name": "cellular response to muramyl dipeptide"
+          },
+          {
+            "id": "GO:0070433",
+            "name": "negative regulation of nucleotide-binding oligomerization domain containing 2 signaling pathway"
+          },
+          {
+            "id": "GO:0070374",
+            "name": "positive regulation of ERK1 and ERK2 cascade"
+          },
+          {
+            "id": "GO:0050868",
+            "name": "negative regulation of T cell activation"
+          },
+          {
+            "id": "GO:0050856",
+            "name": "regulation of T cell receptor signaling pathway"
+          },
+          {
+            "id": "GO:0050855",
+            "name": "GO:0050855",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:0050852",
+            "name": "GO:0050852",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "GO:0048471",
+            "name": "perinuclear region of cytoplasm"
+          },
+          {
+            "id": "GO:0045088",
+            "name": "regulation of innate immune response"
+          },
+          {
+            "id": "GO:0043508",
+            "name": "negative regulation of JUN kinase activity"
+          },
+          {
+            "id": "GO:0042307",
+            "name": "positive regulation of protein import into nucleus"
+          },
+          {
+            "id": "GO:0035644",
+            "name": "phosphoanandamide dephosphorylation"
+          },
+          {
+            "id": "GO:0034165",
+            "name": "positive regulation of toll-like receptor 9 signaling pathway"
+          },
+          {
+            "id": "GO:0034157",
+            "name": "positive regulation of toll-like receptor 7 signaling pathway"
+          },
+          {
+            "id": "GO:0034145",
+            "name": "positive regulation of toll-like receptor 4 signaling pathway"
+          },
+          {
+            "id": "GO:0034141",
+            "name": "positive regulation of toll-like receptor 3 signaling pathway"
+          },
+          {
+            "id": "GO:0032817",
+            "name": "regulation of natural killer cell proliferation"
+          },
+          {
+            "id": "GO:0032729",
+            "name": "positive regulation of type II interferon production"
+          },
+          {
+            "id": "GO:0032728",
+            "name": "positive regulation of interferon-beta production"
+          },
+          {
+            "id": "GO:0032727",
+            "name": "positive regulation of interferon-alpha production"
+          },
+          {
+            "id": "GO:0032720",
+            "name": "negative regulation of tumor necrosis factor production"
+          },
+          {
+            "id": "GO:0032717",
+            "name": "negative regulation of interleukin-8 production"
+          },
+          {
+            "id": "GO:0032715",
+            "name": "negative regulation of interleukin-6 production"
+          },
+          {
+            "id": "GO:0032496",
+            "name": "response to lipopolysaccharide"
+          },
+          {
+            "id": "GO:0032481",
+            "name": "positive regulation of type I interferon production"
+          },
+          {
+            "id": "GO:0031663",
+            "name": "lipopolysaccharide-mediated signaling pathway"
+          },
+          {
+            "id": "GO:0031625",
+            "name": "ubiquitin protein ligase binding"
+          },
+          {
+            "id": "GO:0030217",
+            "name": "T cell differentiation"
+          },
+          {
+            "id": "GO:0019900",
+            "name": "kinase binding"
+          },
+          {
+            "id": "GO:0017124",
+            "name": "SH3 domain binding"
+          },
+          {
+            "id": "GO:0016791",
+            "name": "phosphatase activity"
+          },
+          {
+            "id": "GO:0016787",
+            "name": "hydrolase activity"
+          },
+          {
+            "id": "GO:0016311",
+            "name": "dephosphorylation"
+          },
+          {
+            "id": "GO:0010629",
+            "name": "negative regulation of gene expression"
+          },
+          {
+            "id": "GO:0010628",
+            "name": "positive regulation of gene expression"
+          },
+          {
+            "id": "GO:0010507",
+            "name": "negative regulation of autophagy"
+          },
+          {
+            "id": "GO:0009898",
+            "name": "cytoplasmic side of plasma membrane"
+          },
+          {
+            "id": "GO:0006914",
+            "name": "autophagy"
+          },
+          {
+            "id": "GO:0006629",
+            "name": "lipid metabolic process"
+          },
+          {
+            "id": "GO:0005829",
+            "name": "cytosol"
+          },
+          {
+            "id": "GO:0005634",
+            "name": "nucleus"
+          },
+          {
+            "id": "GO:0005515",
+            "name": "protein binding"
+          },
+          {
+            "id": "GO:0004726",
+            "name": "non-membrane spanning protein tyrosine phosphatase activity"
+          },
+          {
+            "id": "GO:0004721",
+            "name": "phosphoprotein phosphatase activity"
+          },
+          {
+            "id": "GO:0002685",
+            "name": "regulation of leukocyte migration"
+          },
+          {
+            "id": "GO:0002376",
+            "name": "immune system process"
+          },
+          {
+            "id": "GO:0002230",
+            "name": "positive regulation of defense response to virus by host"
+          }
+        ],
+        "edges": [
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:2000566"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:1903753"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:1902523"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:1901222"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:1900227"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0071663"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0071225"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0070433"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0070374"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0050868"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0050856"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0050855"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0050852"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0048471"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0045088"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0043508"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0042307"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0035644"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0034165"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0034157"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0034145"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0034141"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032817"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032729"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032728"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032727"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032720"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032717"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032715"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032496"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0032481"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0031663"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0031625"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0030217"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0019900"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0017124"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0016791"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0016787"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0016311"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0010629"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0010628"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0010507"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0009898"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0006914"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0006629"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0005829"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0005634"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0005515"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0004726"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0004721"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0002685"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0002376"
+          },
+          {
+            "type": "ASSOCIATED_WITH_GO",
+            "start_id": "ENSG00000134242",
+            "end_id": "GO:0002230"
+          }
+        ]
+      },
+      "reference_from": "Q41",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T26",
+      "question": "How many HPAP donors have recorded T1D stage 1?",
+      "source_key": "stage-case",
+      "core": {
+        "nodes": [
+          {
+            "id": "HPAP-016",
+            "name": "HPAP-016",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-148",
+            "name": "HPAP-148",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q47",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T27",
+      "question": "List exact scRNA-seq samples of HPAP stage 1 donors and their recorded tissues.",
+      "source_key": "followup",
+      "core": {
+        "nodes": [
+          {
+            "id": "3421820",
+            "name": "3421820",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "CL_0008024",
+            "name": "pancreatic endocrine cell"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "UBERON_0000006",
+            "name": "pancreatic islet (islet of Langerhans)"
+          }
+        ],
+        "edges": [
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "CL_0008024",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "UBERON_0000006",
+            "end_id": "3421820"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q48",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T28",
+      "question": "Count the exact scRNA-seq samples belonging to HPAP stage 1 donors and report all recorded tissues without filtering tissue.",
+      "source_key": "sample-tissues",
+      "core": {
+        "nodes": [
+          {
+            "id": "3421820",
+            "name": "3421820",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "CL_0008024",
+            "name": "pancreatic endocrine cell"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "UBERON_0000006",
+            "name": "pancreatic islet (islet of Langerhans)"
+          }
+        ],
+        "edges": [
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "CL_0008024",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "UBERON_0000006",
+            "end_id": "3421820"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q49",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T29",
+      "question": "For HPAP stage 1 donors, count RNA-capable scRNA-seq and snMultiomics samples separately.",
+      "source_key": "multiome-optin",
+      "core": {
+        "nodes": [
+          {
+            "id": "3421820",
+            "name": "3421820",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5949685",
+            "name": "5949685",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6655803",
+            "name": "6655803",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7268384",
+            "name": "7268384",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-148",
+            "name": "HPAP-148",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "5949685"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "6655803"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-148",
+            "end_id": "7268384"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q50",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T30",
+      "question": "How many HPAP donors are recorded at T1D stage 3?",
+      "source_key": "stage3-case",
+      "core": {
+        "nodes": [
+          {
+            "id": "HPAP-002",
+            "name": "HPAP-002",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-010",
+            "name": "HPAP-010",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-015",
+            "name": "HPAP-015",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-020",
+            "name": "HPAP-020",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-021",
+            "name": "HPAP-021",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-023",
+            "name": "HPAP-023",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-025",
+            "name": "HPAP-025",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-028",
+            "name": "HPAP-028",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-030",
+            "name": "HPAP-030",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-031",
+            "name": "HPAP-031",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-032",
+            "name": "HPAP-032",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-041",
+            "name": "HPAP-041",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-048",
+            "name": "HPAP-048",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-055",
+            "name": "HPAP-055",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-064",
+            "name": "HPAP-064",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-068",
+            "name": "HPAP-068",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-071",
+            "name": "HPAP-071",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-073",
+            "name": "HPAP-073",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-078",
+            "name": "HPAP-078",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-084",
+            "name": "HPAP-084",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-087",
+            "name": "HPAP-087",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-089",
+            "name": "HPAP-089",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-094",
+            "name": "HPAP-094",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-098",
+            "name": "HPAP-098",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-102",
+            "name": "HPAP-102",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-113",
+            "name": "HPAP-113",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-123",
+            "name": "HPAP-123",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-130",
+            "name": "HPAP-130",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-135",
+            "name": "HPAP-135",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-137",
+            "name": "HPAP-137",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-138",
+            "name": "HPAP-138",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-141",
+            "name": "HPAP-141",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-149",
+            "name": "HPAP-149",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-151",
+            "name": "HPAP-151",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-154",
+            "name": "HPAP-154",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-156",
+            "name": "HPAP-156",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-167",
+            "name": "HPAP-167",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-168",
+            "name": "HPAP-168",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-172",
+            "name": "HPAP-172",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-176",
+            "name": "HPAP-176",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-178",
+            "name": "HPAP-178",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-180",
+            "name": "HPAP-180",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-184",
+            "name": "HPAP-184",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-188",
+            "name": "HPAP-188",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q51",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T31",
+      "question": "Count distinct non-diabetic control donors recorded in HPAP, including donors without samples.",
+      "source_key": "nd-paraphrase",
+      "core": {
+        "nodes": [
+          {
+            "id": "HPAP-003",
+            "name": "HPAP-003",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-004",
+            "name": "HPAP-004",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-005",
+            "name": "HPAP-005",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-006",
+            "name": "HPAP-006",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-008",
+            "name": "HPAP-008",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-009",
+            "name": "HPAP-009",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-011",
+            "name": "HPAP-011",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-012",
+            "name": "HPAP-012",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-014",
+            "name": "HPAP-014",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-016",
+            "name": "HPAP-016",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-017",
+            "name": "HPAP-017",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-018",
+            "name": "HPAP-018",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-019",
+            "name": "HPAP-019",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-022",
+            "name": "HPAP-022",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-024",
+            "name": "HPAP-024",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-026",
+            "name": "HPAP-026",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-027",
+            "name": "HPAP-027",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-029",
+            "name": "HPAP-029",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-033",
+            "name": "HPAP-033",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-034",
+            "name": "HPAP-034",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-035",
+            "name": "HPAP-035",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-036",
+            "name": "HPAP-036",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-037",
+            "name": "HPAP-037",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-038",
+            "name": "HPAP-038",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-039",
+            "name": "HPAP-039",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-040",
+            "name": "HPAP-040",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-042",
+            "name": "HPAP-042",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-043",
+            "name": "HPAP-043",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-044",
+            "name": "HPAP-044",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-045",
+            "name": "HPAP-045",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-046",
+            "name": "HPAP-046",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-047",
+            "name": "HPAP-047",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-049",
+            "name": "HPAP-049",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-050",
+            "name": "HPAP-050",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-052",
+            "name": "HPAP-052",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-053",
+            "name": "HPAP-053",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-054",
+            "name": "HPAP-054",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-056",
+            "name": "HPAP-056",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-059",
+            "name": "HPAP-059",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-060",
+            "name": "HPAP-060",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-063",
+            "name": "HPAP-063",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-066",
+            "name": "HPAP-066",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-067",
+            "name": "HPAP-067",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-072",
+            "name": "HPAP-072",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-074",
+            "name": "HPAP-074",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-075",
+            "name": "HPAP-075",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-077",
+            "name": "HPAP-077",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-080",
+            "name": "HPAP-080",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-082",
+            "name": "HPAP-082",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-092",
+            "name": "HPAP-092",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-093",
+            "name": "HPAP-093",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-095",
+            "name": "HPAP-095",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-097",
+            "name": "HPAP-097",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-099",
+            "name": "HPAP-099",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-101",
+            "name": "HPAP-101",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-103",
+            "name": "HPAP-103",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-104",
+            "name": "HPAP-104",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-105",
+            "name": "HPAP-105",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-110",
+            "name": "HPAP-110",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-112",
+            "name": "HPAP-112",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-114",
+            "name": "HPAP-114",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-116",
+            "name": "HPAP-116",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-117",
+            "name": "HPAP-117",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-118",
+            "name": "HPAP-118",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-119",
+            "name": "HPAP-119",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-121",
+            "name": "HPAP-121",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-122",
+            "name": "HPAP-122",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-125",
+            "name": "HPAP-125",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-127",
+            "name": "HPAP-127",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-128",
+            "name": "HPAP-128",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-129",
+            "name": "HPAP-129",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-131",
+            "name": "HPAP-131",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-132",
+            "name": "HPAP-132",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-136",
+            "name": "HPAP-136",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-139",
+            "name": "HPAP-139",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-140",
+            "name": "HPAP-140",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-146",
+            "name": "HPAP-146",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-148",
+            "name": "HPAP-148",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-155",
+            "name": "HPAP-155",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-159",
+            "name": "HPAP-159",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-160",
+            "name": "HPAP-160",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-169",
+            "name": "HPAP-169",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-171",
+            "name": "HPAP-171",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-173",
+            "name": "HPAP-173",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-174",
+            "name": "HPAP-174",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-175",
+            "name": "HPAP-175",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-181",
+            "name": "HPAP-181",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-182",
+            "name": "HPAP-182",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-183",
+            "name": "HPAP-183",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-185",
+            "name": "HPAP-185",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-186",
+            "name": "HPAP-186",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-189",
+            "name": "HPAP-189",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-190",
+            "name": "HPAP-190",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-192",
+            "name": "HPAP-192",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-193",
+            "name": "HPAP-193",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q53",
+      "transfer_kind": "scope_preserving_paraphrase"
+    },
+    {
+      "id": "T32",
+      "question": "For HPAP, compare distinct exact scRNA-seq sample counts in the ND and T1D donor cohorts separately.",
+      "source_key": "cohort-comparison",
+      "notes": [
+        "Count distinct samples separately by the clinical donor cohorts in the question; node-list length includes relationship endpoints and is not the sample count."
+      ],
+      "core": {
+        "nodes": [
+          {
+            "id": "1262492",
+            "name": "1262492",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1540516",
+            "name": "1540516",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1563316",
+            "name": "1563316",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1742169",
+            "name": "1742169",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1786584",
+            "name": "1786584",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1816653",
+            "name": "1816653",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "1946973",
+            "name": "1946973",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2022699",
+            "name": "2022699",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2128954",
+            "name": "2128954",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2326581",
+            "name": "2326581",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2551288",
+            "name": "2551288",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2692765",
+            "name": "2692765",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "2893218",
+            "name": "2893218",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3249703",
+            "name": "3249703",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3351084",
+            "name": "3351084",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3403511",
+            "name": "3403511",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3421820",
+            "name": "3421820",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3503456",
+            "name": "3503456",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3602504",
+            "name": "3602504",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "3938247",
+            "name": "3938247",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4084977",
+            "name": "4084977",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4162177",
+            "name": "4162177",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4411424",
+            "name": "4411424",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4457475",
+            "name": "4457475",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4645172",
+            "name": "4645172",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4780654",
+            "name": "4780654",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "4853123",
+            "name": "4853123",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5037710",
+            "name": "5037710",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5042775",
+            "name": "5042775",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5074489",
+            "name": "5074489",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5105957",
+            "name": "5105957",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5152562",
+            "name": "5152562",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5278117",
+            "name": "5278117",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5616316",
+            "name": "5616316",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5624635",
+            "name": "5624635",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "5853035",
+            "name": "5853035",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6031294",
+            "name": "6031294",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6041569",
+            "name": "6041569",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6062767",
+            "name": "6062767",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6347476",
+            "name": "6347476",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6379867",
+            "name": "6379867",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6540893",
+            "name": "6540893",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "6807596",
+            "name": "6807596",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7363203",
+            "name": "7363203",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7748892",
+            "name": "7748892",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7849452",
+            "name": "7849452",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7923579",
+            "name": "7923579",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7938388",
+            "name": "7938388",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "7984768",
+            "name": "7984768",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8033690",
+            "name": "8033690",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8115687",
+            "name": "8115687",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8364573",
+            "name": "8364573",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8490038",
+            "name": "8490038",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8728009",
+            "name": "8728009",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "8944327",
+            "name": "8944327",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "9453969",
+            "name": "9453969",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "9891787",
+            "name": "9891787",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "9924365",
+            "name": "9924365",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "9986473",
+            "name": "9986473",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-019",
+            "name": "HPAP-019",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-020",
+            "name": "HPAP-020",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-021",
+            "name": "HPAP-021",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-022",
+            "name": "HPAP-022",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-023",
+            "name": "HPAP-023",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-024",
+            "name": "HPAP-024",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-026",
+            "name": "HPAP-026",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-028",
+            "name": "HPAP-028",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-029",
+            "name": "HPAP-029",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-032",
+            "name": "HPAP-032",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-034",
+            "name": "HPAP-034",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-035",
+            "name": "HPAP-035",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-036",
+            "name": "HPAP-036",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-037",
+            "name": "HPAP-037",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-038",
+            "name": "HPAP-038",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-039",
+            "name": "HPAP-039",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-040",
+            "name": "HPAP-040",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-042",
+            "name": "HPAP-042",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-043",
+            "name": "HPAP-043",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-044",
+            "name": "HPAP-044",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-045",
+            "name": "HPAP-045",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-047",
+            "name": "HPAP-047",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-049",
+            "name": "HPAP-049",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-050",
+            "name": "HPAP-050",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-052",
+            "name": "HPAP-052",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-053",
+            "name": "HPAP-053",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-054",
+            "name": "HPAP-054",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-055",
+            "name": "HPAP-055",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-056",
+            "name": "HPAP-056",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-059",
+            "name": "HPAP-059",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-063",
+            "name": "HPAP-063",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-064",
+            "name": "HPAP-064",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-071",
+            "name": "HPAP-071",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-072",
+            "name": "HPAP-072",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-074",
+            "name": "HPAP-074",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-075",
+            "name": "HPAP-075",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-077",
+            "name": "HPAP-077",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-080",
+            "name": "HPAP-080",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-082",
+            "name": "HPAP-082",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-084",
+            "name": "HPAP-084",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-087",
+            "name": "HPAP-087",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-092",
+            "name": "HPAP-092",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-095",
+            "name": "HPAP-095",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-097",
+            "name": "HPAP-097",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-099",
+            "name": "HPAP-099",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-101",
+            "name": "HPAP-101",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-103",
+            "name": "HPAP-103",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-104",
+            "name": "HPAP-104",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-105",
+            "name": "HPAP-105",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-107",
+            "name": "HPAP-107",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-110",
+            "name": "HPAP-110",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-113",
+            "name": "HPAP-113",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-114",
+            "name": "HPAP-114",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-117",
+            "name": "HPAP-117",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-118",
+            "name": "HPAP-118",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-119",
+            "name": "HPAP-119",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-122",
+            "name": "HPAP-122",
+            "name_source": "id_fallback_no_graph_name"
+          },
+          {
+            "id": "HPAP-123",
+            "name": "HPAP-123",
+            "name_source": "id_fallback_no_graph_name"
+          }
+        ],
+        "edges": [
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-019",
+            "end_id": "8115687"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-019",
+            "end_id": "9924365"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-020",
+            "end_id": "7363203"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-021",
+            "end_id": "4853123"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-022",
+            "end_id": "5152562"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-023",
+            "end_id": "8728009"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-024",
+            "end_id": "6807596"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-026",
+            "end_id": "3602504"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-028",
+            "end_id": "5624635"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-029",
+            "end_id": "4162177"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-032",
+            "end_id": "2893218"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-034",
+            "end_id": "1540516"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-035",
+            "end_id": "8033690"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-036",
+            "end_id": "1262492"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-037",
+            "end_id": "5037710"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-038",
+            "end_id": "4457475"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-039",
+            "end_id": "2128954"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-040",
+            "end_id": "2692765"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-042",
+            "end_id": "1563316"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-043",
+            "end_id": "8490038"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-044",
+            "end_id": "1816653"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-045",
+            "end_id": "5105957"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-047",
+            "end_id": "1742169"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-049",
+            "end_id": "7748892"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-050",
+            "end_id": "8364573"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-052",
+            "end_id": "4645172"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-053",
+            "end_id": "1946973"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-054",
+            "end_id": "3351084"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-055",
+            "end_id": "9453969"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-056",
+            "end_id": "5853035"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-059",
+            "end_id": "6379867"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-063",
+            "end_id": "6062767"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-064",
+            "end_id": "3403511"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-071",
+            "end_id": "7938388"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-072",
+            "end_id": "6041569"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-074",
+            "end_id": "5616316"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-075",
+            "end_id": "2022699"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-077",
+            "end_id": "3938247"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-080",
+            "end_id": "6347476"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-082",
+            "end_id": "1786584"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-084",
+            "end_id": "7984768"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-087",
+            "end_id": "7849452"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-092",
+            "end_id": "3503456"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-095",
+            "end_id": "7923579"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-097",
+            "end_id": "9891787"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-099",
+            "end_id": "6031294"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-101",
+            "end_id": "4084977"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-103",
+            "end_id": "8944327"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-104",
+            "end_id": "5042775"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-105",
+            "end_id": "4780654"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-107",
+            "end_id": "3421820"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-110",
+            "end_id": "3249703"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-113",
+            "end_id": "5074489"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-114",
+            "end_id": "5278117"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-117",
+            "end_id": "4411424"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-118",
+            "end_id": "6540893"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-119",
+            "end_id": "2326581"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-122",
+            "end_id": "2551288"
+          },
+          {
+            "type": "HAS_SAMPLE",
+            "start_id": "HPAP-123",
+            "end_id": "9986473"
+          }
+        ]
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_from": "Q56",
+      "transfer_kind": "scope_preserving_paraphrase"
+    }
+  ]
+}

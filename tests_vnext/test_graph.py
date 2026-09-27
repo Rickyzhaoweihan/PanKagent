@@ -230,7 +230,11 @@ class FakeAdapter(GraphAdapter):
 
     async def _retrieve(self, query, parameters, limits=None):
         self.retrieved.append((query, parameters))
-        return self.answer.copy()
+        result = self.answer.copy()
+        # Model the successful read boundary explicitly; individual tests may override it.
+        result.setdefault('retrieval_execution', {'completed': True,
+            'cursor_exhausted': not result.get('truncated', False), 'mode': 'read_only'})
+        return result
 
 
 class ExecutionTests(unittest.IsolatedAsyncioTestCase):

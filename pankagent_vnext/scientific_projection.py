@@ -11,29 +11,15 @@ import hashlib
 from pathlib import Path
 
 VERSION = 'scientific-projection-v2'
-SUPPORTED = frozenset({'GENE_ENRICHED_IN','GENE_DETECTED_IN','MARKER_GENE_OF',
-    'T1D_DEG_IN','GENE_ACTIVITY_SCORE_IN','SIGNAL_COLOC_WITH'})
-LINKAGE_RELATIONS = frozenset({'SIGNAL_COLOC_WITH', 'PART_OF_GWAS_SIGNAL', 'PART_OF_QTL_SIGNAL'})
+from .agent_schemas import module as schema_module
+_METADATA = schema_module('database_schema')['execution_metadata']
+SUPPORTED = frozenset(_METADATA['measurement_relations'])
+LINKAGE_RELATIONS = frozenset(_METADATA['signal_relations'])
+MEASUREMENT_FIELDS = {k: set(v) for k, v in _METADATA['measurement_fields'].items()}
 
 
 def _requested(step):
-    # Membership coverage is meaningful for native separate GWAS/QTL checks too;
-    # it must not depend on whether the planner first combined their relations.
     return set(step.get('relation_types') or []) & (SUPPORTED | LINKAGE_RELATIONS)
-# Provenance and identity fields alone do not retain the requested measurement.
-# Intersect these reviewed categories with the pinned release inventory below.
-MEASUREMENT_FIELDS = {
-    'GENE_ENRICHED_IN': {'base_mean','lfc_se','log2_fold_change','padj','pvalue','rank_in_cell_type','stat'},
-    'GENE_DETECTED_IN': {'expression_call','max_donor_log_cpm','max_pct_cells_expressing',
-        'mean_donor_cpm','mean_donor_log_cpm','mean_pct_cells_expressing','median_donor_cpm',
-        'median_donor_log_cpm','median_pct_cells_expressing','min_donor_log_cpm','total_cells'},
-    'T1D_DEG_IN': {'adjusted_p_value','log2_fold_change','p_value','se_of_log2_fold_change'},
-    'GENE_ACTIVITY_SCORE_IN': {prefix+'ocr_gene_activity_score_'+summary
-        for prefix in ('','aab_pos_','non_diabetic_','type_1_diabetes_','type_2_diabetes_')
-        for summary in ('mean','median')},
-    'SIGNAL_COLOC_WITH': {'nsnp','pp_h0_abf','pp_h1_abf','pp_h2_abf','pp_h3_abf','pp_h4_abf'},
-    'MARKER_GENE_OF': set(),
-}
 
 
 def _measurement_kinds(kinds, property_name):

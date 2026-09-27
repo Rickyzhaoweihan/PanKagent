@@ -548,6 +548,88 @@
           }
         }
       }
+    },
+    "grounding_role_patterns": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "fact_operations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ranking": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "conditional_fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "required": [
+        "ranking",
+        "comparisons"
+      ]
+    },
+    "population_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "entity_type",
+          "request_pattern",
+          "exclude_pattern",
+          "recorded_names",
+          "interpretation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "request_pattern": {
+            "type": "string"
+          },
+          "exclude_pattern": {
+            "type": "string"
+          },
+          "interpretation": {
+            "type": "string"
+          },
+          "recorded_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

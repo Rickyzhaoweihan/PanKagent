@@ -939,6 +939,14 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         topology = bounded_path_topology_errors(tokens, step, parameters, tokenize)
         if topology:
             return list(dict.fromkeys(topology))
+    from .query_templates import interval_overlap_requested, compile_query
+    interval_template_verified = False
+    if interval_overlap_requested(step):
+        expected = compile_query(step)
+        if (not expected or expected.get('template_id') != 'interval_overlap_records'
+                or query.strip() != expected['cypher'].strip() or parameters != expected['parameters']):
+            return ['interval_overlap_requires_verified_template']
+        interval_template_verified = True
     forbidden = {"CREATE", "MERGE", "DELETE", "DETACH", "SET", "REMOVE", "DROP", "LOAD", "CALL", "FOREACH", "ALTER", "RENAME", "GRANT", "DENY", "REVOKE", "SHOW", "USE", "INSERT", "FINISH"}
     errors = []
     if any(t.kind == "SYMBOL" and t.value == ";" for t in tokens):
@@ -1044,8 +1052,9 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         errors.extend(_enrichment_property_errors(part, step, parameters))
         errors.extend(_unrequested_measurement_filters(part, measurement_choices, parameters,
                                                        graph_release=step.get("graph_version")))
-        errors.extend(_unrequested_property_filters(part, measurement_choices, parameters,
-                                                    graph_release=step.get("graph_version")))
+        if not interval_template_verified:
+            errors.extend(_unrequested_property_filters(part, measurement_choices, parameters,
+                                                        graph_release=step.get("graph_version")))
         from .numeric_predicates import validation_errors as numeric_validation_errors
         errors.extend(numeric_validation_errors(part, step, parameters))
         from .measurement_properties import validation_errors as detection_validation_errors
@@ -1197,6 +1206,8 @@ class GraphAdapter:
         return retain_grounding_proofs(self, grounded)
 
     async def close(self):
+        if getattr(self, '_preplanning_grounder', None):
+            await self._preplanning_grounder.close()
         await self.http.aclose()
         await self.driver.close()
 
@@ -2204,28 +2215,28 @@ class GraphAdapter:
                 ids = sorted({str(n['id']) for n in dependency_nodes})
                 if evidence.get('graph_version') != self.settings.graph_version:
                     raise GraphValidationError('dependency_graph_release_mismatch')
-            if not typed_binding and step.get('relation_types') == ['PART_OF_GWAS_SIGNAL']:
-                # A disease or gene node from a preceding check is not a GWAS
-                # variant input. Never satisfy this dependency on disease alone.
-                dependency_nodes = [n for n in dependency_nodes if 'variants' in (n.get('labels') or [])]
+            from .referenced_dependencies import recipe_for, referenced_ids
+            recipe = recipe_for(step) if not typed_binding else None
+            if recipe:
+                kind = recipe['entity_type']
+                dependency_nodes = [n for n in dependency_nodes if kind in (n.get('labels') or [])]
                 if not dependency_nodes and evidence.get('graph_version') == self.settings.graph_version:
-                    from .coloc_scope import _leads
-                    leads = set().union(*[_leads((e.get('properties') or {}).get('gwas_lead_vars'))
-                        for e in evidence.get('edges', []) if e.get('type') == 'SIGNAL_COLOC_WITH'])
-                    if len(leads) > 8:
-                        base['validation'].append({'valid':False,'reasons':['dependency_variant_resolution_limit']})
+                    leads, issue = referenced_ids(recipe, evidence)
+                    if issue:
+                        base['validation'].append({'valid': False, 'reasons': [issue]})
                         return base
-                    for lead in sorted(leads):
-                        binding = {'entity_type':'variants','property':'id','operator':'=','value':lead}
+                    for identifier in leads:
+                        binding = {'entity_type': kind, 'property': 'id', 'operator': '=', 'value': identifier}
                         resolved = await self._resolve_constraint(binding, 0, step)
-                        if resolved.get('state') != 'resolved' or 'variants' not in resolved.get('labels', []):
+                        if resolved.get('state') != 'resolved' or kind not in resolved.get('labels', []):
                             base['validation'].append({'valid':False,'reasons':['dependency_variant_identity_unresolved']})
                             return base
                         dependency_nodes.append({'id':resolved['id'],'labels':resolved['labels']})
                     if leads:
                         base.setdefault('dependency_inputs', []).append({'step_id':dependency,
-                            'source_property':'SIGNAL_COLOC_WITH.gwas_lead_vars', 'identity_verified':True,
-                            'scope':'recorded colocalization lead variants only', 'variant_count':len(leads)})
+                            'source_property':recipe['source_relation']+'.'+recipe['source_property'],
+                            'identity_verified':True, 'scope':'recorded referenced identities only',
+                            'variant_count':len(leads)})
                 ids = sorted({str(n['id']) for n in dependency_nodes if n.get('id') is not None})
             inherited_partial |= evidence.get("status") == "partial"
             if (evidence.get("status") == "partial" and evidence.get("truncated") is False
@@ -2307,6 +2318,7 @@ class GraphAdapter:
             routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         if step.get('gpu_participation_required'):
             routes = ['gpu_initial'] + [r for r in routes if r != 'gpu_initial']
+        seen_candidates = set()
         for route in routes:
             local_route = route in {'template', 'cache'}
             template_audit = None
@@ -2337,16 +2349,12 @@ class GraphAdapter:
                 correction = "\nCorrect the previous validation failures: " + ", ".join(reason for reason in failures) + ". Preserve every required filter and dependency."
                 if step.get("complete", True):
                     correction += " Return all matches without LIMIT or list slices."
+                from .agent_schemas import module as schema_module
+                repair_guidance = schema_module('validation')['repair_guidance']
                 if any(reason.startswith(("invalid_relation_property:", "unrequested_measurement_filter:")) for reason in failures):
-                    correction += " GENE_ENRICHED_IN uses padj for adjusted p-value and rank_in_cell_type for rank; enrichment_score is not a supported field. Do not invent measurement thresholds."
-                if step.get("semantic_registry") and not any(c.get("entity_type")=="disease" for c in step.get("constraints", [])):
-                    clinical = [c for c in step.get('constraints', []) if c.get('entity_type') == 'donor'
-                                and c.get('property') in {'diabetes_type', 'derived_diabetes_status'}]
-                    correction += " No disease-node identity filter was requested. Do not constrain disease.id or disease.name."
-                    correction += (" Apply the verified donor clinical predicates exactly as supplied."
-                                   if clinical else
-                                   " No diagnosed-diabetes donor predicate was requested; do not add donor.diabetes_type or donor.derived_diabetes_status.")
-                    correction += " Use only the resolved donor stage/cohort and sample/tissue constraints."
+                    correction += " " + repair_guidance['invalid_measurement_property']
+                if step.get("semantic_registry"):
+                    correction += " " + repair_guidance['unrequested_clinical_join']
                 if len(question) + len(correction) <= 4000:
                     attempt_question += correction
             selected_parameters = {**parameters, **(template["parameters"] if path_requested and template else {})}
@@ -2437,6 +2445,12 @@ class GraphAdapter:
                             continue
                         if reasons:
                             continue
+                        candidate_key = (query.strip(), json.dumps(candidate_parameters, sort_keys=True, default=str))
+                        if candidate_key in seen_candidates:
+                            base['validation'].append({'valid': False, 'route': route, 'skipped': True,
+                                                       'reasons': ['duplicate_query_parameters']})
+                            continue
+                        seen_candidates.add(candidate_key)
                         await emit("progress", {"stage": "querying_graph", "step_id": step.get("id")})
                         limits = {
                             "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
@@ -2462,6 +2476,13 @@ class GraphAdapter:
                         except Exception as exc:
                             base["validation"].append({"valid": False, "reasons": ["graph_execution_failed:" + type(exc).__name__]})
                             return base
+                        from .result_assessment import assess
+                        assessment = assess(step, result)
+                        base.setdefault('result_assessments', []).append(assessment)
+                        if not assessment['valid']:
+                            base['validation'].append({'valid': False, 'route': route,
+                                                       'reasons': assessment['reasons']})
+                            continue
                         outcome.attempt["selected"] = True
                         outcome.attempt["selected_query_sha256"] = hashlib.sha256(query.encode()).hexdigest()
                         base.update(result)
