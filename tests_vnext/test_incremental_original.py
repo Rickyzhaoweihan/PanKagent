@@ -172,3 +172,49 @@ def test_forced_grounding_refresh_cannot_be_satisfied_by_cached_inflight_read():
         assert await forced=='fresh' and calls==[False,True]
         await instance.close()
     asyncio.run(scenario())
+
+
+def test_statistical_instructions_are_not_gene_aliases_but_explicit_genes_remain():
+    from test_preplanning_grounding import FakeGraph, make_index, candidate_ids
+    graph=FakeGraph()
+    graph.rows['Gene'] += [{'id':'alias_rank','name':'TNFRSF11A','labels':['Gene'],'synonyms':['RANK']},
+        {'id':'alias_pp','name':'PPGENE','labels':['Gene'],'synonyms':['PP']},
+        {'id':'alias_p','name':'OCA2','labels':['Gene'],'synonyms':['P']}]
+    index=make_index(graph)
+    for text in ['Show variants. Rank each variant by minimum P value; break equal-P-value ties.',
+                 'Show colocalization with PP.H4 and signal annotations.']:
+        assert not candidate_ids(index.match(text)) & {'alias_rank','alias_pp','alias_p'}
+    for text,identifier in [('Find gene RANK','alias_rank'),('Find gene PP','alias_pp'),('Find gene P','alias_p')]:
+        assert identifier in candidate_ids(index.match(text))
+
+
+def test_complete_entity_phrase_does_not_become_implicit_property_operand():
+    from pankagent_vnext.semantic_registry import identity_authorization_text
+    assert 'type 1 diabetes' in identity_authorization_text('Show colocalization with type 1 diabetes and linked signals')
+    assert 'type 1 diabetes' not in identity_authorization_text('Find genes whose description contains type 1 diabetes')
+    assert 'type 1 diabetes' not in identity_authorization_text('Find nodes with type = type 1 diabetes')
+    for phrase in ['Count distinct samples','Count unique samples','Return every sample']:
+        assert not _unresolved_tissue_role(phrase,{},[])
+    assert _unresolved_tissue_role('Return unknownsite samples',{},[])
+
+
+def test_overlap_only_acknowledges_its_exact_intentional_join_warning():
+    from pankagent_vnext.query_templates import compile_query, acknowledged_plan_warnings
+    s=overlap_step();t=compile_query(s)
+    reasons=['schema_or_plan_warning:CartesianProduct','schema_or_plan_warning:UnknownPropertyKey']
+    assert acknowledged_plan_warnings(s,t['cypher'],t['parameters'],reasons)==reasons[:1]
+    assert acknowledged_plan_warnings(s,t['cypher']+' LIMIT 10',t['parameters'],reasons)==[]
+    assert acknowledged_plan_warnings(s,t['cypher'],{**t['parameters'],'template_0':'other'},reasons)==[]
+
+
+def test_scalar_singleton_is_normalized_but_multiple_values_need_interpretation():
+    from pankagent_vnext.planning_compile import compile_property_owners
+    from pankagent_vnext.release_schema import REGISTRY
+    grounding={'status':'ready','identity':{'graph_release':REGISTRY['release']},'mentions':[]}
+    plan={'steps':[{'id':'a','relation_types':['GENE_ACTIVITY_SCORE_IN'],'constraints':[
+        {'entity_type':'Gene','property':'hgnc_symbol','operator':'=','value':['GeneA']}]}]}
+    fixed,error=compile_property_owners(plan,grounding,question='Show gene activity for GeneA')
+    assert error is None and fixed['steps'][0]['constraints'][0]['value']=='GeneA'
+    assert plan['steps'][0]['constraints'][0]['value']==['GeneA']
+    plan['steps'][0]['constraints'][0]['value']=['GeneA','GeneB']
+    assert compile_property_owners(plan,grounding,question='Show gene activity')[1]=='invalid_scalar_constraint:a:hgnc_symbol'

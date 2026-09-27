@@ -29220,12 +29220,10 @@
     "numeric_membership_fields": {
       "PART_OF_QTL_SIGNAL": [
         "pip",
-        "rank",
         "nominal_p"
       ],
       "PART_OF_GWAS_SIGNAL": [
-        "pip",
-        "rank"
+        "pip"
       ]
     },
     "coordinate_fields": [

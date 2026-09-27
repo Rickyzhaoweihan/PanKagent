@@ -2433,7 +2433,8 @@
     "identifier_vocabulary": "\\b(?:Ensembl|Entrez|gene|transcript|variant|stable)\\s+(?:IDs?|identifiers?)\\b",
     "coordinate_unit": "\\b\\d+(?:\\.\\d+)?\\s*(?:bp|kb|Mb|Gb)\\b",
     "ranking_vocabulary": "\\b(?:top|bottom|first)\\s+\\d+\\b",
-    "statistical_property": "\\b(?:P[- ]?values?|PIP|posterior inclusion probabilit(?:y|ies)|effect alleles?|non[- ]effect alleles?|adjusted p[- ]?values?)\\b"
+    "statistical_property": "\\b(?:(?:equal|recorded|minimum|maximum|lowest|smallest)[- ])?P[- ]?values?\\b|\\b(?:PIP|posterior inclusion probabilit(?:y|ies)|effect alleles?|non[- ]effect alleles?|adjusted p[- ]?values?|PP[._ ]?H[0-4](?:[._]ABF)?)\\b",
+    "ranking_instruction": "\\b(?:rank|sort|order)\\s+(?:each|the|all|these|those|variants?|genes?|results?)\\b"
   },
   "fact_operations": {
     "ranking": [
@@ -2481,5 +2482,8 @@
       ],
       "interpretation": "An unqualified ductal-cell population request includes these independently recorded ductal populations. Retrieve and report each separately. This reviewed grouping is not a synonym merge; missing data for one population is not biological absence. Use verified IDs only."
     }
+  ],
+  "entity_phrase_patterns": [
+    "\\btype\\s+[12]\\s+diabetes\\b"
   ]
 }

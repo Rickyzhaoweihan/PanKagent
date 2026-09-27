@@ -2415,8 +2415,12 @@ class GraphAdapter:
                             repaired = repair_candidate(query, graph_release=step.get("graph_version"))
                             query, repairs = repaired["query"], repaired["transformations"]
                         reasons = validate_cypher(query, step, candidate_parameters, dependency_bindings=dependency_bindings)
+                        acknowledged_warnings = []
                         if not reasons:
                             reasons = await self._explain(query, candidate_parameters)
+                            from .query_templates import acknowledged_plan_warnings
+                            acknowledged_warnings = acknowledged_plan_warnings(step, query, candidate_parameters, reasons)
+                            reasons = [r for r in reasons if r not in acknowledged_warnings]
                         from .cypher_repair import failure_categories
                         categories = failure_categories(reasons)
                         validation_ms = round((time.monotonic() - validation_started) * 1000, 3)
@@ -2426,7 +2430,7 @@ class GraphAdapter:
                             "schema_normalizations": normalizations, "categorical_normalizations": normalization,
                             "deterministic_repairs": repairs, "deterministic_repair_record": repaired,
                             "route": route, "validation_ms": validation_ms,
-                            "failure_categories": categories, "reasons": reasons}
+                            "failure_categories": categories, "reasons": reasons, "acknowledged_plan_warnings": acknowledged_warnings}
                         if template_audit:
                             validation_record["template_audit"] = deepcopy(template_audit)
                         base["validation"].append(validation_record)

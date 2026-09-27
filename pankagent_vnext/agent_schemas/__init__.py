@@ -44,7 +44,7 @@ class SchemaPack:
                 ('graph_storage', 'identity', 'semantics_modalities', 'query_patterns', 'validation_repair')}
         db = self._data['database_schema']
         metadata = db.get('execution_metadata', {})
-        for category in ('measurement_fields', 'numeric_measurement_fields'):
+        for category in ('measurement_fields', 'numeric_measurement_fields', 'numeric_membership_fields'):
             for relation, fields in metadata.get(category, {}).items():
                 if relation not in db['relationships'] or not set(fields) <= set(db['relationships'][relation]['properties']):
                     raise ValueError('invalid_execution_metadata:' + category + ':' + relation)
@@ -59,6 +59,8 @@ class SchemaPack:
                 self.resolve_ref('relationships.' + rule['relation'] + '.properties.' + rule[field])
             if rule['group_endpoint'] not in {'start_id', 'end_id'}:
                 raise ValueError('invalid_fact_endpoint')
+        for pattern in self._data['semantic_interpretation'].get('entity_phrase_patterns', []):
+            re.compile(pattern)
         for pattern in self._data['semantic_interpretation'].get('grounding_role_patterns', {}).values():
             re.compile(pattern)
         for comment in self._data['semantic_interpretation'].get('temporary_comments', []):

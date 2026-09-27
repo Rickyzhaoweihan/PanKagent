@@ -51,3 +51,16 @@ This round has explicit **$10 Claude and $10 OpenAI cumulative limits**, stored 
 Core coverage, usable supported answers, verified empty outcomes and clarification are separate measures. Q17/Q57 remain unresolved-scope references; Q52/Q55 require correct verified-empty behavior. A larger result never establishes improvement. The 46/57 supported-answer target and latency/cost guardrails are release gates, not presumed outcomes.
 
 No live activation is included. The paid evaluation report must establish the actual outcome and identify any unmet gates before a deployment decision.
+
+## Separately frozen follow-up
+
+The first improved 57-case run remains immutable at its recorded application/pack hashes. Failure traces motivated a separate pack **2.1.1** follow-up:
+
+- Ranking instructions and PP.H0–PP.H4 statistical terms are not implicit gene requests; explicitly named genes remain eligible.
+- A reviewed full entity phrase is preserved when it follows an unqualified property-like word; explicit property operators retain precedence.
+- Generic sample quantifiers do not become invented tissue filters.
+- Singleton list proposals are normalized only for schema-observed scalar fields; multiple values require supervisor interpretation.
+- The exact verified interval-overlap template may acknowledge its intentional Cartesian-product warning. No generated or modified query inherits that exception; unknown-field and other EXPLAIN failures remain blocking.
+- Removed unused membership `rank` declarations absent from the physical schema and added cross-reference checks.
+
+The separate follow-up passed 320 focused tests plus 29 subtests. Its full execution replay returned all 85 overlap edges, matching the independent reference. Paid follow-up runs are reported separately; they must not replace the initial arm's failures or be presented as a fresh 57-case result for the final revision.

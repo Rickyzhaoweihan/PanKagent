@@ -417,6 +417,20 @@ def compile_property_owners(plan, grounding, *, question=None):
             for change in changes)
         for index, constraint in enumerate(step.get('constraints', [])):
             before = deepcopy(constraint)
+            if isinstance(constraint.get('value'), list) and str(constraint.get('operator', '=')).upper() not in {'IN', 'NOT IN'}:
+                from .agent_schemas import active_pack
+                owner = constraint.get('entity_type') or constraint.get('relationship_type')
+                group = 'nodes' if constraint.get('entity_type') else 'relationships'
+                try:
+                    spec = active_pack().resolve_ref(group + '.' + str(owner) + '.properties.' + str(constraint.get('property')))
+                except ValueError:
+                    spec = {}
+                observation = spec.get('observations', {})
+                types = set(observation.get('stored_types', {}))
+                if observation.get('status') == 'complete' and types and types <= {'str', 'int', 'float', 'bool'}:
+                    if len(constraint['value']) != 1 or isinstance(constraint['value'][0], (list, dict)):
+                        return result, f'invalid_scalar_constraint:{step.get("id", "step")}:{constraint.get("property")}'
+                    constraint['value'] = constraint['value'][0]
             relation_context = None
             prop = constraint.get('property')
             entity = constraint.get('entity_type')

@@ -150,6 +150,30 @@
           }
         }
       }
+    },
+    "template_warning_exceptions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "warnings",
+          "basis"
+        ],
+        "properties": {
+          "warnings": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "schema_or_plan_warning:CartesianProduct"
+              ]
+            }
+          },
+          "basis": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

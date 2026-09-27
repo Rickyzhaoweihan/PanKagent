@@ -625,3 +625,15 @@ def compile_typed_dependencies(step, dependency_bindings):
     query['cypher'] = query['cypher'].replace('\nWHERE ', '\nWHERE ' + ' AND '.join(predicates) + ' AND ', 1)
     query['template_id'] = 'typed_dependency_records'
     return query
+
+
+def acknowledged_plan_warnings(step, query, parameters, reasons):
+    """A declared intentional join exception applies only to an exact verified template."""
+    if not reasons or not interval_overlap_requested(step):
+        return []
+    expected = compile_query(step)
+    if (not expected or query.strip() != expected['cypher'].strip()
+            or parameters != expected['parameters']):
+        return []
+    rule = schema_module('validation').get('template_warning_exceptions', {}).get(expected['template_id'], {})
+    return [reason for reason in reasons if reason in rule.get('warnings', [])]

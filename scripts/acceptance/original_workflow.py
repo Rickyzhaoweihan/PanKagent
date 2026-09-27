@@ -35,13 +35,15 @@ async def run(args):
     fixture=json.loads(args.fixture.read_text())
     cases=fixture['cases'];known={c['id'] for c in cases}
     if set(args.case_keys or [])-known:raise ValueError('Unknown case')
-    selected=[c for c in cases if not args.case_keys or c['id'] in args.case_keys]
+    if args.case_keys and len(set(args.case_keys)) != len(args.case_keys):raise ValueError('Duplicate case selection')
+    by_id={c['id']:c for c in cases}
+    selected=[by_id[key] for key in args.case_keys] if args.case_keys else cases
     settings=replace(Settings(),model=args.model,budget_dir=str(args.ledger),budget_usd=args.ceiling,
         state_dir=args.root/'sessions',provider_status_url='',plan_cache_enabled=False,reasoning_effort='none',
         cypher_url='http://127.0.0.1:33917')
     frozen_manifest(args.root/'manifest.json',{'fixture_sha256':hashlib.sha256(args.fixture.read_bytes()).hexdigest(),
         'context':run_context(settings),'arm':args.arm,'model':args.model,'ceiling':args.ceiling,
-        'literature':False,'query_cache':'reset per case','inventory':'warm'})
+        'literature':False,'query_cache':'reset per case','inventory':'warm','selected_cases':[c['id'] for c in selected]})
     report=args.root/'report.jsonl'
     rows=[json.loads(x) for x in report.read_text().splitlines()] if report.exists() else []
     if rows and not args.resume:raise ValueError('Use --resume; completed attempts are immutable')

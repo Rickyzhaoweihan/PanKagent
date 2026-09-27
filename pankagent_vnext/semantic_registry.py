@@ -303,6 +303,14 @@ def identity_authorization_text(text):
                           and bool(re.search(r'[A-Za-z0-9]', suffix)))
         if passive_scope:
             continue
+        if not match.group('owner') and not explicit_predicate and implicit_value:
+            from .agent_schemas import module
+            # A reviewed complete entity phrase can begin with a property-like
+            # word. Explicit qualified fields/operators still take precedence.
+            if any(found.start() <= match.start('field') < found.end()
+                   for pattern in module('semantic_interpretation').get('entity_phrase_patterns', [])
+                   for found in re.finditer(pattern, text, re.I)):
+                continue
         if match.group('owner') is not None or explicit_predicate or implicit_value:
             # A qualified field without an operand (for example "return
             # Gene.description") is a projection, not a value-bearing span.
@@ -368,7 +376,8 @@ def _unresolved_tissue_role(text, vocabulary, matched):
             return not matched
     stop = {'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
             'donor', 'donors', 'and', 'or', 'their', 'nd', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
-            'seq', 'multiome', 'multiomics', 'assay', 'have', 'has', 'recorded', 'exact', 'capable', 'rna-capable'}
+            'seq', 'multiome', 'multiomics', 'assay', 'have', 'has', 'recorded', 'exact', 'capable', 'rna-capable', 'distinct', 'unique', 'every', 'each', 'both', 'separate',
+            'separately', 'additional', 'remaining', 'other', 'only'}
     for occurrence in re.finditer(r'\b([A-Za-z][A-Za-z0-9_-]*)\s+(?:samples?|specimens?)\b', text, re.I):
         modifier = occurrence.group(1).casefold()
         if (modifier in stop or modifier in known or modifier in matched_aliases

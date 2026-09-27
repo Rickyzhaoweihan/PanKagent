@@ -168,5 +168,13 @@
         "partner_annotations": 14
       }
     }
-  ]
+  ],
+  "template_warning_exceptions": {
+    "interval_overlap_records": {
+      "warnings": [
+        "schema_or_plan_warning:CartesianProduct"
+      ],
+      "basis": "The exact compiled overlap template has one verified Gene identity and one verified cell identity. Its coordinate join intentionally has no graph edge; all other EXPLAIN warnings still reject execution."
+    }
+  }
 }
