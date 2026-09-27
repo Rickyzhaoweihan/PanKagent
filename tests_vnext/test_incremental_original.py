@@ -155,3 +155,20 @@ def test_duplicate_admissible_candidates_never_execute_twice():
         assert len(adapter.retrieved)==1
         assert any('duplicate_query_parameters' in v['reasons'] for v in result['validation'])
     asyncio.run(scenario())
+
+
+def test_forced_grounding_refresh_cannot_be_satisfied_by_cached_inflight_read():
+    from pankagent_vnext.preplanning_grounding import Grounder
+    async def scenario():
+        instance=object.__new__(Grounder);instance.refresh_task=None;started=asyncio.Event();release=asyncio.Event();calls=[]
+        async def warm(force=False):
+            calls.append(force);started.set()
+            if not force:await release.wait()
+            return 'fresh' if force else 'cached'
+        instance._warm=warm
+        ordinary=asyncio.create_task(instance.warm());await started.wait()
+        forced=asyncio.create_task(instance.warm(force=True));await asyncio.sleep(0);release.set()
+        assert await ordinary=='cached'
+        assert await forced=='fresh' and calls==[False,True]
+        await instance.close()
+    asyncio.run(scenario())

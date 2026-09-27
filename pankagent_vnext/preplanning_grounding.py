@@ -423,11 +423,19 @@ class Grounder:
     async def warm(self, force=False):
         # A short caller deadline must not repeatedly discard a nearly built index.
         # Never return an expired index: callers can use tools while refresh finishes.
-        if self.refresh_task is None or self.refresh_task.done():
-            self.refresh_task = asyncio.create_task(self._warm(force=force))
-            self.refresh_task.add_done_callback(
-                lambda task: task.exception() if not task.cancelled() else None)
-        return await asyncio.shield(self.refresh_task)
+        while True:
+            if self.refresh_task is None or self.refresh_task.done():
+                self.refresh_task = asyncio.create_task(self._warm(force=force))
+                self.refresh_forced = force
+                self.refresh_task.add_done_callback(
+                    lambda task: task.exception() if not task.cancelled() else None)
+            task, forced = self.refresh_task, self.refresh_forced
+            result = await asyncio.shield(task)
+            if not force or forced:
+                return result
+            # A forced caller joining an ordinary cache read still needs a fresh scan.
+            # Join any forced successor already started by another waiter.
+
 
     async def _warm(self, force=False):
         async with self.lock:
