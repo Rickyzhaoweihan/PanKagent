@@ -1,7 +1,8 @@
 {
   "source": "/Users/runbomao/Library/Mobile Documents/com~apple~CloudDocs/Projects/PanKgraph/docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/pankagent-tab01.drawio",
   "source_sha256": "fcfa9c200268cd5e188812788b8d8ff9728fd297597fdfe94cbf0c8c118a0721",
-  "updated_sha256": "b7ea68b25e1c9425b980f0ae813ea66b22c652d0ba8b254d66d9598fec1a3423",
+  "updated_sha256": "7e93b9fe76aa169fa9528c0c3fecc79d20c47d960b9a23d615fe93e139632167",
   "scope": "page 01; backend original-workflow implementation; no deployment",
-  "preserved": "all cell IDs, edges, geometry, Error and Schema annotations; other source documents unchanged"
+  "preserved": "all cell IDs, edges, geometry, Error and Schema annotations; other source documents unchanged",
+  "validation": "Native draw.io PNG export inspected; Error/Schema labels and topology retained."
 }
