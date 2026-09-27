@@ -32,6 +32,24 @@ def stats(records):
         'cost_by_stage_usd':stages,'work':{key:sum(r.get('work',{}).get(key,0) for r in records) for key in ['generate','explain','retrieve']}}
 
 
+def verified_empty_result(key, raw, evidence):
+    # Evaluation-only: only the reviewed empty references qualify. Intermediate
+    # populations may be nonempty; it is the requested terminal population that
+    # must be empty, with every prerequisite fully read.
+    if key not in {'Q52', 'Q55'}:
+        return False
+    primary = [s for s in evidence.get('steps', []) if s.get('purpose') != 'context']
+    plan_steps = (raw.get('plan') or {}).get('steps', [])
+    parents = {parent for s in plan_steps for parent in s.get('depends_on', [])
+               if isinstance(parent, str)}
+    terminal = [s for s in primary if s.get('step_id') not in parents]
+    return (bool(terminal) and all(s.get('status') == 'empty' for s in terminal)
+            and all(s.get('status') in {'complete', 'empty'} and not s.get('truncated')
+                    and (s.get('retrieval_execution') or {}).get('completed') is True
+                    and (s.get('retrieval_execution') or {}).get('cursor_exhausted') is True
+                    for s in primary))
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--root',type=Path,required=True)
     p.add_argument('--output',type=Path,required=True);a=p.parse_args()
@@ -50,10 +68,7 @@ def main():
             if not row:continue
             raw=read(a.root/('baseline' if arm=='original' else 'improved')/(key+'.json'),{}).get('run',{})
             evidence=raw.get('evidence') or (raw.get('preview') or {}).get('evidence') or {}
-            primary=[s for s in evidence.get('steps',[]) if s.get('purpose')!='context']
-            empty=(key in {'Q52','Q55'} and bool(primary) and all(s.get('status')=='empty'
-                and (s.get('retrieval_execution') or {}).get('completed') is True
-                and (s.get('retrieval_execution') or {}).get('cursor_exhausted') is True for s in primary))
+            empty=verified_empty_result(key,raw,evidence)
             cov=row.get('evaluation',{});plan=raw.get('plan') or {}
             item['arms'][arm]={'status':row.get('status'),'core_covered':cov.get('verified_core_covered',False),
                 'verified_empty':empty,'reference_unresolved':key in {'Q17','Q57'},
