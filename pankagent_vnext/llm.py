@@ -175,12 +175,20 @@ class ClaudeGateway:
         return (getattr(self.settings, 'openai_key', '') if getattr(self.settings, 'model', '') == 'gpt-6-sol'
                 else self.settings.anthropic_key)
     def _options(self):
+        if self.settings.model == 'claude-sonnet-5-5':
+            return {'thinking': {'type': 'between_tools'}, 'output_config': {'effort': 'high'}}
         return {'thinking':{'type':'disabled'}} if self.settings.model=='claude-sonnet-5' else {}
     async def _reserve(self,purpose,system,body,max_tokens):
         # UTF-8 bytes are a conservative input-token upper bound; include tool JSON/framing.
         bound=len((system+json.dumps(body,ensure_ascii=False)).encode())+12000
         return await self.budget.areserve(self.settings.model,purpose,bound,max_tokens)
     async def _create(self,rid,**kwargs):
+        if self.settings.model == 'claude-sonnet-5-5':
+            # The model rejects forced tools. Keep schemas and append-only
+            # history intact; the existing loop validates tool inputs and bounds retries.
+            choice = kwargs.get('tool_choice', {})
+            if choice.get('type') in {'any', 'tool'}:
+                kwargs['tool_choice'] = {'type': 'auto', 'disable_parallel_tool_use': True}
         try:
             return await self.client.messages.create(**kwargs)
         except (anthropic.APIStatusError, ProviderStatusError) as exc:

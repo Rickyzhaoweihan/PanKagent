@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-PRICES = {'gpt-6-sol':(2.0,10.0), 'claude-sonnet-5':(2.0,10.0), 'claude-haiku-4-5-20251001':(1.0,5.0)}
+PRICES = {'gpt-6-sol':(2.0,10.0), 'claude-sonnet-5':(2.0,10.0), 'claude-sonnet-5-5':(2.0,10.0), 'claude-haiku-4-5-20251001':(1.0,5.0)}
 
 class BudgetExceeded(RuntimeError):
     pass

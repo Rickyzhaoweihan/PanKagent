@@ -62,7 +62,7 @@ class Settings:
         self.state_dir = Path(self.state_dir)
         if self.host not in ('127.0.0.1','::1'):
             raise ValueError('vNext development service must bind to loopback')
-        if self.model not in ('claude-sonnet-5','claude-haiku-4-5-20251001','gpt-6-sol'):
+        if self.model not in ('claude-sonnet-5','claude-sonnet-5-5','claude-haiku-4-5-20251001','gpt-6-sol'):
             raise ValueError('model must have an explicitly configured price')
         if self.reasoning_effort not in ('none','low','medium','high','xhigh','max'):
             raise ValueError('unsupported reasoning effort')
