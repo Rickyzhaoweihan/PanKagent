@@ -98,6 +98,12 @@ def dataset_source_owner(question, value, occurrence=None):
                          r'(?:donors?|cohort|samples?)\b', after, re.I)
                 or re.search(r'\bsamples?\s+(?:from|provided\s+by|sourced\s+from|'
                              r'excluding|exclude|without|except)\s*$', before, re.I))
+        syntax = schema_module('semantic_interpretation')['retrieval_interpretation']['clinical_syntax']
+        if (not sample and re.search(syntax['leading_source_pattern'], before, re.I)
+                and re.search(syntax['leading_source_tail'], after, re.I)):
+            donor = True
+        if not sample and re.search(syntax['source_control_tail'], after, re.I):
+            donor = True
         # Ordinary 'metadata' denotes information, not a request to select
         # the dataset whose recorded source happens to be named Metadata.
         if value.casefold() == 'metadata' and not (sample or donor):
@@ -1524,7 +1530,7 @@ def resolve(step, vocabulary, release):
                              or bool(re.match(r'[-–—]\s*negative\b',
                                               text[match.end():match.end()+25], re.I)))}
                 for match in re.finditer(
-                    r'\bstage\s*(?:[-:]|is\b|equals?\b)?\s*(\d+|iii|ii|i)\b',
+                    schema_module('semantic_interpretation')['retrieval_interpretation']['clinical_syntax']['stage_pattern'],
                     text, re.I)]
     local_stages = stage_mentions(scope_q)
     requested_stages = stage_mentions(scope_source_text)
@@ -1704,8 +1710,7 @@ def resolve(step, vocabulary, release):
     local_disease_scope_text = identity_authorization_text(scope_q)
     request_mentions = _disease_mentions(disease_scope_text)
     clinical_mentions = [m for m in request_mentions if not _disease_mention_is_stage_label(disease_scope_text, m)]
-    if clinical_mentions:
-        request_mentions = clinical_mentions
+    request_mentions = clinical_mentions
     authoritative_disease_mentions = list(request_mentions)
     local_mentions = _disease_mentions(local_disease_scope_text)
     # A generated stage label is not an added clinical diagnosis, even when

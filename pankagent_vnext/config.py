@@ -46,6 +46,7 @@ class Settings:
     neo4j_database: str = field(default_factory=lambda: env('NEO4J_DATABASE','pankgraph'))
     graph_version: str = field(default_factory=lambda: env('GRAPH_VERSION','PanKgraph_08_04'))
     graph_identity_file: str = field(default_factory=lambda: env('GRAPH_IDENTITY_FILE','var/vnext/graph-identity.json'))
+    postgresql_dsn: str = field(default_factory=lambda: env('POSTGRESQL_DSN',''), repr=False)
     graph_timeout: float = 10.0
     cypher_timeout: float = 15.0
     cypher_initial_requests: int = field(default_factory=lambda: int(env('CYPHER_INITIAL_REQUESTS', '2')))

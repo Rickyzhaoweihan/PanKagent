@@ -636,6 +636,91 @@
       "items": {
         "type": "string"
       }
+    },
+    "retrieval_interpretation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "planning",
+        "formatting",
+        "clinical_syntax",
+        "source_expansions",
+        "clarification_policy"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string"
+        },
+        "planning": {
+          "type": "string"
+        },
+        "formatting": {
+          "type": "string"
+        },
+        "clarification_policy": {
+          "type": "string"
+        },
+        "clinical_syntax": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "source_expansions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "ranking_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "grounding_vocabulary_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "identity_request_pattern": {
+          "type": "string"
+        },
+        "coordinate_lookup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "request_pattern",
+            "clarification"
+          ],
+          "properties": {
+            "request_pattern": {
+              "type": "string"
+            },
+            "clarification": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

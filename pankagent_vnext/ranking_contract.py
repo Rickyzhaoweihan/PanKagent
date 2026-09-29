@@ -10,14 +10,9 @@ import re
 from pathlib import Path
 
 VERSION='requested-measurement-ranking-v1'
-RELEASE='PanKgraph_08_04'
-FIELDS={
- 'T1D_DEG_IN':{'effect':'log2_fold_change','adjusted':'adjusted_p_value','nominal':'p_value'},
- 'GENE_ENRICHED_IN':{'effect':'log2_fold_change','adjusted':'padj','nominal':'pvalue'},
- 'GENE_DETECTED_IN':{'median log cpm':'median_donor_log_cpm','mean log cpm':'mean_donor_log_cpm',
-                     'median cpm':'median_donor_cpm','mean cpm':'mean_donor_cpm',
-                     'median percent':'median_pct_cells_expressing','mean percent':'mean_pct_cells_expressing'},
-}
+from .agent_schemas import module as schema_module
+RELEASE=schema_module('database_schema')['release']
+FIELDS=schema_module('semantic_interpretation')['retrieval_interpretation']['ranking_fields']
 DIGEST=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
@@ -114,7 +109,8 @@ def attach_to_plan(plan, graph_release=RELEASE):
             step['ranking_issue']=recovery('“Top” does not identify a ranking statistic. Choose effect size or a supported expression statistic before we select a limited set; your biological filters will be kept.',relation)
         else:
             derived['intent_source']=source;step['ranking_contract']=derived
-            if derived.get('top_n'):step['complete']=False
+            derived['execution_stage']='formatting'
+            step['complete']=True
     return output
 
 
@@ -130,6 +126,8 @@ def guidance(step):
     kind=contract['relation_type'];parts=[]
     direction=contract.get('effect_direction')
     if direction:parts.append(f"require {kind}.log2_fold_change {'> 0' if direction=='positive' else '< 0'}")
+    if contract.get('execution_stage') == 'formatting':
+        return '\nRetrieve the complete scoped records and their properties. No ORDER BY or LIMIT for ranking. Ranking and top-k presentation happen in formatting. ' + '; '.join(parts)
     if contract.get('property'):parts.append(f"primary ORDER BY the SAME {kind}.{contract['property']} {contract['order']}")
     if contract.get('top_n'):parts.append(f"select exactly the requested top {contract['top_n']} measurement rows using LIMIT {contract['top_n']} after this ordering and BEFORE collect/count/graph aggregation")
     return '\nExplicit requested ranking contract: '+'; '.join(parts)+'. Use one measured Gene-to-cell path; return the selected gene identities and supporting measurements. Do not add Cartesian nodes, extra paths, or joins before selection. Do not substitute p-value ranking for fold-change ranking or add an unrequested significance threshold.'
@@ -288,9 +286,12 @@ def validation_errors(tokens,step,parameters):
         errors.append('ranking_requires_unambiguous_boolean_scope')
     if direction and not direction_present(tokens,direction,parameters,{roots[v] for v in variables},aliases,roots):
         errors.append('missing_requested_effect_direction:'+direction)
+    if contract.get('execution_stage') == 'formatting':
+        if any(t.kind=='WORD' and t.value.upper() in {'ORDER','LIMIT','SKIP'} for t in tokens):
+            errors.append('ranking_belongs_to_formatting_retrieve_complete_records')
     orders=[i for i,t in enumerate(tokens[:-1]) if t.kind=='WORD' and t.value.upper()=='ORDER' and tokens[i+1].value.upper()=='BY']
     selected=None
-    if contract.get('property'):
+    if contract.get('property') and contract.get('execution_stage') != 'formatting':
         if len(orders)!=1:errors.append('missing_or_ambiguous_requested_order')
         else:
             i=orders[0]+2;term=None;end=i+1
@@ -308,7 +309,7 @@ def validation_errors(tokens,step,parameters):
                 if direction and not direction_present(tokens,direction,parameters,{term[0]},aliases,roots):
                     errors.append('effect_direction_not_bound_to_ranked_relationship')
     limits=[i for i,t in enumerate(tokens) if t.kind=='WORD' and t.value.upper()=='LIMIT']
-    if contract.get('top_n'):
+    if contract.get('top_n') and contract.get('execution_stage') != 'formatting':
         if len(limits)!=1 or selected is None or limits[0]<=selected:errors.append('missing_requested_top_limit')
         else:
             value,end=_value(tokens,limits[0]+1,parameters)

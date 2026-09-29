@@ -242,6 +242,14 @@ class EntityIndex:
         role_spans = [(kind, *_span(question, match.start(), match.end()))
                       for kind, pattern in _SCHEMA_ROLE_PATTERNS.items()
                       for match in re.finditer(pattern, question, re.I)]
+        # Property request patterns have an explicit schema owner. They are
+        # projection/predicate vocabulary, never implicit gene aliases.
+        for group in ('nodes', 'relationships'):
+            for owner in schema_module('database_schema')[group].values():
+                for prop in owner['properties'].values():
+                    if prop.get('request_pattern'):
+                        role_spans.extend(('schema_property', *_span(question, m.start(), m.end()))
+                                          for m in re.finditer(prop['request_pattern'], question, re.I))
         authorization_question = identity_authorization_text(question)
         incidental_spans = [(_span(question, match.start(), match.end()),
                              'property_operand')

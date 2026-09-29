@@ -196,9 +196,9 @@ async def build_inventory(graph, *, include_schema_observations=False):
     semantic = graph.semantic_vocabulary
     parameters = inspect.signature(semantic).parameters
     vocabulary = await semantic(force=True) if 'force' in parameters else await semantic()
+    from .agent_schemas import module
     terminology = {key: vocabulary.get(key) for key in
-                   ("stages", "sources", "donor_sources", "sample_sources", "modalities",
-                    "assay_donor_sources", "inventory_complete")}
+                   module("semantic_interpretation")["retrieval_interpretation"]["grounding_vocabulary_keys"]}
     recorded_stages = vocabulary.get("stages")
     stage_values = recorded_stages if isinstance(recorded_stages, list) else []
     valid_stages = [value for value in stage_values if isinstance(value, str)

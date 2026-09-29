@@ -165,5 +165,37 @@
       "request_pattern": "\\boverlap\\w*\\b.{0,80}\\bgene body\\b|\\bgene body\\b.{0,80}\\boverlap\\w*\\b",
       "guidance": "For gene-body OCR overlap, use an independent OCR_PEAK_IN task with explicit Gene and anatomical_structure identities and request gene-body overlap in its question. The structural compiler compares recorded chromosome, genome assembly and interval endpoints. Keep the gene-activity task separate. Return overlapping peaks and OCR_PEAK_IN annotations; overlap is not a regulatory edge."
     }
-  ]
+  ],
+  "clinical_retrieval": {
+    "population_type": "donor",
+    "sample_type": "Sample_node",
+    "sample_relation": "HAS_SAMPLE",
+    "diagnosis_relation": "HAS_DONOR",
+    "complete": true,
+    "ranking_stage": "formatting",
+    "diagnosis_type": "disease",
+    "template_fields": {
+      "disease": [
+        "id"
+      ],
+      "donor": [
+        "id",
+        "data_source",
+        "t1d_stage",
+        "diabetes_type",
+        "derived_diabetes_status"
+      ],
+      "Sample_node": [
+        "id",
+        "data_modality"
+      ]
+    }
+  },
+  "coordinate_lookup": {
+    "anchor_type": "Gene",
+    "result_type": "OCR_peak",
+    "anchor_mapping": "ensembl_genes_node",
+    "result_mapping": "ocr_peak_node",
+    "sql_schema": "public"
+  }
 }

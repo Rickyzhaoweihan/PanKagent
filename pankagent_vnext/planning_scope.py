@@ -367,6 +367,19 @@ def scope_issue(question, grounding, plan):
         compatible = [step for step in steps if any(_compatible(kind, relation)
                       and not (kind == 'disease' and relation in {'HAS_DONOR', 'HAS_SAMPLE'})
                       for relation in step.get('relation_types', []))]
+        # Node-only identity/coordinate requests have no graph relationship.
+        # Re-derive their closed request contract; do not trust a model flag.
+        from .schema_drafting import compile_identity_draft
+        from .coordinate_lookup import draft as coordinate_draft
+        node_plan = compile_identity_draft(question, grounding) or coordinate_draft(question, grounding)
+        if node_plan and node_plan.get('steps'):
+            expected = node_plan['steps'][0]
+            compatible += [step for step in steps if not step.get('relation_types')
+                           and not step.get('depends_on')
+                           and [{k: v for k, v in c.items() if not (k == 'owner_kind' and v == 'node')}
+                                for c in step.get('constraints', [])] == expected['constraints']
+                           and step.get('coordinate_lookup') == expected.get('coordinate_lookup')
+                           and _identity_present(step, candidate, forms)]
         # T1D differential-expression context is encoded by the edge category,
         # not a disease-node predicate. Donor cohorts have their own stage and
         # clinical-status guards; do not require a disease node for those paths.

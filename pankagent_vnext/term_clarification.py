@@ -3,7 +3,8 @@ import re
 from difflib import SequenceMatcher
 
 VERSION = 'term-clarification-v1'
-SOURCE_EXPANSIONS = {'HPAP': ('Human Pancreas Analysis Program',)}
+from .agent_schemas import module
+SOURCE_EXPANSIONS = module('semantic_interpretation')['retrieval_interpretation']['source_expansions']
 
 
 def source_role_text(text, vocabulary):

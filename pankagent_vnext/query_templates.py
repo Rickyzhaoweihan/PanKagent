@@ -439,6 +439,55 @@ def _interval_overlap_records(step):
     return None
 
 
+def _clinical_chain_records(step):
+    """A typed diagnosis -> population -> sample path from schema 4."""
+    from .agent_schemas import module
+    recipe = module('query_patterns')['clinical_retrieval']
+    left, middle, right = (recipe[key] for key in ('diagnosis_type','population_type','sample_type'))
+    first, second = recipe['diagnosis_relation'], recipe['sample_relation']
+    if (set(step.get('relation_types', [])) != {first, second}
+            or step.get('semantic_registry', {}).get('donor_required') is not True
+            or step.get('sample_requirements', {}).get('separate_bindings')):
+        return None
+    for relation, source, target in ((first,left,middle),(second,middle,right)):
+        if not any(source in path['source'] and target in path['target']
+                   for path in REGISTRY['relations'][relation]['paths']):
+            return None
+    variables = {left:'a',middle:'b',right:'c'}
+    params, bindings, filters = {}, {}, []
+    anchors = 0
+    try:
+        for index, constraint in enumerate(step.get('constraints', [])):
+            owner, prop, op = constraint.get('entity_type'), constraint.get('property'), constraint.get('operator','=')
+            if (owner not in variables or prop not in REGISTRY['nodes'][owner]
+                    or prop not in recipe['template_fields'].get(owner, [])
+                    or op not in {'=','!=','<>','IN'} or constraint.get('relationship_type')
+                    or constraint.get('owner_kind') not in (None,'node')):
+                return None
+            resolved = _resolved_entity(step,index,constraint)
+            if resolved and resolved['entity_type'] != owner:
+                return None
+            anchors += bool(resolved and owner == left)
+            value = resolved['id'] if resolved else constraint.get('value')
+            prop = 'id' if resolved else prop
+            key = 'template_'+str(index)
+            params[key] = _value(value,op)
+            bindings[key] = _parameter_binding(step,index,constraint,owner,prop,op,resolved)
+            filters.append(f"{variables[owner]}.`{prop}` {'<>' if op=='!=' else op} ${key}")
+    except (ValueError,TypeError,OverflowError):
+        return None
+    if anchors != 1:
+        return None
+    return {'cypher':f'MATCH (a:`{left}`)-[r:`{first}`]->(b:`{middle}`)-[s:`{second}`]->(c:`{right}`)\n'
+            +'WHERE '+' AND '.join(filters)+'\n'
+            +'RETURN collect(DISTINCT a)+collect(DISTINCT b)+collect(DISTINCT c) AS nodes, '
+            +'collect(DISTINCT r)+collect(DISTINCT s) AS edges',
+            'parameters':params,'parameter_bindings':bindings,
+            'template_id':'clinical_population_sample_records','version':VERSION,'sha256':DIGEST,
+            'schema_sha256':SCHEMA_DIGEST,'endpoint_coverage':{'all_requested_paths_covered':True,
+                'scope_basis':'typed_diagnosis_population_sample_path'}}
+
+
 def compile_query(step):
     from .annotation_selection import overview, RELATIONS as ANNOTATION_RELATIONS
     bounded_annotation = overview(step)
@@ -449,6 +498,9 @@ def compile_query(step):
     kinds = step.get('relation_types', [])
     if not kinds:
         return _region_gene_records(step) or _node_records(step)
+    clinical = _clinical_chain_records(step)
+    if clinical:
+        return clinical
     if len(kinds) != 1 or kinds[0] not in REGISTRY['relations']:
         return None
     overlap = _interval_overlap_records(step)

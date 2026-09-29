@@ -30,7 +30,7 @@ _SAMPLE = set('''donor donors sample samples cohort cohorts hpap stage t1d
 _GENE = set('''cell cells type types detected detection expressed expression
  enriched enrichment marker annotations annotation effector physical interaction
  partners partner differential t1d support pathway pathways reactome kegg
- gene insights evidence function genetic
+ gene insights evidence function genetic canonical measurements measurement recorded include name
 '''.split())
 
 
@@ -118,6 +118,9 @@ def compile_schema_draft(question, grounding, history=None):
             or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']
             or re.search(r'[<>!=]|\b(?:instead|replace|except|most|top|first|before|after|between|paired|joint)\b', question, re.I)):
         return None
+    identity = compile_identity_draft(question, grounding)
+    if identity:
+        return identity
     samples = bool(re.search(r'\bdonors?\b|\bsamples?\b', question, re.I))
     separate_counts = _separate_assay_counts(question) if samples else None
     vocabulary = grounding.get('sample_terminology') if samples else None
@@ -271,3 +274,29 @@ def compile_schema_draft(question, grounding, history=None):
     return {'interpreted_question': question, 'steps': deepcopy(steps), 'clarification': None,
             'planning_route': {'kind': 'verified_schema_pattern', 'version': VERSION, 'digest': DIGEST,
                 'claude_calls': 0, 'rule': 'Purpose parser retained all recognized request tokens; schema, query and post-retrieval scope checks remain mandatory.'}}
+
+
+def compile_identity_draft(question, grounding):
+    """One exact grounded identity may be retrieved without inventing a join."""
+    from .agent_schemas import module
+    if (not grounding or grounding.get('status') != 'ready'
+            or grounding.get('identity', {}).get('graph_release') != REGISTRY['release']):
+        return None
+    mentions = [m for m in grounding.get('mentions', [])
+                if m.get('state') in {'resolved', 'ambiguous', 'qualified', 'not_found'}]
+    if len(mentions) != 1:
+        return None
+    mention = mentions[0]
+    if (mention.get('state') != 'resolved' or mention.get('identity_complete') is False
+            or len(mention.get('candidates', [])) != 1):
+        return None
+    pattern = module('semantic_interpretation')['retrieval_interpretation']['identity_request_pattern']
+    if not re.fullmatch(pattern.format(entity=re.escape(mention['requested'])), question, re.I):
+        return None
+    item = mention['candidates'][0]
+    if item.get('entity_type') not in REGISTRY['nodes']:
+        return None
+    return {'interpreted_question': question, 'clarification': None, 'steps': [{
+        'id': 'identity', 'question': question, 'relation_types': [],
+        'constraints': [_identity(item)], 'depends_on': [], 'complete': True,
+        'evidence_combination': 'independent'}]}

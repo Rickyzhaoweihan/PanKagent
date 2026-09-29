@@ -437,8 +437,15 @@ class Runtime:
                             except Exception as exc:
                                 raise ValueError('E01 preparation service unavailable: ' + type(exc).__name__) from exc
                         plan_options['preparer'] = prepare_proposal
-                    proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
-                    # Only a model-requested terminology clarification activates the existing revision UI.
+                    if term_issue:
+                        # Inventory-backed spelling suggestions require explicit user selection.
+                        # Do not spend a planning call or execute a silently substituted source.
+                        proposed = {'interpreted_question': run['question'], 'steps': [],
+                            'clarification': term_issue['message'], 'recovery': term_issue,
+                            'planning_route': {'kind': 'term_clarification', 'claude_calls': 0}}
+                    else:
+                        proposed = await asyncio.wait_for(self.gateway.plan(run["question"], [] if revision else (await self.io.call(self.planning_history, run)), **plan_options), self.settings.plan_timeout)
+                    # Reuse the existing failed-plan recovery and revision UI.
                     if term_issue and proposed.get('clarification') and not proposed.get('steps'):
                         wording = str(proposed['clarification']).casefold()
                         labels = [c['label'].casefold() for item in term_issue.get('issues', []) for c in item.get('candidates', [])]

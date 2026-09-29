@@ -995,6 +995,8 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         else:
             branch.append(token)
     branches.append(branch)
+    if step.get('interpretation_stage') == 'formatting' and any(t.kind == 'WORD' and t.value.upper() == 'ORDER' for t in tokens):
+        errors.append('ranking_belongs_to_formatting_retrieve_complete_records')
     from .ranking_contract import validation_errors as ranking_validation_errors
     ranking_errors = ranking_validation_errors(tokens, step, parameters)
     errors.extend(ranking_errors)
@@ -1607,6 +1609,18 @@ class GraphAdapter:
         unknown_relations = [kind for kind in step["relation_types"] if getattr(self, "release_relations", set()) and kind not in self.release_relations]
         step["entity_resolution"] = {"state": "needs_clarification" if unresolved or unknown_relations or step.get("semantic_issues") else "resolved" if entities else "not_required",
                                      "graph_version": self.settings.graph_version, "unknown_relations": unknown_relations}
+        if step.get('coordinate_lookup'):
+            from .coordinate_lookup import verified_spec
+            try:
+                verified_spec(self.settings.graph_version)
+                if not getattr(self.settings, 'postgresql_dsn', ''):
+                    raise ValueError('postgresql_not_configured')
+            except ValueError as exc:
+                message = 'The PostgreSQL coordinate source needs a verified release, assembly and coordinate mapping before this lookup can run.'
+                step.setdefault('semantic_issues', []).append(message)
+                step['recovery'] = {'category': str(exc), 'message': message,
+                    'retryable': False, 'suggestions': []}
+                step['entity_resolution']['state'] = 'needs_clarification'
         step["resolution_key"] = self._resolution_signature(step)
         return step
 
@@ -2135,6 +2149,13 @@ class GraphAdapter:
             if step.get('recovery'):
                 base['recovery'] = deepcopy(step['recovery'])
             return base
+        if step.get('coordinate_lookup'):
+            from .coordinate_lookup import execute as execute_coordinates
+            step = await self._prepare_step(step, emit)
+            if step.get('semantic_issues') or step.get('recovery'):
+                return {**base, 'recovery': step.get('recovery'),
+                        'validation': [{'valid': False, 'reasons': ['coordinate_scope_unresolved']}]}
+            return await execute_coordinates(self, step, base)
         if step.get("gwas_scope_unavailable"):
             base["validation"].append({"valid": False, "reasons": ["gene_gwas_variant_scope_unresolved"]})
             base["error"] = {"category": "scope_unavailable", "message": "The requested gene has no verified variant or locus binding for this GWAS check. A disease-wide search was not substituted."}

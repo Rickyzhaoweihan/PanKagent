@@ -22545,7 +22545,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bcredible[- ]sets?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.part_of_GWAS_signal",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -23069,7 +23069,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bP[- ]?values?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.part_of_GWAS_signal",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -23115,7 +23115,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bPIP\\b|posterior inclusion probability",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.part_of_GWAS_signal",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -24527,7 +24527,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bPIP\\b|posterior inclusion probability",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.part_of_QTL_signal",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -27210,7 +27210,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bGWAS\\s+(?:lead\\s+)?variants?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.signal_COLOC_with",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -27569,7 +27569,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bPP[._ ]?H4(?:[._]ABF)?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.signal_COLOC_with",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -27615,7 +27615,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bQTL\\s+(?:lead\\s+)?variants?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.signal_COLOC_with",
             "bim.schema_skill.complex_skill.part_of_QTL_signal#part_of_GWAS_signal#signal_COLOC_with#effector_gene_of;CMDKP_effector_gene_of"
@@ -28543,7 +28543,7 @@
           "pattern": null,
           "export": "public",
           "query_terms": [],
-          "request_pattern": null,
+          "request_pattern": "\\bP[- ]?values?\\b",
           "interpretation_refs": [
             "bim.schema_skill.edge_skill.T1D_DEG_in",
             "bim.schema_skill.complex_skill.T1D_DEG_in#gene_detected_in#gene_activity_score_in#OCR_peak_in"
@@ -28921,7 +28921,7 @@
   },
   "postgresql": {
     "enabled": false,
-    "status": "mapping_unverified",
+    "status": "coordinate_convention_unverified",
     "role": "optional_coordinate_accelerator",
     "mappings": {
       "ocr_peak_node": {
@@ -28929,13 +28929,18 @@
         "id": "id",
         "properties": {
           "chr": "chr",
-          "start": "start_loc",
-          "end": "end_loc"
+          "start": "start",
+          "end": "end"
         }
       },
       "ensembl_genes_node": {
         "node_type": "Gene",
-        "id": "id"
+        "id": "id",
+        "properties": {
+          "chr": "chr",
+          "start": "start",
+          "end": "end"
+        }
       },
       "gwas_snp_id_node": {
         "node_type": "variants",
@@ -28952,7 +28957,17 @@
       "assembly",
       "coordinate_convention",
       "boundary_checks"
-    ]
+    ],
+    "verification": {
+      "graph_release": "PanKgraph_08_04",
+      "verified": false,
+      "assembly": null,
+      "coordinate_conventions": {
+        "ensembl_genes_node": null,
+        "ocr_peak_node": null
+      },
+      "note": "Read-only PostgreSQL inspection confirmed columns id/chr/start/end. CFTR PostgreSQL start 117287120 differs from Neo4j start_loc 117287119. Release pairing, assembly and per-table coordinate conventions remain unverified; no automatic one-base correction."
+    }
   },
   "profiling": {
     "small_domain_threshold": 5,

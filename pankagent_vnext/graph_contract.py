@@ -114,6 +114,8 @@ def generation_request(step, base_question):
     if notes: suffix += '\n'+'\n'.join(notes)
     suffix += '\nReturn matching nodes and relationships with properties. Do not add unrequested disease, donor, significance or rank filters.'
     if step.get('complete', True): suffix += ' Return all matches without LIMIT, SKIP or list slices.'
+    if step.get('interpretation_stage') == 'formatting':
+        suffix += ' Ranking and interpretation happen after retrieval. No ORDER BY or aggregation that discards records.'
     from .semantic_registry import generation_guidance
     result = base_question + suffix + generation_guidance(step)
     # Never silently truncate a scientific constraint to fit the API.

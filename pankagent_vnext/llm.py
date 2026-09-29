@@ -221,13 +221,17 @@ class ClaudeGateway:
         initial_proofs = [deepcopy(c['selection_proof']) for m in (grounding or {}).get('mentions', [])
                           for c in m.get('candidates', []) if c.get('selection_proof')]
         scope_question = (grounding or {}).get('session_scope_question') or question
+        from .clinical_retrieval import draft as clinical_draft
+        clinical_plan = clinical_draft(question, grounding)
+        from .coordinate_lookup import draft as coordinate_draft
+        coordinate_plan = coordinate_draft(question, grounding)
         local_draft = None
         if grounding and grounding.get('status') == 'ready':
             from .preplanning_grounding import grounding_guidance
             system_text = GROUNDED_SYSTEM
             if not chain_mode:
                 try:
-                    local_draft = (compile_signal_plan(question, grounding, history)
+                    local_draft = (coordinate_plan or clinical_plan or compile_signal_plan(question, grounding, history)
                                    or compile_hla_path_plan(question, grounding, history)
                                    or compile_schema_draft(question, grounding, history))
                 except (ValueError, KeyError, TypeError):
@@ -278,7 +282,10 @@ class ClaudeGateway:
                         if str(m.get('requested', '')).casefold() != proof['mention'].casefold()]
                     grounding['mentions'].append({'requested': proof['mention'], 'state': 'resolved',
                         'candidates': [{**prior_candidate, **proof, 'labels': [proof['entity_type']], 'match_kind': proof['match_method']}]})
-            plan = proposal
+            # Closed inventory-backed cohort templates preserve original scope
+            # rather than compiling a model's rewritten clinical interpretation.
+            plan = (deepcopy(coordinate_plan) if coordinate_plan else
+                    deepcopy(clinical_plan) if clinical_plan and not proposal.get('clarification') else proposal)
             if chain_mode:
                 from .chain_drafting import expand
                 plan = expand(plan, question)
@@ -313,6 +320,10 @@ class ClaudeGateway:
             from .investigations import category_issue
             issue = category_issue(question, plan)
             if issue: raise ValueError(issue)
+            for step in plan.get('steps', []):
+                step['complete'] = True
+                step['interpretation_stage'] = 'formatting'
+                step['answer_request'] = question
             plan['retrieval_policy'] = 'partial_independent_v1'
             self.last_success = time.time()
             return plan
@@ -439,10 +450,12 @@ class ClaudeGateway:
             scope = ('Oversized query: node identities, descriptions and provenance only; no relationship or measurement conclusions are supported by this view.'
                 if limited else SCOPE_NOTE if broad_cell_search(evidence) else 'Use each step\'s evidence_coverage for verified query scope and source comparisons. Unknown historical coverage is not a new verification. Never infer that a search or source comparison was limited merely because few records are returned. A recorded one-versus-rest comparison retains its source-analysis comparator population regardless of query scope.')
             from .format_input_modes import input_structure
+            from .agent_schemas import module as schema_module
             return json.dumps({'question':question,'evidence':items,'verified_search_scope':scope,
                 'request_context':current(question), 'request_authority':AUTHORITY,
                 'input_structure':input_structure(evidence),
                 'verified_facts':verified_facts,
+                'retrieval_interpretation':schema_module('semantic_interpretation')['retrieval_interpretation']['formatting'],
                 'fact_authority':'Use these calculated facts for rankings, numerical comparisons and counts. Partial task statistics describe retrieved records only. Sampled examples cannot override full-record facts.',
                 'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()
                     for w in (step.get('requested_scope') or {}).get('interpretation_warnings', [])))},ensure_ascii=False,default=str)

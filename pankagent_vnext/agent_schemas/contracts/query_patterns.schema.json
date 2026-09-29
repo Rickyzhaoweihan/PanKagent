@@ -215,6 +215,78 @@
           }
         }
       }
+    },
+    "clinical_retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "population_type": {
+          "type": "string"
+        },
+        "sample_type": {
+          "type": "string"
+        },
+        "sample_relation": {
+          "type": "string"
+        },
+        "diagnosis_relation": {
+          "type": "string"
+        },
+        "ranking_stage": {
+          "type": "string"
+        },
+        "complete": {
+          "const": true
+        },
+        "diagnosis_type": {
+          "type": "string"
+        },
+        "template_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "required": [
+        "population_type",
+        "sample_type",
+        "sample_relation",
+        "diagnosis_relation",
+        "complete",
+        "ranking_stage"
+      ]
+    },
+    "coordinate_lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor_type",
+        "result_type",
+        "anchor_mapping",
+        "result_mapping",
+        "sql_schema"
+      ],
+      "properties": {
+        "anchor_type": {
+          "type": "string"
+        },
+        "result_type": {
+          "type": "string"
+        },
+        "anchor_mapping": {
+          "type": "string"
+        },
+        "result_mapping": {
+          "type": "string"
+        },
+        "sql_schema": {
+          "type": "string"
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

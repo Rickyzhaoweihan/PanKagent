@@ -74,7 +74,7 @@ def question_guidance(question, grounding=None):
             if kind in db['nodes']:refs.add('nodes.'+kind)
     sem=pack.module('semantic_interpretation')
     rules=[{'reference':'interpretation.'+r['id'],'applies_to':r['database_refs'],'applicability':r['applicability']} for r in sem['bim']['rules'] if refs.intersection(r['database_refs'])]
-    return {'schema_sha256':pack.digest,'available_references':sorted(refs),'expert_interpretation':rules,
+    return {'schema_sha256':pack.digest,'retrieval_interpretation': {key: sem['retrieval_interpretation'][key] for key in ('policy', 'planning')}, 'requested_property_owners': requested_properties(question, refs), 'available_references':sorted(refs),'expert_interpretation':rules,
             'interpretation_catalog': 'All retained BIM rules can be inspected by interpretation.<rule id>. Historical, functional-feature and combination rules apply only to the specified representation. Do not infer a filter from an interpretation.',
             'structural_patterns': [r for r in pack.module('query_patterns')['library']['rules'] if any('relationships.' + rel in refs for rel in r['relations'])],
             'population_groups': (grounding or {}).get('population_groups', []),
@@ -112,3 +112,19 @@ def merge_property_facts(grounding, outcome):
         'complete_inventory': outcome.get('values_complete') is True and outcome.get('search_text') == '',
         'search_text': outcome.get('search_text'), 'values': values}
     return result
+
+
+def requested_properties(question, type_refs=None):
+    """Advisory field-owner matches, never authorization for a predicate."""
+    db=active_pack().module('database_schema');found=[]
+    for group in ('nodes','relationships'):
+        for owner,spec in db[group].items():
+            if type_refs and group+'.'+owner not in type_refs:
+                continue
+            for field,prop in spec['properties'].items():
+                pattern=prop.get('request_pattern')
+                if pattern and re.search(pattern,question,re.I):
+                    found.append({'reference':group+'.'+owner+'.properties.'+field,
+                                  'role':'requested_annotation_or_predicate_operand',
+                                  'filter_authorized':False})
+    return found

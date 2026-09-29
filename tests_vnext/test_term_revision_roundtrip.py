@@ -27,6 +27,7 @@ def test_apply_suggestion_reaches_planner_with_one_question(tmp_path, manual):
             original='How many T1D stage 2 donors are available in nPAP?'
             created=(await client.post('/v2/plans',json={'question':original,'include_context':False})).json()
             old=await wait_state(client,created['run_id'],{'failed'})
+            assert gateway.plans == 0  # Inventory clarification precedes any model/query.
             instruction='Change only nPAP to HPAP.' if manual else old['plan']['recovery']['suggestions'][0]['instruction']
             payload={'question':old['question']+SEPARATOR+instruction,'session_id':old['session_id'],'include_context':False}
             created=(await client.post('/v2/plans',json=payload)).json()
@@ -39,7 +40,7 @@ def test_apply_suggestion_reaches_planner_with_one_question(tmp_path, manual):
             assert new['plan']['request_context']['original_raw_question'] == original
             assert new['plan']['request_context']['current_raw_input'] == payload['question']
             assert audit['retry_submitted_text']==payload['question']
-            assert gateway.plans==2
+            assert gateway.plans==1
     asyncio.run(scenario())
 
 
@@ -59,3 +60,32 @@ def test_different_change_cannot_be_discarded():
     r=recovery(q,V,'r')
     old={'question':q,'status':'failed','run_id':'r','plan_id':'p','plan':{'recovery':r}}
     assert accepted_term_correction(old,q+SEPARATOR+r['suggestions'][0]['instruction']) is None
+
+
+def test_confirmed_source_correction_reaches_preview_and_answer(tmp_path):
+    class Grounded(Graph):
+        async def ground_question(self,q):return {'sample_terminology':deepcopy(V)}
+    class Capture(Gateway):
+        async def plan(self,question,history):
+            assert 'HPAP' in question and 'nPAP' not in question
+            result=await super().plan(question,history)
+            result['interpreted_question']=question
+            result['steps'][0]['question']=question
+            return result
+    async def scenario():
+        gateway=Capture();graph=Grounded()
+        async with service(tmp_path,graph=graph,gateway=gateway) as (client,runtime,*_):
+            original='How many T1D stage 2 donors are available in nPAP?'
+            created=(await client.post('/v2/plans',json={'question':original,'include_context':False})).json()
+            old=await wait_state(client,created['run_id'],{'failed'})
+            assert gateway.plans==0 and graph.calls==0
+            instruction=old['plan']['recovery']['suggestions'][0]['instruction']
+            created=(await client.post('/v2/plans',json={'question':original+SEPARATOR+instruction,
+                'session_id':old['session_id'],'include_context':False})).json()
+            preview=await wait_state(client,created['run_id'],{'awaiting_confirmation','failed'})
+            assert preview['status']=='awaiting_confirmation',preview
+            response=await client.post('/v2/plans/'+preview['plan_id']+'/confirm')
+            assert response.status_code==202
+            done=await wait_state(client,created['run_id'],{'completed','failed'})
+            assert done['status']=='completed' and gateway.plans==1 and gateway.syntheses==1
+    asyncio.run(scenario())

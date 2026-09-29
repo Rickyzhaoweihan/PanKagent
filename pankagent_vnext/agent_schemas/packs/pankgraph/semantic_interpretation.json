@@ -2423,7 +2423,7 @@
     }
   ],
   "grounding_role_patterns": {
-    "ontology_vocabulary": "\\b(?:GO|gene ontology)(?:\\s+(?:term|annotation|evidence|biological|molecular|cellular|for|of))|\\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\\s+(?:GO|annotation|term)",
+    "ontology_vocabulary": "\\b(?:GO|gene ontology)(?:\\s+(?:biological[- ]process|molecular[- ]function|cellular[- ]component|term|annotation|evidence|for|of))|\\b(?:biological[- ]process|molecular[- ]function|cellular[- ]component)\\b(?=.{0,100}\\b(?:GO|terms?|annotations?)\\b)",
     "analysis_collection_vocabulary": "\\b(?:gene[- ]sets?|effector[- ]sets?|result[- ]sets?|set of (?:genes|variants|records))\\b",
     "signal_context_vocabulary": "\\b(?:credible[- ]sets?|lead[- ]variants?|fine[- ]mapping)\\b",
     "evidence_class_vocabulary": "\\b(?:evidence|measurement|assay|record|relationship)[- ]types?\\b",
@@ -2434,7 +2434,8 @@
     "coordinate_unit": "\\b\\d+(?:\\.\\d+)?\\s*(?:bp|kb|Mb|Gb)\\b",
     "ranking_vocabulary": "\\b(?:top|bottom|first)\\s+\\d+\\b",
     "statistical_property": "\\b(?:(?:equal|recorded|minimum|maximum|lowest|smallest)[- ])?P[- ]?values?\\b|\\b(?:PIP|posterior inclusion probabilit(?:y|ies)|effect alleles?|non[- ]effect alleles?|adjusted p[- ]?values?|PP[._ ]?H[0-4](?:[._]ABF)?)\\b",
-    "ranking_instruction": "\\b(?:rank|sort|order)\\s+(?:each|the|all|these|those|variants?|genes?|results?)\\b"
+    "ranking_instruction": "\\b(?:rank|sort|order)\\s+(?:each|the|all|these|those|variants?|genes?|results?)\\b",
+    "logical_instruction": "\\b(?:do(?:es)?\\s+)?NOT\\s+(?:have|has|include|contain|belong|express|show)\\b"
   },
   "fact_operations": {
     "ranking": [
@@ -2485,5 +2486,133 @@
   ],
   "entity_phrase_patterns": [
     "\\btype\\s+[12]\\s+diabetes\\b"
-  ]
+  ],
+  "retrieval_interpretation": {
+    "policy": "Retrieve complete requested node/edge populations and their recorded annotations first. Ranking, top-k presentation, counting, comparisons and explanation belong to the formatting stage. Do not ORDER BY, LIMIT, aggregate away evidence, invent statistical thresholds, or add graph joins merely to read existing properties. Preserve explicit membership predicates, cohorts, exclusions, path requirements and requested evidence families. A property name is not an entity. Never claim a complete rank or count from sampled or truncated records.",
+    "planning": "When specific statistics or annotations are requested, inspect their schema owner and retrieve that node/edge with properties. Distinguish annotation projection from a predicate: return PIP is not PIP > threshold. Resolve property operands only when they are actual predicates. Retrieve referenced leads separately only when the requested evidence requires their nodes/edges.",
+    "formatting": "Perform requested ranking and interpretation from the complete supplied records or authoritative full-record facts. Keep every signal/context record distinct. If required records are omitted from your input, do not rank sampled examples as a complete population. Preserve recorded zeros and missingness.",
+    "clinical_syntax": {
+      "stage_pattern": "\\bstage\\s*(?:[-:]|is\\b|equals?\\b|of\\b)?\\s*(\\d+|iii|ii|i)\\b",
+      "leading_source_pattern": "^\\s*(?:in|from|within)\\s+$",
+      "leading_source_tail": "^\\s*[,;:]\\s*(?:how\\s+many|count|list|find|show)\\b[^.!?;]{0,70}\\bdonors?\\b",
+      "source_control_tail": "^\\s+(?:non[- ]diabetic|ND|healthy)(?:\\s+control)?s?\\b",
+      "comparison_pattern": "^\\s*(?:compare|show|report)\\s+(?:exact\\s+)?(?P<assay>.+?)\\s+samples?(?:\\s+availability|\\s+counts?)?\\s+(?:between|for)\\s+(?P<source>\\S+)\\s+(?P<left>ND|non[- ]diabetic|healthy(?:\\s+control)?)\\s+(?:and|versus|vs\\.?)\\s+(?P<right>T[12]D)\\s+donors?\\s*[.;]?\\s*(?:(?:count|report|show)\\s+(?:distinct\\s+)?samples?\\s+separately\\s+for\\s+each\\s+cohort[.!?]?)?\\s*$",
+      "closed_words": [
+        "how",
+        "many",
+        "count",
+        "list",
+        "find",
+        "show",
+        "get",
+        "in",
+        "from",
+        "within",
+        "the",
+        "a",
+        "an",
+        "of",
+        "have",
+        "has",
+        "with",
+        "who",
+        "are",
+        "is",
+        "was",
+        "were",
+        "recorded",
+        "stage",
+        "t1d",
+        "t2d",
+        "donors",
+        "donor",
+        "samples",
+        "sample",
+        "non",
+        "diabetic",
+        "nd",
+        "healthy",
+        "controls",
+        "control",
+        "exact",
+        "seq",
+        "excluding",
+        "exclude",
+        "without",
+        "assays",
+        "assay",
+        "come",
+        "source",
+        "data",
+        "type",
+        "do",
+        "not",
+        "and",
+        "whether",
+        "regardless",
+        "their",
+        "total",
+        "distinct",
+        "all",
+        "available",
+        "availability",
+        "as",
+        "diabetes",
+        "rna",
+        "capable",
+        "including",
+        "keep",
+        "labels",
+        "separate"
+      ],
+      "branch_question": "Find {assay} samples from {source} {cohort} donors.",
+      "unsupported_existence_pattern": "\\bdonors?\\b[^.;!?]{0,70}\\b(?:without|do\\s+not\\s+have|exclude\\w*)\\b[^.;!?]{0,30}\\bsamples?\\b"
+    },
+    "source_expansions": {
+      "HPAP": [
+        "Human Pancreas Analysis Program"
+      ]
+    },
+    "clarification_policy": "Ask the user to confirm unresolved source spelling against the current complete inventory before planning. A suggestion does not authorize substitution.",
+    "ranking_fields": {
+      "T1D_DEG_IN": {
+        "effect": "log2_fold_change",
+        "adjusted": "adjusted_p_value",
+        "nominal": "p_value"
+      },
+      "GENE_ENRICHED_IN": {
+        "effect": "log2_fold_change",
+        "adjusted": "padj",
+        "nominal": "pvalue"
+      },
+      "GENE_DETECTED_IN": {
+        "median log cpm": "median_donor_log_cpm",
+        "mean log cpm": "mean_donor_log_cpm",
+        "median cpm": "median_donor_cpm",
+        "mean cpm": "mean_donor_cpm",
+        "median percent": "median_pct_cells_expressing",
+        "mean percent": "mean_pct_cells_expressing"
+      }
+    },
+    "grounding_vocabulary_keys": [
+      "stages",
+      "sources",
+      "donor_sources",
+      "sample_sources",
+      "modalities",
+      "assay_donor_sources",
+      "inventory_complete",
+      "donor_categories_complete",
+      "donor_categorical_values",
+      "donor_diseases",
+      "inventory_sha256",
+      "tissues",
+      "modality_links_verified"
+    ],
+    "identity_request_pattern": "^\\s*(?:what\\s+is|tell\\s+me\\s+about|describe|show|find|get)\\s+(?:the\\s+)?(?:gene\\s+)?{entity}\\s*[.!?]?\\s*$",
+    "coordinate_lookup": {
+      "request_pattern": "^\\s*(?:find|show|list|get)\\s+(?:all\\s+|(?P<count>\\d+)\\s+)?OCR\\s+peaks?\\s+(?:(?P<overlap>overlapping|overlap|within)\\s+(?:the\\s+)?(?:gene\\s+body\\s+of\\s+)?|(?P<around>around|near)\\s+){entity}\\s*[.!?]?\\s*$",
+      "clarification": "Should the OCR search overlap the recorded gene body, or include a flanking interval? Please specify the flanking distance if needed."
+    }
+  }
 }

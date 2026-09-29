@@ -1,4 +1,5 @@
-"""The selected top set follows explicit biological direction and ranking."""
+"""Legacy persisted ranking contracts retain their original validation.
+New plans use formatter ranking, covered in test_retrieval_first.py."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -14,7 +15,10 @@ GOOD=BASE+'WHERE r.log2_fold_change > 0 RETURN g,r,c ORDER BY r.log2_fold_change
 def step(question=QUESTION,relation='T1D_DEG_IN'):
     raw={'original_question':question,'steps':[{'id':'s1','question':question,'constraints':[],
         'relation_types':[relation],'graph_version':RELEASE,'complete':True}]}
-    return attach_to_plan(raw)['steps'][0]
+    result = attach_to_plan(raw)['steps'][0]
+    result.get('ranking_contract', {}).pop('execution_stage', None)
+    result['complete'] = False
+    return result
 
 def errors(query,current=None,params=None):
     return validation_errors(tokenize(query),current or step(),params or {})
@@ -298,7 +302,8 @@ def test_explicit_remove_limit_is_enforced_by_query_validation():
     current=revised('Remove the limit and return all genes.')
     assert current['complete'] is True
     assert 'incomplete_limit_or_slice' in validate_cypher(GOOD,current)
-    assert errors(GOOD.replace(' LIMIT 5',''),current)==[]
+    assert 'ranking_belongs_to_formatting_retrieve_complete_records' in errors(GOOD.replace(' LIMIT 5',''),current)
+    assert errors(GOOD.split(' ORDER BY')[0],current)==[]
 
 
 def test_direction_only_count_request_still_accepts_legitimate_scalar_count():
