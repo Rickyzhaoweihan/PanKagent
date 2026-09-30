@@ -28,3 +28,7 @@ Gained core: Q16, Q47, Q53; none lost. Core failures remain Q08, Q12, Q34, Q35, 
 The earlier new/Sonnet 5 quality score of 41/55 was revised to 40/55 after confirming an additional Q56 sample-annotation overclaim. No saved output changed. Quality screening is advisory; manual overrides preserve scope-qualified answers and do not require every returned record in prose. Full decisions and question-level evidence are in project-home `Research/Reports/pankagent-sonnet55-20260929/final/` (ignored research artifact, not part of this repo). Original-dev historical comparison remains 36/55 retrieval and 32/55 quality screen.
 
 Fresh-round settled estimates: Claude $4.377017, OpenAI reviewer $1.990946; zero pending reservations. All 57 reviews completed. All 57 candidate runtime hashes match evaluated commit `33ec930a9ab39fa955851895f492589f1a881c50`, and all 57 comparator files match the earlier immutable artifacts. No deployment, frontend change, database write or active service change. The 28 local tests and live evaluation validate this temporary adapter; they do not prove a general model ranking.
+
+## Consolidation, 2026-09-30
+
+Sonnet 5.5 is now the default on `codex/workflow57-review`; the evaluated temporary fork has been integrated. GPT-6.1 Sol is an optional provider setting for a capped quick evaluation, using low reasoning and its documented cache-read rate. There is no additional maintained model fork. Original dev remains unchanged; this source change does not deploy or rewrite a running service environment.

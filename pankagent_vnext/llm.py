@@ -161,7 +161,7 @@ class ClaudeGateway:
     def __init__(self,settings):
         self.settings=settings
         self.budget=Budget(Path(getattr(settings, 'budget_dir', '') or settings.state_dir)/'budget.sqlite3',settings.budget_usd)
-        self.provider = 'openai' if getattr(settings, 'model', '') == 'gpt-6-sol' else 'anthropic'
+        self.provider = 'openai' if getattr(settings, 'model', '') in ('gpt-6-sol','gpt-6.1-sol') else 'anthropic'
         if self.provider == 'openai':
             self.client = OpenAIClient(settings.openai_key or 'not-configured', max(settings.plan_timeout, settings.answer_timeout), settings.reasoning_effort)
         else:
@@ -172,7 +172,7 @@ class ClaudeGateway:
         self.plan_cache=VerifiedCache()
     @property
     def api_key(self):
-        return (getattr(self.settings, 'openai_key', '') if getattr(self.settings, 'model', '') == 'gpt-6-sol'
+        return (getattr(self.settings, 'openai_key', '') if getattr(self.settings, 'model', '') in ('gpt-6-sol','gpt-6.1-sol')
                 else self.settings.anthropic_key)
     def _options(self):
         if self.settings.model == 'claude-sonnet-5-5':
