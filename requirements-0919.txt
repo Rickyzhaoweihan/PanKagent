@@ -1,0 +1,11 @@
+# Install the separately verified context-aware-kg-standard wheel first.
+# Source: https://github.com/RingoMao/context-aware-kg-standard
+# Commit: 0975787a29272e4db21d03b44730f49306657c17
+# Wheel SHA256: 788aeee62bb2eea4bf641a57ea8da3de68f8291773f47ad84ee541bd33c74aed
+# Keep this pin in the release manifest; remote installation needs no Git token.
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+neo4j>=5.28,<7
+psycopg[binary]>=3.2,<4
+httpx>=0.28,<1
+pytest>=8,<10
