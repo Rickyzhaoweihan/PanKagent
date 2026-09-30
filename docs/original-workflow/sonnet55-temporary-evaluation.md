@@ -32,3 +32,9 @@ Fresh-round settled estimates: Claude $4.377017, OpenAI reviewer $1.990946; zero
 ## Consolidation, 2026-09-30
 
 Sonnet 5.5 is now the default on `codex/workflow57-review`; the evaluated temporary fork has been integrated. GPT-6.1 Sol is an optional provider setting for a capped quick evaluation, using low reasoning and its documented cache-read rate. There is no additional maintained model fork. Original dev remains unchanged; this source change does not deploy or rewrite a running service environment.
+
+## GPT-6.1 quick comparison
+
+Same-source fresh paired run on 12 selected questions: Sonnet 5.5 retrieves all 10 non-empty core targets versus GPT-6.1 Sol 7/10. Both correctly handle Q52 empty membership and Q57 clarification. Matched 8-case preview medians: Sonnet 6.68s, GPT 4.81s. GPT fails Q16/Q18/Q19 and truncates Q11 synthesis at the existing deadline. Sonnet still has Q18 median-count and Q19 overlap-interpretation errors. Keep Sonnet 5.5 default; these are in-suite single attempts, not a general model ranking.
+
+Fresh-round spending: Claude $1.086423 settled; GPT $0.487431 settled plus $0.283310 reserved for the interrupted Q11 call. No automatic retry or reservation reset. Thirty targeted tests passed. Full report: project-home `Research/Reports/pankagent-gpt61-20260930/final/comparison.md`. No deployment.
