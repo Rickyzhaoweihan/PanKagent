@@ -92,6 +92,65 @@ def test_explicit_disease_cohort_filter_keeps_its_required_donor_link():
     assert validate_cypher(query, step, PARAMS) == []
 
 
+def output_tissue_step(question='Which tissues have samples recorded in PanKgraph?', phrase='Which tissues'):
+    from test_request_phrase_roles import step
+    from test_sample_scope_recovery import VOCAB
+    from pankagent_vnext.semantic_registry import resolve
+    result = step(question, [{'text': phrase, 'role': 'output'}])
+    result.update(relation_types=['HAS_SAMPLE'], graph_version='PanKgraph_08_04')
+    return resolve(result, VOCAB, 'PanKgraph_08_04')
+
+
+@pytest.mark.parametrize('projection', [
+    'RETURN DISTINCT a.id AS id, a.name AS name',
+    'RETURN a',
+    'WITH collect(DISTINCT a) AS tissues RETURN tissues',
+])
+def test_requested_connected_tissue_outputs_do_not_require_a_specific_tissue_id(projection):
+    step = output_tissue_step()
+    assert not step['semantic_issues']
+    assert validate_cypher('MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(s:Sample_node) ' + projection, step) == []
+
+
+@pytest.mark.parametrize('projection', ['RETURN s', 'RETURN count(a) AS count'])
+def test_unprojected_tissue_join_cannot_narrow_sample_population(projection):
+    errors = validate_cypher('MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(s:Sample_node) ' + projection,
+                             output_tissue_step())
+    assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in errors
+
+
+@pytest.mark.parametrize('question,phrase', [
+    ('Show all samples and their tissue annotations.', 'tissue annotations'),
+    ('Which tissues do not have samples recorded?', 'Which tissues'),
+])
+def test_requested_annotations_or_negative_existence_do_not_authorize_mandatory_tissue_join(question, phrase):
+    step = output_tissue_step(question, phrase)
+    errors = validate_cypher('MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(s:Sample_node) RETURN a,s', step)
+    assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in errors
+
+
+def test_tissue_output_permission_cannot_be_reused_for_different_request():
+    step = output_tissue_step()
+    step['semantic_request']['question'] = 'Which samples are recorded?'
+    assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in validate_cypher(
+        'MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(s:Sample_node) RETURN a,s', step)
+
+
+def test_tissue_outputs_keep_cohort_filter_and_same_connected_samples():
+    step = output_tissue_step('Which tissues have samples from HPAP stage 3 donors?')
+    assert not step['semantic_issues']
+    filters = ' AND '.join('d.' + c['property'] + ' = $' + c['property']
+                           for c in step['constraints'] if c['entity_type'] == 'donor')
+    params = {c['property']: c['value'] for c in step['constraints'] if c['entity_type'] == 'donor'}
+    query = ('MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node), '
+             '(a:anatomical_structure)-[:HAS_SAMPLE]->(s) WHERE ' + filters + ' RETURN a')
+    assert validate_cypher(query, step, params) == []
+    assert validate_cypher(query.replace(' AND d.data_source = $data_source', ''), step, params)
+    disconnected = query.replace('(a:anatomical_structure)-[:HAS_SAMPLE]->(s)',
+                                 '(a:anatomical_structure)-[:HAS_SAMPLE]->(other:Sample_node)')
+    assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in validate_cypher(disconnected, step, params)
+
+
 def test_verified_modality_endpoint_remains_a_supported_same_sample_predicate():
     step = donor_sample_step()
     step['semantic_registry']['modality_links_verified'] = True

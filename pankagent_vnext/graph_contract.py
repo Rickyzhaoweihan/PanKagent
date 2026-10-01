@@ -50,6 +50,8 @@ def planner_notes():
 
 def generation_request(step, base_question):
     """Add binding guidance without removing any original biological modifier."""
+    from .semantic_decision import effective_scope
+    base_question = effective_scope(base_question, step)
     from .coloc_query_guard import compact_generation_request
     compact = compact_generation_request(step, base_question)
     from .graph_patterns import guidance
@@ -82,17 +84,21 @@ def generation_request(step, base_question):
     if step.get('semantic_registry') and semantic_intent(step):
         requirements=step.get('sample_requirements',{})
         from .semantic_registry import sample_lookup_requested
-        samples=sample_lookup_requested(step) or bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
+        samples=(step['semantic_registry'].get('donor_required') is False
+                 or sample_lookup_requested(step) or bool(requirements.get('modality_groups'))
+                 or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[])))
         disease_requested=any(c.get('entity_type')=='disease' for c in step.get('constraints',[]))
         donor_cohort = [c for c in step.get('constraints', [])
                         if c.get('entity_type') == 'donor'
                         and c.get('property') in {'diabetes_type', 'derived_diabetes_status'}]
+        donor_required = step['semantic_registry'].get('donor_required') is True
         paths=('disease -HAS_DONOR-> donor' if disease_requested else
                'donor filtered by the verified recorded donor cohort predicates; no disease-node identity filter was requested'
                if donor_cohort else
-               'donor; no disease-node identity or recorded donor cohort filter was requested')
+               'donor; no disease-node identity or recorded donor cohort filter was requested'
+               if donor_required else '')
         if samples:
-            paths+='; donor -HAS_SAMPLE-> Sample_node'
+            paths += '; donor -HAS_SAMPLE-> Sample_node' if donor_required else 'Sample_node'
             if any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints', [])):
                 paths+='; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
             else:
@@ -102,7 +108,8 @@ def generation_request(step, base_question):
         if samples:text+=' Sample_node.data_modality stores the assay. Tissue is matched on the linked anatomical_structure; do not filter the descriptive Sample_node.anatomical_structure string.'
         else:text+=' Donor-only lookup: no sample or assay joins or filters.'
         if requirements.get('separate_bindings'):text+=' For RNA AND ATAC use two Sample_node variables, each linked to the SAME donor and requested tissue and constrained to its corresponding modality group. They may identify the same multiome sample.'
-        text+=' Return all matched nodes and connecting relationships with properties, as nodes and edges. No LIMIT, SKIP, list slices, rank, or additional filters.'
+        text+=' ' + schema_module('semantic_interpretation')['retrieval_interpretation']['generation_outputs']
+        text+=' No LIMIT, SKIP, list slices, rank, or additional filters.'
         if len(text)>4000:raise ValueError('generation_question_too_long')
         return text
     notes = [RELATIONS[r] for r in relations if r in RELATIONS]
@@ -112,10 +119,11 @@ def generation_request(step, base_question):
     suffix = '\nRequired relationship types: '+', '.join(relations)+'.' if relations else ''
     if bindings: suffix += '\nRequired entity/property constraints: '+'; '.join(bindings)+'.'
     if notes: suffix += '\n'+'\n'.join(notes)
-    suffix += '\nReturn matching nodes and relationships with properties. Do not add unrequested disease, donor, significance or rank filters.'
+    suffix += '\n' + schema_module('semantic_interpretation')['retrieval_interpretation']['generation_outputs']
+    suffix += ' Do not add unrequested disease, donor, significance or rank filters.'
     if step.get('complete', True): suffix += ' Return all matches without LIMIT, SKIP or list slices.'
     if step.get('interpretation_stage') == 'formatting':
-        suffix += ' Ranking and interpretation happen after retrieval. No ORDER BY or aggregation that discards records.'
+        suffix += ' Ranking and interpretation happen after retrieval. Do not aggregate away requested scientific records or annotations.'
     from .semantic_registry import generation_guidance
     result = base_question + suffix + generation_guidance(step)
     # Never silently truncate a scientific constraint to fit the API.

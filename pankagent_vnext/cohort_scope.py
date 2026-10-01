@@ -5,6 +5,7 @@ retain its disease endpoint for compatibility; stage metadata does not authorize
 an additional disease-to-sample membership requirement.
 """
 import hashlib
+import re
 from pathlib import Path
 
 VERSION = 'cohort-existence-scope-v1'
@@ -91,6 +92,90 @@ def _optional_filter_errors(tokens):
     return errors
 
 
+def _requested_output_variables(tokens, step, bindings, paths, allowed, aliases, choices, parameters):
+    """Authorize an explicitly requested, projected endpoint without an ID filter.
+
+    Request roles are server-owned; label vocabulary and connectivity come from
+    the schema. Merely mentioning a tissue in background/property text does not
+    authorize an existence restriction on the requested sample population.
+    """
+    from .agent_schemas import module
+    from .semantic_decision import _valid_decision, scope_text
+    from .semantic_registry import _trusted_request, identity_authorization_text, _negated_at
+    from .scientific_projection import View, _expr, _split, _strip_alias
+    from .graph import _predicate_present
+    raw, trusted = _trusted_request(step)
+    if not trusted:
+        return set()
+    active = identity_authorization_text(scope_text(step, raw))
+    # This exception is for the requested endpoint population, not optional
+    # annotations on some other primary population (which must keep its rows).
+    head = re.match(r'\s*(?:please\s+)?(?:briefly\s+)?(?:what|which|list|show|find|get|describe)\s+', active, re.I)
+    if not head:
+        return set()
+    tail = active[head.end():]
+    boundary = re.search(r'\b(?:have|has|are|is|do|does|from|for|that|with|where|and)\b|[.!?;]', tail, re.I)
+    subject = tail[:boundary.start()] if boundary else tail
+    if re.search(r'\b(?:annotations?|metadata|properties|fields)\b', subject, re.I):
+        return set()
+    if re.search(r'\b(?:do|does)\s+not\s+have\b|\bwithout\b', tail, re.I):
+        return set()
+    roles = _valid_decision(step, raw).get('request_phrase_roles', [])
+    phrases = [item['text'] for item in roles if item['role'] == 'output'
+               and active[item['start']:item['end']] == item['text']
+               and not _negated_at(raw, item['start'], item['end'])]
+    requested = {label for label, spec in module('database_schema')['nodes'].items()
+                 if isinstance(spec.get('query_terms'), str) and spec['query_terms']
+                 and re.search(spec['query_terms'], subject, re.I)
+                 and any(re.search(spec['query_terms'], text, re.I) for text in phrases)}
+    if not requested:
+        return set()
+    # Reuse the existing lossless projection parser, including WITH/collect
+    # aliases. A count or an incidental predicate mention is not an identity.
+    symbols = {name: View(nodes={name}, identities={name}) for name in bindings}
+    projected = set()
+    for kind, _, part in _clauses(tokens):
+        if kind not in {'WITH', 'RETURN'}:
+            continue
+        output, next_symbols = View(), {}
+        for item in _split(part[1:]):
+            expression, alias = _strip_alias(item)
+            value = _expr(expression, symbols, set(), {})
+            output = output.merge(value)
+            if alias:
+                next_symbols[alias] = value
+            elif len(expression) == 1 and expression[0].value in symbols:
+                next_symbols[expression[0].value] = value
+        if kind == 'WITH':
+            symbols = next_symbols
+        else:
+            projected = output.nodes | output.identities
+    result = set()
+    for variable in projected & set(bindings):
+        if not bindings[variable] or not bindings[variable] <= requested:
+            continue
+        if not any((a == variable and bindings.get(b, set()) & allowed
+                    or b == variable and bindings.get(a, set()) & allowed)
+                   for a, b, _ in paths):
+            continue
+        component = {variable}
+        while True:
+            linked = {b for a, b, _ in paths if a in component} | {a for a, b, _ in paths if b in component}
+            if linked <= component:
+                break
+            component |= linked
+        if step.get('semantic_registry', {}).get('donor_required') and not any('donor' in bindings.get(v, set()) for v in component):
+            continue
+        if any(c.get('entity_type') and not any(
+                c['entity_type'] in bindings.get(v, set()) and any(
+                    _predicate_present(tokens, choice, parameters, aliases.get(v, {v})) for choice in group)
+                for v in component)
+               for c, group in zip(step.get('constraints', []), choices)):
+            continue
+        result.add(variable)
+    return result
+
+
 def validation_errors(tokens, step, parameters, choices):
     from .graph import _pattern_bindings, _predicate_present
     semantics = step.get('semantic_registry') or {}
@@ -123,10 +208,12 @@ def validation_errors(tokens, step, parameters, choices):
         allowed.add('disease')
     if semantics.get('modality_links_verified') and modality_requested:
         allowed.add('data_modality')
+    requested_outputs = _requested_output_variables(inspected, step, bindings, paths,
+                                                    allowed, aliases, choices, parameters)
     errors = _optional_filter_errors(inspected)
     for variable, labels in bindings.items():
         primary_labels = labels - {'ontology', 'provenance'}
-        if not primary_labels or not primary_labels <= allowed:
+        if (not primary_labels or not primary_labels <= allowed) and variable not in requested_outputs:
             errors.append('unrequested_mandatory_cohort_owner:' + ','.join(sorted(primary_labels or {'unverified'})))
     for source, target, kinds in paths:
         if kinds - (relations | ({'HAS_DONOR'} if 'disease' in owners else set())):

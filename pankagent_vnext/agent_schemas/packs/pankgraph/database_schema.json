@@ -5452,7 +5452,7 @@
           "pattern": null,
           "export": "aggregate_only",
           "query_terms": [],
-          "request_pattern": "\\b(?:data|dataset|donor|cohort)[ _-]+source\\b(?![ _-]+url\\b)",
+          "request_pattern": "\\b(?:data|dataset|donor|cohort)[ _-]+sources?\\b(?![ _-]+urls?\\b)|\\bstud(?:y|ies)\\b",
           "interpretation_refs": [
             "bim.schema_skill.node_skill.donor",
             "bim.schema_skill.node_skill.donor;provenance"

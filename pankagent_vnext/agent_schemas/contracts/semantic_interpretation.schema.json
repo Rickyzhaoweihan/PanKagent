@@ -719,6 +719,9 @@
               "type": "string"
             }
           }
+        },
+        "generation_outputs": {
+          "type": "string"
         }
       }
     }

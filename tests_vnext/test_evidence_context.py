@@ -188,6 +188,49 @@ class EvidenceContextTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
             compact_evidence(items)
 
+    def test_large_siblings_share_budget_before_rejecting_minimal_envelope(self):
+        from pankagent_vnext.evidence_context import node_only_evidence, scientific_excerpt
+        properties = {"measurement_" + str(i): "x" * 200 for i in range(20)}
+        branches = [evidence(
+            [node(f"branch-{branch}-{i}", description="Verified description " * 40,
+                  **properties) for i in range(12)],
+            [edge(f"branch-{branch}-0", f"branch-{branch}-1", score=branch)],
+            step_id=f"branch-{branch}", title="Recorded supporting evidence " * 12,
+            purpose="context", requested_scope={"relation_types": ["COMMON"]})
+            for branch in range(2)]
+        # The failure was a 1,000-byte temporary residual share, not a failure
+        # of the total context budget. Both branches' envelopes exceed it.
+        for branch in branches:
+            with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
+                node_only_evidence([branch], max_bytes=1000)
+        good = evidence([node("focal", description="Verified focal identity"), node("target")],
+                        [edge("focal", "target", score=4)], step_id="primary")
+        source = [good, *branches]
+        original = copy.deepcopy(source)
+        result = compact_evidence(source, max_bytes=12000)
+        self.assertEqual(source, original)
+        self.assertEqual([r["evidence_id"] for r in result], ["G1", "G2", "G3"])
+        self.assertEqual(result[0]["context_compaction"], "standard")
+        self.assertEqual(result[0]["edges"][0]["properties"]["score"], 4)
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()), 12000)
+        for item in result[1:]:
+            self.assertEqual(item["context_compaction"], "node_identity_only")
+            self.assertTrue(item["nodes"])
+            self.assertTrue(all(n["description"].startswith("Verified description") for n in item["nodes"]))
+            self.assertEqual(item["context_counts"]["full_nodes_selected"], len(item["nodes"]))
+            self.assertEqual(item["context_dropped"]["nodes"] + len(item["nodes"]), 12)
+            self.assertEqual(item["context_dropped"]["edges"], 1)
+            self.assertFalse(scientific_excerpt([item])[0]["answer_evidence_scope"][
+                "relationship_and_measurement_evidence_available"])
+        self.assertEqual(result, compact_evidence(source, max_bytes=12000))
+
+    def test_minimal_envelopes_that_really_exceed_total_budget_still_fail(self):
+        items = [evidence(step_id=f"step-{i}", title="Requested check " * 30,
+                          requested_scope={"relation_types": [f"RELATION_{j}" for j in range(16)]})
+                 for i in range(12)]
+        with self.assertRaisesRegex(ValueError, 'evidence_step_envelope_too_large'):
+            compact_evidence(items, max_bytes=3000)
+
     def test_invalid_shape_fails_clearly(self):
         with self.assertRaisesRegex(ValueError, "invalid_evidence_node"):
             compact_evidence([evidence(nodes=[{"labels": ["Gene"]}])])

@@ -380,7 +380,11 @@ def _unresolved_tissue_role(text, vocabulary, matched):
         tail = text[occurrence.end():occurrence.end() + 20]
         if value not in sources and not re.match(r'\s+donors?\b', tail, re.I):
             return not matched
-    stop = {'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
+    # Interrogative determiners and generic quantifiers describe the requested
+    # records/categories; they are not unknown tissue adjectives. A named
+    # modifier between these words and sample(s) still goes through the guard.
+    stop = {'of', 'what', 'which', 'different', 'various', 'several', 'some',
+            'these', 'those', 'the', 'such', 'find', 'show', 'count', 'matching', 'available', 'all', 'any', 'many',
             'donor', 'donors', 'and', 'or', 'their', 'nd', 'hpap', 'control', 'healthy', 't1d', 't2d', 'rna', 'atac',
             'seq', 'multiome', 'multiomics', 'assay', 'have', 'has', 'recorded', 'exact', 'capable', 'rna-capable', 'distinct', 'unique', 'every', 'each', 'both', 'separate',
             'separately', 'additional', 'remaining', 'other', 'only'}
@@ -402,6 +406,15 @@ def _unresolved_tissue_role(text, vocabulary, matched):
 def _unresolved_assay_role(text, has_intent):
     if has_intent:
         return False
+    # A requested category noun is not the value of an assay filter. Mask only
+    # the descriptive phrase; an unknown named assay elsewhere still blocks.
+    category = r'(?:assay|data[ _-]+modality|modality)\s+(?:types?|kinds?|categor(?:y|ies))'
+    modifiers = r'(?:(?:recorded|experimental|available|distinct|different|sample)\s+)*'
+    overview = (r'\b(?:what|which)\s+' + modifiers + category
+                + r'(?=\s+(?:(?:are|is)\s+(?:recorded|available|represented|present|supported|used|there|in)\b|exist\b))'
+                + r'|\b(?:list|show|describe|summarize)\s+(?:the\s+)?' + modifiers + category
+                + r'(?=\s*(?:[.!?]|$)|\s+(?:recorded|available|represented|in|from|for)\b)')
+    text = re.sub(overview, lambda match: ' ' * len(match.group()), text, flags=re.I)
     return bool(re.search(
         r'\b(?:assay|data[ _-]+modality|modality)\b\s*(?:is|=|:|of)?\s*'
         r'[A-Za-z0-9]|\bsamples?\s+(?:using|with|assayed\s+by)\s+[A-Za-z0-9_+.-]+'
@@ -1488,11 +1501,14 @@ def _record_mention_polarities(text, record):
 
 def resolve(step, vocabulary, release):
     out=deepcopy(step)
+    from .semantic_decision import apply_phrase_roles, scope_text
+    raw_source_text, _ = _trusted_request(out)
+    out = apply_phrase_roles(out, raw_source_text)
     # Recovery is derived from this resolution, never inherited from a prior
     # failed preview after a user corrects the entity or scope.
     out.pop('recovery', None)
     if not semantic_intent(out): return out
-    q=out['question']; lower=q.lower(); constraints=out.setdefault('constraints',[])
+    q=scope_text(out, out['question']); lower=q.lower(); constraints=out.setdefault('constraints',[])
     issues=[]; matches=[]; groups=[]
     if release!=RELEASE:
         out['semantic_issues']=['The terminology registry does not match this graph release.']
@@ -1517,6 +1533,7 @@ def resolve(step, vocabulary, release):
             match.update(graph_release=release, inventory_sha256=vocabulary.get('inventory_sha256'))
         matches.append(match)
     source_text, trusted_request = _trusted_request(out)
+    source_text = scope_text(out, source_text)
     scope_source_text = scope_intent_text(source_text)
     scope_q = scope_intent_text(q)
     if trusted_request and _unresolved_source_role(scope_source_text, vocabulary):
@@ -2182,7 +2199,7 @@ def resolve(step, vocabulary, release):
             'capability', 'alias', 'verified_request_filter',
         }
         kept, request_bindings = [], []
-        request_sha256 = hashlib.sha256(source_text.encode()).hexdigest()
+        request_sha256 = hashlib.sha256(raw_source_text.encode()).hexdigest()
         for index, constraint in enumerate(constraints):
             proofs = [match for match in matches
                       if match.get('canonical_binding') == constraint
@@ -2533,13 +2550,21 @@ def attach_request_authorizations(step):
         out['request_filter_bindings'] = []
         return out
     digest = hashlib.sha256(question.encode()).hexdigest()
-    scoped_question = identity_authorization_text(question)
+    from .semantic_decision import scope_text, excluded_constraint
+    compiler_question = scope_text(out, question)
+    scoped_question = identity_authorization_text(compiler_question)
+    # Compilers see the role-filtered wording; stored user input and final
+    # execution authorization remain bound to the immutable raw question.
+    derivation_questions = list(dict.fromkeys([question, compiler_question]))
     existing = out.get('request_filter_bindings') or []
     entities = out.get('resolved_entities') or []
     compilations = out.get('constraint_compilation') or []
     from .genomic_scope import is_verified_region_constraint
     bindings = []
     for index, constraint in enumerate(constraints):
+        if excluded_constraint(out, constraint, question):
+            issues.append('An example phrase was reintroduced as an executable filter.')
+            continue
         current = [binding for binding in existing
                    if isinstance(binding, dict)
                    and binding.get('constraint_index') == index
@@ -2551,18 +2576,22 @@ def attach_request_authorizations(step):
             bindings.append(deepcopy(current[0]))
             continue
         kind = None
-        if _raw_constraint_authorized(constraint, question, out.get('relation_types')):
+        if _raw_constraint_authorized(constraint, compiler_question, out.get('relation_types')):
             kind = 'verified_request_filter'
         if kind is None and is_verified_region_constraint(constraint, out):
             kind = 'verified_request_region'
         if kind is None:
-            kind = _verified_requested_scope_derivation(constraint, out, question)
+            kind = next((value for wording in derivation_questions
+                         if (value := _verified_requested_scope_derivation(constraint, out, wording))), None)
         if kind is None:
-            kind = _verified_qtl_schema_derivation(constraint, index, out, question)
+            kind = next((value for wording in derivation_questions
+                         if (value := _verified_qtl_schema_derivation(constraint, index, out, wording))), None)
         if kind is None:
-            kind = _verified_anatomy_scope_derivation(constraint, out, question)
+            kind = next((value for wording in derivation_questions
+                         if (value := _verified_anatomy_scope_derivation(constraint, out, wording))), None)
         if kind is None:
-            kind = _verified_coloc_tissue_derivation(constraint, out, question)
+            kind = next((value for wording in derivation_questions
+                         if (value := _verified_coloc_tissue_derivation(constraint, out, wording))), None)
         entity = next((entry for entry in entities
                        if isinstance(entry, dict)
                        and entry.get('constraint_index') == index

@@ -223,7 +223,8 @@ class ClaudeGateway:
         from .cohort_plan_scope import compile_scope as compile_cohort_scope, DIGEST as COHORT_SCOPE_DIGEST
         def compile_scopes(proposal):
             from .preparation_tools import prepare_scope
-            return prepare_scope(question, grounding, proposal)
+            from .semantic_decision import effective_scope
+            return prepare_scope(effective_scope(question, proposal), grounding, proposal)
         from .planning_session import initial_assessment
         from .task_preparation import bind_unique_requested_identities, independent_subset, PreparationIssue
         initial_proofs = [deepcopy(c['selection_proof']) for m in (grounding or {}).get('mentions', [])
@@ -248,7 +249,7 @@ class ClaudeGateway:
             public_grounding = grounding_guidance(grounding)
         else:
             public_grounding = grounding or {'status': 'unavailable', 'diagnostic': 'E01'}
-        if profile_gene:
+        if profile_gene and re.search(r'\bcomprehensive\b', question, re.I):
             local_draft = expand_registered_profile(question, profile_gene)
         from .schema_tools import question_guidance
         user = json.dumps({'question': question, 'history': history[-6:],
@@ -294,6 +295,14 @@ class ClaudeGateway:
             # rather than compiling a model's rewritten clinical interpretation.
             plan = (deepcopy(coordinate_plan) if coordinate_plan else
                     deepcopy(clinical_plan) if clinical_plan and not proposal.get('clarification') else proposal)
+            if not plan.get('steps') and not plan.get('clarification'):
+                from .schema_drafting import compile_identity_draft
+                identity = compile_identity_draft(question, grounding)
+                if identity:
+                    plan = {**plan, **identity, 'introduction_recovery': {
+                        'kind': 'verified_identity_draft',
+                        'exploration': 'not_prepared',
+                        'reason': 'empty_plain_introduction_proposal'}}
             if chain_mode:
                 from .chain_drafting import expand
                 plan = expand(plan, question)
@@ -304,18 +313,19 @@ class ClaudeGateway:
             from .session_inputs import attach
             plan = attach(plan, (grounding or {}).get('session_population'))
             plan = normalize(plan)
-            plan = bind_unique_requested_identities(scope_question, grounding, plan)
+            from .semantic_decision import effective_scope
+            plan = bind_unique_requested_identities(effective_scope(scope_question, plan), grounding, plan)
             used = {(item['entity_type'], item['id']) for step in plan.get('steps', []) for item in step.get('preparation_trace', [])}
             plan['entity_selection_proofs'] = [p for p in initial_proofs if (p['entity_type'], p['id']) in used]
             issue = plan_structure_issue(plan)
             if issue is None and grounding and grounding.get('status') == 'ready' and not plan.get('clarification'):
                 plan, issue = compile_scopes(plan)
-                issue = issue or scope_issue(scope_question, grounding, plan) or requirements_issue(question, grounding, plan, history)
+                issue = issue or scope_issue(effective_scope(scope_question, plan), grounding, plan) or requirements_issue(effective_scope(question, plan), grounding, plan, history)
             if issue:
                 partial = independent_subset(plan, issue)
                 if partial:
                     partial, partial_issue = compile_scopes(partial)
-                    partial_issue = partial_issue or scope_issue(scope_question, grounding, partial) or requirements_issue(question, grounding, partial, history)
+                    partial_issue = partial_issue or scope_issue(effective_scope(scope_question, partial), grounding, partial) or requirements_issue(effective_scope(question, partial), grounding, partial, history)
                     if partial_issue:
                         partial = None
                     else:
@@ -326,7 +336,7 @@ class ClaudeGateway:
             plan['steps'] = [repair_step_constraints(step) for step in plan['steps']]
             plan = independent_measurement_steps(plan)
             from .investigations import category_issue
-            issue = category_issue(question, plan)
+            issue = category_issue(effective_scope(question, plan), plan)
             if issue: raise ValueError(issue)
             for step in plan.get('steps', []):
                 step['complete'] = True
@@ -372,11 +382,14 @@ class ClaudeGateway:
         from .graph_contract import RELATIONS
         kinds=step.get('relation_types',[])
         schema={'type':'object','additionalProperties':False,'properties':{'cypher':{'type':'string'}},'required':['cypher']}
-        system='Repair a read-only PanKgraph Cypher query. Preserve every requested entity, filter, dependency and completeness requirement. Use only the supplied schema. Never relax filters to find data. Return actual node and relationship objects with all properties. No writes, procedures, LIMIT, list slices or invented labels/properties. Return an empty cypher string if the exact scope cannot be represented safely.'
+        system='Repair a read-only Cypher query. Preserve every requested entity, filter, dependency and completeness requirement. Use only the supplied schema and output guidance. Never relax filters to find data. No writes, procedures, LIMIT, list slices or invented labels/properties. Return an empty cypher string if the exact scope cannot be represented safely.'
         from .request_context import current, AUTHORITY
         body=json.dumps({'question':question,'request_context':current(stored=step.get('request_context')), 'request_authority':AUTHORITY,
             'step':step,'failed_candidate':candidate,'validation_failures':failures,
-            'schema':{k:REGISTRY['relations'].get(k) for k in kinds},'guidance':{k:RELATIONS.get(k) for k in kinds}},ensure_ascii=False)
+            'schema':{k:REGISTRY['relations'].get(k) for k in kinds},
+            'node_schema': REGISTRY['nodes'],
+            'output_guidance': schema_module('semantic_interpretation')['retrieval_interpretation']['generation_outputs'],
+            'guidance':{k:RELATIONS.get(k) for k in kinds}},ensure_ascii=False)
         rid=await self._reserve('cypher_repair',system,body,1800)
         reply=await self._create(rid,model=self.settings.model,max_tokens=1800,
             system=[{'type':'text','text':system}],messages=[{'role':'user','content':body}],
@@ -463,6 +476,15 @@ class ClaudeGateway:
                 'request_context':current(question), 'request_authority':AUTHORITY,
                 'input_structure':input_structure(evidence),
                 'verified_facts':verified_facts,
+                'schema_definition_context': {
+                    'source': 'versioned database schema; definitions, not evidence of live availability',
+                    'release': schema_module('database_schema')['release'],
+                    'nodes': {key: value.get('description', key)
+                              for key, value in schema_module('database_schema')['nodes'].items()},
+                    'relationships': {key: [
+                        {'source': path['source'], 'target': path['target']}
+                        for path in value.get('endpoints', [])]
+                        for key, value in schema_module('database_schema')['relationships'].items()}},
                 'retrieval_interpretation':schema_module('semantic_interpretation')['retrieval_interpretation']['formatting'],
                 'fact_authority':'Use these calculated facts for rankings, numerical comparisons and counts. Partial task statistics describe retrieved records only. Sampled examples cannot override full-record facts.',
                 'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()

@@ -15,6 +15,35 @@ def number(value):
         return None
 
 
+def scalar_values(rows, complete):
+    """Summarize returned scalar columns without confusing them with records.
+
+    Only strings (or lists of strings) are categorical values. Nested record
+    objects and numeric aggregate columns are not new category populations.
+    Exhaustiveness is inherited from executed cursor completion, never from
+    how many rows happen to be present in the formatter excerpt.
+    """
+    columns, invalid = {}, set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for field, value in row.items():
+            values = value if isinstance(value, list) else [value]
+            if not all(isinstance(v, str) or v is None for v in values):
+                invalid.add(field)
+                continue
+            entry = columns.setdefault(field, {'values': set(), 'missing': 0})
+            for item in values:
+                if item is None or not item.strip():
+                    entry['missing'] += 1
+                else:
+                    entry['values'].add(item)
+    return [{'column': field, 'values': sorted(data['values']),
+             'distinct_count': len(data['values']), 'missing_values': data['missing'],
+             'complete': complete, 'count_unit': 'distinct recorded scalar values'}
+            for field, data in sorted(columns.items()) if field not in invalid]
+
+
 def build(question, evidence):
     metadata = module('database_schema')['execution_metadata']
     operations = module('semantic_interpretation')['fact_operations']
@@ -31,6 +60,8 @@ def build(question, evidence):
                 'typed_node_counts': dict(Counter(label for label, identifier in {(label, str(n['id'])) for n in result.get('nodes', []) for label in n.get('labels', [])})),
                 'relationship_records': len(edges), 'relation_counts': dict(Counter(e.get('type') for e in edges)),
                 'numeric': [], 'comparisons': [], 'rankings': []}
+        if not result.get('nodes') and not edges:
+            item['scalar_values'] = scalar_values(result.get('rows') or [], complete)
         for kind, fields in metadata['measurement_fields'].items():
             records = [e for e in edges if e.get('type') == kind]
             if not records:

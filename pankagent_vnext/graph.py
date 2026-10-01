@@ -803,6 +803,8 @@ def _unrequested_classification_projections(tokens, step):
     if not protected:
         return []
     bindings, _ = _pattern_bindings(tokens, graph_release=step.get('graph_version'))
+    from .release_schema import relationship_bindings
+    relationship_owners = relationship_bindings(tokens)
     donor_variables = {variable for variable, labels in bindings.items()
                        if 'donor' in labels}
     donor_in_scope = bool(donor_variables)
@@ -812,6 +814,7 @@ def _unrequested_classification_projections(tokens, step):
     # y`` is harmless by itself, but ``properties(head(y))`` reconstructs a full
     # donor property map under an otherwise untyped alias.
     donor_aliases = set(donor_variables)
+    untyped_aliases = set()
     alias_clause = None
     for index, token in enumerate(tokens):
         if token.kind == 'WORD' and token.value.upper() in {
@@ -819,7 +822,7 @@ def _unrequested_classification_projections(tokens, step):
                 'ORDER', 'LIMIT', 'SKIP'}:
             alias_clause = token.value.upper()
             continue
-        if (alias_clause != 'WITH' or not _word(token, 'AS')
+        if (alias_clause not in {'WITH', 'UNWIND'} or not _word(token, 'AS')
                 or index + 1 >= len(tokens)
                 or tokens[index + 1].kind not in {'WORD', 'IDENT'}):
             continue
@@ -831,14 +834,37 @@ def _unrequested_classification_projections(tokens, step):
                 depth += 1
             elif value in {'(', '[', '{'}:
                 depth = max(0, depth - 1)
-            elif depth == 0 and (value == ',' or _word(tokens[cursor], 'WITH')):
+            elif depth == 0 and (value == ',' or _word(tokens[cursor], 'WITH')
+                                 or _word(tokens[cursor], 'UNWIND')):
                 start = cursor + 1
                 break
             start = cursor
         alias = tokens[index + 1].value
+        expression = tokens[start:index]
+        if expression and _word(expression[0], 'DISTINCT'):
+            expression = expression[1:]
+        if (alias_clause != 'WITH' or len(expression) != 1
+                or expression[0].kind not in {'WORD', 'IDENT'}
+                or not (bindings.get(expression[0].value) or relationship_owners.get(expression[0].value))
+                or expression[0].value in untyped_aliases):
+            # Pattern bindings are conservative unions across the query. An
+            # earlier typed name cannot prove a later scalar/map alias's owner.
+            untyped_aliases.add(alias)
         if any(item.kind in {'WORD', 'IDENT'} and item.value in donor_aliases
                for item in tokens[start:index]):
             donor_aliases.add(alias)
+
+    def verified_other_owner(owner, property_name):
+        from .release_schema import REGISTRY
+        labels = bindings.get(owner, set())
+        relations = relationship_owners.get(owner, set())
+        if owner in donor_aliases or owner in untyped_aliases or bool(labels) == bool(relations):
+            return False
+        if labels:
+            return all(label != 'donor' and property_name in REGISTRY['nodes'].get(label, [])
+                       for label in labels)
+        return all(property_name in REGISTRY['relations'].get(kind, {}).get('properties', [])
+                   for kind in relations)
 
     def donor_reference_between(start, end):
         return any(item.kind in {'WORD', 'IDENT'} and item.value in donor_aliases
@@ -880,7 +906,8 @@ def _unrequested_classification_projections(tokens, step):
         if (clause in {'WITH', 'RETURN'} and index >= 2
                 and tokens[index - 1].value == '.'
                 and token.kind in {'WORD', 'IDENT'}
-                and token.value in protected):
+                and token.value in protected
+                and not verified_other_owner(tokens[index - 2].value, token.value)):
             errors.append('unrequested_donor_classification_projection:' + token.value)
         if clause not in {'WITH', 'RETURN'}:
             continue

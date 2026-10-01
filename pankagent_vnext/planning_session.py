@@ -34,6 +34,12 @@ verified lookup candidate using its typed ID and a contextual reason. Lexical ma
 overrule your interpretation. Unverified choices proceed to database preparation checks; an
 interpretation is not proof that an ID exists. Do not invent IDs or claim unverified data was found.
 Submit record_plan to prepare the tasks; preparation diagnostics return to this same session.
+For descriptive requests, distinguish actual anchors and filters from illustrative examples,
+background and requested output. Optionally supply request_phrase_roles with exact text copied
+from the original question and role anchor/filter/example/background/output. For repeated text
+use zero-based occurrence_index. Do not overlap phrases. Examples such as "like ..." do not
+restrict membership. Keep explicit restrictions and exclusions as filters; never relabel them
+as examples. Record every actual filter in task constraints. No filters is a valid scope.
 '''
 
 
@@ -94,6 +100,8 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
               initial_proofs=None, property_facts=None):
     schema = deepcopy(schema)
     schema['properties']['entity_choices'] = CHOICE_SCHEMA
+    from .semantic_decision import PHRASE_ROLE_SCHEMA
+    schema['properties']['request_phrase_roles'] = deepcopy(PHRASE_ROLE_SCHEMA)
     schema['properties']['advisory_decisions'] = {'type': 'array', 'items': {
         'type': 'object', 'additionalProperties': False, 'properties': {
             'rule_id': {'type': 'string'}, 'disposition': {'type': 'string', 'enum': ['applied', 'discarded']}},
@@ -197,6 +205,8 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 proposals += 1
                 proposal = deepcopy(block.input)
                 if not isinstance(proposal, dict): raise ValueError('malformed_plan')
+                from .semantic_decision import phrase_roles, record, apply_phrase_roles
+                roles = phrase_roles(question, proposal.pop('request_phrase_roles', []))
                 advice_decisions = proposal.pop('advisory_decisions', [])
                 advice_decisions = [dict(item, basis='Claude record_plan decision') for item in advice_decisions[:40]
                     if isinstance(item, dict) and item.get('rule_id') in advisory_ids
@@ -242,6 +252,14 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     elif proof['match_method'] not in {'recorded_id', 'recorded_name'}:
                         warnings.append(f"Interpreted {choice['mention']!r} as {proof['name']} ({proof['id']}) using {proof['match_method']}: {choice['reason']}")
                 model_scope = deepcopy(proposal.get('steps', []))
+                identity_facts = [{key: proof.get(key) for key in ('mention', 'entity_type', 'id', 'name')}
+                                  for proof in proofs.values()]
+                # Server-owned decisions must exist before finalize invokes the
+                # scope compilers. Ignore any model-authored proof envelope.
+                for step in proposal.get('steps', []):
+                    step['request_phrase_identity_facts'] = deepcopy(identity_facts)
+                    step['model_scope_decision'] = record(step, question, roles)
+                    step.update(apply_phrase_roles(step, question))
                 plan = attach(finalize(proposal, chosen), context)
                 plan['identity_selection_diagnostics'] = identity_diagnostics
                 plan['tool_suggestion_decisions'] = advice_decisions + suggestion_decisions(local_draft, plan)
@@ -252,12 +270,20 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                 plan['interpretation_warnings'] = list(dict.fromkeys([*plan.get('interpretation_warnings', []), *warnings]))
                 plan['run_context'] = run_context(gateway.settings)
                 for step in plan.get('steps', []):
+                    step['request_phrase_identity_facts'] = deepcopy(identity_facts)
                     from .semantic_decision import record
                     selected = next((s for s in model_scope if s.get('id') == step.get('id')), None)
                     # Server-owned metadata; never accept a model-authored proof.
                     step.pop('model_scope_decision', None)
                     if selected is not None:
-                        step['model_scope_decision'] = record(selected, plan.get('effective_question') or question)
+                        step['model_scope_decision'] = record(selected, question, roles)
+                        step.update(apply_phrase_roles(step, question))
+                    elif roles:
+                        # Server-compiled descendants retain the same request
+                        # interpretation, but gain no model authorization for
+                        # predicates that were not in an original model step.
+                        step['model_scope_decision'] = record({'id': step['id'], 'constraints': []}, question, roles)
+                        step.update(apply_phrase_roles(step, question))
                     step['entity_selection_proofs'] = deepcopy(chosen)
                     step['interpretation_warnings'] = list(plan['interpretation_warnings'])
                 if preparer and plan.get('steps') and not plan.get('clarification'):
@@ -268,6 +294,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                         last_partial = deepcopy(plan)
                         raise ValueError(json.dumps({'category': 'preparation_failed', 'tasks': [
                             {'step_id': s['id'], 'constraints': s.get('constraints'),
+                             'relation_types': s.get('relation_types', []),
                              'reasons': s.get('runtime_binding_issues') or s.get('semantic_issues')}
                             for s in invalid], 'instruction': 'Repair only the affected tasks. Use canonical id/name bindings for verified identities; preserve current requested conditions, without restoring superseded filters.'}))
                     if plan.get('clarification'):
@@ -282,7 +309,24 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
             except (ValueError, KeyError, TypeError) as exc:
                 last_error = str(exc)[:12000]
                 from .diagnostics import diagnostic
-                diagnostic_history.append({'attempt': turn + 1, 'reason': diagnostic(last_error, 'planning')['reason']})
+                detail = {'attempt': turn + 1, 'reason': diagnostic(last_error, 'planning')['reason']}
+                # Keep bounded preparation diagnostics: the next proposal can
+                # succeed while silently hiding why an earlier one was rejected.
+                # Do not copy the full step, request, proofs or provider payload.
+                try:
+                    failure = json.loads(last_error)
+                except (ValueError, TypeError):
+                    failure = {}
+                if isinstance(failure, dict) and failure.get('category') == 'preparation_failed':
+                    tasks = failure.get('tasks') or []
+                    if isinstance(tasks, list):
+                        detail['preparation_tasks'] = [{
+                            'step_id': str(item.get('step_id', ''))[:128],
+                            'relation_types': [str(value)[:128] for value in (item.get('relation_types') or [])[:12]],
+                            'constraint_count': len(item.get('constraints') or []),
+                            'reasons': [str(value)[:500] for value in (item.get('reasons') or [])[:8]],
+                        } for item in tasks[:12] if isinstance(item, dict)]
+                diagnostic_history.append(detail)
                 if getattr(exc, 'partial_plan', None):
                     last_partial = exc.partial_plan
                 if last_error == 'plan_too_large' or last_error.startswith('unsupported_gene_exclusion:'):

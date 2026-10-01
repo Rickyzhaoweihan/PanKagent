@@ -23,6 +23,11 @@ def review_input(question, plan, preview):
                       'path_spec', 'input_bindings', 'operation') if key in step} | {
             'execution_status': result.get('status', 'not_executed'),
             'node_count': len(result.get('nodes', [])), 'relationship_count': len(result.get('edges', [])),
+            'row_count': len(result.get('rows', [])),
+            'scalar_columns': sorted({key for row in result.get('rows', []) if isinstance(row, dict)
+                                      for key, value in row.items() if isinstance(value, (str, int, float, bool)) or value is None}),
+            'request_phrase_roles': (step.get('model_scope_decision') or {}).get('request_phrase_roles', []),
+            'retrieval_execution': result.get('retrieval_execution'), 'truncated': result.get('truncated'),
             'query_scope': (result.get('evidence_coverage') or {}).get('query_scope'),
             'semantic_summary': step.get('semantic_summary')})
     return {'original_question': question, 'checks': checks, 'computed_operations': plan.get('computed_operations', []),

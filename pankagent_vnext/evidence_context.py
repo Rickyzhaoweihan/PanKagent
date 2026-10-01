@@ -411,7 +411,9 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
               for index, item in enumerate(steps)]
     forced = {i for i, step in enumerate(steps) if step.get('context_mode') == 'identity_only'}
     for index in forced:
-        result[index] = node_only_evidence([steps[index]], max_bytes=max(1000, max_bytes // max(1, len(steps))))[0]
+        result[index] = _node_only_evidence(
+            [steps[index]], max_bytes=max(1000, max_bytes // max(1, len(steps))),
+            allow_minimal_overflow=True)[0]
         result[index]['evidence_id'] = evidence_id(steps[index], index)
     # Reduce only the largest branch at each stage; smaller independent checks
     # retain their relationships, measurements and stable citation identifiers.
@@ -425,9 +427,23 @@ def compact_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTES)
             reduced.add(index)
             continue
         budget = max(1000, max_bytes - size([item for i, item in enumerate(result) if i != index]) - 100)
-        result[index] = node_only_evidence([steps[index]], max_bytes=budget)[0]
+        # A sibling can temporarily consume the entire budget. A minimal check
+        # envelope need not fit this provisional share; shrink the other checks
+        # before deciding whether the complete set of envelopes is too large.
+        result[index] = _node_only_evidence(
+            [steps[index]], max_bytes=budget, allow_minimal_overflow=True)[0]
         result[index]['evidence_id'] = evidence_id(steps[index], index)
         identity.add(index)
+    if identity:
+        # Reallocate the actual remaining space jointly, restoring identity
+        # descriptions fairly across reduced branches. Scientific records in
+        # smaller independent checks retain their space and are not downgraded.
+        indices = sorted(identity)
+        identity_steps = [{**steps[i], 'evidence_id': evidence_id(steps[i], i)} for i in indices]
+        budget = max_bytes - sum(size(result[i]) + 1 for i in range(len(steps)) if i not in identity)
+        replacements = node_only_evidence(identity_steps, max_bytes=budget)
+        for index, replacement in zip(indices, replacements):
+            result[index] = replacement
     if size(result) > max_bytes:
         raise ValueError('evidence_step_envelope_too_large')
     return result
@@ -440,6 +456,11 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
     an individually oversized record is omitted, with a disclosed count. Other
     properties, edges, rows and derived measurement facts cannot reach synthesis.
     """
+    return _node_only_evidence(evidence, max_bytes=max_bytes)
+
+
+def _node_only_evidence(evidence: Mapping | list, *, max_bytes: int,
+                        allow_minimal_overflow: bool = False) -> list[dict]:
     steps = list(evidence.values()) if isinstance(evidence, Mapping) else evidence
     if not isinstance(steps, list) or any(not isinstance(s, Mapping) for s in steps):
         raise ValueError("invalid_evidence_shape")
@@ -544,13 +565,20 @@ def node_only_evidence(evidence: Mapping | list, *, max_bytes: int = TARGET_BYTE
         entries[index]["context_counts"]["full_nodes_selected"] -= 1
         entries[index]["context_dropped"]["nodes"] += 1
     if size(entries) > max_bytes:
+        if allow_minimal_overflow:
+            # Only compact_evidence may defer this decision while allocating a
+            # shared budget. No node records remain when the envelopes exceed
+            # their provisional share; the public function always stays strict.
+            return entries
         # Public plans contain at most twelve checks. Malformed/unbounded step
         # envelopes still fail explicitly, never silently renumber citations.
         raise ValueError("evidence_step_envelope_too_large")
     from .format_input_modes import add_chain_identities
     for index, step in enumerate(steps):
         remaining = max_bytes - size([e for i, e in enumerate(entries) if i != index]) - 100
-        entries[index] = add_chain_identities(entries[index], step, remaining)
+        candidate = add_chain_identities(entries[index], step, remaining)
+        if size(candidate) <= remaining:
+            entries[index] = candidate
     return entries
 
 

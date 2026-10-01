@@ -139,7 +139,8 @@ def test_every_gateway_input_including_stream_carries_raw_wording(tmp_path):
         calls = []
         async def create(**kwargs):
             calls.append(kwargs)
-            tool = kwargs['tool_choice']['name']
+            # Sonnet 5.5 uses auto tool choice with interleaved thinking.
+            tool = kwargs['tool_choice'].get('name') or kwargs['tools'][0]['name']
             values = {'record_plan': PLAN, 'interpret_revision': {'new_question': EFFECTIVE,
                       'execution': 'parallel_extend', 'reason': 'explicit revision', 'recommended_question': ''},
                       'repair_query': {'cypher': "MATCH (d:disease) RETURN d"},
@@ -155,6 +156,9 @@ def test_every_gateway_input_including_stream_carries_raw_wording(tmp_path):
             assert not plan.get('clarification'), plan
             await g.interpret_revision(EFFECTIVE, 'Keep definition only', plan)
             await g.repair_cypher(plan['steps'][0], 'EXPANDED GPU PROMPT', ['syntax'], 'MATCH bad')
+            repair_body = json.loads(calls[-1]['messages'][0]['content'])
+            assert 'distinct recorded values' in repair_body['output_guidance']
+            assert repair_body['node_schema']['Sample_node']
             await g.review_grounded_plan(EFFECTIVE, plan, {})
             for call in calls:
                 body = json.loads(call['messages'][0]['content'])
@@ -164,6 +168,9 @@ def test_every_gateway_input_including_stream_carries_raw_wording(tmp_path):
             g.client.messages.stream = mock.stream
             prepared = g.prepare_answer(EFFECTIVE, detection_evidence())
             assert json.loads(prepared.body)['request_context'] == CONTEXT
+            schema_context = json.loads(prepared.body)['schema_definition_context']
+            assert 'not evidence of live availability' in schema_context['source']
+            assert schema_context['nodes'] and schema_context['relationships']
             text = ''.join([part async for part in g.synthesize(EFFECTIVE, detection_evidence(), prepared=prepared)])
             assert text == 'Definition [G1].'
             assert json.loads(mock.stream_calls[0]['messages'][0]['content'])['request_context'] == CONTEXT

@@ -173,7 +173,9 @@ def requested_classification_fields(item):
         fields.add('derived_diabetes_status')
     if _classification_stage_intent(question):
         fields.add('t1d_stage')
-    if re.search(r'\b(?:data|dataset|donor|cohort)[ _-]+source\b', question, re.I):
+    from .agent_schemas import module as schema_module
+    source_pattern = schema_module('database_schema')['nodes']['donor']['properties']['data_source'].get('request_pattern')
+    if source_pattern and re.search(source_pattern, question, re.I):
         fields.add('data_source')
     return fields
 

@@ -1,5 +1,5 @@
 {
-  "version": "3-review-57-core-3",
+  "version": "4-review-67-introductions-1",
   "status": "draft_for_user_review_not_active",
   "graph_release": "PanKgraph_08_04",
   "source_manifest_sha256": "4c8490df1ac72d6dde243098b486ddee6e9cb39bf05027135eb4aa12d41e8f9f",
@@ -8,7 +8,8 @@
     "nodes": "Nodes are identified by id; name is the graph name for human reference. When the graph has no name, use the ID and explicitly mark name_source=id_fallback_no_graph_name.",
     "edges": "Edges are identified by (type, start_id, end_id) in stored direction. Endpoints resolve against the union of core.nodes and extra.nodes. Parallel records sharing a triple are grouped; measurement and signal-property claims still require underlying records.",
     "core": "All listed core nodes and edges are required. Retrieve complete relevant nodes, edges and their annotations; a count alone is insufficient.",
-    "extra": "Additional closely related nodes and edges for evaluating useful exploration. Full coverage is optional."
+    "extra": "Additional closely related nodes and edges for evaluating useful exploration. Full coverage is optional.",
+    "assertions": "Optional typed value/cardinality assertions require independently verified references and complete accepted evidence. Schema-grounded explanations require explicit answer review; empty core lists never pass automatically."
   },
   "cases": [
     {
@@ -11975,6 +11976,790 @@
         "nodes": [],
         "edges": []
       }
+    },
+    {
+      "id": "Q58",
+      "question": "Briefly tell me how many kinds of samples are available in PanKgraph, like scRNA-seq.",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "modalities"
+        ]
+      },
+      "assertions": [
+        {
+          "id": "recorded_modalities",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "data_modality",
+              "modality",
+              "modalities",
+              "sample_type",
+              "sample_types",
+              "assay_type",
+              "assay_types"
+            ],
+            "node_property": {
+              "label": "Sample_node",
+              "property": "data_modality"
+            },
+            "node_identity": {
+              "label": "data_modality",
+              "field": "id"
+            }
+          },
+          "expected_values": [
+            "BCR-seq",
+            "Bulk ATAC-seq",
+            "Bulk RNA-seq",
+            "CITE-seq Protein",
+            "CODEX",
+            "Calcium Imaging",
+            "Flow Cytometry",
+            "IMC",
+            "Oxygen Consumption",
+            "Perifusion",
+            "TCR-seq",
+            "scATAC-seq",
+            "scRNA-seq",
+            "snMultiomics"
+          ]
+        },
+        {
+          "id": "modality_cardinality",
+          "kind": "cardinality",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "data_modality",
+              "modality",
+              "modalities",
+              "sample_type",
+              "sample_types",
+              "assay_type",
+              "assay_types"
+            ],
+            "node_property": {
+              "label": "Sample_node",
+              "property": "data_modality"
+            },
+            "node_identity": {
+              "label": "data_modality",
+              "field": "id"
+            }
+          },
+          "expected_count": 14
+        }
+      ]
+    },
+    {
+      "id": "Q59",
+      "question": "What experimental assay types are represented in PanKgraph?",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "modalities"
+        ]
+      },
+      "assertions": [
+        {
+          "id": "recorded_modalities",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "data_modality",
+              "modality",
+              "modalities",
+              "sample_type",
+              "sample_types",
+              "assay_type",
+              "assay_types"
+            ],
+            "node_property": {
+              "label": "Sample_node",
+              "property": "data_modality"
+            },
+            "node_identity": {
+              "label": "data_modality",
+              "field": "id"
+            }
+          },
+          "expected_values": [
+            "BCR-seq",
+            "Bulk ATAC-seq",
+            "Bulk RNA-seq",
+            "CITE-seq Protein",
+            "CODEX",
+            "Calcium Imaging",
+            "Flow Cytometry",
+            "IMC",
+            "Oxygen Consumption",
+            "Perifusion",
+            "TCR-seq",
+            "scATAC-seq",
+            "scRNA-seq",
+            "snMultiomics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q60",
+      "question": "Give me a brief introduction to the kinds of data in PanKgraph.",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "labels",
+          "relations"
+        ]
+      },
+      "assertions": [
+        {
+          "id": "grounded_data_overview",
+          "kind": "schema_evidence",
+          "reference_status": "verified",
+          "expected_concepts": [
+            "genes and genetic variants",
+            "QTL, GWAS and colocalization evidence",
+            "gene expression, activity and cell-marker evidence",
+            "pathway and GO annotations",
+            "donors, samples, tissues and recorded assay types"
+          ],
+          "schema_sha256": {
+            "database_schema.json": "4a01f5c741f7c3e853fe043f077cde6b49ffbb8f10624b393cf76c9c31314360",
+            "semantic_interpretation.json": "84badcc51d1bde30e1e055ae1f372940aaccf4e284278bcc35da631415de15c2",
+            "query_patterns.json": "a0da02518ed45c850fe9cede177cb318cf1e78c42a6d48d17095c6add7582f3c",
+            "validation.json": "2f329ddc2b3226c2399b27bbfb8082adeb11c5962761624131b72ce5f494d550"
+          },
+          "review_requirement": "Explain supported data categories with graph/schema provenance. Schema terms alone do not prove an accurate answer.",
+          "recorded_labels": [
+            "regulatory_elements",
+            "OCR_peak",
+            "disease",
+            "ontology",
+            "Gene",
+            "GO_term",
+            "sequence_variant",
+            "snv",
+            "variants",
+            "deletion",
+            "indel",
+            "insertion",
+            "kegg",
+            "donor",
+            "Sample_node",
+            "anatomical_structure",
+            "data_modality",
+            "provenance",
+            "reactome"
+          ],
+          "recorded_relationship_types": [
+            "OCR_PEAK_IN",
+            "PHYSICAL_INTERACTION",
+            "GENETIC_INTERACTION",
+            "SIGNAL_COLOC_WITH",
+            "T1D_DEG_IN",
+            "GENE_ENRICHED_IN",
+            "EFFECTOR_GENE_OF",
+            "ASSOCIATED_WITH_GO",
+            "PART_OF_GWAS_SIGNAL",
+            "GENE_ACTIVITY_SCORE_IN",
+            "MARKER_GENE_OF",
+            "FUNCTION_ANNOTATION",
+            "PART_OF",
+            "HAS_CELL_TYPE",
+            "SUBCLASS_OF",
+            "HAS_STATE",
+            "REPRESENTS_COMPOSITE_LABEL",
+            "LYMPH_FLOWS_TO",
+            "ADJACENT_TO",
+            "HAS_SAMPLE",
+            "HAS_DONOR",
+            "PART_OF_QTL_SIGNAL",
+            "FGSEA_ENRICHED_IN",
+            "GENE_DETECTED_IN"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q61",
+      "question": "Which tissues have samples recorded in PanKgraph?",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [
+          {
+            "id": "CL_0000171",
+            "name": "alpha cell"
+          },
+          {
+            "id": "CL_0000169",
+            "name": "beta cell"
+          },
+          {
+            "id": "CL_0000236",
+            "name": "B cell"
+          },
+          {
+            "id": "CL_0000084",
+            "name": "T cell"
+          },
+          {
+            "id": "CL_0000738",
+            "name": "leukocyte (immune cell)"
+          },
+          {
+            "id": "CL_0008024",
+            "name": "pancreatic endocrine cell"
+          },
+          {
+            "id": "UBERON_0001069",
+            "name": "head of pancreas"
+          },
+          {
+            "id": "UBERON_0001150",
+            "name": "body of pancreas"
+          },
+          {
+            "id": "UBERON_0001151",
+            "name": "tail of pancreas"
+          },
+          {
+            "id": "PANKREGION:001",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:002",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:003",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:004",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:005",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:006",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:007",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:008",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:009",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:010",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:011",
+            "name": "(local islet subregion bin)"
+          },
+          {
+            "id": "PANKREGION:012",
+            "name": "(local islet subregion bin)"
+          }
+        ],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "tissues"
+        ],
+        "records": [
+          {
+            "id": "UBERON_0001264",
+            "name": "pancreas",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Main organ tissue anchor."
+          },
+          {
+            "id": "UBERON_0000006",
+            "name": "pancreatic islet (islet of Langerhans)",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Use as endocrine microanatomy under pancreas / endocrine pancreas."
+          },
+          {
+            "id": "UBERON_0000017",
+            "name": "exocrine pancreas",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Use as exocrine compartment under pancreas."
+          },
+          {
+            "id": "UBERON_0000029",
+            "name": "lymph node",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Generic lymph node (fallback if PLN subtype not used)."
+          },
+          {
+            "id": "UBERON_0002106",
+            "name": "spleen",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Organ tissue anchor."
+          },
+          {
+            "id": "UBERON_0000178",
+            "name": "blood (tissue source) + PBMC (cell-population)",
+            "category": "tissue",
+            "data_source": "UBERON + CL",
+            "description": "Model PBMC samples as blood tissue and optionally attach a PBMC population node."
+          },
+          {
+            "id": "CL_2000001",
+            "name": "blood (tissue source) + PBMC (cell-population)",
+            "category": "tissue",
+            "data_source": "UBERON + CL",
+            "description": "Model PBMC samples as blood tissue and optionally attach a PBMC population node."
+          },
+          {
+            "id": "UBERON_0015865",
+            "name": "pancreaticosplenic lymph node (proxy for \"pancreatic LN\")",
+            "category": "tissue",
+            "data_source": "UBERON",
+            "description": "Best-hit LN concept for pancreas-adjacent LN in UBERON."
+          }
+        ],
+        "evaluation_unit": "Distinct recorded tissue names; paired blood/PBMC IDs share one name. Cell-type and region records are optional related context."
+      },
+      "assertions": [
+        {
+          "id": "sample_tissues",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "tissue",
+              "tissues",
+              "tissue_name",
+              "tissue_names",
+              "anatomical_structure"
+            ],
+            "node_property": {
+              "label": "anatomical_structure",
+              "property": "name",
+              "where": {
+                "category": "tissue"
+              }
+            }
+          },
+          "expected_values": [
+            "blood (tissue source) + PBMC (cell-population)",
+            "exocrine pancreas",
+            "lymph node",
+            "pancreas",
+            "pancreatic islet (islet of Langerhans)",
+            "pancreaticosplenic lymph node (proxy for \"pancreatic LN\")",
+            "spleen"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q62",
+      "question": "Which studies and data sources are represented in PanKgraph?",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "donor_sources",
+          "sample_sources"
+        ]
+      },
+      "assertions": [
+        {
+          "id": "donor_study_sources",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "donor_source",
+              "donor_sources",
+              "donor_data_source"
+            ],
+            "node_property": {
+              "label": "donor",
+              "property": "data_source"
+            }
+          },
+          "expected_values": [
+            "HPAP",
+            "Metadata"
+          ]
+        },
+        {
+          "id": "sample_provider_sources",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "sample_source",
+              "sample_sources",
+              "sample_data_source"
+            ],
+            "node_property": {
+              "label": "Sample_node",
+              "property": "data_source"
+            }
+          },
+          "expected_values": [
+            "Kaestner Lab_Upenn",
+            "Klaus Kaestner_Upenn",
+            "Luning Prak Lab",
+            "Metadata",
+            "Michael Betts_Upenn",
+            "Powers & Brissova Research Group, Vanderbilt University Medical Center",
+            "Stoffers Lab_Upenn",
+            "Vanderbilt University Medical Center"
+          ]
+        },
+        {
+          "id": "source_scope_is_explicit",
+          "kind": "scope_evidence",
+          "reference_status": "verified",
+          "verified_scope": [
+            {
+              "entity_type": "donor",
+              "property": "data_source"
+            },
+            {
+              "entity_type": "Sample_node",
+              "property": "data_source"
+            }
+          ],
+          "review_requirement": "Verify the answer distinguishes queried donor study and sample provider source values from sources across the entire graph. These two owner sets do not prove an exhaustive list of all PanKgraph studies or sources; a broader source question is only partially answered unless independently retrieved evidence covers the additional source categories. Do not imply all-graph completeness from these reference values."
+        }
+      ]
+    },
+    {
+      "id": "Q63",
+      "question": "What sample types are recorded for HPAP stage 3 donors?",
+      "core": {
+        "nodes": [],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "stage3_modalities"
+        ]
+      },
+      "assertions": [
+        {
+          "id": "recorded_modalities",
+          "kind": "distinct_values",
+          "reference_status": "verified",
+          "selector": {
+            "row_fields": [
+              "data_modality",
+              "modality",
+              "modalities",
+              "sample_type",
+              "sample_types",
+              "assay_type",
+              "assay_types"
+            ],
+            "node_property": {
+              "label": "Sample_node",
+              "property": "data_modality"
+            },
+            "node_identity": {
+              "label": "data_modality",
+              "field": "id"
+            }
+          },
+          "expected_values": [
+            "BCR-seq",
+            "Bulk ATAC-seq",
+            "Bulk RNA-seq",
+            "CITE-seq Protein",
+            "CODEX",
+            "Calcium Imaging",
+            "Flow Cytometry",
+            "IMC",
+            "Oxygen Consumption",
+            "Perifusion",
+            "TCR-seq",
+            "scATAC-seq",
+            "scRNA-seq",
+            "snMultiomics"
+          ]
+        },
+        {
+          "id": "hp_ap_stage3_scope",
+          "kind": "scope_evidence",
+          "reference_status": "verified",
+          "required_constraints": [
+            {
+              "entity_type": "donor",
+              "property": "data_source",
+              "operator": "=",
+              "value": "HPAP"
+            },
+            {
+              "entity_type": "donor",
+              "property": "t1d_stage",
+              "operator": "=",
+              "value": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis"
+            }
+          ],
+          "review_requirement": "Verify executed Cypher or verified ancestor bindings retain both predicates. All samples and this cohort happen to share the same modality values; membership alone cannot prove cohort scope."
+        }
+      ]
+    },
+    {
+      "id": "Q64",
+      "question": "Give me a short introduction to INS using PanKgraph’s data.",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "entities"
+        ],
+        "records": [
+          {
+            "id": "ENSG00000254647",
+            "name": "INS",
+            "labels": [
+              "Gene"
+            ],
+            "synonyms": [
+              "IDDM1",
+              "IDDM2"
+            ],
+            "description": "insulin [Source:HGNC Symbol;Acc:HGNC:6081]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q65",
+      "question": "What is MDA5, and what information does PanKgraph have about it?",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000115267",
+            "name": "IFIH1"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "entities"
+        ],
+        "records": [
+          {
+            "id": "ENSG00000115267",
+            "name": "IFIH1",
+            "labels": [
+              "Gene"
+            ],
+            "synonyms": [
+              "HLCD",
+              "IDDM19",
+              "MDA-5",
+              "MDA5"
+            ],
+            "description": "interferon induced with helicase C domain 1 [Source:HGNC Symbol;Acc:HGNC:18873]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q66",
+      "question": "Introduce type 1 diabetes using the information recorded in PanKgraph.",
+      "core": {
+        "nodes": [
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "entities"
+        ],
+        "records": [
+          {
+            "id": "MONDO_0005147",
+            "name": "type 1 diabetes",
+            "labels": [
+              "disease",
+              "ontology"
+            ],
+            "synonyms": [
+              "type 1 diabetes mellitus"
+            ],
+            "description": "Type 1 diabetes (T1D) is a chronic autoimmune form of diabetes in which the immune system destroys insulin-producing pancreatic beta cells. The resulting loss of endogenous insulin production causes hyperglycemia; in established disease, exogenous insulin is required for survival. T1D is diagnosed more often in children and young adults but can develop at any age. Genetic susceptibility and environmental factors may contribute to disease initiation, but the specific trigger is not fully established."
+          }
+        ]
+      }
+    },
+    {
+      "id": "Q67",
+      "question": "Give me an overview of CFTR and its relevant evidence in PanKgraph.",
+      "core": {
+        "nodes": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR"
+          }
+        ],
+        "edges": []
+      },
+      "extra": {
+        "nodes": [],
+        "edges": []
+      },
+      "reference_validation": {
+        "status": "verified",
+        "graph_release": "PanKgraph_08_04",
+        "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+        "method": "Independent read-only Neo4j queries; no model calls",
+        "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+        "query_keys": [
+          "entities"
+        ],
+        "records": [
+          {
+            "id": "ENSG00000001626",
+            "name": "CFTR",
+            "labels": [
+              "Gene"
+            ],
+            "synonyms": [
+              "ABC35",
+              "ABCC7",
+              "CF",
+              "CFTR/MRP",
+              "DJ760C5.1",
+              "MRP7",
+              "TNR-CFTR"
+            ],
+            "description": "CF transmembrane conductance regulator [Source:HGNC Symbol;Acc:HGNC:1884]"
+          }
+        ]
+      }
     }
   ],
   "reference_refresh": {
@@ -11985,5 +12770,56 @@
     "q03_core_partner_count": 5,
     "q03_extra_process_count": 9,
     "model_cost_usd": 0
+  },
+  "introduction_reference_refresh": {
+    "verified_at_utc": "2026-10-01T00:44:33.386481+00:00",
+    "graph_release": "PanKgraph_08_04",
+    "model_cost_usd": 0,
+    "proof_sha256": "af61f61df697fad28569ee61bcedb36f6608ee4d303517bdb23ea88dc80b2606",
+    "queries": {
+      "modalities": {
+        "cypher": "MATCH (s:Sample_node) RETURN DISTINCT s.data_modality AS value",
+        "parameters": {}
+      },
+      "tissues": {
+        "cypher": "MATCH (a:anatomical_structure)-[:HAS_SAMPLE]->(:Sample_node) RETURN DISTINCT a.id AS id,a.name AS name,a.category AS category,a.data_source AS data_source,a.description AS description",
+        "parameters": {}
+      },
+      "donor_sources": {
+        "cypher": "MATCH (d:donor) RETURN DISTINCT d.data_source AS value",
+        "parameters": {}
+      },
+      "sample_sources": {
+        "cypher": "MATCH (s:Sample_node) RETURN DISTINCT s.data_source AS value",
+        "parameters": {}
+      },
+      "stage3_modalities": {
+        "cypher": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node) WHERE d.data_source=$source AND d.t1d_stage=$stage RETURN DISTINCT s.data_modality AS value",
+        "parameters": {
+          "source": "HPAP",
+          "stage": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis"
+        }
+      },
+      "entities": {
+        "cypher": "MATCH(n) WHERE n.id IN $ids RETURN n.id AS id,n.name AS name,labels(n) AS labels,n.synonyms AS synonyms,n.description AS description",
+        "parameters": {
+          "ids": [
+            "ENSG00000254647",
+            "ENSG00000115267",
+            "MONDO_0005147",
+            "ENSG00000001626"
+          ]
+        }
+      },
+      "labels": {
+        "cypher": "CALL db.labels() YIELD label RETURN label",
+        "parameters": {}
+      },
+      "relations": {
+        "cypher": "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType",
+        "parameters": {}
+      }
+    },
+    "scope": "Q58-Q67 only. Q01-Q57 and their existing reference refresh are unchanged. Schema explanation and Q63 scope require explicit review."
   }
 }
