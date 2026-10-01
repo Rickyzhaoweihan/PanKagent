@@ -1,8 +1,33 @@
 {
   "source": "/Users/runbomao/Library/Mobile Documents/com~apple~CloudDocs/Projects/PanKgraph/docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/pankagent-tab01.drawio",
-  "source_sha256": "fcfa9c200268cd5e188812788b8d8ff9728fd297597fdfe94cbf0c8c118a0721",
-  "updated_sha256": "7e93b9fe76aa169fa9528c0c3fecc79d20c47d960b9a23d615fe93e139632167",
-  "scope": "page 01; backend original-workflow implementation; no deployment",
-  "preserved": "all cell IDs, edges, geometry, Error and Schema annotations; other source documents unchanged",
-  "validation": "Native draw.io PNG export inspected; Error/Schema labels and topology retained."
+  "source_provenance": "docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/provenance.json",
+  "verified_date": "2026-09-30",
+  "source_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
+  "updated_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
+  "previous_hashes": {
+    "source_sha256": "fcfa9c200268cd5e188812788b8d8ff9728fd297597fdfe94cbf0c8c118a0721",
+    "updated_sha256": "7e93b9fe76aa169fa9528c0c3fecc79d20c47d960b9a23d615fe93e139632167"
+  },
+  "scope": "page 01; backend flexible-introduction implementation candidate; not deployed",
+  "diagram_status": "implementation_candidate_see_validation_report_not_deployed",
+  "candidate_source_state": "committed_candidate_isolated_validation_not_deployed",
+  "candidate_base_commit": "442ae8364990499c0e8d42c35067a1a9ba4a5107",
+  "candidate_code_commit": "0f737194fce3a85b7977938f5573fe58c0781de5",
+  "candidate_application_sha256": "6db1feb66d25c41311105a608f891c42240520c011535515ce088254981556fc",
+  "final_evaluation_archive_sha256": "dda131b1867fc9dc300989ef2961dbce688f399d7dc2a394061ff2eb878b47c4",
+  "candidate_schema_pack_version": "2.3.0",
+  "candidate_schema_pack_sha256_at_diagram_update": "ac4c0c5c21974d2a759128a1622a70bc5a7b9f4fd8fc016beaf31b96e3980eca",
+  "deployed_code_commit": "ce7b61134a9f6ceb8048798fad58700f50b439bc",
+  "deployed_model": "claude-sonnet-5-5",
+  "preserved": "all cell IDs, connectors, geometry, Error and Schema annotations",
+  "validation": "draw.io CLI PNG export visually inspected; Error/Schema annotations and topology retained. Native interactive inspection was not verified. See validation evidence for implementation results.",
+  "render_verified": true,
+  "render_method": "draw.io 28.0.6 CLI PNG export followed by full-image visual inspection",
+  "native_app_inspection": "CUA getApp(draw.io) timed out; not verified interactively",
+  "unresolved_connector_endpoints": 0,
+  "render_evidence": {
+    "path": "Research/Reports/pankagent-flexible-intros-20260930/workflow-diagram.png",
+    "sha256": "c8ba3486ac5a435253f8a84ea46e1c8d630ca4107a73b0f9872d4262aa486716"
+  },
+  "validation_evidence": "Research/Reports/pankagent-flexible-intros-20260930/implementation-notes.md"
 }

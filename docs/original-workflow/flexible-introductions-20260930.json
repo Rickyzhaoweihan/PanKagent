@@ -1,0 +1,299 @@
+{
+  "baseline": {
+    "attempts": 57,
+    "core_covered": 47,
+    "answers": 50,
+    "median_successful_preview_s": 6.266381658613682,
+    "total_cost_usd": 4.1397687,
+    "cost_by_stage_usd": {
+      "plan": 1.7892005000000006,
+      "synthesis": 2.3345981999999994,
+      "cypher_repair": 0.01597
+    },
+    "work": {
+      "retrieve": 86,
+      "generate": 3,
+      "explain": 86
+    },
+    "core_failures": [
+      "Q08",
+      "Q12",
+      "Q17",
+      "Q34",
+      "Q35",
+      "Q37",
+      "Q42",
+      "Q52",
+      "Q55",
+      "Q57"
+    ]
+  },
+  "candidate": {
+    "attempts": 57,
+    "core_covered": 47,
+    "answers": 50,
+    "median_successful_preview_s": 7.252307363785803,
+    "total_cost_usd": 4.6809223,
+    "cost_by_stage_usd": {
+      "plan": 2.0840468000000003,
+      "synthesis": 2.5968755000000003
+    },
+    "work": {
+      "retrieve": 95,
+      "generate": 0,
+      "explain": 95
+    },
+    "core_failures": [
+      "Q08",
+      "Q12",
+      "Q17",
+      "Q34",
+      "Q35",
+      "Q37",
+      "Q52",
+      "Q53",
+      "Q55",
+      "Q57"
+    ]
+  },
+  "paired_successful_previews": {
+    "cases": 49,
+    "baseline_median_s": 6.209934756159782,
+    "candidate_median_s": 7.535581732168794,
+    "median_casewise_delta_s": 0.41218279488384724
+  },
+  "coverage_gains": [
+    "Q42"
+  ],
+  "coverage_losses": [
+    "Q53"
+  ],
+  "new10": {
+    "attempts": 10,
+    "core_covered": 5,
+    "answers": 9,
+    "median_successful_preview_s": 15.471862675622106,
+    "total_cost_usd": 1.0280518,
+    "cost_by_stage_usd": {
+      "plan": 0.27933640000000004,
+      "cypher_repair": 0.11431600000000001,
+      "synthesis": 0.6343994000000001
+    },
+    "work": {
+      "retrieve": 40,
+      "generate": 31,
+      "explain": 40
+    },
+    "core_failures": [
+      "Q59",
+      "Q60",
+      "Q61",
+      "Q62",
+      "Q63"
+    ],
+    "manual_review": {
+      "fully_grounded_expected_scope": 7,
+      "grounding_issue": [
+        "Q67"
+      ],
+      "incomplete_scope": [
+        "Q62"
+      ],
+      "no_answer": [
+        "Q59"
+      ],
+      "strict_automatic_score_unchanged": true
+    }
+  },
+  "interpretation": "Core coverage is not answer correctness. Empty targets, clarification and manual assertions are reported separately. Times exclude rendering; work counts are retrieval/generation/EXPLAIN call proxies and exclude metadata discovery.",
+  "candidate_code_commit": "0f737194fce3a85b7977938f5573fe58c0781de5",
+  "baseline_code_commit": "ce7b61134a9f6ceb8048798fad58700f50b439bc",
+  "candidate_archive_sha256": "dda131b1867fc9dc300989ef2961dbce688f399d7dc2a394061ff2eb878b47c4",
+  "deployment": "not_deployed",
+  "all_original_57_references_unchanged": true,
+  "landing_18_unchanged": true,
+  "frontend_unchanged": true,
+  "offline": {
+    "summary": "34 failed, 3030 passed, 5 skipped, 231 subtests passed in 134.74s (0:02:14)",
+    "failure_count": 34,
+    "new_failures": [],
+    "resolved_known_failures": [],
+    "failures": [
+      "tests_vnext/test_audit_repairs.py::test_additive_scope_failure_retains_preview_and_blocks_confirmation",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[!=]",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[=]",
+      "tests_vnext/test_dev_planning_identity.py::test_unsupported_gene_exclusion_returns_revision_recovery_without_model_repair_or_execution[None]",
+      "tests_vnext/test_grounding_freshness.py::test_inventory_forces_live_semantic_refresh_and_excludes_private_clinical_values",
+      "tests_vnext/test_llm.py::test_provider_schema_and_local_step_cap",
+      "tests_vnext/test_pattern_planning.py::test_only_closed_deterministic_grammars_receive_cold_grounding_window",
+      "tests_vnext/test_pattern_planning.py::test_sample_stage_scope_uses_verified_vocabulary_without_clinical_reclassification",
+      "tests_vnext/test_persistence_ownership.py::test_results_lease_fences_old_payload_and_preserves_completed_components",
+      "tests_vnext/test_plan_preview.py::test_failed_preview_requires_explicit_retry_and_preserves_dependencies",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[complete]",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[empty]",
+      "tests_vnext/test_plan_preview.py::test_final_recovery_keeps_success_but_blocks_a_failed_required_primary[partial]",
+      "tests_vnext/test_plan_preview.py::test_grouped_failed_primary_preview_has_final_recovery_without_active_popup",
+      "tests_vnext/test_plan_preview.py::test_preview_timeout_preserves_successes_and_claude_health",
+      "tests_vnext/test_plan_preview.py::test_primary_failure_cannot_be_retried_after_confirmation_to_change_run_budget",
+      "tests_vnext/test_query_ready_gate.py::test_context_dependency_of_primary_is_required",
+      "tests_vnext/test_query_ready_gate.py::test_failed_dependency_blocks_child_without_gpu_but_not_independent_checks",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[failed]",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[outcome2]",
+      "tests_vnext/test_query_ready_gate.py::test_one_failed_or_truncated_primary_blocks_entire_plan_without_synthesis[partial]",
+      "tests_vnext/test_query_ready_gate.py::test_preview_deadline_records_every_unfinished_primary_and_retains_success",
+      "tests_vnext/test_release_schema.py::test_stage_generator_wording_preserves_original_and_canonical_filter",
+      "tests_vnext/test_sample_scope_recovery.py::test_ambiguous_clinical_revision_cannot_silently_modify_typed_filter",
+      "tests_vnext/test_t1d_endpoint_context.py::test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope[endpoint0]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope[endpoint1]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope[endpoint2]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope[endpoint3]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_saved_region_proposal_full_gateway_and_actual_candidates_preserve_correct_scope[endpoint4]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_user_requested_raw_endpoint_survives_gateway_cache_and_validation[endpoint0]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_user_requested_raw_endpoint_survives_gateway_cache_and_validation[endpoint1]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_user_requested_raw_endpoint_survives_gateway_cache_and_validation[endpoint2]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_user_requested_raw_endpoint_survives_gateway_cache_and_validation[endpoint3]",
+      "tests_vnext/test_t1d_endpoint_context.py::test_user_requested_raw_endpoint_survives_gateway_cache_and_validation[endpoint4]"
+    ],
+    "log": "/private/tmp/pank-intro-final2-suite.log"
+  },
+  "heldout": {
+    "attempts": 4,
+    "manual_pass": 4,
+    "automatic_pass": 3,
+    "verified_empty_manual_pass": "P03",
+    "cost_usd": 0.2756919
+  },
+  "repeats": {
+    "final-discrepancy-repeat": {
+      "attempts": 6,
+      "selected_cases": 6,
+      "unattempted_cases": [],
+      "core_covered": 6,
+      "groups": {
+        "original_57": {
+          "selected_cases": 5,
+          "attempts": 5,
+          "verified_core_covered": 5,
+          "answers": 5,
+          "reference_review_pending": 0,
+          "cost_usd": 0.5953884,
+          "pending_bound_usd": 0
+        },
+        "introductions_10": {
+          "selected_cases": 1,
+          "attempts": 1,
+          "verified_core_covered": 1,
+          "answers": 1,
+          "reference_review_pending": 0,
+          "cost_usd": 0.0526458,
+          "pending_bound_usd": 0
+        }
+      },
+      "complete": true,
+      "budget": {
+        "limit_usd": 20.0,
+        "spent_usd": 18.876411,
+        "reserved_usd": 0.14274,
+        "remaining_usd": 0.980849,
+        "calls": 682,
+        "pending_calls": 1,
+        "input_tokens": 6884911,
+        "output_tokens": 370047,
+        "cache_read_tokens": 5233393,
+        "cache_creation_tokens": 143776
+      }
+    },
+    "baseline-quality-repeat": {
+      "attempts": 4,
+      "selected_cases": 4,
+      "unattempted_cases": [],
+      "core_covered": 4,
+      "groups": {
+        "original_57": {
+          "selected_cases": 4,
+          "attempts": 4,
+          "verified_core_covered": 4,
+          "answers": 4,
+          "reference_review_pending": 0,
+          "cost_usd": 0.45482690000000003,
+          "pending_bound_usd": 0
+        },
+        "introductions_10": {
+          "selected_cases": 0,
+          "attempts": 0,
+          "verified_core_covered": 0,
+          "answers": 0,
+          "reference_review_pending": 0,
+          "cost_usd": 0,
+          "pending_bound_usd": 0
+        }
+      },
+      "complete": true,
+      "budget": {
+        "limit_usd": 20.0,
+        "spent_usd": 19.331238,
+        "reserved_usd": 0.14274,
+        "remaining_usd": 0.526022,
+        "calls": 699,
+        "pending_calls": 1,
+        "input_tokens": 7036598,
+        "output_tokens": 379977,
+        "cache_read_tokens": 5368570,
+        "cache_creation_tokens": 153823
+      }
+    },
+    "baseline-discrepancy-repeat": {
+      "attempts": 2,
+      "selected_cases": 2,
+      "unattempted_cases": [],
+      "core_covered": 1,
+      "groups": {
+        "original_57": {
+          "selected_cases": 2,
+          "attempts": 2,
+          "verified_core_covered": 1,
+          "answers": 1,
+          "reference_review_pending": 0,
+          "cost_usd": 0.1501665,
+          "pending_bound_usd": 0
+        },
+        "introductions_10": {
+          "selected_cases": 0,
+          "attempts": 0,
+          "verified_core_covered": 0,
+          "answers": 0,
+          "reference_review_pending": 0,
+          "cost_usd": 0,
+          "pending_bound_usd": 0
+        }
+      },
+      "complete": true,
+      "budget": {
+        "limit_usd": 20.0,
+        "spent_usd": 11.240563,
+        "reserved_usd": 0,
+        "remaining_usd": 8.759437,
+        "calls": 413,
+        "pending_calls": 0,
+        "input_tokens": 4052743,
+        "output_tokens": 225808,
+        "cache_read_tokens": 3220346,
+        "cache_creation_tokens": 93171
+      }
+    }
+  },
+  "budget": {
+    "limit_usd": 20.0,
+    "spent_usd": 19.331238,
+    "reserved_usd": 0.14274,
+    "remaining_usd": 0.526022,
+    "calls": 699,
+    "pending_calls": 1,
+    "input_tokens": 7036598,
+    "output_tokens": 379977,
+    "cache_read_tokens": 5368570,
+    "cache_creation_tokens": 153823,
+    "spent_plus_reserved_usd": 19.473978
+  },
+  "release_decision": "Keep inactive: planning variability and shared/new grounding or scope limitations remain; no reproducible new loss established by small targeted repeat sample."
+}
