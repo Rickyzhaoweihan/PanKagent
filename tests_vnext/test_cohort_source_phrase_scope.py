@@ -87,7 +87,9 @@ def test_explicit_diagnosis_is_preserved_in_addition_to_recorded_stage():
 ])
 def test_explicit_source_slots_do_not_accept_clinical_tissue_or_assay_labels(question):
     result = resolved(question)
-    assert any('dataset source' in issue for issue in result['semantic_issues'])
+    assert not result['semantic_issues']
+    assert any('source description' in hint for hint in result['interpretation_warnings'])
+    assert not any(c['property'] == 'data_source' and c['value'] in ('T1D', 'spleen', 'scRNA-seq') for c in result['constraints'])
 
 
 @pytest.mark.parametrize('question', [
@@ -99,14 +101,18 @@ def test_explicit_source_slots_do_not_accept_clinical_tissue_or_assay_labels(que
 ])
 def test_known_clinical_prefix_cannot_hide_unknown_source_or_cohort(question):
     result = resolved(question)
-    assert result['semantic_issues']
-    assert any('dataset source' in issue or 'cohort label' in issue
-               for issue in result['semantic_issues'])
+    assert not result['semantic_issues']
+    assert result['scope_language_advice']
+    assert not any('Unknown' in str(c['value']) for c in result['constraints'])
 
 
-def test_unknown_tissue_still_blocks_a_valid_clinical_cohort():
+def test_unknown_tissue_advises_without_blocking_verified_clinical_cohort():
     result = resolved('Find samples from T1D stage 3 HPAP donors with tissue UnknownTissue.')
-    assert any('sample tissue' in issue for issue in result['semantic_issues'])
+    assert not result['semantic_issues']
+    assert any('tissue phrase' in hint for hint in result['interpretation_warnings'])
+    assert binding('donor', 'data_source', 'HPAP') in result['constraints']
+    assert binding('donor', 't1d_stage', STAGES['3']) in result['constraints']
+    assert not any(c['entity_type'] == 'anatomical_structure' for c in result['constraints'])
 
 
 def test_repeated_source_name_retains_separate_donor_and_sample_ownership():
@@ -169,7 +175,9 @@ def test_multiword_explicit_sample_source_uses_complete_recorded_value():
     assert result['semantic_issues'] == []
     assert binding('Sample_node', 'data_source', 'Kaestner Lab_Upenn') in result['constraints']
     unknown = resolved('Find samples; sample source is Kaestner Lab_Unknown.', vocabulary)
-    assert any('dataset source' in issue for issue in unknown['semantic_issues'])
+    assert not unknown['semantic_issues']
+    assert any('source description' in hint for hint in unknown['interpretation_warnings'])
+    assert not any(c['property'] == 'data_source' for c in unknown['constraints'])
 
 
 def test_tissue_description_mask_preserves_verified_clinical_phrase_offsets():
@@ -178,3 +186,25 @@ def test_tissue_description_mask_preserves_verified_clinical_phrase_offsets():
                    for issue in result['semantic_issues'])
     assert binding('donor', 'data_source', 'HPAP') in result['constraints']
     assert binding('donor', 't1d_stage', STAGES['3']) in result['constraints']
+
+
+def test_language_advice_is_recomputed_and_preserves_other_warnings():
+    previous = resolved('Find samples from UnknownStudy donors.')
+    previous['interpretation_warnings'].append('Independent model interpretation.')
+    previous['question'] = 'Find samples from HPAP donors.'
+    previous['semantic_request']['question'] = previous['question']
+    current = resolve(previous, deepcopy(VOCAB), RELEASE)
+    assert not current['scope_language_advice']
+    assert current['interpretation_warnings'] == ['Independent model interpretation.']
+
+
+def test_other_schema_packs_need_no_language_heuristic_configuration(monkeypatch):
+    import pankagent_vnext.semantic_registry as registry
+    original = registry.schema_module
+    monkeypatch.setattr(registry, 'schema_module', lambda name: {
+        key: value for key, value in original(name).items()
+        if key != 'language_heuristics'
+    })
+    result = resolved('Find samples from UnknownStudy donors.')
+    assert not result['semantic_issues']
+    assert not result['scope_language_advice']

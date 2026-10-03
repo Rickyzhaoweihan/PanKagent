@@ -55,6 +55,11 @@ def outcome_message(evidence):
     if any(s.get('execution_status') == 'skipped_empty_dependency' or any(str(r).startswith('empty_dependency:') for v in s.get('validation', []) for r in v.get('reasons', [])) for s in primary):
         return ('The required input returned no matching records. Dependent checks were not executed; '
                 'this does not establish zero matches for those independent evidence categories.')
+    # A verified empty query does not settle unresolved request interpretation.
+    # Let the existing answer model explain the executed scope and caveats.
+    if any((step.get('requested_scope') or {}).get('interpretation_warnings')
+           for step in primary) and all(executed_without_records(step) for step in primary):
+        return None
     from .evidence_coverage import complete_empty_message
     checked_absence = complete_empty_message(steps)
     if checked_absence:

@@ -1597,6 +1597,13 @@ def resolve(step, vocabulary, release):
     if not semantic_intent(out): return out
     q=scope_text(out, out['question']); lower=q.lower(); constraints=out.setdefault('constraints',[])
     issues=[]; matches=[]; groups=[]
+    language_advice = []
+    def language_hint(rule):
+        # Surface language uncertainty to the existing answer model. These
+        # lexical guesses are not evidence of an invalid graph query.
+        guidance = schema_module('validation').get('language_heuristics', {}).get(rule)
+        if guidance:
+            language_advice.append(guidance)
     if release!=RELEASE:
         out['semantic_issues']=['The terminology registry does not match this graph release.']
         out['recovery']={'category':'graph_release_mismatch','title':'The graph service needs attention',
@@ -1624,7 +1631,7 @@ def resolve(step, vocabulary, release):
     scope_source_text = scope_intent_text(source_text)
     scope_q = scope_intent_text(q)
     if trusted_request and _unresolved_donor_modifier(scope_source_text, vocabulary):
-        issues.append('A requested donor cohort label is not uniquely recorded in the current graph; no broader donor query may run.')
+        language_hint('cohort_modifier')
     def stage_mentions(text):
         return [{'match': match, 'number': {'i': '1', 'ii': '2', 'iii': '3'}.get(
                     match.group(1).casefold(), match.group(1)),
@@ -1995,7 +2002,7 @@ def resolve(step, vocabulary, release):
              requested=item['requested'])
     clinical_spans = _verified_clinical_spans(scope_source_text, matches)
     if trusted_request and _unresolved_source_role(scope_source_text, vocabulary, clinical_spans):
-        issues.append('A requested dataset source is not recorded in the current graph; no broader source query may run.')
+        language_hint('source_phrase')
     from .tissue_aliases import matched_tissues
     planned_tissues = [deepcopy(c) for c in constraints
                        if c.get('entity_type') == 'anatomical_structure'
@@ -2029,7 +2036,7 @@ def resolve(step, vocabulary, release):
         if planned_tissues and not requested_tissues:
             issues.append('A generated sample-tissue filter was not requested and was removed.')
         if _unresolved_tissue_role(scope_source_text, vocabulary, requested_tissues, clinical_spans):
-            issues.append('A requested sample tissue is not uniquely recorded in the current graph; no unrestricted sample query may run.')
+            language_hint('tissue_phrase')
     else:
         tissues = matched_tissues(scope_q, vocabulary.get('tissues', []), constraints=constraints)
         negative_tissues = [tissue for tissue in tissues
@@ -2072,7 +2079,7 @@ def resolve(step, vocabulary, release):
         raw_positive_assays, raw_negative_assays, raw_assay_intent = _assay_intent_values(
             scope_source_text, available)
         if _unresolved_assay_role(scope_source_text, raw_assay_intent):
-            issues.append('A requested sample assay is not uniquely recorded in the current graph; no unrestricted sample query may run.')
+            language_hint('assay_phrase')
         local_positive_assays, local_negative_assays, local_assay_intent = _assay_intent_values(
             scope_q, available)
         unauthorized_local_assays = ((local_positive_assays - raw_positive_assays)
@@ -2352,6 +2359,11 @@ def resolve(step, vocabulary, release):
                             'positive_diabetes_types': [mention['kind'] for mention in positive_disease],
                             'excluded_diabetes_types': [mention['kind'] for mention in negative_disease]}}
     out['semantic_issues']=issues
+    prior_advice = set(out.get('scope_language_advice') or [])
+    warnings = [value for value in out.get('interpretation_warnings', [])
+                if value not in prior_advice]
+    out['scope_language_advice'] = list(dict.fromkeys(language_advice))
+    out['interpretation_warnings'] = list(dict.fromkeys(warnings + language_advice))
     out['sample_requirements']={'modality_groups':groups,'paired':paired,'separate_bindings':len(groups)>1,
         'source':SOURCE,'file_availability':'not_verified','excluded_modality_constraints':deepcopy(negative_assay),'capability_scope_verified': bool(expanded and (verified_scope or re.search(r'\bHPAP\b',q,re.I)))}
     if negative_assay and not groups:

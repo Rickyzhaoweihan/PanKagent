@@ -174,6 +174,28 @@
           }
         }
       }
+    },
+    "language_heuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cohort_modifier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_phrase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tissue_phrase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assay_phrase": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

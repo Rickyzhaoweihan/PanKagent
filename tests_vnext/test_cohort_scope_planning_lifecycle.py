@@ -138,6 +138,7 @@ class FixtureGateway(Gateway):
         yield f'{count} matching samples. [{item["evidence_id"]}]'
 
 
+@pytest.mark.parametrize('expanded_wording', [False, True])
 @pytest.mark.parametrize('empty', [False, True])
 @pytest.mark.parametrize(('requested_assay', 'recorded_assay'), [
     ('scRNAseq', 'scRNA-seq'),
@@ -145,8 +146,8 @@ class FixtureGateway(Gateway):
     ('snMultiomics', 'snMultiomics'),
 ])
 def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
-        tmp_path, monkeypatch, empty, requested_assay, recorded_assay):
-    original_question = QUESTION.replace('scRNAseq', requested_assay)
+        tmp_path, monkeypatch, empty, requested_assay, recorded_assay, expanded_wording):
+    original_question = (f'How many distinct {requested_assay} samples from pancreatic lymph node (PLN) are available from HPAP donors with T1D stage 3?' if expanded_wording else QUESTION.replace('scRNAseq', requested_assay))
 
     async def fixed_model_session(gateway, question, user, system, schema,
                                   output_limit, finalize, **kwargs):
@@ -186,6 +187,12 @@ def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
             }
             result = ready['preview']['evidence']['steps'][0]
             assert result['status'] == ('empty' if empty else 'complete')
+            if expanded_wording:
+                from pankagent_vnext.evidence_context import compact_evidence
+                assert step['scope_language_advice']
+                assert result['requested_scope']['interpretation_warnings'] == step['interpretation_warnings']
+                compact = compact_evidence({'G1': result})
+                assert compact[0]['requested_scope']['interpretation_warnings'] == step['interpretation_warnings']
             assert result['query_route'] == 'template'
             assert result['query_template']['template_id'] == 'donor_tissue_same_sample_records'
             assert result['truncated'] is False
@@ -216,13 +223,15 @@ def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
             assert done['evidence']['preview_reuse']['retrieved_step_ids'] == []
             assert len(graph.reads) == 1
             assert graph.generation_calls == 0
-            if empty:
+            if empty and not expanded_wording:
                 assert gateway.syntheses == 0
                 assert 'no matching' in done['graph_answer'].casefold()
                 assert done['evidence']['completeness'] == 'empty'
             else:
                 assert gateway.syntheses == 1
-                assert done['graph_answer'] == '2 matching samples. [G1]'
+                assert done['graph_answer'] == f'{0 if empty else 2} matching samples. [G1]'
+                if empty:
+                    return
                 counts = gateway.answer_facts[0]['sample_counts']
                 assert counts['unique_retrieved_samples'] == 2
                 assert counts['by_recorded_assay'] == [{

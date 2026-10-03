@@ -176,5 +176,11 @@
       ],
       "basis": "The exact compiled overlap template has one verified Gene identity and one verified cell identity. Its coordinate join intentionally has no graph edge; all other EXPLAIN warnings still reject execution."
     }
+  },
+  "language_heuristics": {
+    "cohort_modifier": "Language hint, not a query error: a possible cohort modifier was not recognized by the phrase heuristic. Compare the original request with retrieved evidence and executed filters; explain any unresolved restriction rather than claiming it was applied.",
+    "source_phrase": "Language hint, not a query error: a from-phrase or possible source description was not recognized by the phrase heuristic. It may describe tissue, cohort, or source. Use verified schema bindings and the original request to interpret the answer; do not claim an unverified source restriction.",
+    "tissue_phrase": "Language hint, not a query error: a possible tissue phrase was not recognized by the phrase heuristic. Use resolved identities and actual retrieved annotations; explain any tissue restriction that remains unresolved.",
+    "assay_phrase": "Language hint, not a query error: a possible assay phrase was not recognized by the phrase heuristic. Use recorded modality labels and the original request; explain any assay restriction that remains unresolved."
   }
 }
