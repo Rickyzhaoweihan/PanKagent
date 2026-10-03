@@ -1,0 +1,67 @@
+{
+  "context": {
+    "application_sha256": "6c4614b814af1f27a93c818568f58da33cfb8e737c01216486cbddf782dc31ff",
+    "agent_schema": {
+      "id": "pankgraph",
+      "version": "2.2.1",
+      "sha256": "0a7517730a6d764fbc02a2b788a0c78e70b7bb09c74e2c9aa9ef17147342a6a5",
+      "graph_release": "PanKgraph_08_04",
+      "standard": {
+        "repository": "https://github.com/RingoMao/KG_agent",
+        "branch": "kg-standard",
+        "version": "0.3.0",
+        "commit": "414c2732b5c8a50ba3a4d18561cfe12785a8b535",
+        "contract_sha256": "6b6116dc0cd4adbd058082ec7f013ab764332f6c75312e2629af02e44f7e6593"
+      }
+    },
+    "model": "claude-sonnet-5-5",
+    "prompt_sha256": "c594625e1b44a7cf7d5348876bcc7c14f143196eca2cb35dbd7566e07f13fde5",
+    "database": {
+      "backend": "neo4j",
+      "release": "PanKgraph_08_04",
+      "name": "pankgraph"
+    }
+  },
+  "cases": [
+    {
+      "case": "PLN-exact",
+      "samples": 0,
+      "status": "empty",
+      "route": "template",
+      "complete": true
+    },
+    {
+      "case": "PLN-multiomics",
+      "samples": 13,
+      "status": "complete",
+      "route": "template",
+      "complete": true
+    }
+  ],
+  "fresh_llm_calls": 0,
+  "public_checks": [
+    {
+      "url": "https://dev.pankgraph.org/agent-vnext",
+      "status": 200
+    },
+    {
+      "url": "https://dev.pankgraph.org/pankgraph-vnext/health/ready",
+      "status": 200
+    },
+    {
+      "url": "https://dev.pankgraph.org/pankgraph-vnext/api/agent/v2/runs/d55d446d-01a0-4fe1-af2d-b3c76da7bcbb",
+      "status": 200
+    }
+  ],
+  "release": "/var/local/serviceuser/projects/pankgraph-demo/releases/20261003-cohort-fixes-0a2e8c6/backend",
+  "pid": 2620852,
+  "base_commit": "53481a347e2e0fbec4b45adcaa2318ef0601b384",
+  "targeted_fix_commit": "0a2e8c6e41c45dd1d65010007373d13ed993e0dd",
+  "backup": "/db/pankagent-vnext-private/backups/pankgraph-demo/pre-cohort-fixes-20261003",
+  "backup_verified_databases": 5,
+  "backup_consistency": "per-database-online",
+  "results_pid_unchanged": 2726368,
+  "frontend_unchanged": true,
+  "introduction_candidate_active": false,
+  "deployment_api_cost_usd": 0
+}

@@ -1,5 +1,5 @@
 {
-  "status": "targeted_bugfix_checks_passed_not_deployed",
+  "status": "targeted_fixes_deployed_introductions_inactive",
   "cases": [
     {
       "case": "PLN-exact",
@@ -215,5 +215,6 @@
       "deselection": "Existing introduction-only tissue-description test; that feature remains absent from deployed-base validation."
     },
     "full_paid_regression": "Not repeated; targeted cases only within prior remaining allowance."
-  }
+  },
+  "deployment_record": "dev-cohort-fixes-20261003.json"
 }

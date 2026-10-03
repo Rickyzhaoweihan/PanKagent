@@ -2,8 +2,8 @@
   "source": "/Users/runbomao/Library/Mobile Documents/com~apple~CloudDocs/Projects/PanKgraph/docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/pankagent-tab01.drawio",
   "source_provenance": "docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/provenance.json",
   "verified_date": "2026-10-03",
-  "source_sha256": "bdd81b1534483589135872a0841441e3b3a9c020266808294f653cedb7859a1a",
-  "updated_sha256": "bdd81b1534483589135872a0841441e3b3a9c020266808294f653cedb7859a1a",
+  "source_sha256": "3543936888097cd8c10d4a5e8bd1d2ff7119a4737eacb73c9f0bce6f89b7a3ab",
+  "updated_sha256": "3543936888097cd8c10d4a5e8bd1d2ff7119a4737eacb73c9f0bce6f89b7a3ab",
   "previous_hashes": {
     "source_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
     "updated_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
@@ -12,25 +12,25 @@
       "updated_sha256": "7e93b9fe76aa169fa9528c0c3fecc79d20c47d960b9a23d615fe93e139632167"
     }
   },
-  "scope": "page 01; targeted backend scope/path/recovery fixes; introduction candidate remains inactive; not deployed",
-  "diagram_status": "targeted_backend_fix_candidate_not_deployed_introductions_inactive",
+  "scope": "page 01; targeted fixes deployed; broader introduction candidate inactive",
+  "diagram_status": "targeted_fixes_deployed_introduction_candidate_inactive",
   "candidate_source_state": "committed_targeted_fix_candidate_isolated_validation_not_deployed",
   "candidate_base_commit": "dac3f877e3e541f4a72eafb8f33b685a0e31a459",
   "candidate_code_commit": "0a2e8c6e41c45dd1d65010007373d13ed993e0dd",
   "candidate_application_sha256": "b328e461b938db92ab17084c698d1cd8169353875bb2e4147c9217712fe9012c",
   "candidate_schema_pack_version": "2.3.1",
   "candidate_schema_pack_sha256_at_diagram_update": "e8d1d4721f90fcee30c0c78a48325f3512ad59bc89e5192f4d7e0c8eb965fda0",
-  "deployed_code_commit": "53481a347e2e0fbec4b45adcaa2318ef0601b384",
+  "deployed_code_commit": null,
   "deployed_model": "claude-sonnet-5-5",
   "preserved": "all cell IDs, connectors, geometry, Error and Schema annotations",
-  "validation": "draw.io CLI PNG export visually inspected; geometry, connectors, Error/Schema annotations and model labels retained. Final source/application/schema metadata do not change the rendered diagram. Interactive native inspection not verified. Targeted validation is documented separately; no deployment or introduction activation.",
+  "validation": "Deployed-caption PNG export visually inspected; topology and Error/Schema annotations preserved. Targeted deployment and read-only graph replays passed. Introduction candidate remains inactive.",
   "render_verified": true,
   "render_method": "draw.io 28.0.6 CLI PNG export followed by full-image visual inspection",
   "native_app_inspection": "Not verified interactively; prior CUA getApp(draw.io) timed out; not retried",
   "unresolved_connector_endpoints": 0,
   "render_evidence": {
-    "path": "Research/Reports/pankagent-targeted-fixes-20261003/workflow-diagram.png",
-    "sha256": "e0af3b9ce4d12d8259864954350b896486a40ff3829b5435fe8ba645519d42d9"
+    "path": "Research/Reports/pankagent-targeted-fixes-20261003/workflow-diagram-deployed.png",
+    "sha256": "411b246b3a9da3ec52f6651e9746174f335b699533217c8517d55f2c8346ca58"
   },
   "validation_evidence": "Research/Reports/pankagent-targeted-fixes-20261003/implementation-notes.md",
   "previous_versions": [
@@ -71,10 +71,10 @@
       }
     }
   ],
-  "deployed_schema_pack_version": "2.2",
-  "deployed_release_path": "/var/local/serviceuser/projects/pankgraph-demo/releases/20260930-simple-literature-53481a3/backend",
-  "deployment_evidence": "Parent live inspection on 2026-10-03: PID 3513370 cwd and release-agent.pid.json",
-  "validation_status": "targeted_offline_and_isolated_api_checks_complete_not_deployed_introductions_inactive",
+  "deployed_schema_pack_version": "2.2.1",
+  "deployed_release_path": "/var/local/serviceuser/projects/pankgraph-demo/releases/20261003-cohort-fixes-0a2e8c6/backend",
+  "deployment_evidence": "User-authorized deployment; PID2620852; private activation.json and deployment-verification.json",
+  "validation_status": "targeted_fixes_validated_and_deployed_introductions_inactive",
   "prior_introduction_status": "inactive_quality_gaps_remain_see_20260930_validation_report",
   "validation_evidence_status": "parent_final_targeted_validation_report",
   "previous_validation_evidence": "Research/Reports/pankagent-flexible-intros-20260930/implementation-notes.md",
@@ -107,5 +107,10 @@
     "ledger_remaining_usd": 0.216089,
     "preserved_prior_reservation_usd": 0.14274
   },
-  "metadata_only_since_render": true
+  "metadata_only_since_render": false,
+  "deployed_base_commit": "53481a347e2e0fbec4b45adcaa2318ef0601b384",
+  "deployed_targeted_fix_commit": "0a2e8c6e41c45dd1d65010007373d13ed993e0dd",
+  "deployed_application_sha256": "6c4614b814af1f27a93c818568f58da33cfb8e737c01216486cbddf782dc31ff",
+  "deployed_schema_pack_sha256": "0a7517730a6d764fbc02a2b788a0c78e70b7bb09c74e2c9aa9ef17147342a6a5",
+  "deployment_record": "docs/original-workflow/dev-cohort-fixes-20261003.json"
 }

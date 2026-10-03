@@ -1,6 +1,6 @@
 # Cohort scope and same-sample query fixes — 2026-10-03
 
-Implemented on existing `Ringo`, source commit `0a2e8c6e41c45dd1d65010007373d13ed993e0dd`. **Not deployed.** The frontend, dev service, original 67-question fixture and separate landing-page draft are unchanged. No new agent branch or model stage was created.
+Implemented on existing `Ringo`, source commit `0a2e8c6e41c45dd1d65010007373d13ed993e0dd`. **The targeted patch was subsequently deployed to dev; see `dev-cohort-fixes-20261003.md`.** The frontend, dev service, original 67-question fixture and separate landing-page draft are unchanged. No new agent branch or model stage was created.
 
 ## Failures and repairs
 
@@ -44,4 +44,4 @@ New API spend was **$0.309933**, including initial development attempts and fina
 
 The workflow diagram and identical project handoff copy retain module IDs, connectors, Error/Schema annotations, model labels and inactive/not-deployed captions. Provenance points to the source commit and this report. The rendered diagram was visually inspected; interactive native-app inspection is not claimed.
 
-Dev remains at `53481a3` on Sonnet 5.5. The earlier introduction candidate remains inactive with its documented quality gaps. Deploying these fixes is a separate step; do not replace live wholesale with the canonical branch and accidentally activate the gated introduction work or remove the deployed literature change.
+After validation, the user authorized deployment. Dev now runs `53481a3` plus the targeted `0a2e8c6` fixes on Sonnet 5.5; the earlier introduction candidate remains inactive. See `dev-cohort-fixes-20261003.md` for activation and post-deployment checks.
