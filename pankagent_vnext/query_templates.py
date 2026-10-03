@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 
 from .release_schema import REGISTRY, DIGEST as SCHEMA_DIGEST
 from .scientific_projection import MEASUREMENT_FIELDS
@@ -31,6 +32,96 @@ _NUMERIC_FIELDS = {kind: set(fields) for kind, fields in _METADATA['numeric_meas
 _NUMERIC_FIELDS.update({k: set(v) for k, v in _METADATA['numeric_membership_fields'].items()})
 _REGION_FIELDS = set(_METADATA['coordinate_fields'])
 _RUNTIME_INVENTORY_FIELDS = {tuple(value) for value in _METADATA['runtime_inventory_fields']}
+
+
+def normalize_template_paths(question, plan):
+    """Use a registered ordinary template for an equivalent isolated path.
+
+    A model can spell an ordinary cohort query as an anchored path even when
+    its first role is a filtered population rather than a named identity. The
+    schema may declare an exact topology supported by an ordinary template.
+    Recognizing that topology changes representation only: every predicate,
+    role, and requested scope still goes through normal preparation. Genuine
+    path requests and paths whose roles feed another task retain their contract.
+    """
+    result = deepcopy(plan)
+    if re.search(r'\b(?:paths?|chains?|walks?)\b', str(question), re.I):
+        return result
+    rules = schema_module('query_patterns').get('library', {}).get('template_topology_routes', [])
+    if not rules:
+        return result
+    from .bounded_paths import plan_issue
+    steps = result.get('steps', [])
+    consumed = {parent for step in steps for parent in step.get('depends_on', [])}
+    for operation in result.get('combine_operations', []):
+        consumed.update(item.get('step_id') for item in operation.get('inputs', []))
+    for step in steps:
+        spec = step.get('path_spec')
+        if (not spec or step.get('depends_on') or step.get('input_bindings')
+                or step.get('id') in consumed or step.get('operation')
+                or any(step.get('sample_requirements', {}).get(key)
+                       for key in ('paired', 'separate_bindings'))):
+            continue
+        # Validate all topology, ownership and scope requirements before the
+        # one anchor-order restriction this normalization is intended to avoid.
+        if plan_issue(step) not in (None, 'missing_path_anchor_identity'):
+            continue
+        nodes = spec['nodes']
+        if any(len(node['entity_types']) != 1 or node.get('distinct_from') for node in nodes):
+            continue
+        kinds = [node['entity_types'][0] for node in nodes]
+        if len(kinds) != len(set(kinds)):
+            continue  # Repeated types require role-aware path execution.
+        owners = {node['role']: node['entity_types'][0] for node in nodes}
+        if any(constraint.get('owner_role') not in owners
+               or constraint.get('entity_type') != owners[constraint['owner_role']]
+               or constraint.get('owner_kind') not in (None, 'node')
+               or constraint.get('relationship_type')
+               for constraint in step.get('constraints', [])):
+            continue
+        edges = []
+        for edge in spec['edges']:
+            if len(edge['types_any']) != 1 or edge['direction'] not in ('in', 'out'):
+                break
+            source, target = owners[edge['from']], owners[edge['to']]
+            if edge['direction'] == 'in':
+                source, target = target, source
+            edges.append((source, edge['types_any'][0], target))
+        else:
+            matches = [rule for rule in rules
+                       if sorted(rule['node_types']) == sorted(kinds)
+                       and sorted((edge['source'], edge['relation'], edge['target'])
+                                  for edge in rule['edges']) == sorted(edges)]
+            if len(matches) != 1:
+                continue
+            rule = matches[0]
+            constraints = step.get('constraints', [])
+            identities = [constraint for constraint in constraints
+                          if _node_identity_constraint(constraint)
+                          and constraint.get('operator', '=') == '='
+                          and isinstance(constraint.get('value'), str)
+                          and constraint['value'].strip()]
+            if (any(sum(c['entity_type'] == owner for c in identities) != 1
+                    for owner in rule.get('required_identity_types', []))
+                    or any(not any(c['entity_type'] == owner for c in constraints)
+                           for owner in rule.get('required_predicate_types', []))):
+                continue
+            # A shape may be structurally equivalent yet outside the concrete
+            # compiler's capabilities (for example, unresolved interval syntax).
+            # Do not remove its strict path contract merely on topology match.
+            supported = {
+                'donor_tissue_same_sample_records': _sample_witness_constraint_supported,
+            }.get(rule['template_id'])
+            if supported is None or not all(supported(c) for c in constraints):
+                continue
+            step['template_topology_normalization'] = {
+                'source': 'schema_library', 'rule_id': rule['id'],
+                'template_id': rule['template_id'],
+                'original_path_spec': deepcopy(spec),
+                'reason': 'equivalent_ordinary_query_topology',
+            }
+            step.pop('path_spec')
+    return result
 
 
 def _common_endpoint(paths, side):
@@ -268,10 +359,9 @@ def _sample_witness(step, paths):
                     return None
                 owner, prop, value = resolved['entity_type'], 'id', resolved['id']
                 tissue_anchors += owner == 'anatomical_structure'
-            if owner not in variables or prop not in REGISTRY['nodes'][owner] or op not in _OPERATORS:
+            if (owner not in variables or prop not in REGISTRY['nodes'][owner]
+                    or not _sample_witness_operator_supported(owner, prop, op)):
                 return None
-            if op in {'>', '>=', '<', '<='} or owner == 'donor' and prop == 'age':
-                return None  # Mixed-unit ages and unverified numeric storage.
             donor_predicates += owner == 'donor'
             parameter = 'template_' + str(index)
             params[parameter] = _value(value, op)
@@ -309,6 +399,31 @@ def _sample_witness(step, paths):
             'endpoint_coverage': {'sources': ['donor', 'anatomical_structure'], 'target': 'Sample_node',
                 'registered_path_count': len(paths), 'all_paths_covered': False,
                 'all_requested_paths_covered': True, 'scope_basis': 'typed_donor_and_resolved_tissue_same_sample'}}
+
+
+def _sample_witness_operator_supported(owner, prop, operator):
+    # Mixed-unit ages and unverified numeric storage require another route.
+    return (operator in _OPERATORS and operator not in {'>', '>=', '<', '<='}
+            and not (owner == 'donor' and prop == 'age'))
+
+
+def _sample_witness_constraint_supported(constraint):
+    """The ordinary compiler's shape requirements, independent of live proofs."""
+    owner, prop = constraint.get('entity_type'), constraint.get('property')
+    operator = constraint.get('operator', '=')
+    if (constraint.get('owner_kind') not in (None, 'node')
+            or constraint.get('relationship_type') or owner not in REGISTRY['nodes']
+            or prop not in REGISTRY['nodes'][owner]
+            or not _sample_witness_operator_supported(owner, prop, operator)):
+        return False
+    if _node_identity_constraint(constraint) and (operator != '='
+            or not isinstance(constraint.get('value'), str) or not constraint['value'].strip()):
+        return False
+    try:
+        _value(constraint.get('value'), operator)
+    except (ValueError, TypeError, OverflowError):
+        return False
+    return True
 
 
 def _region_gene_records(step):
@@ -489,6 +604,29 @@ def _clinical_chain_records(step):
 
 
 def compile_query(step):
+    result = _compile_query(step)
+    route = step.get('template_topology_normalization')
+    if route and (not result or result.get('template_id') != route.get('template_id')):
+        return None
+    return result
+
+
+def normalized_topology_errors(tokens, step, parameters, tokenize):
+    """Never let fallback generation relax a normalized template's topology."""
+    if not step.get('template_topology_normalization'):
+        return []
+    expected = compile_query(step)
+    if not expected:
+        return ['normalized_topology_requires_verified_template']
+    signature = lambda items: [(token.kind, token.value) for token in items]
+    if signature(tokens) != signature(tokenize(expected['cypher'])):
+        return ['normalized_topology_requires_verified_template']
+    if parameters != expected['parameters']:
+        return ['normalized_topology_parameter_mismatch']
+    return []
+
+
+def _compile_query(step):
     from .annotation_selection import overview, RELATIONS as ANNOTATION_RELATIONS
     bounded_annotation = overview(step)
     if step.get('graph_version') != REGISTRY['release'] or (not step.get('complete', True) and not bounded_annotation):

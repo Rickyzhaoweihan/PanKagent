@@ -71,7 +71,7 @@
             "Sample_node"
           ]
         ],
-        "guidance": "Bind donor, tissue and assay to the SAME sample. For separate requested assays keep each sample bound to the same donor and its requested tissue. Cohort source belongs to donor; literal sample source is distinct."
+        "guidance": "Bind donor, tissue and assay to the SAME sample. For separate requested assays keep each sample bound to the same donor and its requested tissue. Cohort source belongs to donor; literal sample source is distinct. Ordinary filtered sample/cohort counts use the donor-tissue-same-sample structural template when its topology applies; they do not require a named donor identity or a specialized bounded path. Clinical modifiers before a donor source remain donor predicates, not dataset names. Keep genuine multi-hop path requests and typed dependencies in the bounded-path route."
       },
       {
         "id": "independent_measurements",
@@ -111,7 +111,7 @@
           "ASSOCIATED_WITH_GO"
         ],
         "required_paths": [],
-        "guidance": "For interaction partners annotated to a requested term, use a connected focus Gene\u2014interaction\u2014partner Gene\u2014annotation\u2192term path and put the annotation on the partner role. Bind only focus to the requested gene; never copy its ID to the partner/annotation gene. For shared partners of two genes, require both interaction links to the same partner; then retrieve annotations for those verified partners. Include physical or genetic interaction types exactly as requested."
+        "guidance": "For interaction partners annotated to a requested term, use a connected focus Gene—interaction—partner Gene—annotation→term path and put the annotation on the partner role. Bind only focus to the requested gene; never copy its ID to the partner/annotation gene. For shared partners of two genes, require both interaction links to the same partner; then retrieve annotations for those verified partners. Include physical or genetic interaction types exactly as requested."
       },
       {
         "id": "independent_assay_counts",
@@ -120,6 +120,35 @@
         ],
         "required_paths": [],
         "guidance": "For multiple alternative assays, retrieve separate sample sets for each requested recorded modality and count distinct sample IDs independently. Two assay alternatives do not require one sample to have both labels. Keep donor predicates on donor, modality on sample and anatomy linked to that same sample; do not require anatomy when the user asks for all tissues."
+      }
+    ],
+    "template_topology_routes": [
+      {
+        "id": "donor_tissue_same_sample",
+        "template_id": "donor_tissue_same_sample_records",
+        "node_types": [
+          "donor",
+          "Sample_node",
+          "anatomical_structure"
+        ],
+        "edges": [
+          {
+            "source": "donor",
+            "target": "Sample_node",
+            "relation": "HAS_SAMPLE"
+          },
+          {
+            "source": "anatomical_structure",
+            "target": "Sample_node",
+            "relation": "HAS_SAMPLE"
+          }
+        ],
+        "required_identity_types": [
+          "anatomical_structure"
+        ],
+        "required_predicate_types": [
+          "donor"
+        ]
       }
     ]
   },

@@ -314,6 +314,8 @@ class ClaudeGateway:
             plan = attach(plan, (grounding or {}).get('session_population'))
             plan = normalize(plan)
             from .semantic_decision import effective_scope
+            from .query_templates import normalize_template_paths
+            plan = normalize(normalize_template_paths(effective_scope(scope_question, plan), plan))
             plan = bind_unique_requested_identities(effective_scope(scope_question, plan), grounding, plan)
             used = {(item['entity_type'], item['id']) for step in plan.get('steps', []) for item in step.get('preparation_trace', [])}
             plan['entity_selection_proofs'] = [p for p in initial_proofs if (p['entity_type'], p['id']) in used]

@@ -5,11 +5,25 @@ import pytest
 from pankagent_vnext.agent_schemas import SchemaPack, ROOT, active_pack
 
 
-def test_extracted_release_inventory_and_patterns_have_exact_parity():
+def test_extracted_release_inventory_and_legacy_pattern_structure_have_parity():
     root = ROOT.parent
     pack = active_pack()
     assert pack.module('graph_storage')['registry'] == json.loads((root / 'release_schema.json').read_text())
-    assert pack.module('query_patterns')['library'] == json.loads((root / 'graph_patterns.json').read_text())
+    library = pack.module('query_patterns')['library']
+    legacy = json.loads((root / 'graph_patterns.json').read_text())
+    # Legacy extraction still pins release identity and existing structural
+    # rules. Evolving guidance and topology routes belong to the four-schema
+    # pack; copying them back would create a second editable source of truth.
+    assert {key: library[key] for key in ('version', 'graph_release')} == {
+        key: legacy[key] for key in ('version', 'graph_release')}
+    assert [{key: value for key, value in rule.items() if key != 'guidance'}
+            for rule in library['rules']] == [
+        {key: value for key, value in rule.items() if key != 'guidance'}
+        for rule in legacy['rules']]
+    assert all(isinstance(rule['guidance'], str) and rule['guidance'].strip()
+               for rule in library['rules'])
+    canonical = json.loads((ROOT / 'packs/pankgraph/query_patterns.json').read_text())
+    assert library == canonical['library']
     assert pack.module('semantics_modalities')['modalities'] == json.loads((root / 'prompts/planning/modalities.json').read_text())
 
 
@@ -75,3 +89,57 @@ def test_renamed_types_and_property_use_same_path_and_identity_operators(monkeyp
     assert '`Thing`' in result['cypher'] and '`Category`' in result['cypher'] and '`BELONGS_TO`' in result['cypher']
     assert result['parameters']['path_0']=='thing-1'
     assert 'Gene' not in result['cypher']
+
+
+def _copied_pack(tmp_path):
+    for path in (ROOT / 'packs/pankgraph').glob('*.json'):
+        (tmp_path / path.name).write_bytes(path.read_bytes())
+    return tmp_path / 'query_patterns.json'
+
+
+@pytest.mark.parametrize('mutation,reason', [
+    ('unknown_node', 'topology_types'),
+    ('identity_not_in_route', 'topology_prerequisite'),
+    ('predicate_not_in_route', 'topology_prerequisite'),
+    ('edge_type_not_in_route', 'topology_endpoint'),
+    ('unknown_relation', 'topology_endpoint'),
+    ('wrong_direction', 'topology_endpoint'),
+    ('duplicate_id', 'duplicate_agent_schema_topology_route'),
+])
+def test_topology_routes_require_schema_valid_types_bindings_and_directed_edges(
+        tmp_path, mutation, reason):
+    path = _copied_pack(tmp_path)
+    data = json.loads(path.read_text())
+    rule = data['library']['template_topology_routes'][0]
+    if mutation == 'unknown_node':
+        rule['node_types'][0] = 'InventedType'
+    elif mutation == 'identity_not_in_route':
+        rule['required_identity_types'] = ['Gene']
+    elif mutation == 'predicate_not_in_route':
+        rule['required_predicate_types'] = ['Gene']
+    elif mutation == 'edge_type_not_in_route':
+        rule['edges'][0]['source'] = 'Gene'
+    elif mutation == 'unknown_relation':
+        rule['edges'][0]['relation'] = 'InventedRelation'
+    elif mutation == 'wrong_direction':
+        edge = rule['edges'][0]
+        edge['source'], edge['target'] = edge['target'], edge['source']
+    elif mutation == 'duplicate_id':
+        data['library']['template_topology_routes'].append(deepcopy(rule))
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match=reason):
+        SchemaPack(tmp_path)
+
+
+def test_canonical_guidance_changes_are_versioned_without_changing_legacy_snapshot(tmp_path):
+    path = _copied_pack(tmp_path)
+    original = SchemaPack(tmp_path)
+    legacy_path = ROOT.parent / 'graph_patterns.json'
+    legacy_before = legacy_path.read_bytes()
+    data = json.loads(path.read_text())
+    data['library']['rules'][0]['guidance'] += ' Additional reviewed guidance.'
+    path.write_text(json.dumps(data))
+    updated = SchemaPack(tmp_path)
+    assert updated.digest != original.digest
+    assert updated.module('query_patterns')['library'] == data['library']
+    assert legacy_path.read_bytes() == legacy_before

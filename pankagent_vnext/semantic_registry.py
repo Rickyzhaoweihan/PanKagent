@@ -336,13 +336,14 @@ def identity_authorization_text(text):
     return ''.join(chars)
 
 
-def _unresolved_tissue_role(text, vocabulary, matched):
+def _unresolved_tissue_role(text, vocabulary, matched, clinical_spans=()):
     """Detect an explicit tissue slot that has no unique live-graph match."""
     # Mask only descriptive question phrases, never an explicit named filter
     # elsewhere in the request (e.g. "from spleen; what tissue ...?").
     text = re.sub(r'\b(?:what|which)\s+(?:tissues?|cell[ -]?types?)'
                   r'(?:\s*/\s*(?:tissues?|cell[ -]?types?))?'
-                  r'\s+(?:are|is|do|does)\b', ' ', text, flags=re.I)
+                  r'\s+(?:are|is|do|does)\b',
+                  lambda match: ' ' * len(match.group()), text, flags=re.I)
     if re.search(r'\b(?:tissue|anatom(?:y|ical)(?:[ _-]+structure)?)\b'
                  r'\s*(?:is|=|:|of|from)?\s*[A-Za-z0-9]', text, re.I):
         return not matched
@@ -378,6 +379,8 @@ def _unresolved_tissue_role(text, vocabulary, matched):
             r'([A-Za-z0-9_:+./-]+)(?:\s+tissue)?\b', text, re.I):
         value = occurrence.group(1).casefold()
         tail = text[occurrence.end():occurrence.end() + 20]
+        if any(start <= occurrence.start(1) < end for start, end in clinical_spans):
+            continue
         if value not in sources and not re.match(r'\s+donors?\b', tail, re.I):
             return not matched
     # Interrogative determiners and generic quantifiers describe the requested
@@ -422,12 +425,60 @@ def _unresolved_assay_role(text, has_intent):
         r'\b[A-Za-z0-9_+-]+(?:\s+sequencing|[-_]?seq|omics)\s+samples?\b', text, re.I))
 
 
-def _unresolved_source_role(text, vocabulary):
+def _verified_clinical_spans(text, matches):
+    """Locate only clinical phrases already proved by normal scope resolution.
+
+    A live inventory hit alone is not authority to discard a source restriction.
+    These spans come from canonical runtime bindings, including a disease name
+    used as part of a verified recorded-stage phrase rather than a diagnosis.
+    """
+    spans, stages = [], []
+    for proof in matches:
+        kind, requested = proof.get('match_kind'), proof.get('requested')
+        if kind not in {'verified_runtime_stage', 'verified_runtime_entity'}:
+            continue
+        if not isinstance(requested, str) or not requested:
+            continue
+        found = [(match.start(), match.end()) for match in re.finditer(
+            r'(?<!\w)' + re.escape(requested) + r'(?!\w)', text, re.I)]
+        spans.extend(found)
+        if kind == 'verified_runtime_stage':
+            stages.extend(found)
+    for mention in _disease_mentions(text):
+        if not _disease_mention_is_stage_label(text, mention):
+            continue
+        for start, end in stages:
+            gap = (text[mention['end']:start] if mention['end'] <= start
+                   else text[end:mention['start']] if end <= mention['start'] else None)
+            if gap is not None and re.fullmatch(r'\s*(?:of\s+)?', gap, re.I):
+                spans.append((mention['start'], mention['end']))
+                break
+    return spans
+
+
+def _unresolved_source_role(text, vocabulary, clinical_spans=()):
     recorded = {value.casefold() for value in vocabulary.get('sources') or []
                 if isinstance(value, str)}
-    # ``samples from X`` is shared English grammar for a tissue and a dataset.
-    # A value recorded in either live inventory is resolved, not an unknown
-    # source.  Trailing sentence punctuation is not part of the candidate.
+    # Explicit source/provider slots have source semantics even when the value
+    # is also a known tissue, assay, or clinical label.
+    explicit = (r'\b(?:(?:sample|donor|cohort)(?:[ _.-]+data)?[ _.-]+(?:source|provider)'
+                r'|data_source|(?:source|provider)(?=\s*(?:[=:]|is\b))'
+                r'|from\s+(?:the\s+)?source)\b\s*'
+                r'(?:is|=|:|of|from)?\s*["\']?([A-Za-z0-9_:+./-]+)')
+    for match in re.finditer(explicit, text, re.I):
+        before = text[max(0, match.start() - 60):match.start()]
+        after = text[match.start(1):]
+        if (re.search(r'\b(?:what|which)\s+(?:data\s+)?$', before, re.I)
+                and re.match(r'(?:recorded|available|reported|shown|listed|returned)'
+                             r'\s+(?:for|in|from|on)\b', after, re.I)):
+            continue
+        if not any(re.match(re.escape(value) + r'(?!\w)', after, re.I)
+                   for value in recorded):
+            return True
+    # ``samples from X`` also introduces tissue and clinical donor phrases.
+    # A clinical prefix is accepted only after its canonical binding is proved;
+    # inspect the remaining modifiers up to the donor noun so an unknown study
+    # following a valid disease/stage cannot disappear.
     tissues = {str(record.get(key)).casefold()
                for record in vocabulary.get('tissues') or []
                if isinstance(record, dict)
@@ -435,14 +486,33 @@ def _unresolved_source_role(text, vocabulary):
     modalities = {value.casefold() for value in vocabulary.get('modalities') or []
                   if isinstance(value, str)}
     resolved_roles = recorded | tissues | modalities
-    patterns = (
-        r'\b(?:donors?|samples?|cohort)\s+(?:from|provided\s+by|sourced\s+from)\s+'
-        r'(?:the\s+)?([A-Za-z0-9_:+./-]+)',
-        r'\b(?:sample|donor|cohort)(?:[ _-]+data)?[ _-]+(?:source|provider)\s*'
-        r'(?:is|=|:|of|from)?\s*([A-Za-z0-9_:+./-]+)',
-    )
-    return any(match.group(1).rstrip('.,:;/').casefold() not in resolved_roles
-               for pattern in patterns for match in re.finditer(pattern, text, re.I))
+    pattern = (r'\b(?:donors?|samples?|cohort)\s+'
+               r'(?:from|provided\s+by|sourced\s+from)\s+'
+               r'(?:the\s+)?([A-Za-z0-9_:+./-]+)')
+    for match in re.finditer(pattern, text, re.I):
+        value_start = match.start(1)
+        if any(re.match(re.escape(value) + r'(?!\w)', text[value_start:], re.I)
+               for value in resolved_roles):
+            continue
+        if not any(start <= value_start < end for start, end in clinical_spans):
+            return True
+        tail = re.match(r'[^.!?;,]{0,160}?\b(?:donors?|cohort)\b', text[value_start:], re.I)
+        if not tail:
+            return True
+        clause_end = value_start + tail.end()
+        chars = list(text[value_start:clause_end])
+        for start, end in clinical_spans:
+            if value_start <= start and end <= clause_end:
+                chars[start - value_start:end - value_start] = ' ' * (end - start)
+        remainder = ''.join(chars)
+        for source in sorted(recorded, key=len, reverse=True):
+            remainder = re.sub(r'(?<!\w)' + re.escape(source) + r'(?!\w)',
+                               ' ', remainder, flags=re.I)
+        syntax = schema_module('semantic_interpretation')['retrieval_interpretation']['clinical_syntax']
+        closed = {word.casefold() for word in syntax['closed_words']}
+        if any(word.casefold() not in closed for word in re.findall(r'[A-Za-z0-9_]+', remainder)):
+            return True
+    return False
 
 
 def _unresolved_donor_modifier(text, vocabulary):
@@ -751,11 +821,12 @@ def _canonical_assay(value, available):
     return matches[0] if len(matches) == 1 else value
 
 
-def _mentioned_assays(question, available):
-    words = [v.casefold() for v in re.findall(r'[A-Za-z0-9]+', question)]
+def _mentioned_assays(question, available, *, return_residual=False):
+    tokens = list(re.finditer(r'[A-Za-z0-9]+', question))
+    words = [token.group().casefold() for token in tokens]
     aliases = {re.sub(r'[^a-z0-9]', '', value.casefold()): value for value in available if isinstance(value, str)}
     aliases.update({key: value for key, value in ALIASES.items() if value in available})
-    values, start = [], 0
+    values, start, residual = [], 0, list(question)
     while start < len(words):
         matches = [(end, aliases[''.join(words[start:end])])
                    for end in range(start + 1, min(len(words), start + 7) + 1)
@@ -764,10 +835,25 @@ def _mentioned_assays(question, available):
             end, value = max(matches)
             if value not in values:
                 values.append(value)
+            left, right = tokens[start].start(), tokens[end - 1].end()
+            residual[left:right] = ' ' * (right - left)
             start = end
         else:
             start += 1
-    return values
+    return (values, ''.join(residual)) if return_residual else values
+
+
+def _only_recorded_assay_intent(question, available):
+    """A named assay is a label unless additional capability intent remains.
+
+    Only current inventory labels and their registered aliases are removed.
+    An assay name containing capability terminology is not itself a request to
+    pair assays; separate pairing/component words retain the existing policy.
+    """
+    named, residual = _mentioned_assays(question, available, return_residual=True)
+    return bool(named) and not re.search(
+        r'\b(?:paired|joint)\b|(?<![a-z])(?:sc|sn)?RNA[\s-]*(?:seq)?|'
+        r'transcriptom|ATAC|multiom|chromatin accessibility|\bcomponents?\b', residual, re.I)
 
 
 def _explicit_modality_label(question, available):
@@ -839,7 +925,8 @@ def _assay_intent_values(text, available):
     capability_inclusion = bool(re.search(
         r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}'
         r'\b(?:(?:sn)?multiom\w*|(?:RNA|ATAC)\s+components?)', positive_text, re.I))
-    if named and (label_lookup or not paired) and not capability_inclusion:
+    if (named and (label_lookup or not paired or _only_recorded_assay_intent(positive_text, available))
+            and not capability_inclusion):
         exact = True
     positive = set(named)
     if paired and not exact:
@@ -1536,8 +1623,6 @@ def resolve(step, vocabulary, release):
     source_text = scope_text(out, source_text)
     scope_source_text = scope_intent_text(source_text)
     scope_q = scope_intent_text(q)
-    if trusted_request and _unresolved_source_role(scope_source_text, vocabulary):
-        issues.append('A requested dataset source is not recorded in the current graph; no broader source query may run.')
     if trusted_request and _unresolved_donor_modifier(scope_source_text, vocabulary):
         issues.append('A requested donor cohort label is not uniquely recorded in the current graph; no broader donor query may run.')
     def stage_mentions(text):
@@ -1908,6 +1993,9 @@ def resolve(step, vocabulary, release):
             and constraint.get('property') in {'id', 'name'})]
         bind('id', 'disease', item['record']['id'], kind='runtime_entity',
              requested=item['requested'])
+    clinical_spans = _verified_clinical_spans(scope_source_text, matches)
+    if trusted_request and _unresolved_source_role(scope_source_text, vocabulary, clinical_spans):
+        issues.append('A requested dataset source is not recorded in the current graph; no broader source query may run.')
     from .tissue_aliases import matched_tissues
     planned_tissues = [deepcopy(c) for c in constraints
                        if c.get('entity_type') == 'anatomical_structure'
@@ -1940,7 +2028,7 @@ def resolve(step, vocabulary, release):
             tissues = []
         if planned_tissues and not requested_tissues:
             issues.append('A generated sample-tissue filter was not requested and was removed.')
-        if _unresolved_tissue_role(scope_source_text, vocabulary, requested_tissues):
+        if _unresolved_tissue_role(scope_source_text, vocabulary, requested_tissues, clinical_spans):
             issues.append('A requested sample tissue is not uniquely recorded in the current graph; no unrestricted sample query may run.')
     else:
         tissues = matched_tissues(scope_q, vocabulary.get('tissues', []), constraints=constraints)
@@ -2061,7 +2149,8 @@ def resolve(step, vocabulary, release):
     label_lookup = bool(re.search(r'\b(?:samples?|records?)\s+(?:explicitly\s+)?label(?:ed|led)\b|\b(?:assay|modality)\s+(?:label|value)\s*(?:=|is|of|:)\s*', assay_q, re.I)) or _explicit_modality_label(positive_q, available)
     named_assays = _mentioned_assays(positive_q, available)
     capability_inclusion = bool(re.search(r'\b(?:include|including|also|or)\b[^.!?;\n]{0,120}\b(?:(?:sn)?multiom\w*|(?:RNA|ATAC)\s+components?)', positive_q, re.I))
-    if named_assays and (label_lookup or not paired) and not capability_inclusion:
+    if (named_assays and (label_lookup or not paired or _only_recorded_assay_intent(positive_q, available))
+            and not capability_inclusion):
         exact = True
     paired = paired and not exact and not bool(re.search(r'\b(?:include|including|also|or)\b.{0,60}multiom',assay_q,re.I))
     if not unsupported_assay and (old_assay or named_assays or rna or atac or paired):

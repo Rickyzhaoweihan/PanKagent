@@ -5,7 +5,7 @@
   },
   "pack": {
     "id": "pankgraph",
-    "version": "2.3.0"
+    "version": "2.3.1"
   },
   "standard": {
     "repository": "https://github.com/RingoMao/KG_agent",

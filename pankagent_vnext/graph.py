@@ -966,6 +966,11 @@ def validate_cypher(query: str, step: dict, parameters: dict | None = None, *, d
         topology = bounded_path_topology_errors(tokens, step, parameters, tokenize)
         if topology:
             return list(dict.fromkeys(topology))
+    if step.get('template_topology_normalization'):
+        from .query_templates import normalized_topology_errors
+        topology = normalized_topology_errors(tokens, step, parameters, tokenize)
+        if topology:
+            return topology
     from .query_templates import interval_overlap_requested, compile_query
     interval_template_verified = False
     if interval_overlap_requested(step):

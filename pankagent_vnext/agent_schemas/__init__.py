@@ -125,6 +125,23 @@ class SchemaPack:
                 if not any(source in p['source'] and target in p['target']
                            for p in registry['relations'].get(relation, {}).get('paths', [])):
                     raise ValueError('invalid_agent_schema_pattern_path:' + rule['id'])
+        topology_routes = library.get('template_topology_routes', [])
+        if len({rule['id'] for rule in topology_routes}) != len(topology_routes):
+            raise ValueError('duplicate_agent_schema_topology_route')
+        for rule in topology_routes:
+            route_types = set(rule['node_types'])
+            if not route_types <= labels:
+                raise ValueError('invalid_agent_schema_topology_types:' + rule['id'])
+            for prerequisite in ('required_identity_types', 'required_predicate_types'):
+                if not set(rule[prerequisite]) <= route_types:
+                    raise ValueError('invalid_agent_schema_topology_prerequisite:' + rule['id'])
+            for edge in rule['edges']:
+                if (not {edge['source'], edge['target']} <= route_types
+                        or not any(edge['source'] in path['source']
+                                   and edge['target'] in path['target']
+                                   for path in registry['relations'].get(
+                                       edge['relation'], {}).get('paths', []))):
+                    raise ValueError('invalid_agent_schema_topology_endpoint:' + rule['id'])
         if data['validation_repair']['scope_compilers'] != list(COMPILERS):
             raise ValueError('invalid_agent_schema_compiler_pipeline')
         materialization = data['validation_repair'].get('backend_materialization', {})
