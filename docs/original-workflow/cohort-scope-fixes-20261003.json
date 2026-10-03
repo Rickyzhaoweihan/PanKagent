@@ -1,0 +1,219 @@
+{
+  "status": "targeted_bugfix_checks_passed_not_deployed",
+  "cases": [
+    {
+      "case": "PLN-exact",
+      "question": "How many PLN scRNAseq samples from T1D stage 3 HPAP donors available?",
+      "graph_status": "empty",
+      "run_status": "completed",
+      "scope_and_count_assertions": "passed",
+      "matching_samples": 0,
+      "matching_donors": 0,
+      "first_preview_s": 10.425549525767565,
+      "cost_usd": 0.0500336,
+      "model_accounting": {
+        "stages": {
+          "plan": {
+            "calls": 4,
+            "seconds": 10.215081999999999,
+            "cost_usd": 0.0500336,
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 40188,
+              "input_tokens": 15573,
+              "output_tokens": 1085
+            }
+          }
+        },
+        "settled_cost_usd": 0.0500336,
+        "pending_bound_usd": 0,
+        "cost_settled": true,
+        "model_calls": 4
+      },
+      "database_work": {
+        "explain": 1,
+        "retrieve": 1
+      },
+      "query_route": "template",
+      "verified_scope": [
+        {
+          "property": "t1d_stage",
+          "entity_type": "donor",
+          "operator": "=",
+          "value": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis"
+        },
+        {
+          "property": "data_source",
+          "entity_type": "donor",
+          "operator": "=",
+          "value": "HPAP"
+        },
+        {
+          "property": "id",
+          "entity_type": "anatomical_structure",
+          "operator": "=",
+          "value": "UBERON_0015865"
+        },
+        {
+          "property": "data_modality",
+          "entity_type": "Sample_node",
+          "operator": "=",
+          "value": "scRNA-seq"
+        }
+      ],
+      "retrieval_complete": true,
+      "confirmation_reused_preview": true,
+      "literature": "not_requested",
+      "source_application_sha256": "6c4614b814af1f27a93c818568f58da33cfb8e737c01216486cbddf782dc31ff"
+    },
+    {
+      "case": "PLN-multiomics",
+      "question": "How many PLN snMultiomics samples from T1D stage 3 HPAP donors are available?",
+      "graph_status": "complete",
+      "run_status": "partial",
+      "scope_and_count_assertions": "passed",
+      "matching_samples": 13,
+      "matching_donors": 12,
+      "first_preview_s": 9.683412479236722,
+      "cost_usd": 0.1205857,
+      "model_accounting": {
+        "stages": {
+          "plan": {
+            "calls": 3,
+            "seconds": 9.492477000000001,
+            "cost_usd": 0.042142200000000005,
+            "usage": {
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 30141,
+              "input_tokens": 11737,
+              "output_tokens": 1264
+            }
+          },
+          "synthesis": {
+            "calls": 1,
+            "seconds": 4.617442,
+            "cost_usd": 0.0784435,
+            "usage": {
+              "cache_creation_input_tokens": 4239,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 31703,
+              "output_tokens": 444
+            }
+          }
+        },
+        "settled_cost_usd": 0.1205857,
+        "pending_bound_usd": 0,
+        "cost_settled": true,
+        "model_calls": 4
+      },
+      "database_work": {
+        "explain": 1,
+        "retrieve": 1
+      },
+      "query_route": "template",
+      "verified_scope": [
+        {
+          "property": "t1d_stage",
+          "entity_type": "donor",
+          "operator": "=",
+          "value": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis"
+        },
+        {
+          "property": "data_source",
+          "entity_type": "donor",
+          "operator": "=",
+          "value": "HPAP"
+        },
+        {
+          "property": "id",
+          "entity_type": "anatomical_structure",
+          "operator": "=",
+          "value": "UBERON_0015865"
+        },
+        {
+          "property": "data_modality",
+          "entity_type": "Sample_node",
+          "operator": "=",
+          "value": "snMultiomics"
+        }
+      ],
+      "retrieval_complete": true,
+      "confirmation_reused_preview": true,
+      "literature": "unavailable",
+      "source_application_sha256": "6c4614b814af1f27a93c818568f58da33cfb8e737c01216486cbddf782dc31ff"
+    }
+  ],
+  "graph_reference": {
+    "graph_release": "PanKgraph_08_04",
+    "query": "MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node)<-[:HAS_SAMPLE]-(t:anatomical_structure) WHERE d.data_source=$source AND d.t1d_stage=$stage AND t.id=$tissue RETURN s.data_modality AS modality,count(DISTINCT s.id) AS samples,count(DISTINCT d.id) AS donors ORDER BY modality",
+    "parameters": {
+      "source": "HPAP",
+      "stage": "Stage 3: one or more autoantibodies and diagnostic hyperglycemia or T1D diagnosis",
+      "tissue": "UBERON_0015865"
+    },
+    "rows": [
+      {
+        "modality": "CITE-seq Protein",
+        "samples": 7,
+        "donors": 7
+      },
+      {
+        "modality": "snMultiomics",
+        "samples": 13,
+        "donors": 12
+      }
+    ],
+    "read_only": true,
+    "date": "2026-10-03",
+    "exact_scRNA_seq_samples": 0
+  },
+  "new_spend_usd": 0.3099332,
+  "budget": {
+    "limit_usd": 20.0,
+    "spent_usd": 19.641171,
+    "reserved_usd": 0.14274,
+    "remaining_usd": 0.216089,
+    "calls": 715,
+    "pending_calls": 1,
+    "input_tokens": 7131646,
+    "output_tokens": 385777,
+    "cache_read_tokens": 5499181,
+    "cache_creation_tokens": 168109
+  },
+  "development_attempts": [
+    {
+      "case": "PLN-exact",
+      "status": "completed",
+      "cost_usd": 0.0751177
+    },
+    {
+      "case": "PLN-multiomics",
+      "status": "failed",
+      "cost_usd": 0.0641962,
+      "cause": "recorded_assay_label_incorrectly_implied_pairing_fixed_before_final_repeat"
+    }
+  ],
+  "notes": [
+    "Fixture node/edge lists intentionally empty and not used to claim coverage. Explicit scope, membership, same-sample witnesses and independent count assertions above determine success.",
+    "Positive run overall status partial because literature was disabled in the isolated harness; graph retrieval and answer are complete.",
+    "Includes initial failed positive-control API spend; unresolved earlier reservation retained."
+  ],
+  "source_commit": "0a2e8c6e41c45dd1d65010007373d13ed993e0dd",
+  "canonical_application_sha256": "b328e461b938db92ab17084c698d1cd8169353875bb2e4147c9217712fe9012c",
+  "canonical_schema_pack_sha256": "e8d1d4721f90fcee30c0c78a48325f3512ad59bc89e5192f4d7e0c8eb965fda0",
+  "validation": {
+    "canonical_full_suite": {
+      "passed": 3129,
+      "failed": 34,
+      "skipped": 5,
+      "subtests_passed": 231,
+      "new_failures_against_baseline": []
+    },
+    "deployed_base_targeted_suite": {
+      "passed": 159,
+      "deselected": 1,
+      "deselection": "Existing introduction-only tissue-description test; that feature remains absent from deployed-base validation."
+    },
+    "full_paid_regression": "Not repeated; targeted cases only within prior remaining allowance."
+  }
+}
