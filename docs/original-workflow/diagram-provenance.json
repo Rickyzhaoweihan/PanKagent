@@ -2,8 +2,8 @@
   "source": "/Users/runbomao/Library/Mobile Documents/com~apple~CloudDocs/Projects/PanKgraph/docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/pankagent-tab01.drawio",
   "source_provenance": "docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/provenance.json",
   "verified_date": "2026-10-03",
-  "source_sha256": "dd3c222e1a3969a7e2780f1fb07071d79e804a6d9a64fab71e60cbddfa1f3f72",
-  "updated_sha256": "dd3c222e1a3969a7e2780f1fb07071d79e804a6d9a64fab71e60cbddfa1f3f72",
+  "source_sha256": "b1811903591cdbf2265f5af002dedf44d5e8953463be3ce99dad96b449cf7d1f",
+  "updated_sha256": "b1811903591cdbf2265f5af002dedf44d5e8953463be3ce99dad96b449cf7d1f",
   "previous_hashes": {
     "source_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
     "updated_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
@@ -16,7 +16,7 @@
   "diagram_status": "targeted_fixes_deployed_introduction_candidate_inactive",
   "candidate_source_state": "committed_targeted_fix_candidate_isolated_validation_not_deployed",
   "candidate_base_commit": "dac3f877e3e541f4a72eafb8f33b685a0e31a459",
-  "candidate_code_commit": "f8cfa1e1e471fcc3781505bcf4c6014c93abc4b2",
+  "candidate_code_commit": "0b6c8005fd9c911904cfdd169f5d93b9647f82eb",
   "candidate_schema_pack_version": "2.3.2",
   "deployed_code_commit": null,
   "deployed_model": "claude-sonnet-5-5",
@@ -148,16 +148,91 @@
         "deployed_schema_pack_sha256": "0a7517730a6d764fbc02a2b788a0c78e70b7bb09c74e2c9aa9ef17147342a6a5",
         "deployment_record": "docs/original-workflow/dev-cohort-fixes-20261003.json"
       }
+    },
+    {
+      "recorded_before_update": "2026-10-03-recovery-explanation",
+      "provenance": {
+        "source": "/Users/runbomao/Library/Mobile Documents/com~apple~CloudDocs/Projects/PanKgraph/docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/pankagent-tab01.drawio",
+        "source_provenance": "docs/pankagent-vnext/handoffs/pankagent-model-api-handoff/provenance.json",
+        "verified_date": "2026-10-03",
+        "source_sha256": "dd3c222e1a3969a7e2780f1fb07071d79e804a6d9a64fab71e60cbddfa1f3f72",
+        "updated_sha256": "dd3c222e1a3969a7e2780f1fb07071d79e804a6d9a64fab71e60cbddfa1f3f72",
+        "previous_hashes": {
+          "source_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
+          "updated_sha256": "09fa88d16340d105eb5b81bffdb2cee3cbe0be1c9790d032c422b8ad3cca18a8",
+          "earlier_hashes": {
+            "source_sha256": "fcfa9c200268cd5e188812788b8d8ff9728fd297597fdfe94cbf0c8c118a0721",
+            "updated_sha256": "7e93b9fe76aa169fa9528c0c3fecc79d20c47d960b9a23d615fe93e139632167"
+          }
+        },
+        "scope": "page 01; targeted fixes deployed; broader introduction candidate inactive",
+        "diagram_status": "targeted_fixes_deployed_introduction_candidate_inactive",
+        "candidate_source_state": "committed_targeted_fix_candidate_isolated_validation_not_deployed",
+        "candidate_base_commit": "dac3f877e3e541f4a72eafb8f33b685a0e31a459",
+        "candidate_code_commit": "f8cfa1e1e471fcc3781505bcf4c6014c93abc4b2",
+        "candidate_schema_pack_version": "2.3.2",
+        "deployed_code_commit": null,
+        "deployed_model": "claude-sonnet-5-5",
+        "preserved": "all cell IDs, connectors, geometry, Error and Schema annotations",
+        "validation": "91 focused checks pass on canonical and live base; no new full-suite failures; deployed graph replay passes. Render visually inspected; annotations and geometry preserved.",
+        "render_verified": true,
+        "render_method": "draw.io 28.0.6 CLI PNG export followed by full-image visual inspection",
+        "native_app_inspection": "Not verified interactively; prior CUA getApp(draw.io) timed out; not retried",
+        "unresolved_connector_endpoints": 0,
+        "render_evidence": {
+          "path": "Research/Reports/pankagent-targeted-fixes-20261003/workflow-diagram-language-advice.png",
+          "sha256": "66cf8bee606dff8eb1719a4f31d4953b43d86aef58071de5a6687121b499a78a"
+        },
+        "validation_evidence": "Research/Reports/pankagent-targeted-fixes-20261003/language-advice-20261003.md",
+        "deployed_schema_pack_version": "2.2.2",
+        "deployed_release_path": "/var/local/serviceuser/projects/pankgraph-demo/releases/20261003-language-advice-f8cfa1e/backend",
+        "deployment_evidence": "PID2657026; private language-advice-20261003 activation.json and deployed-replay.json",
+        "validation_status": "targeted_fixes_validated_and_deployed_introductions_inactive",
+        "prior_introduction_status": "inactive_quality_gaps_remain_see_20260930_validation_report",
+        "validation_evidence_status": "parent_final_targeted_validation_report",
+        "previous_validation_evidence": "Research/Reports/pankagent-flexible-intros-20260930/implementation-notes.md",
+        "agent_validation_report": "docs/original-workflow/language-advice-20261003.md",
+        "validation_summary": {
+          "full_suite": {
+            "passed": 3137,
+            "failed_preexisting": 34,
+            "skipped": 5
+          },
+          "focused_canonical_passed": 91,
+          "focused_live_base_passed": 91,
+          "real_graph_samples": 13,
+          "additional_api_spend_usd": 0,
+          "fresh_paid_llm_replay": false
+        },
+        "budget": {
+          "new_targeted_spend_including_development_usd": 0.3099332,
+          "ledger_remaining_usd": 0.216089,
+          "preserved_prior_reservation_usd": 0.14274
+        },
+        "metadata_only_since_render": false,
+        "deployed_base_commit": "53481a347e2e0fbec4b45adcaa2318ef0601b384",
+        "deployed_targeted_fix_commit": "f8cfa1e1e471fcc3781505bcf4c6014c93abc4b2",
+        "deployed_application_sha256": "f4d091123bdf9d119ec8f7e7a1c1e9096c3e5cf6b295942d02b98c08323f3a5c",
+        "deployed_schema_pack_sha256": "10b5e4d4b83c0c9738c7007cf89c5d8487e8036463e8865d36513fe365128f18",
+        "deployment_record": "docs/original-workflow/dev-cohort-fixes-20261003.json",
+        "copy_only_updates": [
+          "M04 phrase checks advisory",
+          "D8 execution validation retained",
+          "M11/M12 scope warning interpretation"
+        ],
+        "candidate_application_sha256": "a40792a000033640f1875f198e63bdcb7e1898459213abbcbd1f2af9f56345b7",
+        "candidate_schema_pack_sha256_at_diagram_update": "f4a5bf69d8e4e54f5b24bc257c09b0f67f8f2d0d0d0092acd1c7e4730f144371"
+      }
     }
   ],
   "deployed_schema_pack_version": "2.2.2",
-  "deployed_release_path": "/var/local/serviceuser/projects/pankgraph-demo/releases/20261003-language-advice-f8cfa1e/backend",
-  "deployment_evidence": "PID2657026; private language-advice-20261003 activation.json and deployed-replay.json",
+  "deployed_release_path": "/var/local/serviceuser/projects/pankgraph-demo/releases/20261003-recovery-explanation-0b6c800/backend",
+  "deployment_evidence": "Private recovery-explanation-20261003 staging.json, activation.json and verification.json",
   "validation_status": "targeted_fixes_validated_and_deployed_introductions_inactive",
   "prior_introduction_status": "inactive_quality_gaps_remain_see_20260930_validation_report",
   "validation_evidence_status": "parent_final_targeted_validation_report",
   "previous_validation_evidence": "Research/Reports/pankagent-flexible-intros-20260930/implementation-notes.md",
-  "agent_validation_report": "docs/original-workflow/language-advice-20261003.md",
+  "agent_validation_report": "docs/original-workflow/recovery-explanation-20261003.md",
   "validation_summary": {
     "full_suite": {
       "passed": 3137,
@@ -177,8 +252,8 @@
   },
   "metadata_only_since_render": false,
   "deployed_base_commit": "53481a347e2e0fbec4b45adcaa2318ef0601b384",
-  "deployed_targeted_fix_commit": "f8cfa1e1e471fcc3781505bcf4c6014c93abc4b2",
-  "deployed_application_sha256": "f4d091123bdf9d119ec8f7e7a1c1e9096c3e5cf6b295942d02b98c08323f3a5c",
+  "deployed_targeted_fix_commit": "0b6c8005fd9c911904cfdd169f5d93b9647f82eb",
+  "deployed_application_sha256": "cf3910f8026f3ffc0f3105bcf846105b68ad8f4811cab8867776035e9a2f6ead",
   "deployed_schema_pack_sha256": "10b5e4d4b83c0c9738c7007cf89c5d8487e8036463e8865d36513fe365128f18",
   "deployment_record": "docs/original-workflow/dev-cohort-fixes-20261003.json",
   "copy_only_updates": [
@@ -186,6 +261,13 @@
     "D8 execution validation retained",
     "M11/M12 scope warning interpretation"
   ],
-  "candidate_application_sha256": "a40792a000033640f1875f198e63bdcb7e1898459213abbcbd1f2af9f56345b7",
-  "candidate_schema_pack_sha256_at_diagram_update": "f4a5bf69d8e4e54f5b24bc257c09b0f67f8f2d0d0d0092acd1c7e4730f144371"
+  "candidate_application_sha256": "6d74721ace096171bacb115b286a8b8c455c65247c5554bcf128dfd20bb91cae",
+  "candidate_schema_pack_sha256_at_diagram_update": "f4a5bf69d8e4e54f5b24bc257c09b0f67f8f2d0d0d0092acd1c7e4730f144371",
+  "latest_quick_fix": {
+    "scope": "Preserve prepared recovery reason and revision choices after retry exhaustion",
+    "focused_tests_passed": 75,
+    "api_response_retention_verified": true,
+    "paid_calls": 0,
+    "render_change": "Tooltip and provenance only; visible content and layout unchanged"
+  }
 }
