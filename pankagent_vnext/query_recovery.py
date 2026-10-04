@@ -23,7 +23,12 @@ def stage_recovery(number, vocabulary, release):
     else:
         message = f'We could not uniquely resolve stage {number} to a recorded donor stage. Please specify the intended clinical stage; we have kept your other filters.'
         category = 'stage_needs_clarification'
-    suggestions = [{'label':f'Use recorded stage {n}', 'instruction':f'Change only the T1D stage to stage {n}; keep every other entity, tissue, assay and cohort filter.'} for n in stages[:2]]
+    if stages:
+        message += ' Recorded stages available here: ' + ', '.join(stages) + '. Choose the stage you intended; the other filters will stay unchanged.'
+    # Put numerically nearest alternatives first; the existing dialog shows two.
+    # This is a navigation aid, not an automatic clinical substitution.
+    choices = sorted(stages, key=lambda n: (abs(int(n) - int(number)), int(n))) if str(number).isdigit() else stages
+    suggestions = [{'label':f'Use recorded stage {n}', 'instruction':f'Change only the T1D stage to stage {n}; keep every other entity, tissue, assay and cohort filter.'} for n in choices[:2]]
     return {'category':category,'title':'Review the requested stage','message':message,
             'retryable':False,'suggestions':suggestions,
             'evidence':{'graph_release':release,'source':'complete distinct donor-stage inventory','inventory_complete':True,'recorded_stages':stages}}

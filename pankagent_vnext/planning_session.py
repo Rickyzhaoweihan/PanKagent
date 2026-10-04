@@ -345,8 +345,10 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
         if proposals >= limits['planning_proposals']:
             break
     from .plan_recovery import mark_failure
+    prepared_recovery = None
     if last_partial and preparer:
         candidate = await preparer(last_partial)
+        prepared_recovery = candidate.get('recovery')
         if candidate.get('steps') and not candidate.get('clarification'):
             candidate.update(original_question=question, run_context=run_context(gateway.settings),
                              diagnostic_history=diagnostic_history,
@@ -354,7 +356,8 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                                              'lookup_batches': batches, 'planning_proposals': proposals,
                                              'outcome': 'verified_independent_subset', 'execution_repairs': 0})
             return candidate
-    return {**mark_failure({'interpreted_question': question, 'proposal_issue': last_error}),
+    return {**mark_failure({'interpreted_question': question, 'proposal_issue': last_error},
+                           prepared_recovery=prepared_recovery),
             'run_context': run_context(gateway.settings),
             'planning_route': {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches,
                               'planning_proposals': proposals, 'execution_repairs': 0},
