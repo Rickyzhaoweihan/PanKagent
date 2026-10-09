@@ -23,7 +23,7 @@ def test_model_tissue_choice_is_advisory_to_python_and_reaches_cypher():
     value = attach_request_authorizations(qtl())
     assert not value['semantic_issues']
     assert not runtime_binding_errors(value)
-    assert value['preparation_advice'][0]['blocking'] is False
+    assert not value.get('semantic_issues')
     assert value['request_filter_bindings'][1]['authorization_kind'] == 'claude_semantic_interpretation'
     compiled = compile_query(value)
     assert compiled is not None

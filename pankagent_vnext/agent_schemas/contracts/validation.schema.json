@@ -196,6 +196,63 @@
           "minLength": 1
         }
       }
+    },
+    "planner_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields",
+        "cohort_owner",
+        "assay_field",
+        "sample_relation",
+        "query_guidance"
+      ],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "owner",
+              "property",
+              "vocabulary_path"
+            ],
+            "properties": {
+              "owner": {
+                "type": "string"
+              },
+              "property": {
+                "type": "string"
+              },
+              "vocabulary_path": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "cohort_owner": {
+          "type": "string"
+        },
+        "assay_field": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        "sample_relation": {
+          "type": "string"
+        },
+        "query_guidance": {
+          "type": "string"
+        }
+      }
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema"

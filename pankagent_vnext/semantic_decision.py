@@ -34,34 +34,6 @@ def phrase_roles(question, proposals):
         match = matches[index]
         if any(match.start() < old['end'] and old['start'] < match.end() for old in result):
             raise ValueError('overlapping_request_phrase_roles')
-        if item['role'] == 'example':
-            # Do not erase an explicit restriction by relabeling its operand.
-            # Illustrative markers reset this immediate syntactic position.
-            prefix = question[max(0, match.start()-80):match.start()]
-            if (re.search(r'\b(?:only|excluding|exclude|except|without|not|from|within|with|in)[\s:=]+$', prefix, re.I)
-                    or re.search(r'\b(?:only|excluding|exclude|except|without|not|from|within|with|in)\b|[<>]=?|!=', item['text'], re.I)):
-                raise ValueError('explicit_filter_cannot_be_nonrestrictive')
-            # Model interpretation may cancel illustrative wording, not an
-            # arbitrary membership operand. A cue is required as supporting
-            # request evidence, including when the model copies the cue itself.
-            context = prefix + item['text']
-            cues = list(re.finditer(r'\b(?:like|such\s+as|for\s+example|for\s+instance|as\s+an?\s+example)\b|\be\.g\.|[,(:]\s*say\s*,?\s+', context, re.I))
-            if not cues:
-                raise ValueError('example_role_requires_illustrative_context')
-            cue = cues[-1]
-            # A previous sentence's example marker cannot excuse a current
-            # filter; nor can a restriction be hidden behind an example cue.
-            after_cue = context[cue.end():]
-            # A copied trailing ellipsis belongs to the illustrative phrase.
-            # Interior punctuation still ends its scope, so the same cue cannot
-            # mask a later sentence or an actual constraint after the ellipsis.
-            after_cue = re.sub(r'(?:\.{2,}|…)(?=\s*[)\]]*\s*$)', '', after_cue)
-            before_cue = re.split(r'[.!?;,()]', context[:cue.start()])[-1]
-            suffix = question[match.end():match.end() + 80]
-            if (re.search(r'[.!?;]', after_cue)
-                    or re.search(r'\b(?:only|excluding|exclude|except|without|not)\b', before_cue, re.I)
-                    or re.match(r'\s+(?:[A-Za-z-]+\s+){0,2}only\b', suffix, re.I)):
-                raise ValueError('explicit_filter_cannot_be_nonrestrictive')
         result.append({'text': item['text'], 'role': item['role'], 'start': match.start(), 'end': match.end()})
     return result
 
@@ -71,6 +43,11 @@ def _valid_decision(step, question):
     return (decision if decision.get('source') == 'claude_record_plan'
             and decision.get('step_id') == step.get('id')
             and decision.get('request_sha256') == hashlib.sha256(question.encode()).hexdigest() else {})
+
+
+def planner_authority(step, question):
+    """True only for a server-recorded decision for this request and task."""
+    return bool(_valid_decision(step, question))
 
 
 def scope_text(step, question):

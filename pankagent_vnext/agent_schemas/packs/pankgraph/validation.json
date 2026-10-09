@@ -182,5 +182,108 @@
     "source_phrase": "Language hint, not a query error: a from-phrase or possible source description was not recognized by the phrase heuristic. It may describe tissue, cohort, or source. Use verified schema bindings and the original request to interpret the answer; do not claim an unverified source restriction.",
     "tissue_phrase": "Language hint, not a query error: a possible tissue phrase was not recognized by the phrase heuristic. Use resolved identities and actual retrieved annotations; explain any tissue restriction that remains unresolved.",
     "assay_phrase": "Language hint, not a query error: a possible assay phrase was not recognized by the phrase heuristic. Use recorded modality labels and the original request; explain any assay restriction that remains unresolved."
+  },
+  "planner_bindings": {
+    "fields": [
+      {
+        "owner": "donor",
+        "property": "gender",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "gender"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "sex_at_birth",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "sex_at_birth"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "race",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "race"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "donation_type",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "donation_type"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "aab_state",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "aab_state"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "hla_status",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "hla_status"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "diabetes_type",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "diabetes_type"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "derived_diabetes_status",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "derived_diabetes_status"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "data_source",
+        "vocabulary_path": [
+          "donor_sources"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "t1d_stage",
+        "vocabulary_path": [
+          "stages"
+        ]
+      },
+      {
+        "owner": "Sample_node",
+        "property": "data_source",
+        "vocabulary_path": [
+          "sample_sources"
+        ]
+      },
+      {
+        "owner": "Sample_node",
+        "property": "data_modality",
+        "vocabulary_path": [
+          "modalities"
+        ]
+      }
+    ],
+    "cohort_owner": "donor",
+    "assay_field": [
+      "Sample_node",
+      "data_modality"
+    ],
+    "sample_relation": "HAS_SAMPLE",
+    "query_guidance": "The planner-selected structured predicates define the requested scope. Apply those exact predicates and selected relationships using the schema. Do not infer additional restrictions from the original wording. Keep sample predicates on the same sample witness when the approved task requests one. Recorded sample metadata does not by itself verify file availability."
   }
 }

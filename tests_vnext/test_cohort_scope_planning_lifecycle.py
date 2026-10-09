@@ -138,6 +138,7 @@ class FixtureGateway(Gateway):
         yield f'{count} matching samples. [{item["evidence_id"]}]'
 
 
+@pytest.mark.parametrize('planner_selected', [False, True])
 @pytest.mark.parametrize('expanded_wording', [False, True])
 @pytest.mark.parametrize('empty', [False, True])
 @pytest.mark.parametrize(('requested_assay', 'recorded_assay'), [
@@ -146,7 +147,7 @@ class FixtureGateway(Gateway):
     ('snMultiomics', 'snMultiomics'),
 ])
 def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
-        tmp_path, monkeypatch, empty, requested_assay, recorded_assay, expanded_wording):
+        tmp_path, monkeypatch, empty, requested_assay, recorded_assay, expanded_wording, planner_selected):
     original_question = (f'How many distinct {requested_assay} samples from pancreatic lymph node (PLN) are available from HPAP donors with T1D stage 3?' if expanded_wording else QUESTION.replace('scRNAseq', requested_assay))
 
     async def fixed_model_session(gateway, question, user, system, schema,
@@ -156,9 +157,16 @@ def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
         candidate['interpreted_question'] = original_question
         candidate['steps'][0]['question'] = original_question
         for constraint in candidate['steps'][0]['constraints']:
+            if planner_selected and constraint['property'] == 't1d_stage':
+                constraint['value'] = STAGES['3']
             if constraint['property'] == 'data_modality':
                 constraint['value'] = recorded_assay
-        return finalize(candidate, [])
+        result = finalize(candidate, [])
+        if planner_selected:
+            from pankagent_vnext.semantic_decision import record
+            for step in result['steps']:
+                step['model_scope_decision'] = record(step, original_question)
+        return result
 
     monkeypatch.setattr('pankagent_vnext.planning_session.run', fixed_model_session)
 
@@ -187,7 +195,7 @@ def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
             }
             result = ready['preview']['evidence']['steps'][0]
             assert result['status'] == ('empty' if empty else 'complete')
-            if expanded_wording:
+            if expanded_wording and not planner_selected:
                 from pankagent_vnext.evidence_context import compact_evidence
                 assert step['scope_language_advice']
                 assert result['requested_scope']['interpretation_warnings'] == step['interpretation_warnings']
@@ -223,7 +231,7 @@ def test_cohort_plan_preview_confirmation_preserves_scope_and_verified_count(
             assert done['evidence']['preview_reuse']['retrieved_step_ids'] == []
             assert len(graph.reads) == 1
             assert graph.generation_calls == 0
-            if empty and not expanded_wording:
+            if empty and (not expanded_wording or planner_selected):
                 assert gateway.syntheses == 0
                 assert 'no matching' in done['graph_answer'].casefold()
                 assert done['evidence']['completeness'] == 'empty'

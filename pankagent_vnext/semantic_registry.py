@@ -1594,6 +1594,10 @@ def resolve(step, vocabulary, release):
     # Recovery is derived from this resolution, never inherited from a prior
     # failed preview after a user corrects the entity or scope.
     out.pop('recovery', None)
+    from .semantic_decision import planner_authority
+    if planner_authority(out, raw_source_text):
+        from .planner_bindings import prepare
+        return prepare(out, vocabulary, release)
     if not semantic_intent(out): return out
     q=scope_text(out, out['question']); lower=q.lower(); constraints=out.setdefault('constraints',[])
     issues=[]; matches=[]; groups=[]
@@ -2663,7 +2667,9 @@ def attach_request_authorizations(step):
     from .genomic_scope import is_verified_region_constraint
     bindings = []
     for index, constraint in enumerate(constraints):
-        if excluded_constraint(out, constraint, question):
+        from .semantic_decision import covers
+        model_selected = covers(out, index, constraint, question)
+        if not model_selected and excluded_constraint(out, constraint, question):
             issues.append('An example phrase was reintroduced as an executable filter.')
             continue
         current = [binding for binding in existing
@@ -2676,8 +2682,8 @@ def attach_request_authorizations(step):
         if len(current) == 1:
             bindings.append(deepcopy(current[0]))
             continue
-        kind = None
-        if _raw_constraint_authorized(constraint, compiler_question, out.get('relation_types')):
+        kind = 'claude_semantic_interpretation' if model_selected else None
+        if kind is None and _raw_constraint_authorized(constraint, compiler_question, out.get('relation_types')):
             kind = 'verified_request_filter'
         if kind is None and is_verified_region_constraint(constraint, out):
             kind = 'verified_request_region'
@@ -2762,6 +2768,9 @@ REGISTRY_NODE_TYPES = set(PROPERTIES) | {
 
 
 def sample_lookup_requested(step):
+    if step.get('semantic_registry', {}).get('scope_authority') == 'planner':
+        relation = schema_module('validation').get('planner_bindings', {}).get('sample_relation')
+        return relation in step.get('relation_types', [])
     question, _ = _trusted_request(step)
     return ('HAS_SAMPLE' in step.get('relation_types', [])
             and not step.get('deferred_sample_scope')
@@ -2769,6 +2778,8 @@ def sample_lookup_requested(step):
 
 
 def generation_guidance(step):
+    if step.get('semantic_registry', {}).get('scope_authority') == 'planner':
+        return schema_module('validation').get('planner_bindings', {}).get('query_guidance', '')
     if not step.get('semantic_registry') or not semantic_intent(step):return ''
     notes='\nCanonical bindings above override shorthand stage/assay spellings in the question. A recorded T1D stage does not imply a second disease diagnosis filter: apply only the resolved disease constraint, if present. t1d_stage is a donor property; sample fields: id, data_modality, anatomical_structure (text). No anatomical_structure_id or anatomical_structure_ref. For stage-only questions do not add disease.id or donor.diabetes_type filters, including for stages 1 and 2; those are not necessarily recorded as diagnosed diabetes. Use anatomy -HAS_SAMPLE-> sample and donor -HAS_SAMPLE-> that same sample. Disease -HAS_DONOR-> donor. Return donor/sample nodes and linking evidence; no invented rank or extra sample requirements for donor-only questions.'
     notes+=' Do not filter sample.anatomical_structure: this is descriptive text, not a tissue identifier; constrain the linked anatomy node instead.'

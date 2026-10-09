@@ -25,6 +25,11 @@ def recovery(step, release):
     question = (str(request.get('question', '')) + ' ' +
                 str(request.get('revision_instruction', ''))).strip()
     question = question or str(step.get('question', ''))
+    from .semantic_decision import planner_authority
+    if planner_authority(step, str(request.get('question', ''))):
+        # Data support checks use selected fields, not a second interpretation
+        # of words such as male/female after the planner selected their owner.
+        question = ''
     donor_scope = bool(donor_fields & {'bmi', 'gender', 'sex_at_birth', 't1d_stage'}) or bool(
         re.search(r'\b(?:donors?|HPAP)\b', question, re.I))
     if not donor_scope:

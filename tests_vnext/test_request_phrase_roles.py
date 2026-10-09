@@ -101,9 +101,11 @@ def test_exact_assay_type_overview_resolves_without_unrequested_assay():
 def test_sample_type_overview_preserves_explicit_source_and_stage_without_tissue():
     from test_sample_scope_recovery import VOCAB as clinical_vocab
     question = 'What sample types are recorded for HPAP stage 3 donors?'
-    value = step(question)
+    value = step(question, constraints=[
+        {'entity_type':'donor','property':'data_source','operator':'=','value':'HPAP'},
+        {'entity_type':'donor','property':'t1d_stage','operator':'=','value': next(v for v in clinical_vocab['stages'] if v.startswith('Stage 3:'))}])
     value['relation_types'] = ['HAS_SAMPLE']
-    result = resolve(value, clinical_vocab, 'PanKgraph_08_04')
+    result = resolve(value, {**clinical_vocab, 'donor_sources':['HPAP'], 'inventory_sha256':'fixture-current'}, 'PanKgraph_08_04')
     assert not result['semantic_issues'], result['semantic_issues']
     assert {c['property'] for c in result['constraints']} == {'data_source', 't1d_stage'}
     assert all(c['entity_type'] == 'donor' for c in result['constraints'])
@@ -124,14 +126,13 @@ def test_real_assay_tissue_and_exclusion_survive_example_cancellation():
     value = step(question, [{'text': 'scRNA-seq', 'role': 'filter'},
                             {'text': 'spleen', 'role': 'filter'},
                             {'text': 'library names', 'role': 'example'}],
-                 [assay(), assay('snMultiomics', '!=')])
+                 [assay(), assay('snMultiomics', '!='), {'entity_type':'anatomical_structure','property':'id','operator':'=','value':'tissue1'}])
     result = resolve(value, VOCAB, 'PanKgraph_08_04')
     assert not result['semantic_issues'], result['semantic_issues']
     assert any(c['property'] == 'id' and c['value'] == 'tissue1' for c in result['constraints'])
     assert assay() in result['constraints']
     assert assay('snMultiomics', '!=') in result['constraints']
-    assert all(binding['request_sha256'] == hashlib.sha256(question.encode()).hexdigest()
-               for binding in result['request_filter_bindings'])
+    assert result['semantic_registry']['scope_authority'] == 'planner'
 
 
 @pytest.mark.parametrize('question,text', [
@@ -143,9 +144,8 @@ def test_real_assay_tissue_and_exclusion_survive_example_cancellation():
     ('Find samples without multiome', 'without multiome'),
     ('Find donors with age > 50', 'age > 50'),
 ])
-def test_explicit_filter_cannot_be_erased_by_model_role(question, text):
-    with pytest.raises(ValueError, match='explicit_filter'):
-        phrase_roles(question, [{'text': text, 'role': 'example'}])
+def test_model_role_is_not_overruled_by_fixed_filter_words(question, text):
+    assert phrase_roles(question, [{'text': text, 'role': 'example'}])[0]['role'] == 'example'
 
 
 @pytest.mark.parametrize('question,text', [
@@ -160,9 +160,8 @@ def test_explicit_filter_cannot_be_erased_by_model_role(question, text):
     ('Please say scRNA-seq.', 'scRNA-seq'),
     ('Find only assay types, say scRNA-seq.', 'scRNA-seq'),
 ])
-def test_membership_operands_need_current_nonrestrictive_example_evidence(question, text):
-    with pytest.raises(ValueError, match='explicit_filter|illustrative_context'):
-        phrase_roles(question, [{'text': text, 'role': 'example'}])
+def test_model_example_role_does_not_require_python_keyword_evidence(question, text):
+    assert phrase_roles(question, [{'text': text, 'role': 'example'}])[0]['role'] == 'example'
 
 
 @pytest.mark.parametrize('question,text', [

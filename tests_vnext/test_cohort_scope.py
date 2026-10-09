@@ -92,13 +92,13 @@ def test_explicit_disease_cohort_filter_keeps_its_required_donor_link():
     assert validate_cypher(query, step, PARAMS) == []
 
 
-def output_tissue_step(question='Which tissues have samples recorded in PanKgraph?', phrase='Which tissues'):
+def output_tissue_step(question='Which tissues have samples recorded in PanKgraph?', phrase='Which tissues', constraints=()):
     from test_request_phrase_roles import step
     from test_sample_scope_recovery import VOCAB
     from pankagent_vnext.semantic_registry import resolve
-    result = step(question, [{'text': phrase, 'role': 'output'}])
+    result = step(question, [{'text': phrase, 'role': 'output'}], constraints)
     result.update(relation_types=['HAS_SAMPLE'], graph_version='PanKgraph_08_04')
-    return resolve(result, VOCAB, 'PanKgraph_08_04')
+    return resolve(result, {**VOCAB, 'donor_sources':['HPAP'], 'inventory_sha256':'fixture-current'}, 'PanKgraph_08_04')
 
 
 @pytest.mark.parametrize('projection', [
@@ -137,7 +137,10 @@ def test_tissue_output_permission_cannot_be_reused_for_different_request():
 
 
 def test_tissue_outputs_keep_cohort_filter_and_same_connected_samples():
-    step = output_tissue_step('Which tissues have samples from HPAP stage 3 donors?')
+    from test_sample_scope_recovery import VOCAB
+    step = output_tissue_step('Which tissues have samples from HPAP stage 3 donors?', constraints=[
+        {'entity_type':'donor','property':'data_source','operator':'=','value':'HPAP'},
+        {'entity_type':'donor','property':'t1d_stage','operator':'=','value':next(v for v in VOCAB['stages'] if v.startswith('Stage 3:'))}])
     assert not step['semantic_issues']
     filters = ' AND '.join('d.' + c['property'] + ' = $' + c['property']
                            for c in step['constraints'] if c['entity_type'] == 'donor')
@@ -145,7 +148,7 @@ def test_tissue_outputs_keep_cohort_filter_and_same_connected_samples():
     query = ('MATCH (d:donor)-[:HAS_SAMPLE]->(s:Sample_node), '
              '(a:anatomical_structure)-[:HAS_SAMPLE]->(s) WHERE ' + filters + ' RETURN a')
     assert validate_cypher(query, step, params) == []
-    assert validate_cypher(query.replace(' AND d.data_source = $data_source', ''), step, params)
+    assert validate_cypher(query.replace('d.data_source = $data_source AND ', ''), step, params)
     disconnected = query.replace('(a:anatomical_structure)-[:HAS_SAMPLE]->(s)',
                                  '(a:anatomical_structure)-[:HAS_SAMPLE]->(other:Sample_node)')
     assert 'unrequested_mandatory_cohort_owner:anatomical_structure' in validate_cypher(disconnected, step, params)
