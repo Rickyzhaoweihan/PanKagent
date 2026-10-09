@@ -5,7 +5,7 @@ from pankagent_vnext.query_recovery import stage_recovery
 from test_claude_led_planning import gateway, SCHEMA
 
 
-def test_exhausted_planning_preserves_human_stage_reason_and_stage_three_revision(tmp_path):
+def test_stage_diagnostic_preserves_human_reason_without_python_rejection(tmp_path):
     question = 'How many PLN snMultiomics samples from HPAP donors with T1D stage 4?'
     recovery = stage_recovery('4', {'stages': ['Stage 1: recorded', 'Stage 2: recorded', 'Stage 3: recorded'], 'inventory_complete': True}, 'fixture')
     async def scenario():
@@ -18,17 +18,12 @@ def test_exhausted_planning_preserves_human_stage_reason_and_stage_three_revisio
             plan['clarification'] = recovery['message']
             return plan
         result = await run(g, question, '{}', 'test', SCHEMA, 500, lambda p,c:p, preparer=prepare)
-        assert not result['steps']
-        assert result['recovery'] == recovery
-        assert 'stage 4' in result['clarification']
-        assert '1, 2, 3' in result['clarification']
-        assert result['recovery']['suggestions'][0]['label'] == 'Use recorded stage 3'
-        assert result['diagnostic_history']
-        from test_runtime import Gateway, service, new_plan
-        async with service(tmp_path, gateway=Gateway(plan=result)) as (client, *_):
-            created = await new_plan(client, question, expected_status='failed')
-            visible = (await client.get(f'/v2/runs/{created["run_id"]}')).json()
-            assert visible['plan']['recovery'] == recovery
-            assert visible['error']['recovery']['message'] == recovery['message']
-            assert visible['error']['recovery']['suggestions'][0]['label'] == 'Use recorded stage 3'
+        assert result['steps']
+        assert not result.get('clarification')
+        assert len(calls) == 2
+        stage_advice = next(d for d in result['python_diagnostics'] if d.get('detail'))
+        assert stage_advice['blocking'] is False
+        assert stage_advice['detail'] == recovery
+        assert 'stage 4' in stage_advice['detail']['message']
+        assert stage_advice['detail']['suggestions'][0]['label'] == 'Use recorded stage 3'
     asyncio.run(scenario())

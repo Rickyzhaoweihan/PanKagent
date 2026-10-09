@@ -1664,13 +1664,20 @@ class GraphAdapter:
         from .ranking_contract import attach_to_plan
         plan = attach_to_plan(plan, self.settings.graph_version)
         from .coloc_scope import normalize_plan as normalize_coloc_scope
+        from .validation_advice import add as add_advice
+        original = deepcopy(plan)
         plan = normalize_coloc_scope(plan, self.settings.graph_version, max_steps=12)
         if plan.get('coloc_scope_issue'):
-            return plan
+            issue = plan['coloc_scope_issue']
+            plan = original
+            add_advice(plan, 'coloc_scope', [issue])
         from .anatomy_scope import normalize_plan as normalize_anatomy_scope
+        original = deepcopy(plan)
         plan = await normalize_anatomy_scope(plan, self.settings.graph_version, self._resolve_constraint, max_steps=3)
         if plan.get('anatomy_scope_issue'):
-            return plan
+            issue = plan['anatomy_scope_issue']
+            plan = original
+            add_advice(plan, 'anatomy_scope', [issue])
         prepared = {**plan, "steps": []}
         old_recovery = prepared.get('recovery') or {}
         if old_recovery.get('category') in {'scope_needs_clarification', 'stage_needs_clarification',
@@ -1737,14 +1744,12 @@ class GraphAdapter:
         issues = [{"step_id": step["id"], "entities": [item for item in step["resolved_entities"] if item["state"] not in {"resolved", "literal_predicate"}],
                    "unknown_relations": step["entity_resolution"]["unknown_relations"], "terminology":step.get("semantic_issues",[])}
                   for step in prepared["steps"] if step["entity_resolution"]["state"] == "needs_clarification"]
-        prepared["entity_resolution"] = {"state": "needs_clarification" if issues else "resolved",
+        prepared["entity_resolution"] = {"state": "diagnosed" if issues else "resolved",
                                           "graph_version": self.settings.graph_version, "issues": issues}
-        if issues:
-            from .query_recovery import plan_recovery
-            prepared["recovery"] = plan_recovery(prepared, self.settings.graph_version)
-            prepared["clarification"] = prepared["recovery"]["message"]
-        from .filter_recovery import recover_filter_failures
-        prepared = recover_filter_failures(prepared)
+        from .validation_advice import prepare as advisory_prepare, add as add_advice
+        prepared['steps'] = [advisory_prepare(s) for s in prepared['steps']]
+        for s in prepared['steps']:
+            add_advice(prepared, 'preparation', [d['code'] for d in s.get('python_diagnostics', [])])
         from .annotation_selection import allocate_independent_budgets
         prepared = allocate_independent_budgets(prepared, self.settings)
         for step in prepared["steps"]:
@@ -2136,7 +2141,8 @@ class GraphAdapter:
     async def _execute(self, step: dict, previous: dict, emit) -> dict:
         # Older confirmed plans may name a cell in prose but omit its predicate.
         # Recover only the narrow, verified entity constraint; guards stay strict.
-        step = repair_step_constraints(step)
+        from .validation_advice import prepare as advisory_prepare, add as add_advice
+        step = advisory_prepare(step)
         def requested_scope(current):
             scope = {"constraints": deepcopy(current.get("constraints", [])),
                      "relation_types": deepcopy(current.get("relation_types", [])),
@@ -2151,6 +2157,8 @@ class GraphAdapter:
             clinical = (current.get("semantic_registry") or {}).get("clinical_intent")
             if isinstance(clinical, dict):
                 scope["clinical_intent"] = deepcopy(clinical)
+            if current.get('python_diagnostics'):
+                scope['python_diagnostics'] = deepcopy(current['python_diagnostics'])
             if current.get('interpretation_warnings'):
                 scope['interpretation_warnings'] = list(current['interpretation_warnings'])
             return scope
@@ -2159,45 +2167,22 @@ class GraphAdapter:
                 "truncated": False, "status": "failed", "provenance": [], "contract_sha256": CONTRACT_DIGEST, "generator_attempts": [], "retry_eligible": False,
                 "requested_scope": requested_scope(step),
                 **{key: step[key] for key in ("title", "purpose", "context_for", "rationale") if key in step}}
-        if step.get('filter_warning'):
-            warning = deepcopy(step['filter_warning'])
-            base['requested_scope']['filter_warning'] = warning
-            # Existing scope rendering displays the title for failed checks.
-            # Preserve this explanation through the unchanged synthesis adapter.
-            base['title'] = (step.get('title') or step.get('question') or 'Requested check') + '. ' + warning['message']
-            base['error'] = {'category': warning['category'], 'message': warning['message']}
         if step.get("path_spec") is not None:
             from .bounded_paths import plan_issue as bounded_path_plan_issue
             issue = bounded_path_plan_issue(step)
             if issue:
                 reason = "unsupported_bounded_path_spec:" + issue
-                base["validation"].append({"valid": False, "reasons": [reason]})
-                base["error"] = {"category": "unsupported_bounded_path_spec",
-                                 "message": "The requested bounded path is outside the verified fixed-path contract."}
-                return base
-        if step.get('semantic_issues') or step.get('recovery'):
-            base['validation'].append({'valid': False,
-                'reasons': ['semantic_scope_unresolved']})
-            if step.get('recovery'):
-                base['recovery'] = deepcopy(step['recovery'])
-            return base
+                add_advice(base, 'path_preparation', [reason])
         if step.get('coordinate_lookup'):
             from .coordinate_lookup import execute as execute_coordinates
-            step = await self._prepare_step(step, emit)
-            if step.get('semantic_issues') or step.get('recovery'):
-                return {**base, 'recovery': step.get('recovery'),
-                        'validation': [{'valid': False, 'reasons': ['coordinate_scope_unresolved']}]}
+            step = advisory_prepare(await self._prepare_step(step, emit))
             return await execute_coordinates(self, step, base)
         if step.get("gwas_scope_unavailable"):
-            base["validation"].append({"valid": False, "reasons": ["gene_gwas_variant_scope_unresolved"]})
-            base["error"] = {"category": "scope_unavailable", "message": "The requested gene has no verified variant or locus binding for this GWAS check. A disease-wide search was not substituted."}
-            return base
+            add_advice(base, 'preparation', ['gene_gwas_variant_scope_unresolved'])
         from .metadata_guard import recovery as metadata_recovery
         unsupported_metadata = metadata_recovery(step, self.settings.graph_version)
         if unsupported_metadata:
-            base["validation"].append({"valid": False, "reasons": [unsupported_metadata["category"]]})
-            base["recovery"] = unsupported_metadata
-            return base
+            add_advice(base, 'metadata', [unsupported_metadata['category']])
         limits = {
             "known_node_ids": {str(node["id"]) for item in previous.values() for node in item.get("nodes", [])},
             "known_edge_keys": {json.dumps(edge, sort_keys=True, separators=(",", ":")) for item in previous.values() for edge in item.get("edges", [])},
@@ -2230,27 +2215,19 @@ class GraphAdapter:
                 or constraint.get('relationship_type'))
                 for constraint in step.get('constraints') or []))
         if preparation_required and not self._resolution_verified(step):
-            step = await self._prepare_step(step, emit)
+            step = advisory_prepare(await self._prepare_step(step, emit))
         if "resolved_entities" in step:
             base["requested_scope"] = requested_scope(step)
             base["resolved_entities"] = step["resolved_entities"]
             if step["entity_resolution"]["state"] == "needs_clarification":
                 base["validation"].append({"valid": False, "reasons": ["unresolved_plan_entities"]})
                 return base
-        if step.get('semantic_issues') or step.get('recovery'):
-            base['validation'].append({'valid': False,
-                'reasons': ['semantic_scope_unresolved']})
-            if step.get('recovery'):
-                base['recovery'] = deepcopy(step['recovery'])
-            return base
         proof_required = preparation_required or self._resolution_verified(step)
         if proof_required and step.get('constraints'):
             from .query_templates import runtime_binding_errors
             binding_errors = runtime_binding_errors(step)
             if binding_errors:
-                base["validation"].append({"valid": False,
-                    "reasons": ["query_binding_unverified", *binding_errors]})
-                return base
+                add_advice(base, 'bindings', binding_errors)
         parameters, dependency_notes, inherited_partial = {}, [], False
         dependency_bindings = {}
         bounded_dependencies = []
@@ -2352,22 +2329,12 @@ class GraphAdapter:
                             if grounded or local_coloc_required else None)
         except BoundedPathError as exc:
             reason = "unsupported_bounded_path_spec:" + (str(exc) or "compile_failed")
-            base["validation"].append({"valid": False, "reasons": [reason]})
-            base["error"] = {"category": "unsupported_bounded_path_spec",
-                             "message": "The requested bounded path could not be compiled by the verified local route."}
-            return base
+            add_advice(base, 'template_compilation', [reason])
+            template = None
         if local_coloc_required and not template and not cached:
-            base["validation"].append({
-                "valid": False,
-                "reasons": ["verified_local_coloc_template_unavailable"],
-            })
-            base["error"] = {
-                "category": "verified_local_coloc_template_unavailable",
-                "message": "The deterministic colocalization check could not be compiled by its verified local template.",
-            }
-            return base
+            add_advice(base, 'template_compilation', ['verified_local_coloc_template_unavailable'])
         routes = (['cache'] if cached else []) + (['template'] if template else [])
-        if not path_requested and not local_coloc_required:
+        if not template or (not path_requested and not local_coloc_required):
             routes += ['gpu_initial', 'gpu_repair', 'claude_repair'] if grounded else ['gpu_initial', 'gpu_sampling']
         if step.get('gpu_participation_required'):
             routes = ['gpu_initial'] + [r for r in routes if r != 'gpu_initial']
@@ -2467,7 +2434,14 @@ class GraphAdapter:
                             from .cypher_repair import repair_candidate
                             repaired = repair_candidate(query, graph_release=step.get("graph_version"))
                             query, repairs = repaired["query"], repaired["transformations"]
-                        reasons = validate_cypher(query, step, candidate_parameters, dependency_bindings=dependency_bindings)
+                        try:
+                            reasons = validate_cypher(query, step, candidate_parameters, dependency_bindings=dependency_bindings)
+                        except (ValueError, KeyError, TypeError, IndexError) as exc:
+                            reasons = ['semantic_diagnostic_unavailable:' + type(exc).__name__]
+                        semantic_diagnostics = list(reasons)
+                        add_advice(base, 'cypher', semantic_diagnostics)
+                        from .validation_advice import execution_errors
+                        reasons = execution_errors(query, candidate_parameters)
                         acknowledged_warnings = []
                         if not reasons:
                             reasons = await self._explain(query, candidate_parameters)
@@ -2483,7 +2457,7 @@ class GraphAdapter:
                             "schema_normalizations": normalizations, "categorical_normalizations": normalization,
                             "deterministic_repairs": repairs, "deterministic_repair_record": repaired,
                             "route": route, "validation_ms": validation_ms,
-                            "failure_categories": categories, "reasons": reasons, "acknowledged_plan_warnings": acknowledged_warnings}
+                            "failure_categories": categories, "reasons": reasons, "semantic_diagnostics": semantic_diagnostics, "acknowledged_plan_warnings": acknowledged_warnings}
                         if template_audit:
                             validation_record["template_audit"] = deepcopy(template_audit)
                         base["validation"].append(validation_record)
@@ -2497,9 +2471,6 @@ class GraphAdapter:
                         except Exception as exc:
                             base.setdefault('telemetry_failures', []).append({
                                 'event': 'cypher_validation', 'category': type(exc).__name__})
-                        if local_coloc_required and route.startswith('gpu_'):
-                            validation_record['candidate_only'] = True
-                            continue
                         if reasons:
                             continue
                         candidate_key = (query.strip(), json.dumps(candidate_parameters, sort_keys=True, default=str))
@@ -2537,9 +2508,7 @@ class GraphAdapter:
                         assessment = assess(step, result)
                         base.setdefault('result_assessments', []).append(assessment)
                         if not assessment['valid']:
-                            base['validation'].append({'valid': False, 'route': route,
-                                                       'reasons': assessment['reasons']})
-                            continue
+                            add_advice(base, 'returned_evidence', assessment['reasons'])
                         outcome.attempt["selected"] = True
                         outcome.attempt["selected_query_sha256"] = hashlib.sha256(query.encode()).hexdigest()
                         base.update(result)
@@ -2598,25 +2567,19 @@ class GraphAdapter:
                                     step, base.get("rows") or [], base.get("nodes") or [])
                             except BoundedPathError as exc:
                                 reason = "invalid_bounded_path_evidence:" + (str(exc) or "materialization_failed")
-                                base["status"] = "failed"
-                                base["validation"].append({"valid": False,
-                                                           "route": route,
-                                                           "reasons": [reason]})
-                                base["error"] = {"category": "invalid_bounded_path_evidence",
-                                                 "message": "The bounded path result did not preserve its verified node and relationship roles."}
-                                return base
-                            base["path_records"] = path_records
-                            if overfetch:
-                                base["retrieval_execution"]["exposed_path_records"] = len(path_records)
-                            base["chain_facts"] = derive_chain_facts(
-                                step, path_records, base.get("nodes") or [],
-                                status=base.get("status"),
-                                truncated=base.get("truncated", False))
-                            # The aggregate wrapper is an internal transport
-                            # record.  Preserve its materialization accounting,
-                            # but expose only role-preserving path evidence.
-                            base["rows"] = []
-                        if (grounded or path_requested or local_coloc_required) and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
+                                add_advice(base, 'path_evidence', [reason])
+                                path_records = None
+                            if path_records is not None:
+                                base['path_records'] = path_records
+                                if overfetch:
+                                    base['retrieval_execution']['exposed_path_records'] = len(path_records)
+                                base['chain_facts'] = derive_chain_facts(
+                                    step, path_records, base.get('nodes') or [],
+                                    status=base.get('status'), truncated=base.get('truncated', False))
+                                base['rows'] = []
+                            # An unrecognized path transport retains the raw rows,
+                            # nodes and edges for model interpretation.
+                        if not base.get("python_diagnostics") and (grounded or path_requested or local_coloc_required) and base.get("status") in {"complete", "empty"} and not base.get("truncated"):
                             cached_query = {"cypher":query,"parameters":candidate_parameters}
                             if template_audit:
                                 cached_query.update(deepcopy(template_audit))

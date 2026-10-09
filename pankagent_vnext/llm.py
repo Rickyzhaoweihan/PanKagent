@@ -226,7 +226,7 @@ class ClaudeGateway:
             from .semantic_decision import effective_scope
             return prepare_scope(effective_scope(question, proposal), grounding, proposal)
         from .planning_session import initial_assessment
-        from .task_preparation import bind_unique_requested_identities, independent_subset, PreparationIssue
+        from .task_preparation import bind_unique_requested_identities
         initial_proofs = [deepcopy(c['selection_proof']) for m in (grounding or {}).get('mentions', [])
                           for c in m.get('candidates', []) if c.get('selection_proof')]
         scope_question = (grounding or {}).get('session_scope_question') or question
@@ -324,22 +324,16 @@ class ClaudeGateway:
                 plan, issue = compile_scopes(plan)
                 issue = issue or scope_issue(effective_scope(scope_question, plan), grounding, plan) or requirements_issue(effective_scope(question, plan), grounding, plan, history)
             if issue:
-                partial = independent_subset(plan, issue)
-                if partial:
-                    partial, partial_issue = compile_scopes(partial)
-                    partial_issue = partial_issue or scope_issue(effective_scope(scope_question, partial), grounding, partial) or requirements_issue(effective_scope(question, partial), grounding, partial, history)
-                    if partial_issue:
-                        partial = None
-                    else:
-                        partial = expand_compact_plan(partial)
-                        partial['steps'] = [repair_step_constraints(s) for s in partial['steps']]
-                raise PreparationIssue(issue, partial)
+                from .validation_advice import add
+                add(plan, 'plan_scope', [issue])
             plan = expand_compact_plan(plan)
             plan['steps'] = [repair_step_constraints(step) for step in plan['steps']]
             plan = independent_measurement_steps(plan)
             from .investigations import category_issue
             issue = category_issue(effective_scope(question, plan), plan)
-            if issue: raise ValueError(issue)
+            if issue:
+                from .validation_advice import add
+                add(plan, 'category_coverage', [issue])
             for step in plan.get('steps', []):
                 step['complete'] = True
                 step['interpretation_stage'] = 'formatting'
@@ -488,6 +482,8 @@ class ClaudeGateway:
                         for path in value.get('endpoints', [])]
                         for key, value in schema_module('database_schema')['relationships'].items()}},
                 'retrieval_interpretation':schema_module('semantic_interpretation')['retrieval_interpretation']['formatting'],
+                'python_diagnostics': {key: [*value.get('python_diagnostics', []), *(value.get('requested_scope') or {}).get('python_diagnostics', [])] for key, value in evidence.items()},
+                'diagnostic_authority': 'Python findings are potential issues, not verdicts. Assess them against the question and retrieved evidence. Explain uncertainty and missing evidence; never infer absence from execution failure. Completeness metadata describes retrieval, not proof that all requested predicates were satisfied.',
                 'fact_authority':'Use these calculated facts for rankings, numerical comparisons and counts. Partial task statistics describe retrieved records only. Sampled examples cannot override full-record facts.',
                 'interpretation_warnings': list(dict.fromkeys(w for step in evidence.values()
                     for w in (step.get('requested_scope') or {}).get('interpretation_warnings', [])))},ensure_ascii=False,default=str)

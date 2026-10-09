@@ -20,7 +20,7 @@ Keep requested entities in the task constraints. When an abbreviation or synonym
 look up your contextually inferred expanded name, then bind its verified canonical ID and record
 the interpretation in entity_choices. Do not remove an entity constraint merely to bypass a failed
 literal-name lookup. Existing exact/local plans are drafts: review their scope before recording your plan.
-Compiler diagnostics are repair input: correct the plan or retain independently useful verified
+Python semantic diagnostics are non-blocking advice, not a verdict. You decide whether to repair, proceed with caveats, or ask clarification. Never treat a diagnostic as evidence of absence. Compiler diagnostics are repair input: correct the plan or retain independently useful verified
 checks with explicit unmet conditions. Never invent a relationship or weaken a filter silently.
 Verified preliminary candidates are already available for entity_choices; do not repeat a lookup
 solely to obtain a proof. Use lookup for missing evidence or ambiguity. You have two lookup batches
@@ -142,6 +142,7 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
         proofs[(proof['mention'].casefold(), proof['entity_type'], proof['id'])] = deepcopy(proof)
     last_error = 'planning_repair_exhausted'
     diagnostic_history = []
+    reviewed_diagnostics = set()
     max_calls = min(limits['total_claude_calls'] - limits['execution_repairs'],
                     limits['lookup_batches'] + limits['planning_proposals'])
     last_partial = None
@@ -288,21 +289,31 @@ async def run(gateway, question, user, system, schema, output_limit, finalize, r
                     step['entity_selection_proofs'] = deepcopy(chosen)
                     step['interpretation_warnings'] = list(plan['interpretation_warnings'])
                 if preparer and plan.get('steps') and not plan.get('clarification'):
+                    planner_clarification = plan.get('clarification')
                     plan = await preparer(plan)
-                    invalid = [s for s in plan.get('steps', []) if s.get('semantic_issues')
-                               or s.get('runtime_binding_issues') or s.get('filter_warning')]
-                    if invalid:
-                        last_partial = deepcopy(plan)
-                        raise ValueError(json.dumps({'category': 'preparation_failed', 'tasks': [
-                            {'step_id': s['id'], 'constraints': s.get('constraints'),
-                             'relation_types': s.get('relation_types', []),
-                             'reasons': s.get('runtime_binding_issues') or s.get('semantic_issues')}
-                            for s in invalid], 'instruction': 'Repair only the affected tasks. Use canonical id/name bindings for verified identities; preserve current requested conditions, without restoring superseded filters.'}))
-                    if plan.get('clarification'):
-                        # Preserve only a genuinely eligible partial plan; never raw unverified output.
-                        last_error = json.dumps({'category': 'preparation_failed', 'issues': plan.get('entity_resolution'),
-                                                 'message': plan.get('clarification')}, default=str)
-                        raise ValueError(last_error)
+                    if plan.get('clarification') != planner_clarification:
+                        from .validation_advice import add
+                        add(plan, 'preparation', [plan.get('recovery') or plan.get('clarification') or 'preparation_scope_changed'])
+                        plan['clarification'] = planner_clarification
+                        plan.pop('recovery', None)
+                    from .validation_advice import prepare as advisory_prepare, add as add_advice
+                    plan['steps'] = [advisory_prepare(s) for s in plan.get('steps', [])]
+                    for s in plan['steps']:
+                        for diagnostic_item in s.get('python_diagnostics', []):
+                            if diagnostic_item not in plan.setdefault('python_diagnostics', []):
+                                plan['python_diagnostics'].append(deepcopy(diagnostic_item))
+                # Give the planner the findings as advice once, within its existing
+                # allowance. Exhausting that allowance does not veto the plan.
+                findings = plan.get('python_diagnostics', [])
+                new_codes = {d['code'] for d in findings} - reviewed_diagnostics
+                if new_codes and turn < max_calls - 1 and proposals < limits['planning_proposals']:
+                    reviewed_diagnostics.update(new_codes)
+                    last_partial = deepcopy(plan)
+                    results.append({'type': 'tool_result', 'tool_use_id': tool_id,
+                        'content': json.dumps({'status': 'prepared_with_advice',
+                            'blocking': False, 'diagnostics': findings,
+                            'instruction': 'Review these potential issues. Record the same plan if appropriate, repair it, or request clarification. Python does not reject your semantic choice.'})})
+                    continue
                 plan['planning_route'] = {'kind': VERSION, 'claude_calls': turn + 1, 'lookup_batches': batches,
                                           'planning_proposals': proposals, 'execution_repairs': 0}
                 if diagnostic_history: plan['diagnostic_history'] = diagnostic_history

@@ -122,14 +122,16 @@ def test_preparation_diagnostics_return_to_same_session():
     asyncio.run(check())
 
 
-def test_unverified_model_identity_repaired_never_executed():
+def test_unverified_model_identity_is_advice_not_a_python_veto():
     async def check():
         g, calls = gateway([('record_plan', {**PLAN, 'entity_choices': [{'mention': 'TM4SF6', 'entity_type': 'Gene', 'id': 'invented', 'reason': 'guess'}]})])
         prep = AsyncMock(side_effect=lambda p: {**p, 'clarification': 'Selected ID does not exist.', 'steps': [
             {**p['steps'][0], 'runtime_binding_issues': ['selected_id_not_found']}]})
         result = await run(g, 'Find TM4SF6', '{}', 'test', SCHEMA, 500, lambda p,c: p, preparer=prep)
-        assert len(calls) == 3 and prep.await_count >= 3
-        assert 'selected_id_not_found' in result['proposal_issue']
+        assert len(calls) == 2 and prep.await_count == 2
+        assert not result.get('clarification')
+        assert 'selected_id_not_found' in {d['code'] for d in result['python_diagnostics']}
+        assert calls[1]['messages'][-1]['content'][0].get('is_error') is not True
         assert all(not call.args[0]['entity_selection_proofs'] for call in prep.await_args_list)
     asyncio.run(check())
 

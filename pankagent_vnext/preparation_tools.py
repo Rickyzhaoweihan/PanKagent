@@ -22,12 +22,17 @@ def prepare_scope(question, grounding, proposal):
         'genomic_scope': lambda p: compile_genomic_scope(question, grounding, p),
         'dependency_bindings': single(compile_inputs),
     }
+    from copy import deepcopy
+    from .validation_advice import add
     for rule in module('validation_repair')['scope_compilers']:
+        original = deepcopy(proposal)
         try:
-            proposal, issue = operators[rule](proposal)
+            proposal, issue = operators[rule](deepcopy(proposal))
         except ValueError as exc:
             issue = str(exc)
         if issue:
-            return proposal, issue
+            proposal = original
+            add(proposal, 'scope_compilation', [issue])
+            continue
         proposal.setdefault('selected_rule_ids', []).append(rule)
     return proposal, None
