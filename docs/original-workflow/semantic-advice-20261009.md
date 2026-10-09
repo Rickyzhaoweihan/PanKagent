@@ -1,6 +1,6 @@
 # Non-blocking semantic diagnostics
 
-Candidate implementation; not deployed. The existing dev release remains the narrower planner-authority patch.
+Deployed on dev on 2026-10-09 as a five-file patch to the existing live backend. Unrelated introduction candidate changes remain inactive.
 
 Python semantic findings are retained as `python_diagnostics` with phase, original diagnostic code, `blocking: false`, and model-review disposition. Recovery explanations and suggested corrections remain structured detail. The planner receives new preparation findings once within its existing allowance; it can repair, clarify or retain its choice. Repeated findings do not force exhausted-retry rejection. Model-requested clarification remains effective.
 
@@ -13,3 +13,5 @@ No database-specific facts were added to Python or to a fifth schema. No fronten
 Validation evidence: offline mocked-provider and database fixtures; see this round's test logs. No live-model or deployed end-to-end claim. Historical tests expecting semantic rejection have been adjusted to assert diagnostic retention and model authority.
 
 Offline validation: 115 tests and 17 subtests passed; after the path-evidence adjustment, all 10 diagnostic tests passed, including template fallback and retention of raw path records. No full historical-suite or live-model evaluation was run. Logs and rendered workflow are retained in Research/Reports/pankagent-semantic-advice-20261009/.
+
+Deployment: owned port 8794 restart, PID 4076733, readiness healthy, frontend and results service unchanged. Model claude-sonnet-5-5. Application SHA256 `4a23c6af88087f1b76313f45ad702a51f6274aacaec822feac9623204dfbb54e`. Backup verified before activation. Exact live-base tests: 73 passed plus 17 subtests. Graph replays using recorded planner bindings returned identical 10 spleen samples for typo/canonical wording and 13 PLN samples. No paid model calls. Private activation evidence: `/db/pankagent-vnext-private/operations/semantic-advice-20261009/`. Previous release retained for rollback.
