@@ -322,6 +322,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     app.state.runtime = runtime
     from .gpt6_proxy import install_gpt6_proxy
     install_gpt6_proxy(app, runtime.http)
+    from .scbrowser_expression import install as install_expression_cache
+    install_expression_cache(app, settings.state_dir)
     app.add_middleware(JSONResponseLimitMiddleware)
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)
