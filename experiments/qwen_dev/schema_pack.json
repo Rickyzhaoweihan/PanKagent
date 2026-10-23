@@ -1,0 +1,1562 @@
+{
+  "version": "release-schema-v1",
+  "release": "PanKgraph_08_04",
+  "identity_strength": "schema_and_anchors",
+  "nodes": {
+    "OCR_peak": [
+      "assembly",
+      "chr",
+      "data_source",
+      "data_version",
+      "description",
+      "end_loc",
+      "genome_assembly",
+      "id",
+      "start_loc",
+      "type"
+    ],
+    "regulatory_elements": [
+      "assembly",
+      "chr",
+      "data_source",
+      "data_version",
+      "description",
+      "end_loc",
+      "genome_assembly",
+      "id",
+      "start_loc",
+      "type"
+    ],
+    "disease": [
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "id",
+      "name",
+      "synonyms"
+    ],
+    "ontology": [
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "id",
+      "name",
+      "synonyms"
+    ],
+    "Gene": [
+      "alt_id_entrez",
+      "assembly",
+      "chr",
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "end_loc",
+      "ensembl_gene_version",
+      "gc_content",
+      "gene_type",
+      "genome_assembly",
+      "hgnc_id",
+      "hgnc_symbol",
+      "id",
+      "karyotype_band",
+      "name",
+      "start_loc",
+      "strand",
+      "synonyms"
+    ],
+    "sequence_variant": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "variants": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "GO_term": [
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "go_domain",
+      "id",
+      "name"
+    ],
+    "donor": [
+      "aab_state",
+      "age",
+      "bmi",
+      "c_peptide_ng_ml",
+      "cause_of_death",
+      "center_donor_id",
+      "creation_date",
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "derived_diabetes_status",
+      "diabetes_duration",
+      "diabetes_type",
+      "donation_type",
+      "family_history_of_diabetes",
+      "gender",
+      "hba1c_percentage",
+      "hla_status",
+      "hla_typing",
+      "hospital_stay_hours",
+      "id",
+      "other_disease_records",
+      "other_therapy",
+      "pancdb_id",
+      "pankbase_id",
+      "predicted_genetic_ancestry",
+      "race",
+      "rrid",
+      "sex_at_birth",
+      "t1d_stage"
+    ],
+    "provenance": [
+      "age",
+      "bmi",
+      "data_source",
+      "data_version",
+      "derived_diabetes_status",
+      "diabetes_duration",
+      "diabetes_type",
+      "gender",
+      "id",
+      "race",
+      "sex_at_birth",
+      "t1d_stage"
+    ],
+    "snv": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "deletion": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "indel": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "insertion": [
+      "HGVS_name",
+      "alt",
+      "assembly",
+      "chr",
+      "common_snp",
+      "data_source",
+      "data_version",
+      "end_loc",
+      "freq",
+      "genome_assembly",
+      "id",
+      "in_3prime_gene_region",
+      "in_3prime_utr",
+      "in_5prime_gene_region",
+      "in_5prime_utr",
+      "in_acceptor_splice_site",
+      "in_donor_splice_site",
+      "in_intron",
+      "non_synonymous_frameshift",
+      "non_synonymous_missense",
+      "non_synonymous_nonsense",
+      "ref",
+      "start_loc",
+      "type",
+      "variant_suspect_reason"
+    ],
+    "kegg": [
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "id",
+      "name"
+    ],
+    "Sample_node": [
+      "anatomical_structure",
+      "contact",
+      "data_modality",
+      "data_source",
+      "data_version",
+      "id",
+      "note"
+    ],
+    "anatomical_structure": [
+      "category",
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "description",
+      "id",
+      "name"
+    ],
+    "data_modality": [
+      "data_source",
+      "data_version",
+      "id"
+    ],
+    "reactome": [
+      "data_source",
+      "data_source_url",
+      "data_version",
+      "id",
+      "name"
+    ]
+  },
+  "relations": {
+    "ADJACENT_TO": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 3
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "ASSOCIATED_WITH_GO": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "GO_term"
+          ],
+          "records": 471403
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_source_url",
+        "data_version",
+        "end_id",
+        "go_evidence_code",
+        "start_id"
+      ],
+      "description": "Gene -> GO term annotation. Preserve go_domain and evidence codes; annotations are distinct from pathway enrichment."
+    },
+    "EFFECTOR_GENE_OF": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 256
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_source_url",
+        "data_version",
+        "effector_gene_list_url",
+        "end_id",
+        "evidence",
+        "start_id"
+      ],
+      "description": "Gene -> disease effector-gene evidence or prediction. Preserve source evidence; it does not itself prove a causal mechanism."
+    },
+    "FGSEA_ENRICHED_IN": {
+      "paths": [
+        {
+          "source": [
+            "ontology",
+            "kegg"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 12
+        },
+        {
+          "source": [
+            "ontology",
+            "reactome"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 69
+        }
+      ],
+      "properties": [
+        "cell_type_label",
+        "data_source",
+        "data_version",
+        "end_id",
+        "es",
+        "leading_edge",
+        "log2err",
+        "nes",
+        "padj",
+        "pathway_collection",
+        "pathway_name",
+        "pathway_term",
+        "pval",
+        "size",
+        "source_file",
+        "start_id"
+      ],
+      "description": "Pathway -> cell/tissue recorded enrichment with NES, adjusted P value and leading-edge genes. Distinct from individual gene-pathway membership."
+    },
+    "FUNCTION_ANNOTATION": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "ontology",
+            "kegg"
+          ],
+          "records": 38462
+        },
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "ontology",
+            "reactome"
+          ],
+          "records": 48545
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ],
+      "description": "Gene -> pathway node carrying ontology plus kegg or reactome labels. These are labels on ONE target node. No ontology -> kegg/reactome intermediate edge exists here. Membership does not establish disease activity or enrichment."
+    },
+    "GENETIC_INTERACTION": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 18781
+        }
+      ],
+      "properties": [
+        "author",
+        "biogrid_id_interactor_a",
+        "biogrid_id_interactor_b",
+        "biogrid_interaction_id",
+        "data_source",
+        "data_source_url",
+        "data_version",
+        "end_id",
+        "entrez_id_a",
+        "entrez_id_b",
+        "experimental_system",
+        "experimental_system_type",
+        "official_symbol_interactor_a",
+        "official_symbol_interactor_b",
+        "organism_id_interactor_a",
+        "organism_id_interactor_b",
+        "publication_source",
+        "qualifications",
+        "score",
+        "start_id",
+        "throughput"
+      ],
+      "description": "Gene -> Gene genetic interaction records, distinct from physical interaction. Search either direction for unspecified partner queries."
+    },
+    "GENE_ACTIVITY_SCORE_IN": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 126077
+        }
+      ],
+      "properties": [
+        "aab_pos_ocr_gene_activity_score_mean",
+        "aab_pos_ocr_gene_activity_score_median",
+        "data_source",
+        "data_version",
+        "end_id",
+        "non_diabetic_ocr_gene_activity_score_mean",
+        "non_diabetic_ocr_gene_activity_score_median",
+        "ocr_gene_activity_score_mean",
+        "ocr_gene_activity_score_median",
+        "start_id",
+        "type_1_diabetes_ocr_gene_activity_score_mean",
+        "type_1_diabetes_ocr_gene_activity_score_median",
+        "type_2_diabetes_ocr_gene_activity_score_mean",
+        "type_2_diabetes_ocr_gene_activity_score_median"
+      ],
+      "description": "Gene -> cell/tissue chromatin-derived activity with recorded cohort means/medians, not RNA expression or direct evidence of peak-to-gene regulation."
+    },
+    "GENE_DETECTED_IN": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 104677
+        }
+      ],
+      "properties": [
+        "cell_type",
+        "condition",
+        "data_source",
+        "data_version",
+        "detection_rule",
+        "end_id",
+        "expression_call",
+        "gene_symbol",
+        "max_donor_log_cpm",
+        "max_pct_cells_expressing",
+        "mean_donor_cpm",
+        "mean_donor_log_cpm",
+        "mean_pct_cells_expressing",
+        "median_donor_cpm",
+        "median_donor_log_cpm",
+        "median_pct_cells_expressing",
+        "min_donor_log_cpm",
+        "min_median_log_cpm_threshold",
+        "min_median_pct_cells_threshold",
+        "source_file",
+        "start_id",
+        "total_cells"
+      ],
+      "description": "Gene -> cell/tissue detection in a recorded dataset and condition. An absent edge is missing represented evidence, not biological absence or proof of cell restriction."
+    },
+    "GENE_ENRICHED_IN": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 8583
+        }
+      ],
+      "properties": [
+        "base_mean",
+        "cell_type_label",
+        "comparison",
+        "condition",
+        "data_source",
+        "data_version",
+        "deg_source_file",
+        "effect_direction",
+        "end_id",
+        "expression_call",
+        "expression_cell_type",
+        "expression_source_file",
+        "expression_support_match",
+        "expression_support_rule",
+        "gene_mapping_source",
+        "gene_symbol",
+        "lfc_se",
+        "log2_fold_change",
+        "max_donor_log_cpm",
+        "max_pct_cells_expressing",
+        "mean_donor_cpm",
+        "mean_donor_log_cpm",
+        "mean_pct_cells_expressing",
+        "median_donor_cpm",
+        "median_donor_log_cpm",
+        "median_pct_cells_expressing",
+        "min_donor_log_cpm",
+        "min_expression_log_cpm_threshold",
+        "min_expression_pct_threshold",
+        "padj",
+        "pvalue",
+        "rank_in_cell_type",
+        "start_id",
+        "stat",
+        "total_cells"
+      ],
+      "description": "Gene -> cell/tissue enrichment relative to the recorded comparison and condition; distinct from disease differential expression. Recorded condition ND and comparison one_vs_rest are not T1D-vs-ND."
+    },
+    "HAS_CELL_TYPE": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 8
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "HAS_DONOR": {
+      "paths": [
+        {
+          "source": [
+            "disease",
+            "ontology"
+          ],
+          "target": [
+            "donor"
+          ],
+          "records": 192
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "HAS_SAMPLE": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "Sample_node"
+          ],
+          "records": 13328
+        },
+        {
+          "source": [
+            "data_modality"
+          ],
+          "target": [
+            "Sample_node"
+          ],
+          "records": 8987
+        },
+        {
+          "source": [
+            "disease",
+            "ontology"
+          ],
+          "target": [
+            "Sample_node"
+          ],
+          "records": 8985
+        },
+        {
+          "source": [
+            "donor"
+          ],
+          "target": [
+            "Sample_node"
+          ],
+          "records": 8985
+        }
+      ],
+      "properties": [
+        "anatomical_structure",
+        "data_modality",
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "HAS_STATE": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 4
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "LYMPH_FLOWS_TO": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 2
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "MARKER_GENE_OF": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 124
+        }
+      ],
+      "properties": [
+        "cell_type_name",
+        "cell_type_source_column",
+        "data_source",
+        "data_version",
+        "dataset_source",
+        "end_id",
+        "gene_name",
+        "gene_source_column",
+        "gene_symbol",
+        "source_row",
+        "start_id"
+      ],
+      "description": "Gene -> cell/tissue marker annotation. A marker record is distinct from measured detection and disease differential expression."
+    },
+    "OCR_PEAK_IN": {
+      "paths": [
+        {
+          "source": [
+            "regulatory_elements",
+            "OCR_peak"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 5294421
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "description",
+        "end_id",
+        "start_id"
+      ],
+      "description": "OCR peak -> cell/tissue accessibility record. Genomic overlap requires matching assembly/chromosome and coordinates; overlap does not establish regulatory targeting."
+    },
+    "PART_OF": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 19
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "PART_OF_GWAS_SIGNAL": {
+      "paths": [
+        {
+          "source": [
+            "sequence_variant",
+            "snv",
+            "variants"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 1522
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 32
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "indel"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 9
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "insertion"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 9
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "deletion"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 36
+        }
+      ],
+      "properties": [
+        "credible_set_id",
+        "credible_set_purity",
+        "credible_set_size",
+        "data_source",
+        "data_source_url",
+        "data_version",
+        "effect_allele",
+        "end_id",
+        "lbf",
+        "lead_status",
+        "locus_name",
+        "method",
+        "non_effect_allele",
+        "p_value",
+        "pip",
+        "pip_rank",
+        "start_id"
+      ],
+      "description": "Variant -> disease GWAS signal membership, including association, PIP and credible-set annotations. Disease membership alone does not identify the signal referenced by a coloc record."
+    },
+    "PART_OF_QTL_SIGNAL": {
+      "paths": [
+        {
+          "source": [
+            "sequence_variant",
+            "snv",
+            "variants"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 22849
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "insertion"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 244
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "indel"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 121
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 36
+        },
+        {
+          "source": [
+            "sequence_variant",
+            "variants",
+            "deletion"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 4
+        }
+      ],
+      "properties": [
+        "credible_set",
+        "credibleset",
+        "data_source",
+        "data_version",
+        "effect_allele",
+        "end_id",
+        "gene_name",
+        "lbf",
+        "n_snp",
+        "nominal_p",
+        "other_allele",
+        "pip",
+        "purity",
+        "slope",
+        "start_id",
+        "tissue_id",
+        "tissue_name"
+      ],
+      "description": "Variant -> Gene molecular QTL signal membership. Preserve tissue, credible-set and dataset annotations. QTL lead status must come from recorded evidence; highest PIP is not an explicit lead designation."
+    },
+    "PHYSICAL_INTERACTION": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "Gene"
+          ],
+          "records": 1262934
+        }
+      ],
+      "properties": [
+        "author",
+        "biogrid_id_interactor_a",
+        "biogrid_id_interactor_b",
+        "biogrid_interaction_id",
+        "data_source",
+        "data_source_url",
+        "data_version",
+        "end_id",
+        "entrez_id_a",
+        "entrez_id_b",
+        "experimental_system",
+        "experimental_system_type",
+        "modifications",
+        "official_symbol_interactor_a",
+        "official_symbol_interactor_b",
+        "organism_id_interactor_a",
+        "organism_id_interactor_b",
+        "publication_source",
+        "qualifications",
+        "score",
+        "start_id",
+        "throughput"
+      ],
+      "description": "Gene -> Gene physical interaction records. Search either direction when direction is unspecified; retain stored direction and parallel experimental records. Distinct from genetic interaction."
+    },
+    "REPRESENTS_COMPOSITE_LABEL": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 2
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "SIGNAL_COLOC_WITH": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 23
+        }
+      ],
+      "properties": [
+        "coloc_dataset",
+        "data_source",
+        "data_version",
+        "end_id",
+        "gwas_lead_vars",
+        "gwas_locus_name",
+        "gwas_signal_id",
+        "nsnp",
+        "pp_h0_abf",
+        "pp_h1_abf",
+        "pp_h2_abf",
+        "pp_h3_abf",
+        "pp_h4_abf",
+        "qtl_lead_vars",
+        "qtl_locus_name",
+        "qtl_signal_id",
+        "start_id"
+      ],
+      "description": "Gene -> disease statistical colocalization record. Multiple records may represent distinct molecular QTL datasets/signals. PP.H4 supports consistency with a shared causal variant, not proof of mechanism. Lead variants are recorded reference fields.",
+      "property_value_mappings": [
+        {
+          "from_property": "gwas_signal_id",
+          "to_relationship": "PART_OF_GWAS_SIGNAL",
+          "to_property": "credible_set_id",
+          "meaning": "The exact listed values identify the same original GWAS signal source file. Values not listed have no verified correspondence here. A value mapping identifies the signal, not an individual variant; membership still comes from actual relationship records.",
+          "method": "Exact original-filename join plus pinned importer transforms and exported membership/coloc value parity; no suffix-based guess.",
+          "source_audit_sha256": "0a4aff4d92e40fa0badb1b38b1cf36f0757e0615108fc65cc4c205e4d833c59d",
+          "verification_scope": {
+            "source_and_export": {
+              "signals": 11,
+              "membership_rows": 609,
+              "coloc_rows": 23,
+              "raw_coloc_rows_checked": 24,
+              "fields_checked": [
+                "member identifiers",
+                "member PIP",
+                "member p value",
+                "coloc lead identifiers",
+                "coloc PP.H4"
+              ]
+            },
+            "live_graph": {
+              "signal": "ADCY3__credibleSet1__selected",
+              "member_rows": 102,
+              "coloc_gene_id": "ENSG00000138031",
+              "coloc_rows": 2,
+              "other_signals": "not live checked"
+            },
+            "excluded_raw_rows": [
+              {
+                "file": "t1d_eQTL-gtex_coloc.txt",
+                "line": 6,
+                "reason": "coloc export row unavailable"
+              }
+            ]
+          },
+          "values": [
+            {
+              "from_value": "ADCY3__credibleSet1__selected",
+              "to_value": "ADCY3__credibleSet1",
+              "source_key": "ADCY3__credibleSet1__selected.txt",
+              "source_sha256": "ad7d460f96df9949e317a5cd50f56ea97995eb9dea788ad0cb537190da5bb885"
+            },
+            {
+              "from_value": "IRF1__credibleSet1__selected",
+              "to_value": "IRF1__credibleSet1",
+              "source_key": "IRF1__credibleSet1__selected.txt",
+              "source_sha256": "06ab2965cc92dc049368929d5023af3648f8aab799058d6a36d5b46a960bc9eb"
+            },
+            {
+              "from_value": "IL27__credibleSet2__selected",
+              "to_value": "IL27__credibleSet2",
+              "source_key": "IL27__credibleSet2__selected.txt",
+              "source_sha256": "3ae6c81ecd596b78abf6efeb865d370ab6c7bf4cc5a1dcaeca964ea7547e0033"
+            },
+            {
+              "from_value": "BATF3__credibleSet1__selected",
+              "to_value": "BATF3__credibleSet1",
+              "source_key": "BATF3__credibleSet1__selected.txt",
+              "source_sha256": "bdf2dcaf2a83539eba3556e45959b373e6485a9184cf7eddc2cce52342d74999"
+            },
+            {
+              "from_value": "PTPN2__credibleSet1__selected",
+              "to_value": "PTPN2__credibleSet1",
+              "source_key": "PTPN2__credibleSet1__selected.txt",
+              "source_sha256": "b94557448e47fcf2adec1a7158cea0818fe5cf7ffaa8ad641a2c217fb3d8e82f"
+            },
+            {
+              "from_value": "INPP5B__credibleSet1__selected",
+              "to_value": "INPP5B__credibleSet1",
+              "source_key": "INPP5B__credibleSet1__selected.txt",
+              "source_sha256": "64c26a2850702f14cf8d8df91639e9dd1d46d5bc0da9e9e911659be01031d499"
+            },
+            {
+              "from_value": "MAPT__credibleSet1__selected",
+              "to_value": "MAPT__credibleSet1",
+              "source_key": "MAPT__credibleSet1__selected.txt",
+              "source_sha256": "d737b21549852403e383d93d6a178d963ca5b53cee4a025a519116e967a13529"
+            },
+            {
+              "from_value": "GSDMB__credibleSet1__selected",
+              "to_value": "GSDMB__credibleSet1",
+              "source_key": "GSDMB__credibleSet1__selected.txt",
+              "source_sha256": "a53f8fc4774b7f5a847ac6d0dec76ef44c834c58af430fb4119023ea9f1af0e4"
+            },
+            {
+              "from_value": "IKZF4__credibleSet1__selected",
+              "to_value": "IKZF4__credibleSet1",
+              "source_key": "IKZF4__credibleSet1__selected.txt",
+              "source_sha256": "7cd282fcc7369877fbb7b21f08123e9717ee8169d6b3b1856579fc49de07a931"
+            },
+            {
+              "from_value": "SEPT2__credibleSet1__selected",
+              "to_value": "SEPT2__credibleSet1",
+              "source_key": "SEPT2__credibleSet1__selected.txt",
+              "source_sha256": "ffca06e869276f7b982c154b6cafb4bdaa5df5cebc198d542e6c09483fd7f924"
+            },
+            {
+              "from_value": "CFTR__credibleSet2__selected",
+              "to_value": "CFTR__credibleSet2",
+              "source_key": "CFTR__credibleSet2__selected.txt",
+              "source_sha256": "5e02266070ff869deb84ac8688539811e055ea2cc0c260ac727f4d273aacc2a5"
+            }
+          ]
+        }
+      ]
+    },
+    "SUBCLASS_OF": {
+      "paths": [
+        {
+          "source": [
+            "anatomical_structure"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 23
+        }
+      ],
+      "properties": [
+        "data_source",
+        "data_version",
+        "end_id",
+        "start_id"
+      ]
+    },
+    "T1D_DEG_IN": {
+      "paths": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "anatomical_structure"
+          ],
+          "records": 1956
+        }
+      ],
+      "properties": [
+        "adjusted_p_value",
+        "data_source",
+        "data_version",
+        "end_id",
+        "log2_fold_change",
+        "p_value",
+        "se_of_log2_fold_change",
+        "start_id",
+        "up_or_down_regulation"
+      ],
+      "description": "Gene -> cell/tissue T1D differential expression. T1D context is encoded by this relationship; an extra disease node join is not needed. Preserve direction of change, effect size and adjusted P value."
+    }
+  },
+  "categories": {
+    "PART_OF_QTL_SIGNAL.tissue_name": [
+      "Pancreas",
+      "Islet"
+    ],
+    "PART_OF_QTL_SIGNAL.tissue_id": [
+      "UBERON_0001264",
+      "UBERON_0000006"
+    ],
+    "GENE_ENRICHED_IN.condition": [
+      "ND"
+    ],
+    "GENE_ENRICHED_IN.comparison": [
+      "one_vs_rest"
+    ]
+  },
+  "aliases": {
+    "anatomical_structure": {
+      "pancreatic islet": "pancreatic islet (islet of Langerhans)",
+      "islet": "pancreatic islet (islet of Langerhans)",
+      "active pancreatic stellate cell": "pancreatic stellate cell active state",
+      "activated pancreatic stellate cell": "pancreatic stellate cell active state"
+    }
+  },
+  "identity": {
+    "OCR_peak": [
+      "id"
+    ],
+    "regulatory_elements": [
+      "id"
+    ],
+    "disease": [
+      "id",
+      "name",
+      "synonyms"
+    ],
+    "ontology": [
+      "id",
+      "name",
+      "synonyms"
+    ],
+    "Gene": [
+      "id",
+      "name",
+      "hgnc_symbol",
+      "synonyms"
+    ],
+    "sequence_variant": [
+      "id"
+    ],
+    "variants": [
+      "id"
+    ],
+    "GO_term": [
+      "id",
+      "name"
+    ],
+    "donor": [
+      "id",
+      "pancdb_id",
+      "center_donor_id"
+    ],
+    "provenance": [
+      "id"
+    ],
+    "snv": [
+      "id"
+    ],
+    "deletion": [
+      "id"
+    ],
+    "indel": [
+      "id"
+    ],
+    "insertion": [
+      "id"
+    ],
+    "kegg": [
+      "id",
+      "name"
+    ],
+    "Sample_node": [
+      "id"
+    ],
+    "anatomical_structure": [
+      "id",
+      "name"
+    ],
+    "data_modality": [
+      "id"
+    ],
+    "reactome": [
+      "id",
+      "name"
+    ]
+  },
+  "notes": [
+    "Structural inventory only. Relationship and category semantics must come from descriptions, recorded values and user intent.",
+    "Identity search fields are declarative pack metadata. Data-specific interpretation stays in this pack, not the agent prompt."
+  ],
+  "search_roles": {
+    "OCR_peak": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": [
+        "description"
+      ]
+    },
+    "regulatory_elements": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": [
+        "description"
+      ]
+    },
+    "disease": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [
+        "synonyms"
+      ],
+      "context": [
+        "description"
+      ]
+    },
+    "ontology": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [
+        "synonyms"
+      ],
+      "context": [
+        "description"
+      ]
+    },
+    "Gene": {
+      "identifiers": [
+        "hgnc_id",
+        "id"
+      ],
+      "names": [
+        "hgnc_symbol",
+        "name"
+      ],
+      "aliases": [
+        "synonyms"
+      ],
+      "context": [
+        "description"
+      ]
+    },
+    "sequence_variant": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "variants": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "GO_term": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [],
+      "context": [
+        "description"
+      ]
+    },
+    "donor": {
+      "identifiers": [
+        "center_donor_id",
+        "id",
+        "pancdb_id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "provenance": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "snv": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "deletion": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "indel": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "insertion": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "kegg": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [],
+      "context": [
+        "description"
+      ]
+    },
+    "Sample_node": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "anatomical_structure": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [],
+      "context": [
+        "description"
+      ]
+    },
+    "data_modality": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [],
+      "aliases": [],
+      "context": []
+    },
+    "reactome": {
+      "identifiers": [
+        "id"
+      ],
+      "names": [
+        "name"
+      ],
+      "aliases": [],
+      "context": []
+    }
+  },
+  "linked_evidence": {
+    "SIGNAL_COLOC_WITH": {
+      "references": [
+        {
+          "fields": [
+            "gwas_lead_vars"
+          ],
+          "target_label": "variants",
+          "identity_property": "id",
+          "relationship": "PART_OF_GWAS_SIGNAL",
+          "anchor": "same disease endpoint"
+        },
+        {
+          "fields": [
+            "qtl_lead_vars"
+          ],
+          "target_label": "variants",
+          "identity_property": "id",
+          "relationship": "PART_OF_QTL_SIGNAL",
+          "anchor": "same Gene endpoint"
+        }
+      ],
+      "context_fields": [
+        "coloc_dataset",
+        "gwas_signal_id",
+        "qtl_signal_id",
+        "gwas_locus_name",
+        "qtl_locus_name"
+      ],
+      "meaning": "Resolve the recorded lead IDs directly. Preserve each coloc record and signal context. Do not attach all variants for the gene/disease. If membership fields cannot establish the same signal, return reference nodes and describe membership as unconfirmed; do not infer a signal mapping from string similarity."
+    },
+    "FGSEA_ENRICHED_IN": {
+      "references": [
+        {
+          "fields": [
+            "leading_edge"
+          ],
+          "target_label": "Gene",
+          "identity_fields": [
+            "id",
+            "hgnc_symbol",
+            "name"
+          ]
+        }
+      ],
+      "meaning": "Leading-edge references belong to this enrichment record and cell context. Resolve explicit IDs directly and new symbols through identity lookup when needed. Do not invent a stored leading-edge membership relationship."
+    }
+  }
+}
