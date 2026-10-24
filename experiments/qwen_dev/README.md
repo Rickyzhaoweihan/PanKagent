@@ -2,7 +2,15 @@
 
 This directory records the source deployed behind the existing PanK dev authentication/results gateway. It uses the evaluated coverage/ambiguity-check Qwen candidate, without the experimental fast prompt. Frontend files are unchanged.
 
-The candidate runs on loopback 18864. The existing agent gateway on 8794 forwards new plans and `simple-qwen-` / `plan-qwen-` identities to it. Existing saved simple-agent history continues through the existing handler. The results service on 8795 is unchanged. `dev_integration.py` is the deployed gateway module and depends on the existing release's `simple_agent.comparison` and legacy server; do not install the candidate package over that legacy package.
+The candidate runs on loopback 18864. The existing agent gateway on 8794 forwards new plans and `simple-qwen-` / `plan-qwen-` identities to it. Existing saved simple-agent history continues through the existing handler. The results gateway on 8795 also has a deployed admission-routing fix in qwen_dispatch.py; it runs from a different release. `dev_integration.py` is the deployed gateway module and depends on the existing release's `simple_agent.comparison` and legacy server; do not install the candidate package over that legacy package.
+
+## Deployment documentation
+
+- [Direct topology, provisioning, recovery and rollback](DIRECT-DEPLOYMENT.md)
+- [Exact native tool and two-invocation configuration](NATIVE-TOOLS.md)
+- [Measured model comparison](model-comparison.md)
+
+The active reverse SSH relay runs from Lighthouse compute directly to jieliu3. It no longer depends on the Mac. See the runbook for allocation expiry and verification boundaries.
 
 ## Runtime
 
