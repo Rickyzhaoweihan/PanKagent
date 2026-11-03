@@ -1,0 +1,20 @@
+library(Matrix)
+args <- commandArgs(TRUE)
+root <- args[1]
+obj <- readRDS(file.path(root,'atlas-source/scRNA_v3.4.rds'))
+a <- slot(obj,'assays')[['RNA']]
+m <- slot(a,'data')
+expected <- readLines(file.path(root,'expression/cells.txt'))
+stopifnot(length(expected)==ncol(m), !anyDuplicated(expected), !anyDuplicated(colnames(m)))
+order <- match(expected, colnames(m))
+cat('cells',length(expected),'matched',sum(!is.na(order)),'genes',nrow(m),'nonzero',length(m@x),'\n',flush=TRUE)
+stopifnot(!anyNA(order),!anyDuplicated(rownames(m)),all(is.finite(m@x)),all(m@x>=0))
+# Transpose only after an identity-based reorder, preserving full Float64 values.
+genes <- rownames(m)
+m <- as(t(m[,order,drop=FALSE]),'CsparseMatrix')
+m <- drop0(m)
+dir.create(file.path(root,'expression'),showWarnings=FALSE)
+writeBin(m@i,file.path(root,'expression/indices.bin'),size=4,endian='little')
+writeBin(m@x,file.path(root,'expression/values.bin'),size=8,endian='little')
+write.table(data.frame(gene=genes,start=head(m@p,-1),count=diff(m@p)),file.path(root,'expression/genes.tsv'),sep='\t',row.names=FALSE,quote=FALSE)
+cat('Export complete: cells',nrow(m),'genes',ncol(m),'values',length(m@x),'\n')

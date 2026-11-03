@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "snapshot": "genome-runtime-20261103",
+  "assets": [
+    {
+      "id": "runtime/bootstrap.min.css",
+      "path": "runtime/bootstrap.min.css",
+      "source_url": "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/epgg.css",
+      "path": "runtime/epgg.css",
+      "source_url": "https://unpkg.com/epgg@53.6.0/umd/epgg.css",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/aframe.min.js",
+      "path": "runtime/aframe.min.js",
+      "source_url": "https://unpkg.com/aframe@0.8.0/dist/aframe-master.js",
+      "module": "genome",
+      "source_release": "A-Frame 0.8.0, unminified published distribution",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/jquery-3.2.1.slim.min.js",
+      "path": "runtime/jquery-3.2.1.slim.min.js",
+      "source_url": "https://code.jquery.com/jquery-3.2.1.slim.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/popper.min.js",
+      "path": "runtime/popper.min.js",
+      "source_url": "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/bootstrap.min.js",
+      "path": "runtime/bootstrap.min.js",
+      "source_url": "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/react.production.min.js",
+      "path": "runtime/react.production.min.js",
+      "source_url": "https://unpkg.com/react@16.14.0/umd/react.production.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/react-dom.production.min.js",
+      "path": "runtime/react-dom.production.min.js",
+      "source_url": "https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/plotly-cartesian-2.35.2.min.js",
+      "path": "runtime/plotly-cartesian-2.35.2.min.js",
+      "source_url": "https://cdn.plot.ly/plotly-cartesian-2.35.2.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/create-plotly-component.min.js",
+      "path": "runtime/create-plotly-component.min.js",
+      "source_url": "https://unpkg.com/react-plotly.js@2.3.0/dist/create-plotly-component.min.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    },
+    {
+      "id": "runtime/epgg.js",
+      "path": "runtime/epgg.js",
+      "source_url": "https://unpkg.com/epgg@53.6.0/umd/epgg.js",
+      "module": "genome",
+      "source_release": "Pinned WashU dependencies from vendor/genome/washU.js",
+      "license": "Retain individual dependency licenses; source packages recorded by exact URL"
+    }
+  ]
+}

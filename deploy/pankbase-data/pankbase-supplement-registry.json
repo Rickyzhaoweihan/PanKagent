@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "snapshot": "pankbase-experience-20261103-supplement",
+  "assets": [
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Acinar.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_ActiveStellate.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Alpha.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Beta.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Delta.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_bulk/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal/dea.tsv.gz",
+      "path": "de-source/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal.tsv.gz",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "de/heatmap/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal",
+      "source_url": "https://bioindex.pankbase.org/api/bio/query/single-cell-bulk-z-norm?q=islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal%2CT1D%20vs.%20control",
+      "path": "heatmaps/islet_of_Langerhans_scRNA_v3-3_Pseudobulk_Ductal.json",
+      "module": "de",
+      "source_release": "v3.3",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "genome/refGene",
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/refGene.txt.gz",
+      "path": "genome/refGene.txt.gz",
+      "module": "genome",
+      "source_release": "hg38 refGene 2020-08-17",
+      "license": "See source terms and source catalogue"
+    },
+    {
+      "id": "genome/reference",
+      "source_url": "https://vizhub.wustl.edu/public/hg38/hg38.2bit",
+      "path": "genome/hg38.2bit",
+      "module": "genome",
+      "source_release": "hg38",
+      "license": "See source terms and source catalogue"
+    }
+  ]
+}

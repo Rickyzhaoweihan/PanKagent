@@ -1,0 +1,538 @@
+{
+  "version": 1,
+  "snapshot": "pankbase-experience-20261103",
+  "independent_runtime": true,
+  "description": "Immutable source inputs for five PanKgraph modules; no donor records committed to Git",
+  "assets": [
+    {
+      "id": "functional/meta-data.merged.pankbase.combined.final.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/meta-data.merged.pankbase.combined.final.txt",
+      "path": "functional/meta-data.merged.pankbase.combined.final.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_all_traits.pankbase.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/HIPP_all_traits.pankbase.txt",
+      "path": "functional/HIPP_all_traits.pankbase.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_ins_ieq.pankbase.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/HIPP_ins_ieq.pankbase.txt",
+      "path": "functional/HIPP_ins_ieq.pankbase.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_ins_content.pankbase.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/HIPP_ins_content.pankbase.txt",
+      "path": "functional/HIPP_ins_content.pankbase.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_gcg_ieq.pankbase.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/HIPP_gcg_ieq.pankbase.txt",
+      "path": "functional/HIPP_gcg_ieq.pankbase.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_gcg_content.pankbase.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/HIPP_gcg_content.pankbase.txt",
+      "path": "functional/HIPP_gcg_content.pankbase.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Age.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Age.csv",
+      "path": "functional/assoc_csv/HIPP_Age.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Age_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Age_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Age_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_BMI.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_BMI.csv",
+      "path": "functional/assoc_csv/HIPP_BMI.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_BMI_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_BMI_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_BMI_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Derived-Diabetes-Status.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Derived-Diabetes-Status.csv",
+      "path": "functional/assoc_csv/HIPP_Derived-Diabetes-Status.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Derived-Diabetes-Status_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Derived-Diabetes-Status_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Derived-Diabetes-Status_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Diabetes-status.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Diabetes-status.csv",
+      "path": "functional/assoc_csv/HIPP_Diabetes-status.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Diabetes-status_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Diabetes-status_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Diabetes-status_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Ethnicities.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Ethnicities.csv",
+      "path": "functional/assoc_csv/HIPP_Ethnicities.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Ethnicities_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Ethnicities_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Ethnicities_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Gender.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Gender.csv",
+      "path": "functional/assoc_csv/HIPP_Gender.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Gender_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Gender_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Gender_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Genetic-sex.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Genetic-sex.csv",
+      "path": "functional/assoc_csv/HIPP_Genetic-sex.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_Genetic-sex_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_Genetic-sex_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_Genetic-sex_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_HbA1c.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_HbA1c.csv",
+      "path": "functional/assoc_csv/HIPP_HbA1c.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/assoc_csv/HIPP_HbA1c_skipped.csv",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/functional_data/functional_dataset_v1/assoc_csv/HIPP_HbA1c_skipped.csv",
+      "path": "functional/assoc_csv/HIPP_HbA1c_skipped.csv",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_ins_ieq.timepoints.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_time_series/HIPP/HIPP_ins_ieq.timepoints.txt",
+      "path": "functional/HIPP_ins_ieq.timepoints.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "functional/HIPP_gcg_ieq.timepoints.txt",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell_time_series/HIPP/HIPP_gcg_ieq.timepoints.txt",
+      "path": "functional/HIPP_gcg_ieq.timepoints.txt",
+      "module": "functional",
+      "source_release": "functional_dataset_v1",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/A_Stellate.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/A_Stellate.scale_1e6.bw",
+      "path": "genome/A_Stellate.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "A_stellate ATAC signal"
+    },
+    {
+      "id": "atac/A_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/A_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/A_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "A_Stellate peaks"
+    },
+    {
+      "id": "atac/A_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/A_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/A_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Acinar.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Acinar.scale_1e6.bw",
+      "path": "genome/Acinar.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Acinar ATAC signal"
+    },
+    {
+      "id": "atac/Acinar_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Acinar_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Acinar_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Acinar peaks"
+    },
+    {
+      "id": "atac/Acinar_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Acinar_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Acinar_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Alpha.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Alpha.scale_1e6.bw",
+      "path": "genome/Alpha.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Alpha ATAC signal"
+    },
+    {
+      "id": "atac/Alpha_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Alpha_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Alpha_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Alpha peaks"
+    },
+    {
+      "id": "atac/Alpha_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Alpha_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Alpha_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Beta.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Beta.scale_1e6.bw",
+      "path": "genome/Beta.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Beta ATAC signal"
+    },
+    {
+      "id": "atac/Beta_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Beta_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Beta_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Beta peaks"
+    },
+    {
+      "id": "atac/Beta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Beta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Beta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Delta.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Delta.scale_1e6.bw",
+      "path": "genome/Delta.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Delta ATAC signal"
+    },
+    {
+      "id": "atac/Delta_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Delta_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Delta_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Delta peaks"
+    },
+    {
+      "id": "atac/Delta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Delta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Delta_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Ductal.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Ductal.scale_1e6.bw",
+      "path": "genome/Ductal.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Ductal ATAC signal"
+    },
+    {
+      "id": "atac/Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Ductal peaks"
+    },
+    {
+      "id": "atac/Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Endothelial.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Endothelial.scale_1e6.bw",
+      "path": "genome/Endothelial.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Endothelial ATAC signal"
+    },
+    {
+      "id": "atac/Endothelial_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Endothelial_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Endothelial_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Endothelial peaks"
+    },
+    {
+      "id": "atac/Endothelial_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Endothelial_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Endothelial_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Gamma.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Gamma.scale_1e6.bw",
+      "path": "genome/Gamma.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Gamma ATAC signal"
+    },
+    {
+      "id": "atac/Gamma_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Gamma_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Gamma_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Gamma peaks"
+    },
+    {
+      "id": "atac/Gamma_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Gamma_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Gamma_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Immune.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Immune.scale_1e6.bw",
+      "path": "genome/Immune.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Immune ATAC signal"
+    },
+    {
+      "id": "atac/Immune_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Immune_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Immune_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Immune peaks"
+    },
+    {
+      "id": "atac/Immune_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Immune_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Immune_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/MUC5B_Ductal.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/MUC5B_Ductal.scale_1e6.bw",
+      "path": "genome/MUC5B_Ductal.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Muc5b_ductal ATAC signal"
+    },
+    {
+      "id": "atac/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "MUC5B_Ductal peaks"
+    },
+    {
+      "id": "atac/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/MUC5B_Ductal_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Q_Stellate.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Q_Stellate.scale_1e6.bw",
+      "path": "genome/Q_Stellate.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Q_stellate ATAC signal"
+    },
+    {
+      "id": "atac/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Q_Stellate peaks"
+    },
+    {
+      "id": "atac/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Q_Stellate_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atac/Schwann.scale_1e6.bw",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Schwann.scale_1e6.bw",
+      "path": "genome/Schwann.scale_1e6.bw",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Schwann ATAC signal"
+    },
+    {
+      "id": "atac/Schwann_union_overlap_calledpeak.sorted.bed.gz",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Schwann_union_overlap_calledpeak.sorted.bed.gz",
+      "path": "genome/Schwann_union_overlap_calledpeak.sorted.bed.gz",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data",
+      "name": "Schwann peaks"
+    },
+    {
+      "id": "atac/Schwann_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "source_url": "https://s3-us-west-2.amazonaws.com/gaulton-lab-ucsc/rlmelton/washu_epigenome_browser_hpap/Schwann_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "path": "genome/Schwann_union_overlap_calledpeak.sorted.bed.gz.tbi",
+      "module": "genome",
+      "source_release": "HPAP ATAC source registry 5548591",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atlas/fields.json.gz",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell/islet_of_Langerhans_scRNA_v3-4/fields.json.gz",
+      "path": "atlas-source/fields.json.gz",
+      "module": "scbrowser",
+      "source_release": "v3.4",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atlas/coordinates.tsv.gz",
+      "source_url": "https://bioindex.pankbase.org/api/raw/file/single_cell/islet_of_Langerhans_scRNA_v3-4/coordinates.tsv.gz",
+      "path": "atlas-source/coordinates.tsv.gz",
+      "module": "scbrowser",
+      "source_release": "v3.4",
+      "license": "Retain source terms; software license does not cover data"
+    },
+    {
+      "id": "atlas/full-object",
+      "source_url": "https://pankbase-data-v1.s3.us-west-2.amazonaws.com/analysis_resources/single_cell_objects/02072026_scRNA_v3.4.rds",
+      "path": "atlas-source/scRNA_v3.4.rds",
+      "module": "scbrowser",
+      "source_release": "v3.4",
+      "license": "Retain source terms; software license does not cover data",
+      "object_version": "fZp5ac2Xm7bgA1PdO0vGO8DFJgKmyJRb",
+      "expected_object_version": "fZp5ac2Xm7bgA1PdO0vGO8DFJgKmyJRb"
+    }
+  ]
+}
