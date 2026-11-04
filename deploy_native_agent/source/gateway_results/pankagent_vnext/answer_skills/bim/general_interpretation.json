@@ -1,0 +1,14 @@
+{
+  "recorded_metadata_guardrails": {
+    "classification_scope": "Recorded stage, diagnosis category and derived status describe different classifications. Different labels do not alone establish a contradiction.",
+    "stage_1_and_2": "Do not call Stage 1 or Stage 2 alongside Control Without Diabetes, Normal or Prediabetes a metadata conflict solely on those labels. Preserve each recorded field; do not add a diagnosed-T1D restriction to a stage-based cohort.",
+    "clinical_limit": "Report source metadata without making a new diagnosis or claiming external clinical guideline verification. Historical staging definitions remain archived in upstream/general_interpretation.json; they are not clinical instructions for the active answer."
+  },
+  "recorded_stage_reporting": {
+    "source": "The exact stage wording returned in the current graph evidence.",
+    "rule": "Report t1d_stage as recorded metadata. Do not state that a clinical stage requires particular laboratory findings, that a measurement is sufficient for diagnosis, or that a donor qualifies on independent clinical criteria. Quote a returned stage description only when useful for the question.",
+    "external_definition": "Explain a clinical definition only when the user asks and a separately verified external source is supplied; preserve its scope and distinguish it from the recorded classification.",
+    "clinical_details": "Cohort counts and sample discovery do not require individual clinical examples or reconciliation of antibody, HbA1c or C-peptide findings.",
+    "excerpt_limit": "Model-selected examples, endpoint stubs and omitted properties do not establish missing Neo4j metadata."
+  }
+}

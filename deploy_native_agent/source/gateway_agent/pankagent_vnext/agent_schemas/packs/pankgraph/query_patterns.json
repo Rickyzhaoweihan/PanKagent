@@ -1,0 +1,230 @@
+{
+  "schema": {
+    "id": "kg-agent.query-patterns",
+    "version": "2.0.0"
+  },
+  "library": {
+    "version": "pankgraph-query-patterns-v2-original-workflow",
+    "graph_release": "PanKgraph_08_04",
+    "rules": [
+      {
+        "id": "coloc_primary",
+        "relations": [
+          "SIGNAL_COLOC_WITH"
+        ],
+        "required_paths": [
+          [
+            "Gene",
+            "SIGNAL_COLOC_WITH",
+            "disease"
+          ]
+        ],
+        "guidance": "Retrieve Gene-to-disease coloc directly. GWAS/QTL membership are independent checks; absent membership must not remove primary coloc. Match recorded signal identifiers with source/context, not shared gene or variant alone."
+      },
+      {
+        "id": "qtl_membership",
+        "relations": [
+          "PART_OF_QTL_SIGNAL"
+        ],
+        "required_paths": [
+          [
+            "variants",
+            "PART_OF_QTL_SIGNAL",
+            "Gene"
+          ]
+        ],
+        "guidance": "QTL tissue and credible_set belong to the relationship. Keep gene, variant and tissue scopes distinct; indexed members need not enumerate the source credible set."
+      },
+      {
+        "id": "gwas_membership",
+        "relations": [
+          "PART_OF_GWAS_SIGNAL"
+        ],
+        "required_paths": [
+          [
+            "variants",
+            "PART_OF_GWAS_SIGNAL",
+            "disease"
+          ]
+        ],
+        "guidance": "GWAS credible_set_id and lead_status belong to the relationship. Apply the release-scoped temporary QTL/GWAS comment for indexed KG lead-signal representatives; do not require a missing lead_status flag. Preserve explicit stored annotations, exact signal identity and the requested disease. P value and PIP are relationship statistics, not gene mentions. For top-k requests retrieve the authorized full population and rank distinct variants by the requested recorded statistic; do not use result order as significance order."
+      },
+      {
+        "id": "same_sample",
+        "relations": [
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [
+          [
+            "donor",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ],
+          [
+            "anatomical_structure",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ],
+          [
+            "data_modality",
+            "HAS_SAMPLE",
+            "Sample_node"
+          ]
+        ],
+        "guidance": "Bind donor, tissue and assay to the SAME sample. For separate requested assays keep each sample bound to the same donor and its requested tissue. Cohort source belongs to donor; literal sample source is distinct. Ordinary filtered sample/cohort counts use the donor-tissue-same-sample structural template when its topology applies; they do not require a named donor identity or a specialized bounded path. Clinical modifiers before a donor source remain donor predicates, not dataset names. Keep genuine multi-hop path requests and typed dependencies in the bounded-path route."
+      },
+      {
+        "id": "independent_measurements",
+        "relations": [
+          "GENE_DETECTED_IN",
+          "GENE_ENRICHED_IN",
+          "T1D_DEG_IN",
+          "MARKER_GENE_OF"
+        ],
+        "required_paths": [],
+        "guidance": "Retrieve detection, enrichment, disease expression and marker annotations independently unless an intersection is explicitly requested. Do not add a required join that erases a category."
+      },
+      {
+        "id": "annotation_sources",
+        "relations": [
+          "FUNCTION_ANNOTATION",
+          "ASSOCIATED_WITH_GO"
+        ],
+        "required_paths": [],
+        "guidance": "Keep explicit annotation resource and GO-domain predicates. Reactome/KEGG pathway records and GO records are separate categories; do not add an unrequested category. Retrieve the full requested annotation set under materialization limits; do not silently select the first ten relationships. Preserve all requested GO domains and KEGG/Reactome types. A bounded display does not authorize bounded retrieval."
+      },
+      {
+        "id": "direct_node_scope",
+        "relations": [
+          "HAS_DONOR",
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [],
+        "guidance": "A donor count independent of sample availability is a direct donor-node query. Bind data_source, t1d_stage and diabetes_type to donor properties using verified runtime categories. Do not invent HAS_DONOR.id or HAS_DONOR.donor_stage properties. Do not add a disease or sample join unless requested. Clinical stage and diabetes category are separate predicates; retain explicit exclusions."
+      },
+      {
+        "id": "same_partner_annotation",
+        "relations": [
+          "PHYSICAL_INTERACTION",
+          "GENETIC_INTERACTION",
+          "FUNCTION_ANNOTATION",
+          "ASSOCIATED_WITH_GO"
+        ],
+        "required_paths": [],
+        "guidance": "For interaction partners annotated to a requested term, use a connected focus Gene—interaction—partner Gene—annotation→term path and put the annotation on the partner role. Bind only focus to the requested gene; never copy its ID to the partner/annotation gene. For shared partners of two genes, require both interaction links to the same partner; then retrieve annotations for those verified partners. Include physical or genetic interaction types exactly as requested."
+      },
+      {
+        "id": "independent_assay_counts",
+        "relations": [
+          "HAS_SAMPLE"
+        ],
+        "required_paths": [],
+        "guidance": "For multiple alternative assays, retrieve separate sample sets for each requested recorded modality and count distinct sample IDs independently. Two assay alternatives do not require one sample to have both labels. Keep donor predicates on donor, modality on sample and anatomy linked to that same sample; do not require anatomy when the user asks for all tissues."
+      }
+    ],
+    "template_topology_routes": [
+      {
+        "id": "donor_tissue_same_sample",
+        "template_id": "donor_tissue_same_sample_records",
+        "node_types": [
+          "donor",
+          "Sample_node",
+          "anatomical_structure"
+        ],
+        "edges": [
+          {
+            "source": "donor",
+            "target": "Sample_node",
+            "relation": "HAS_SAMPLE"
+          },
+          {
+            "source": "anatomical_structure",
+            "target": "Sample_node",
+            "relation": "HAS_SAMPLE"
+          }
+        ],
+        "required_identity_types": [
+          "anatomical_structure"
+        ],
+        "required_predicate_types": [
+          "donor"
+        ]
+      }
+    ]
+  },
+  "providers": {
+    "neo4j": [
+      "structural_template",
+      "gpu_cypher"
+    ],
+    "postgresql": [
+      "verified_coordinate_pattern"
+    ]
+  },
+  "gpu_participation_required": false,
+  "referenced_dependency_entities": [
+    {
+      "relation": "PART_OF_GWAS_SIGNAL",
+      "source_relation": "SIGNAL_COLOC_WITH",
+      "source_property": "gwas_lead_vars",
+      "entity_type": "variants",
+      "id_pattern": "rs\\d+",
+      "max_ids": 8
+    },
+    {
+      "relation": "PART_OF_QTL_SIGNAL",
+      "source_relation": "SIGNAL_COLOC_WITH",
+      "source_property": "qtl_lead_vars",
+      "entity_type": "variants",
+      "id_pattern": "rs\\d+",
+      "max_ids": 8
+    }
+  ],
+  "interval_overlap_patterns": [
+    {
+      "id": "recorded_gene_body_peak_overlap",
+      "anchor": "Gene",
+      "member": "OCR_peak",
+      "context": "anatomical_structure",
+      "relation": "OCR_PEAK_IN",
+      "chromosome": "chr",
+      "assembly": "genome_assembly",
+      "start": "start_loc",
+      "end": "end_loc",
+      "request_pattern": "\\boverlap\\w*\\b.{0,80}\\bgene body\\b|\\bgene body\\b.{0,80}\\boverlap\\w*\\b",
+      "guidance": "For gene-body OCR overlap, use an independent OCR_PEAK_IN task with explicit Gene and anatomical_structure identities and request gene-body overlap in its question. The structural compiler compares recorded chromosome, genome assembly and interval endpoints. Keep the gene-activity task separate. Return overlapping peaks and OCR_PEAK_IN annotations; overlap is not a regulatory edge."
+    }
+  ],
+  "clinical_retrieval": {
+    "population_type": "donor",
+    "sample_type": "Sample_node",
+    "sample_relation": "HAS_SAMPLE",
+    "diagnosis_relation": "HAS_DONOR",
+    "complete": true,
+    "ranking_stage": "formatting",
+    "diagnosis_type": "disease",
+    "template_fields": {
+      "disease": [
+        "id"
+      ],
+      "donor": [
+        "id",
+        "data_source",
+        "t1d_stage",
+        "diabetes_type",
+        "derived_diabetes_status"
+      ],
+      "Sample_node": [
+        "id",
+        "data_modality"
+      ]
+    }
+  },
+  "coordinate_lookup": {
+    "anchor_type": "Gene",
+    "result_type": "OCR_peak",
+    "anchor_mapping": "ensembl_genes_node",
+    "result_mapping": "ocr_peak_node",
+    "sql_schema": "public"
+  }
+}

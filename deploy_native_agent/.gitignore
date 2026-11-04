@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+calls/
+workflow-state/
+state/
+*.env
+*.log
+# Reviewed configuration code: environment names/defaults, no credentials.
+!source/gateway_agent/pankagent_vnext/config.py
+!source/gateway_agent/pankgraph_results/config.py
+!source/gateway_agent/pankgraph_results/vendor/graph_viewer/layout_engine/config.py
+!source/gateway_results/pankagent_vnext/config.py
+!source/gateway_results/pankgraph_results/config.py
+!source/gateway_results/pankgraph_results/vendor/graph_viewer/layout_engine/config.py

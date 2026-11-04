@@ -1,0 +1,206 @@
+"""PanKgraph release vocabulary shared by planning and GPU request construction.
+
+Labels/relationships verified by read-only RL metadata on 2026-09-07.
+Measurement guidance is release-specific, not a scientific answer template.
+"""
+from .agent_schemas import module as schema_module
+import hashlib
+import json
+import re
+
+VERSION = 'pankgraph-08-04-intent-v10-runtime-identity'
+RELATIONS = schema_module('graph_storage')['relationship_guidance']
+LABELS = schema_module('graph_storage')['labels']
+from .semantic_registry import DIGEST as SEMANTIC_DIGEST
+from .release_schema import REGISTRY as RELEASE_REGISTRY, DIGEST as SCHEMA_DIGEST
+from .anatomy_paths import DIGEST as ANATOMY_PATH_DIGEST
+from .numeric_predicates import DIGEST as NUMERIC_PREDICATE_DIGEST
+from .metadata_guard import DIGEST as METADATA_GUARD_DIGEST
+from .ranking_contract import DIGEST as RANKING_CONTRACT_DIGEST
+from .endpoint_types import DIGEST as ENDPOINT_TYPE_DIGEST
+from .measurement_properties import DIGEST as DETECTION_PROPERTY_DIGEST
+from .measurement_scope import DIGEST as MEASUREMENT_SCOPE_DIGEST
+from .anatomy_scope import DIGEST as ANATOMY_SCOPE_DIGEST
+from .coloc_query_guard import DIGEST as COLOC_QUERY_DIGEST
+from .coloc_scope import DIGEST as COLOC_SCOPE_DIGEST
+from .cohort_scope import DIGEST as COHORT_SCOPE_DIGEST
+from .evidence_coverage import DIGEST as EVIDENCE_COVERAGE_DIGEST
+from .scientific_projection import DIGEST as SCIENTIFIC_PROJECTION_DIGEST
+from .query_templates import DIGEST as TEMPLATE_DIGEST
+from .bounded_paths import DIGEST as BOUNDED_PATH_DIGEST
+from .graph_patterns import DIGEST as PATTERN_DIGEST
+from .cypher_repair import VERSION as REPAIR_VERSION, DIGEST as REPAIR_DIGEST
+from pathlib import Path
+# Read source bytes rather than importing graph, which consumes this contract.
+VALIDATOR_DIGEST = hashlib.sha256(Path(__file__).with_name('graph.py').read_bytes()).hexdigest()
+PLANNING_IDENTITY_DIGEST = hashlib.sha256(b''.join(
+    Path(__file__).with_name(name).read_bytes() for name in (
+        'grounding_inventory.py', 'preplanning_grounding.py', 'planning_compile.py', 'planning_scope.py'))).hexdigest()
+DIGEST = hashlib.sha256(json.dumps({'patterns': PATTERN_DIGEST, 'template': TEMPLATE_DIGEST, 'bounded_path': BOUNDED_PATH_DIGEST, 'repair': REPAIR_VERSION, 'repair_implementation': REPAIR_DIGEST, 'validator_implementation': VALIDATOR_DIGEST, 'planning_identity': PLANNING_IDENTITY_DIGEST, 'schema': SCHEMA_DIGEST, 'semantics': SEMANTIC_DIGEST, 'anatomical_roles': ANATOMY_PATH_DIGEST, 'anatomy_scope': ANATOMY_SCOPE_DIGEST, 'coloc_query': COLOC_QUERY_DIGEST, 'coloc_scope': COLOC_SCOPE_DIGEST, 'cohort_scope': COHORT_SCOPE_DIGEST, 'evidence_coverage': EVIDENCE_COVERAGE_DIGEST, 'scientific_projection': SCIENTIFIC_PROJECTION_DIGEST, 'metadata_guard': METADATA_GUARD_DIGEST, 'numeric_predicates': NUMERIC_PREDICATE_DIGEST, 'ranking_contract': RANKING_CONTRACT_DIGEST, 'endpoint_types': ENDPOINT_TYPE_DIGEST, 'detection_properties': DETECTION_PROPERTY_DIGEST, 'measurement_scope': MEASUREMENT_SCOPE_DIGEST, 'version': VERSION, 'relations': RELATIONS, 'labels': LABELS}, sort_keys=True).encode()).hexdigest()
+
+
+def planner_notes():
+    return ('\nVerified release contract '+VERSION+' (no other relationship names):\n'
+            + '\n'.join(k+': '+v for k,v in RELATIONS.items())
+            + '\nGene-to-cell expression, enrichment, differential-expression and activity records are existing cell-type summaries. '
+              'They cannot be re-stratified by donor age, sex, HLA, clinical stage or other donor metadata through a HAS_DONOR/HAS_SAMPLE join. '
+              'For such a comparison, explain that donor-level expression data is required and offer the recorded cell-type summary as an explicit scope change. '
+              'Do not remove the donor restriction silently. Disease comparisons already encoded by T1D_DEG_IN and its recorded columns remain supported without adding donor-node predicates.')
+
+
+def generation_request(step, base_question):
+    """Add binding guidance without removing any original biological modifier."""
+    from .coloc_query_guard import compact_generation_request
+    compact = compact_generation_request(step, base_question)
+    from .graph_patterns import guidance
+    if compact is not None:
+        result = compact + guidance(step.get('relation_types') or [], include_paths=False)
+        if len(result) > 4000:
+            raise ValueError('generation_question_too_long')
+        return result
+    from .numeric_predicates import guidance as numeric_guidance
+    base_question += numeric_guidance(step)
+    from .ranking_contract import guidance as ranking_guidance
+    base_question += ranking_guidance(step)
+    if any(r.get('match_kind') == 'recorded_stage_scope' for r in step.get('resolved_constraints', [])) and base_question == step.get('question'):
+        # Disambiguate only the verified stage terminology in generator input.
+        # The original wording and canonical stored stage remain in the plan.
+        base_question = re.sub(r'\bT1D\b|\btype\s*1\s*diabetes\b', 'donor-stage metadata', base_question, flags=re.I)
+    base_question += guidance(step.get('relation_types') or [])
+    if set(step.get('relation_types') or []) & {'PHYSICAL_INTERACTION','GENETIC_INTERACTION'}:
+        base_question += '\nFor all interaction partners use an undirected relationship match, covering either stored endpoint. Only use a directional match if the user explicitly requested incoming/outgoing direction.'
+    relations = step.get('relation_types') or []
+    bindings = []
+    resolved = {e.get('constraint_index'): e for e in step.get('resolved_entities', []) if e.get('state') == 'resolved'}
+    for i, c in enumerate(step.get('constraints', [])):
+        e = resolved.get(i)
+        if e:
+            bindings.append(f"{e['entity_type']} with id {json.dumps(e['id'])} (verified name {json.dumps(e.get('name'))}); these identify the same entity")
+        else:
+            bindings.append(f"{c.get('entity_type') or 'recorded property'} {c.get('property')} {c.get('operator')} {json.dumps(c.get('value'))}")
+    from .semantic_registry import semantic_intent
+    if step.get('semantic_registry') and semantic_intent(step):
+        requirements=step.get('sample_requirements',{})
+        from .semantic_registry import sample_lookup_requested
+        samples=sample_lookup_requested(step) or bool(requirements.get('modality_groups')) or any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints',[]))
+        disease_requested=any(c.get('entity_type')=='disease' for c in step.get('constraints',[]))
+        donor_cohort = [c for c in step.get('constraints', [])
+                        if c.get('entity_type') == 'donor'
+                        and c.get('property') in {'diabetes_type', 'derived_diabetes_status'}]
+        paths=('disease -HAS_DONOR-> donor' if disease_requested else
+               'donor filtered by the verified recorded donor cohort predicates; no disease-node identity filter was requested'
+               if donor_cohort else
+               'donor; no disease-node identity or recorded donor cohort filter was requested')
+        if samples:
+            paths+='; donor -HAS_SAMPLE-> Sample_node'
+            if any(c.get('entity_type')=='anatomical_structure' for c in step.get('constraints', [])):
+                paths+='; anatomical_structure -HAS_SAMPLE-> the SAME Sample_node'
+            else:
+                paths+='; no required tissue join, return available sample annotations'
+        text=base_question+'\nUse these verified bindings (replace shorthand values in the question): '+'; '.join(bindings)+'.'
+        text+='\nRequired connected schema paths: '+paths+'.'
+        if samples:text+=' Sample_node.data_modality stores the assay. Tissue is matched on the linked anatomical_structure; do not filter the descriptive Sample_node.anatomical_structure string.'
+        else:text+=' Donor-only lookup: no sample or assay joins or filters.'
+        if requirements.get('separate_bindings'):text+=' For RNA AND ATAC use two Sample_node variables, each linked to the SAME donor and requested tissue and constrained to its corresponding modality group. They may identify the same multiome sample.'
+        text+=' Return all matched nodes and connecting relationships with properties, as nodes and edges. No LIMIT, SKIP, list slices, rank, or additional filters.'
+        if len(text)>4000:raise ValueError('generation_question_too_long')
+        return text
+    notes = [RELATIONS[r] for r in relations if r in RELATIONS]
+    if 'SIGNAL_COLOC_WITH' in relations:
+        from .coloc_query_guard import GUIDANCE
+        notes.append(GUIDANCE)
+    suffix = '\nRequired relationship types: '+', '.join(relations)+'.' if relations else ''
+    if bindings: suffix += '\nRequired entity/property constraints: '+'; '.join(bindings)+'.'
+    if notes: suffix += '\n'+'\n'.join(notes)
+    suffix += '\nReturn matching nodes and relationships with properties. Do not add unrequested disease, donor, significance or rank filters.'
+    if step.get('complete', True): suffix += ' Return all matches without LIMIT, SKIP or list slices.'
+    if step.get('interpretation_stage') == 'formatting':
+        suffix += ' Ranking and interpretation happen after retrieval. No ORDER BY or aggregation that discards records.'
+    from .semantic_registry import generation_guidance
+    result = base_question + suffix + generation_guidance(step)
+    # Never silently truncate a scientific constraint to fit the API.
+    if len(result) > 4000:
+        raise ValueError('generation_question_too_long')
+    return result
+
+MEASUREMENTS = {'GENE_ENRICHED_IN', 'GENE_DETECTED_IN', 'MARKER_GENE_OF', 'T1D_DEG_IN'}
+
+
+def independent_measurement_steps(plan):
+    """Prevent an accidental inner join from narrowing independent measurements."""
+    from copy import deepcopy
+    result = deepcopy(plan)
+    expanded = []
+    mapping = {}
+    for step in result.get('steps', []):
+        kinds = step.get('relation_types') or []
+        annotations = (len(set(kinds)) > 1 and set(kinds) <= {'FUNCTION_ANNOTATION','ASSOCIATED_WITH_GO'}
+            and all(c.get('entity_type') == 'Gene' and c.get('property') in {'id','name'}
+                    for c in step.get('constraints', [])))
+        if annotations and step.get('evidence_combination', 'independent') == 'independent':
+            ids=[]
+            for index, kind in enumerate(dict.fromkeys(kinds),1):
+                child=deepcopy(step)
+                child['id']=step['id']+'_annotation_'+str(index)
+                child['relation_types']=[kind]
+                child['title']='Check '+('pathway annotations' if kind=='FUNCTION_ANNOTATION' else 'GO annotations')
+                child['question']=step['question']+'\nRetrieve only '+kind+' evidence in this check. The other annotation category is checked independently; do not require it to exist.'
+                ids.append(child['id']);expanded.append(child)
+            mapping[step['id']]=ids
+            continue
+        if len(kinds) > 1 and set(kinds) <= MEASUREMENTS and step.get('evidence_combination', 'independent') == 'independent':
+            if any(c.get('property') not in ('id', 'name') for c in step.get('constraints', [])):
+                result.update(steps=[], clarification='These measurements have different filters. Please separate the measurement checks so each keeps its intended condition and statistical criteria.')
+                return result
+            ids = []
+            for index, kind in enumerate(kinds):
+                child = deepcopy(step)
+                child['id'] = step['id'] + '_measurement_' + str(index + 1)
+                child['relation_types'] = [kind]
+                child['question'] = step['question'] + '\nRetrieve only '+kind+' evidence in this step; the other measurement types are checked independently. Do not require the other relationships to exist.'
+                child['title'] = step.get('title', 'Check recorded evidence') + ' — ' + {'GENE_ENRICHED_IN':'enrichment', 'GENE_DETECTED_IN':'detection', 'MARKER_GENE_OF':'marker annotation', 'T1D_DEG_IN':'differential expression'}[kind]
+                ids.append(child['id']); expanded.append(child)
+            mapping[step['id']] = ids
+        else:
+            expanded.append(step)
+    if len(expanded) > 12:
+        result.update(steps=[], clarification='This comparison needs more than twelve independent evidence checks. Please narrow the requested measurements or entities.')
+        return result
+    for step in expanded:
+        step['depends_on'] = [child for parent in step.get('depends_on', []) for child in mapping.get(parent, [parent])]
+    result['steps'] = expanded
+    return result
+
+
+def normalize_release_constraints(step):
+    """Bind verified release concepts without changing generated Cypher."""
+    from copy import deepcopy
+    result = deepcopy(step)
+    kinds = set(result.get('relation_types') or [])
+    constraints, mappings = [], list(result.get('schema_bindings') or [])
+    compiled = result.get('constraint_compilation') or []
+    for index, constraint in enumerate(result.get('constraints', [])):
+        c = dict(constraint)
+        if kinds == {'ASSOCIATED_WITH_GO'} and c.get('property') in ('namespace', 'ontology_namespace', 'go_domain') and c.get('entity_type') in (None, 'GO_term'):
+            if c.get('property') != 'go_domain' or c.get('entity_type') != 'GO_term':
+                mappings.append({'from': deepcopy(c), 'to': 'GO_term.go_domain', 'contract': VERSION})
+            c.update(property='go_domain', entity_type='GO_term')
+        relation_contexts = [binding.get('relation_context') for binding in compiled
+            if binding.get('constraint_index') == index
+            and binding.get('canonical_binding') == c
+            and binding.get('schema_digest') == SCHEMA_DIGEST]
+        encoded = [context for context in relation_contexts
+                   if isinstance(context, dict)
+                   and context.get('kind') == 'verified_grounded_relation_context'
+                   and context.get('relation_type') in kinds
+                   and context.get('entity_type') == c.get('entity_type')
+                   and context.get('graph_release') == RELEASE_REGISTRY['release']]
+        if len(encoded) == 1:
+            relation_type = encoded[0]['relation_type']
+            mappings.append({'from': deepcopy(c), 'to': 'required relationship ' + relation_type,
+                             'contract': VERSION})
+            continue
+        constraints.append(c)
+    result['constraints'] = constraints
+    if mappings: result['schema_bindings'] = mappings
+    return result

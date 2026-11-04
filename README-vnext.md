@@ -1,3 +1,5 @@
+> **Current dev agent (2026-11-04):** see [deployed native agent source and configuration](deploy_native_agent/README.md). The sections below describe retained vNext architecture/history.
+
 # PanKagent vNext (isolated development service)
 
 This application adds a graph-first, confirmation-gated workflow alongside the

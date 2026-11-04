@@ -1,0 +1,98 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "pack",
+    "standard",
+    "modules",
+    "execution_modes",
+    "primary_backend"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": {
+        "id": "kg-agent.pack",
+        "version": "2.0.0"
+      }
+    },
+    "pack": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "standard": {
+      "type": "object",
+      "required": [
+        "repository",
+        "branch",
+        "version",
+        "commit",
+        "contract_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "contract_sha256": {
+          "type": "string"
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "required": [
+        "database_schema",
+        "query_patterns",
+        "semantic_interpretation",
+        "validation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "database_schema": {
+          "type": "string"
+        },
+        "query_patterns": {
+          "type": "string"
+        },
+        "semantic_interpretation": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "string"
+        }
+      }
+    },
+    "execution_modes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "primary_backend": {
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

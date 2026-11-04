@@ -1,0 +1,724 @@
+{
+  "schema": {
+    "id": "kg-agent.database",
+    "version": "2.0.0"
+  },
+  "release": "SYNTHETIC_FIXTURE_NOT_BIOLOGICAL_EVIDENCE",
+  "registry_version": "release-schema-v1",
+  "identity_strength": "schema_and_anchors",
+  "nodes": {
+    "Gene": {
+      "labels": [
+        "Gene"
+      ],
+      "description": "Gene",
+      "properties": {
+        "id": {
+          "storage_name": "id",
+          "description": "id",
+          "role": "identity",
+          "declared_types": [],
+          "units": null,
+          "pattern": "^ENSG[0-9]+$",
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "str": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": "SYNTHETIC_Gene_1",
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null,
+            "pattern_check": {
+              "pattern": "^ENSG[0-9]+$",
+              "matching_records": 0,
+              "mismatching_records": 1
+            }
+          }
+        },
+        "name": {
+          "storage_name": "name",
+          "description": "name",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "str": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": "Synthetic Gene",
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null
+          }
+        },
+        "synonyms": {
+          "storage_name": "synonyms",
+          "description": "synonyms",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "list": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": [
+                  "synthetic example alias"
+                ],
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null,
+            "list_lengths": {
+              "min": 1,
+              "max": 1
+            },
+            "elements": {
+              "status": "complete",
+              "exhaustive": true,
+              "distinct_count": 1,
+              "observed_distinct_count": 1,
+              "present_records": 1,
+              "stored_types": {
+                "str": 1
+              },
+              "empty_string_records": 0,
+              "empty_list_records": 0,
+              "examples": [
+                {
+                  "value": "synthetic example alias",
+                  "frequency": 1
+                }
+              ],
+              "observed_numeric_range": null
+            }
+          }
+        }
+      },
+      "identity": {
+        "id_field": "id",
+        "name_fields": [
+          "name",
+          "hgnc_symbol",
+          "hgnc_id"
+        ],
+        "synonym_field": "synonyms"
+      },
+      "aliases": {},
+      "reviewed_aliases": [],
+      "query_terms": "\\bgenes?\\b|gene profile",
+      "observations": {
+        "status": "complete",
+        "source": "synthetic_fixture",
+        "count": 1,
+        "prototypes": [
+          {
+            "properties": {
+              "id": "SYNTHETIC_Gene_1",
+              "name": "Synthetic Gene",
+              "synonyms": [
+                "synthetic example alias"
+              ]
+            }
+          }
+        ],
+        "prototypes_exhaustive": true
+      },
+      "record_export": "public"
+    },
+    "disease": {
+      "labels": [
+        "disease"
+      ],
+      "description": "disease",
+      "properties": {
+        "id": {
+          "storage_name": "id",
+          "description": "id",
+          "role": "identity",
+          "declared_types": [],
+          "units": null,
+          "pattern": "^MONDO_[0-9]+$",
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "str": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": "SYNTHETIC_disease_1",
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null,
+            "pattern_check": {
+              "pattern": "^MONDO_[0-9]+$",
+              "matching_records": 0,
+              "mismatching_records": 1
+            }
+          }
+        },
+        "name": {
+          "storage_name": "name",
+          "description": "name",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "str": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": "Synthetic disease",
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null
+          }
+        },
+        "synonyms": {
+          "storage_name": "synonyms",
+          "description": "synonyms",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "complete",
+            "exhaustive": true,
+            "distinct_count": 1,
+            "observed_distinct_count": 1,
+            "present_records": 1,
+            "missing_records": 0,
+            "stored_types": {
+              "list": 1
+            },
+            "empty_string_records": 0,
+            "empty_list_records": 0,
+            "examples": [
+              {
+                "value": [
+                  "synthetic example alias"
+                ],
+                "frequency": 1
+              }
+            ],
+            "observed_numeric_range": null,
+            "list_lengths": {
+              "min": 1,
+              "max": 1
+            },
+            "elements": {
+              "status": "complete",
+              "exhaustive": true,
+              "distinct_count": 1,
+              "observed_distinct_count": 1,
+              "present_records": 1,
+              "stored_types": {
+                "str": 1
+              },
+              "empty_string_records": 0,
+              "empty_list_records": 0,
+              "examples": [
+                {
+                  "value": "synthetic example alias",
+                  "frequency": 1
+                }
+              ],
+              "observed_numeric_range": null
+            }
+          }
+        }
+      },
+      "identity": {
+        "id_field": "id",
+        "name_fields": [
+          "name"
+        ],
+        "synonym_field": "synonyms"
+      },
+      "aliases": {},
+      "reviewed_aliases": [],
+      "query_terms": "\\bdiseases?\\b|diabet",
+      "observations": {
+        "status": "complete",
+        "source": "synthetic_fixture",
+        "count": 1,
+        "prototypes": [
+          {
+            "properties": {
+              "id": "SYNTHETIC_disease_1",
+              "name": "Synthetic disease",
+              "synonyms": [
+                "synthetic example alias"
+              ]
+            }
+          }
+        ],
+        "prototypes_exhaustive": true
+      },
+      "record_export": "public"
+    }
+  },
+  "relationships": {
+    "SIGNAL_COLOC_WITH": {
+      "endpoints": [
+        {
+          "source": [
+            "Gene"
+          ],
+          "target": [
+            "disease",
+            "ontology"
+          ],
+          "records": 23
+        }
+      ],
+      "properties": {
+        "coloc_dataset": {
+          "storage_name": "coloc_dataset",
+          "description": "coloc dataset",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "data_source": {
+          "storage_name": "data_source",
+          "description": "data source",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "data_version": {
+          "storage_name": "data_version",
+          "description": "data version",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "end_id": {
+          "storage_name": "end_id",
+          "description": "end id",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "gwas_lead_vars": {
+          "storage_name": "gwas_lead_vars",
+          "description": "gwas lead vars",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "gwas_locus_name": {
+          "storage_name": "gwas_locus_name",
+          "description": "gwas locus name",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "gwas_signal_id": {
+          "storage_name": "gwas_signal_id",
+          "description": "gwas signal id",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "nsnp": {
+          "storage_name": "nsnp",
+          "description": "nsnp",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "pp_h0_abf": {
+          "storage_name": "pp_h0_abf",
+          "description": "pp h0 abf",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "pp_h1_abf": {
+          "storage_name": "pp_h1_abf",
+          "description": "pp h1 abf",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "pp_h2_abf": {
+          "storage_name": "pp_h2_abf",
+          "description": "pp h2 abf",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "pp_h3_abf": {
+          "storage_name": "pp_h3_abf",
+          "description": "pp h3 abf",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "pp_h4_abf": {
+          "storage_name": "pp_h4_abf",
+          "description": "pp h4 abf",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "qtl_lead_vars": {
+          "storage_name": "qtl_lead_vars",
+          "description": "qtl lead vars",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "qtl_locus_name": {
+          "storage_name": "qtl_locus_name",
+          "description": "qtl locus name",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "qtl_signal_id": {
+          "storage_name": "qtl_signal_id",
+          "description": "qtl signal id",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        },
+        "start_id": {
+          "storage_name": "start_id",
+          "description": "start id",
+          "role": "annotation",
+          "declared_types": [],
+          "units": null,
+          "pattern": null,
+          "export": "public",
+          "query_terms": [],
+          "request_pattern": null,
+          "interpretation_refs": [],
+          "observations": {
+            "status": "unprofiled",
+            "exhaustive": false
+          }
+        }
+      },
+      "query_terms": "coloc|colocali[sz]",
+      "annotation_links": [],
+      "observations": {
+        "status": "complete",
+        "source": "synthetic_fixture",
+        "count": 1,
+        "prototype_status": "available",
+        "prototypes_exhaustive": true,
+        "prototypes": [
+          {
+            "source_id": "SYNTHETIC_Gene_1",
+            "source_types": [
+              "Gene"
+            ],
+            "target_id": "SYNTHETIC_disease_1",
+            "target_types": [
+              "disease"
+            ],
+            "record_id": "synthetic:coloc:1",
+            "properties": {
+              "gwas_signal_id": "synthetic:gwas:1",
+              "qtl_signal_id": "synthetic:qtl:1"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "lookup": {
+    "public_labels": [
+      "Gene",
+      "disease"
+    ],
+    "index_name": "pankagent_public_entities_v1",
+    "id_field": "id",
+    "name_fields": [
+      "name",
+      "hgnc_symbol",
+      "hgnc_id"
+    ],
+    "synonym_field": "synonyms",
+    "lookup_order": [
+      "exact_id",
+      "casefold_name",
+      "recorded_synonym",
+      "indexed_fuzzy"
+    ],
+    "max_candidates": 10,
+    "fuzzy_selection": "contextual_model_choice",
+    "case_variants_require_clarification": false,
+    "exact_only_labels": [],
+    "session_references": []
+  },
+  "postgresql": {
+    "enabled": false,
+    "status": "mapping_unverified",
+    "role": "optional_coordinate_accelerator",
+    "mappings": {
+      "ocr_peak_node": {
+        "node_type": "OCR_peak",
+        "id": "id",
+        "properties": {
+          "chr": "chr",
+          "start": "start_loc",
+          "end": "end_loc"
+        }
+      },
+      "ensembl_genes_node": {
+        "node_type": "Gene",
+        "id": "id"
+      },
+      "gwas_snp_id_node": {
+        "node_type": "variants",
+        "id": "id"
+      },
+      "qtl_snp_node": {
+        "node_type": "variants",
+        "id": "id"
+      }
+    },
+    "requires": [
+      "release_pairing",
+      "id_membership",
+      "assembly",
+      "coordinate_convention",
+      "boundary_checks"
+    ]
+  },
+  "profiling": {
+    "small_domain_threshold": 5,
+    "examples": 3,
+    "frequency": "owning_records",
+    "incomplete_is_exhaustive": false
+  },
+  "observations": {
+    "status": "complete",
+    "source": "synthetic_fixture",
+    "warning": "Not biological results or an executable PanKgraph pack."
+  }
+}

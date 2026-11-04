@@ -1,0 +1,149 @@
+"""Durable immutable input snapshots and idempotent result jobs."""
+from contextlib import contextmanager
+from pankagent_vnext.ownership import OwnerLease
+import hashlib
+import json
+from pathlib import Path
+import sqlite3
+import time
+import uuid
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+class ResultStore:
+    def __init__(self, directory):
+        self.audit_dropped = 0
+        self.owner = None
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.path = self.directory / "results.sqlite3"
+        with self.db() as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("CREATE TABLE IF NOT EXISTS results (id TEXT PRIMARY KEY, cache_key TEXT UNIQUE, source TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS audit_events (result_id TEXT, event_id TEXT, kind TEXT, received REAL, payload TEXT, PRIMARY KEY(result_id,event_id))")
+            db.execute("CREATE TABLE IF NOT EXISTS result_ownership (result_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, owner_epoch INTEGER NOT NULL)")
+            OwnerLease.initialize(db)
+        self.path.chmod(0o600)
+
+    def db(self):
+        db = sqlite3.connect(self.path, timeout=5)
+        db.row_factory = sqlite3.Row
+        return db
+
+    @contextmanager
+    def transaction(self):
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if self.owner is not None:
+                self.owner.assert_owned(db)
+            yield db
+
+    def acquire_owner(self, ttl=60.0, clock=time.time):
+        lease = OwnerLease("pankgraph-results", ttl, clock)
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            lease.acquire(db)
+        self.owner = lease
+        return lease.snapshot()
+
+    def renew_owner(self):
+        with self.transaction() as db:
+            self.owner.renew(db)
+        return self.owner.snapshot()
+
+    def release_owner(self):
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.owner.release(db)
+
+    def audit_drop(self):
+        self.audit_dropped += 1
+
+    def create(self, source, identity, *, initial=None):
+        key = digest(identity)
+        now = time.time()
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM results WHERE cache_key=?", (key,)).fetchone()
+            if row:
+                return json.loads(row["payload"]), False
+            rid = str(uuid.uuid4())
+            payload = {"version": 1, "result_id": rid, "status": "preparing", "component_status": {"graph": "pending", "layout": "pending", "resources": "pending", "answer": "pending"}, "created_at": now, "updated_at": now}
+            if initial:
+                if {"result_id", "version", "created_at", "updated_at"}.intersection(initial):
+                    raise ValueError("immutable_result_identity")
+                payload.update(initial)
+            db.execute("INSERT INTO results (id,cache_key,source,payload,created,updated) VALUES (?,?,?,?,?,?)", (rid, key, json.dumps(source), json.dumps(payload), now, now))
+            if self.owner is not None:
+                db.execute("INSERT INTO result_ownership VALUES (?,?,?)", (rid, self.owner.owner_id, self.owner.epoch))
+            return payload, True
+
+    def get(self, rid):
+        with self.db() as db:
+            row = db.execute("SELECT payload FROM results WHERE id=?", (rid,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def by_identity(self, identity):
+        with self.db() as db:
+            row = db.execute("SELECT payload FROM results WHERE cache_key=?", (digest(identity),)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def source(self, rid):
+        with self.db() as db:
+            row = db.execute("SELECT source FROM results WHERE id=?", (rid,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def previous_presentation(self, run_id, exclude):
+        with self.db() as db:
+            row = db.execute("SELECT payload FROM results WHERE json_extract(source,'$.run_id')=? AND id<>? AND json_type(payload,'$.xy_json')='object' ORDER BY updated DESC LIMIT 1", (run_id, exclude)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def update(self, rid, **changes):
+        with self.transaction() as db:
+            row = db.execute("SELECT payload FROM results WHERE id=?", (rid,)).fetchone()
+            if row is None:
+                raise KeyError(rid)
+            payload = json.loads(row[0])
+            if "component_status" in changes:
+                changes["component_status"] = {**payload.get("component_status", {}), **changes["component_status"]}
+            payload.update(changes, updated_at=time.time())
+            db.execute("UPDATE results SET payload=?,updated=? WHERE id=?", (json.dumps(payload, allow_nan=False), payload["updated_at"], rid))
+        return payload
+
+    def interrupt(self, *, recovery=False):
+        with self.db() as db:
+            query, params = "SELECT id,payload FROM results LEFT JOIN result_ownership ON result_ownership.result_id=results.id", ()
+            if self.owner is not None:
+                self.owner.assert_owned(db)
+                if recovery:
+                    query += " WHERE owner_epoch IS NULL OR owner_epoch < ?"
+                    params = (self.owner.epoch,)
+                else:
+                    query += " WHERE owner_id=? AND owner_epoch=?"
+                    params = (self.owner.owner_id, self.owner.epoch)
+            rows = list(db.execute(query, params))
+        for row in rows:
+            value = json.loads(row["payload"])
+            pending = {k: "interrupted" for k, v in value.get("component_status", {}).items() if v == "pending"}
+            if pending:
+                self.update(row["id"], status="interrupted" if value["status"] == "preparing" else "ready", component_status=pending, error="service_restarted")
+
+    def audit_event(self, rid, kind, payload, event_id=None):
+        try:
+            raw = json.dumps(payload, allow_nan=False)
+            if len(raw.encode()) > 32000: raise ValueError("audit_payload_limit")
+            with self.transaction() as db:
+                if event_id and db.execute("SELECT 1 FROM audit_events WHERE result_id=? AND event_id=?", (rid,event_id)).fetchone(): return "duplicate"
+                if db.execute("SELECT COUNT(*) FROM audit_events WHERE result_id=?", (rid,)).fetchone()[0] >= 1000: raise ValueError("audit_event_limit")
+                db.execute("INSERT INTO audit_events VALUES (?,?,?,?,?)", (rid,event_id or str(uuid.uuid4()),kind,time.time(),raw))
+            return "recorded"
+        except (sqlite3.Error, ValueError, TypeError):
+            self.audit_dropped += 1
+            return "unavailable"
+
+    def probe(self):
+        with self.db() as db:
+            db.execute("SELECT 1").fetchone()
+        return {"state": "healthy", "audit_dropped": self.audit_dropped}

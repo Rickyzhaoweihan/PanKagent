@@ -1,0 +1,123 @@
+{
+  "version": "pankgraph-anatomical-roles-2026-09-08-v2",
+  "graph_release": "PanKgraph_08_04",
+  "source_sha256": "467396e21cefc9836a010629185ddf24bddb261ce8b3ece19fb105d871bded94",
+  "node_count": 58,
+  "roles": {
+    "CL_0000057": "cell_type",
+    "CL_0000075": "cell_type",
+    "CL_0000084": "cell_type",
+    "CL_0000094": "cell_type",
+    "CL_0000115": "cell_type",
+    "CL_0000136": "cell_type",
+    "CL_0000146": "cell_type",
+    "CL_0000169": "cell_type",
+    "CL_0000171": "cell_type",
+    "CL_0000171_active": "cell_type",
+    "CL_0000173": "cell_type",
+    "CL_0000192": "cell_type",
+    "CL_0000235": "cell_type",
+    "CL_0000236": "cell_type",
+    "CL_0000451": "cell_type",
+    "CL_0000509": "cell_type",
+    "CL_0000542": "cell_type",
+    "CL_0000577": "cell_type",
+    "CL_0000738": "cell_type",
+    "CL_0000775": "cell_type",
+    "CL_0002064": "cell_type",
+    "CL_0002079": "cell_type",
+    "CL_0002079_MUC5B": "cell_type",
+    "CL_0002080": "cell_type",
+    "CL_0002275": "cell_type",
+    "CL_0002275_CL_0005019": "cell_type",
+    "CL_0002410": "cell_type",
+    "CL_0002410_active": "cell_type",
+    "CL_0002410_quiescent": "cell_type",
+    "CL_0002574": "cell_type",
+    "CL_0005019": "cell_type",
+    "CL_0008024": "cell_type",
+    "CL_1000322": "cell_type",
+    "CL_1001433": "cell_type",
+    "CL_1001599": "cell_type",
+    "CL_2000001": "tissue",
+    "PANKREGION:001": "region",
+    "PANKREGION:002": "region",
+    "PANKREGION:003": "region",
+    "PANKREGION:004": "region",
+    "PANKREGION:005": "region",
+    "PANKREGION:006": "region",
+    "PANKREGION:007": "region",
+    "PANKREGION:008": "region",
+    "PANKREGION:009": "region",
+    "PANKREGION:010": "region",
+    "PANKREGION:011": "region",
+    "PANKREGION:012": "region",
+    "UBERON_0000006": "tissue",
+    "UBERON_0000017": "tissue",
+    "UBERON_0000029": "tissue",
+    "UBERON_0000178": "tissue",
+    "UBERON_0001069": "region",
+    "UBERON_0001150": "region",
+    "UBERON_0001151": "region",
+    "UBERON_0001264": "tissue",
+    "UBERON_0002106": "tissue",
+    "UBERON_0015865": "tissue"
+  },
+  "endpoint_roles": {
+    "HAS_CELL_TYPE": {
+      "source_categories": [
+        "cell_type"
+      ],
+      "target_categories": [
+        "tissue"
+      ],
+      "complete_inventory_edges": 8,
+      "description": "cell_type_to_tissue"
+    },
+    "MARKER_GENE_OF": {
+      "source_categories": null,
+      "target_categories": [
+        "cell_type"
+      ],
+      "complete_inventory_edges": 124,
+      "description": "Gene_to_cell_type"
+    },
+    "PART_OF": {
+      "source_categories": [
+        "region",
+        "tissue"
+      ],
+      "target_categories": [
+        "tissue"
+      ],
+      "complete_inventory_edges": 19,
+      "description": "region_or_tissue_to_tissue"
+    },
+    "SUBCLASS_OF": {
+      "source_categories": [
+        "cell_type",
+        "tissue"
+      ],
+      "target_categories": [
+        "cell_type"
+      ],
+      "complete_inventory_edges": 23,
+      "description": "child_to_parent_cell_group"
+    },
+    "HAS_STATE": {
+      "source_categories": [
+        "cell_type"
+      ],
+      "target_categories": [
+        "cell_type"
+      ],
+      "complete_inventory_edges": 4,
+      "description": "base_cell_type_to_recorded_state"
+    }
+  },
+  "endpoint_inventory_sha256": {
+    "history-anatomy-role-inventory.private.json": "a90f071079d8533d786364457232d39b12eaabc613c2abd4d28bc3a3eb91ea2b",
+    "history-marker-role-reference.private.json": "54c7c12bd12a6667ce8cff85f6fdfba1ea40d668a88908636d94ccd9f5962c7f",
+    "history-full-anatomy-paths.private.json": "4eec6dc77d0d1b0b4a833a2894bfbff366919cc0aad988fd6e9c211a3d9079a7"
+  }
+}

@@ -1,0 +1,289 @@
+{
+  "schema": {
+    "id": "kg-agent.validation",
+    "version": "2.0.0"
+  },
+  "limits": {
+    "lookup_batches": 2,
+    "requests_per_batch": 6,
+    "candidates_per_request": 10,
+    "planning_proposals": 3,
+    "execution_repairs": 2,
+    "total_claude_calls": 7
+  },
+  "scope_compilers": [
+    "cohort_scope",
+    "property_owners",
+    "independent_measurements",
+    "coloc_tissue",
+    "requested_scope",
+    "genomic_scope",
+    "dependency_bindings"
+  ],
+  "invariants": [
+    "failed_is_not_empty",
+    "backend_ids_before_compaction",
+    "failed_parent_never_unrestricted",
+    "incomplete_exclusion_not_proof",
+    "independent_success_survives",
+    "exact_counts_require_complete_scope"
+  ],
+  "diagnostic_reasons": {
+    "missing_requested_scope:Gene": "REQUESTED_ENTITY_BINDING_MISSING",
+    "invalid_dependency_target_role": "DEPENDENCY_ROLE_INVALID",
+    "missing_requested_scope:tissue": "REQUESTED_TISSUE_BINDING_MISSING",
+    "combination_role_requires_parent_path_spec": "COMBINATION_ROLE_UNBOUND",
+    "combination_role_missing_from_parent_path": "COMBINATION_ROLE_UNBOUND"
+  },
+  "backend_materialization": {
+    "max_nodes": 12000,
+    "max_edges": 20000,
+    "max_bytes": 12000000,
+    "on_exhaustion": "partial_never_exhaustive_count"
+  },
+  "repair_guidance": {
+    "value_owner_mismatch": "Inspect the owner property and related entity. Reconcile duplicate tissue-name predicates with the verified tissue-ID relationship; retain the requested tissue restriction.",
+    "stage_not_diagnosis": "A stage predicate does not authorize a diagnosis join.",
+    "annotation_projection": "Retrieve requested annotation relationships without making optional annotations mandatory matches.",
+    "combination_role": "Custom role selectors require matching typed roles in the parent path_spec; otherwise select verified source/target endpoints. Do not invent a role after query execution.",
+    "invalid_measurement_property": "Inspect the requested relationship property definitions and use their exact owned fields. Do not invent measurement thresholds.",
+    "unrequested_clinical_join": "Use only verified requested donor stage/cohort and sample/tissue predicates. A stage does not authorize a disease-node identity or diagnosed-diabetes predicate. Preserve explicitly approved clinical predicates exactly."
+  },
+  "result_checks": [
+    "completed_execution",
+    "materialized_endpoints"
+  ],
+  "structural_budget_hints": [
+    {
+      "id": "reviewed_interaction_annotation_fanout",
+      "graph_release": "PanKgraph_08_04",
+      "basis": "Historical measured fan-out for the three bounded interaction/annotation branches; retains existing allocation pending independent generic calibration. No entity IDs or question matching.",
+      "route_kind": "verified_bounded_path",
+      "version": "bounded-path-v1",
+      "shapes": {
+        "direct_annotations": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "process",
+              [
+                "kegg",
+                "reactome"
+              ]
+            ]
+          ],
+          [
+            [
+              "annotation",
+              "focus",
+              "process",
+              [
+                "FUNCTION_ANNOTATION"
+              ],
+              "out"
+            ]
+          ]
+        ],
+        "interaction_partners": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "partner",
+              [
+                "Gene"
+              ]
+            ]
+          ],
+          [
+            [
+              "interaction",
+              "focus",
+              "partner",
+              [
+                "GENETIC_INTERACTION",
+                "PHYSICAL_INTERACTION"
+              ],
+              "either"
+            ]
+          ]
+        ],
+        "partner_annotations": [
+          [
+            [
+              "focus",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "partner",
+              [
+                "Gene"
+              ]
+            ],
+            [
+              "process",
+              [
+                "kegg",
+                "reactome"
+              ]
+            ]
+          ],
+          [
+            [
+              "interaction",
+              "focus",
+              "partner",
+              [
+                "GENETIC_INTERACTION",
+                "PHYSICAL_INTERACTION"
+              ],
+              "either"
+            ],
+            [
+              "annotation",
+              "partner",
+              "process",
+              [
+                "FUNCTION_ANNOTATION"
+              ],
+              "out"
+            ]
+          ]
+        ]
+      },
+      "weights": {
+        "direct_annotations": 1,
+        "interaction_partners": 6,
+        "partner_annotations": 14
+      }
+    }
+  ],
+  "template_warning_exceptions": {
+    "interval_overlap_records": {
+      "warnings": [
+        "schema_or_plan_warning:CartesianProduct"
+      ],
+      "basis": "The exact compiled overlap template has one verified Gene identity and one verified cell identity. Its coordinate join intentionally has no graph edge; all other EXPLAIN warnings still reject execution."
+    }
+  },
+  "language_heuristics": {
+    "cohort_modifier": "Language hint, not a query error: a possible cohort modifier was not recognized by the phrase heuristic. Compare the original request with retrieved evidence and executed filters; explain any unresolved restriction rather than claiming it was applied.",
+    "source_phrase": "Language hint, not a query error: a from-phrase or possible source description was not recognized by the phrase heuristic. It may describe tissue, cohort, or source. Use verified schema bindings and the original request to interpret the answer; do not claim an unverified source restriction.",
+    "tissue_phrase": "Language hint, not a query error: a possible tissue phrase was not recognized by the phrase heuristic. Use resolved identities and actual retrieved annotations; explain any tissue restriction that remains unresolved.",
+    "assay_phrase": "Language hint, not a query error: a possible assay phrase was not recognized by the phrase heuristic. Use recorded modality labels and the original request; explain any assay restriction that remains unresolved."
+  },
+  "planner_bindings": {
+    "fields": [
+      {
+        "owner": "donor",
+        "property": "gender",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "gender"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "sex_at_birth",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "sex_at_birth"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "race",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "race"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "donation_type",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "donation_type"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "aab_state",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "aab_state"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "hla_status",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "hla_status"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "diabetes_type",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "diabetes_type"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "derived_diabetes_status",
+        "vocabulary_path": [
+          "donor_categorical_values",
+          "derived_diabetes_status"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "data_source",
+        "vocabulary_path": [
+          "donor_sources"
+        ]
+      },
+      {
+        "owner": "donor",
+        "property": "t1d_stage",
+        "vocabulary_path": [
+          "stages"
+        ]
+      },
+      {
+        "owner": "Sample_node",
+        "property": "data_source",
+        "vocabulary_path": [
+          "sample_sources"
+        ]
+      },
+      {
+        "owner": "Sample_node",
+        "property": "data_modality",
+        "vocabulary_path": [
+          "modalities"
+        ]
+      }
+    ],
+    "cohort_owner": "donor",
+    "assay_field": [
+      "Sample_node",
+      "data_modality"
+    ],
+    "sample_relation": "HAS_SAMPLE",
+    "query_guidance": "The planner-selected structured predicates define the requested scope. Apply those exact predicates and selected relationships using the schema. Do not infer additional restrictions from the original wording. Keep sample predicates on the same sample witness when the approved task requests one. Recorded sample metadata does not by itself verify file availability."
+  }
+}
