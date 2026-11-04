@@ -1,0 +1,12 @@
+{
+  "baseline": "2026-10-27 pathway-task source; its schema SHA equals the live 18864 schema identity",
+  "baseline_schema_sha256": "b6926959988a597632cbfd781bd08356782d6304deb6fdbadbc6fdee04622f28",
+  "source_files": {
+    "core.py": "9d28003772fd0056e5c11d5cc80424cdefb161595b7a2636b171e61ccd291ca4",
+    "evidence.py": "211e0822330a8cfdad9da65744797fda23c294c702c388d714a4be73dec6203d",
+    "resolver.py": "e2851f76eb5dd4496521b169a80a33427a4b52b9eb4326f17b93a7a61e3fc0dd",
+    "native_client.py": "765a298b76cdd4c8614f8a09c3012f18ea11303a470574f53de67831c674e479",
+    "workflow.py": "55e9a8e2d0f638715dfdc2e6bef1cd0c9929edc80e3e36fa4ca5f4a3f008199c"
+  },
+  "purpose": "Independent schema/API query dev; existing GPT formatter and UI are not changed"
+}
