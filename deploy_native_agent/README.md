@@ -20,7 +20,7 @@ gateway-results source is from `20261019-qwen-default-gateway/backend` under
 Both dependency trees are retained because the native formatter/presentation code
 imports the first release while the public results gateway runs the second.
 They must not be conflated or replaced with the repository-root packages blindly.
-Every included file is byte-identical to its deployed source; SHA-256 values are
+The original capture was byte-identical to its deployed source; baseline SHA-256 values are
 in `source-manifest.json`. The capture includes Python, required schemas/prompts,
 package assets and available requirement files, not a server filesystem backup.
 
@@ -77,3 +77,7 @@ in the separate `wangyiqunumich/pank_frontend` `xuteng/react` branch.
 - No paid model call, database mutation, query replay or live deployment was
   performed for this source synchronization. A captured implementation is not
   evidence of scientific correctness.
+
+## Prepared information-panel integration
+
+See [VIEWER_PANEL_INTEGRATION.md](VIEWER_PANEL_INTEGRATION.md) for the new, default-disabled authenticated viewer routes, release/ref contract and activation/rollback checks. This addition is not yet a live deployment. The original source manifest remains historical capture evidence.

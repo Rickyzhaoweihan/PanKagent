@@ -14,6 +14,9 @@ class ResultsSettings:
     state_dir: Path = field(default_factory=lambda: Path(env("STATE_DIR", "var/results")))
     frontend_dir: Path = field(default_factory=lambda: Path(env("FRONTEND_DIR", "../pank_frontend_vnext/build")))
     agent_url: str = field(default_factory=lambda: env("AGENT_URL", "http://127.0.0.1:8794"))
+    viewer_url: str = field(default_factory=lambda: env("VIEWER_URL"))
+    viewer_release: str = field(default_factory=lambda: env("VIEWER_RELEASE"))
+    viewer_token_file: str = field(default_factory=lambda: env("VIEWER_TOKEN_FILE"))
     host: str = "127.0.0.1"
     port: int = field(default_factory=lambda: int(env("PORT", "8795")))
     public_path: str = field(default_factory=lambda: env("PUBLIC_PATH", "/pankgraph-vnext"))

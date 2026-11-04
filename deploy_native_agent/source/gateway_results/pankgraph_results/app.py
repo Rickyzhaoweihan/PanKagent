@@ -434,6 +434,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
 
     app = FastAPI(title="PanKgraph results", version="1", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = runtime
+    from .viewer_proxy import install_viewer_proxy
+    install_viewer_proxy(app, runtime.http, url=settings.viewer_url, release=settings.viewer_release, token_file=settings.viewer_token_file)
     from .scbrowser_expression import install as install_expression_cache
     install_expression_cache(app, settings.state_dir)
     from .gpt6_proxy import install_gpt6_proxy
