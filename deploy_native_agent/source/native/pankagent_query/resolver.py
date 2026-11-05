@@ -27,6 +27,12 @@ async def resolve(transport,args):
     except Exception as e:
         result['search_failures'].append({'pass':'inventory','feedback':str(e)});return done()
     labels=[label] if label else list(roles)
+    co_labels = {label} if label else set(roles)
+    if label:
+        for variant in args.get('node_variants', {}).values():
+            for group in variant.get('label_sets', {}):
+                members=set(group.split(';'))
+                if label in members: co_labels.update(members)
     bindings=[(l,f) for l in labels for f in roles.get(l,{}).get('identifiers',[]) if any(i['type']=='RANGE' and i['labelsOrTypes']==[l] and i['properties']==[f] for i in indexes)]
     if label and not bindings:
         # A node may have several labels. Borrow only a schema-declared identity
@@ -50,17 +56,17 @@ async def resolve(transport,args):
             if retrieved>=200:
                 result['limitations'].append('Total lexical retrieval cap exhausted; additional indexes were not searched.')
                 break
-            if i['type']!='FULLTEXT' or label and label not in i['labelsOrTypes']:continue
-            covered=[l for l in labels if l in i['labelsOrTypes'] and set(i['properties']) & set(sum((roles.get(l,{}).get(k,[]) for k in ('identifiers','names','aliases')),[]))]
+            if i['type']!='FULLTEXT' or label and not co_labels.intersection(i['labelsOrTypes']):continue
+            covered=[l for l in co_labels if l in i['labelsOrTypes'] and set(i['properties']) & set(sum((roles.get(l,{}).get(k,[]) for k in ('identifiers','names','aliases')),[]))]
             if not covered or not expression:continue
             t=time.perf_counter()
             try:
                 raw=await transport._fulltext(i['name'],expression,200-retrieved);retrieved+=len(raw['rows']);capped|=retrieved>=200
-                records.extend(n for n in raw['rows'] if set(n['labels']) & set(covered))
+                records.extend(n for n in raw['rows'] if set(n['labels']) & set(covered) and (not label or label in n['labels']))
                 result['search_attempts'].append({'pass':'indexed_fulltext','index':i['name'],'elapsed_s':time.perf_counter()-t,'execution_s':raw.get('elapsed_s'),'retrieved_count':len(raw['rows'])})
             except Exception as e:result['search_failures'].append({'pass':'indexed_fulltext','feedback':str(e)})
             result['index_scope'].append({'kind':'FULLTEXT','name':i['name'],'labels':covered,'properties':i['properties']})
-    missing=[l for l in labels if not any(i['type']=='FULLTEXT' and l in i['labelsOrTypes'] for i in indexes)]
+    missing=[l for l in labels if not any(i['type']=='FULLTEXT' and (l in i['labelsOrTypes'] or label and co_labels.intersection(i['labelsOrTypes'])) for i in indexes)]
     if missing:result['limitations'].append({'no_lexical_index_for_types':missing})
     candidates={}
     for n in records:
@@ -70,8 +76,9 @@ async def resolve(transport,args):
             for role in ('identifiers','names','aliases'):
                 for f in roles.get(l,{}).get(role,[]):
                     v=n['properties'].get(f);vs=v if isinstance(v,list) else [v]
-                    if any(isinstance(x,str) and x.casefold()==text.casefold() for x in vs):matched.append({'field':f,'role':role})
-        n={**n,'matched_fields':matched,'match_class':'exact' if matched else 'lexical_suggestion'}
+                    if any(isinstance(x,str) and x.casefold()==text.casefold() for x in vs):matched.append({'field':f,'role':role,'value':text,'namespace':args.get('identity_fields',{}).get(l,{}).get(f,{}).get('namespace')})
+        identity={f:n['properties'].get(f) for l in n['labels'] for f,spec in args.get('identity_fields',{}).get(l,{}).items() if spec.get('role')=='primary'}
+        n={**n,'node_identity':identity,'matched_fields':matched,'match_class':'exact' if matched else 'lexical_suggestion'}
         key=n.get('element_id') or (tuple(n['labels']),n['properties'].get('id'))
         if key not in candidates or n.get('score',0)>candidates[key].get('score',0):candidates[key]=n
     priority={'identifiers':0,'names':1,'aliases':2}

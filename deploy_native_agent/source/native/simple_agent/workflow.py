@@ -298,6 +298,9 @@ class Workflow:
         if run['status'] != 'awaiting_confirmation' or not run.get('preview', {}).get('confirmation_eligible') or run.get('plan', {}).get('clarification'):
             raise HTTPException(409, 'A reviewed, executable plan is required before confirmation')
         result = run['_result']
+        expected = getattr(self, 'context_identity', None)
+        if expected and result.get('context_identity') != expected:
+            raise HTTPException(409, 'This plan uses an older schema/prompt. Start a new question; saved results remain readable.')
         run['_approved_result'] = copy.deepcopy(result)
         run['_confirmed'] = True
         run['evidence'] = run['preview']['evidence']
@@ -368,7 +371,8 @@ class Workflow:
                     run['graph_answer'] = run.get('graph_answer', '') + text
                     self.event(run, 'graph_answer', {'text': text, 'delta': True})
             kwargs = {'on_delta': on_delta} if 'on_delta' in inspect.signature(self.formatter).parameters else {}
-            formatted = await asyncio.wait_for(self.formatter(run['plan']['interpreted_question'], run['_result'], **kwargs), 150)
+            question = run['question'] if run['_result'].get('context_identity', {}).get('prompt_version') == 'schema-agent-v1' else run['plan']['interpreted_question']
+            formatted = await asyncio.wait_for(self.formatter(question, run['_result'], **kwargs), 300)
             if run['status'] in TERMINAL:
                 return
             run['_formatted'] = formatted
@@ -541,7 +545,8 @@ def router(workflow):
     async def create(body: dict):
         session = body.get('session_id')
         history = [{'question': r['question'], 'standardized_question': r['plan']['interpreted_question'],
-                    'metapath': r['_result'].get('metapath'), 'answer': r.get('graph_answer')}
+                    'metapath': r['_result'].get('metapath'), 'answer': r.get('graph_answer'),
+                    'context_identity': r['_result'].get('context_identity')}
                    for r in workflow.runs.values() if session and r['session_id'] == session and r.get('_confirmed')]
         return workflow.create(body.get('question'), session, history if body.get('include_context', True) else [], body.get('include_literature'), body.get('request_id'), {k: body.get(k) for k in ('question', 'session_id', 'include_context', 'include_literature')})
     @api.get('/agent/v2/requests/{request_id}')

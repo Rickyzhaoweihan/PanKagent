@@ -29,6 +29,8 @@ def summaries(queries):
 def handoff(queries, selections, args, base=None):
     """Union explicitly selected records; preserve parallel edges by record ID."""
     selected = [(s, queries[s["query_id"]]) for s in selections]
+    if any(q.get("purpose") == "diagnostic" for _,q in selected):
+        raise ValueError("Diagnostic evidence cannot enter a handoff")
     required = [q for s, q in selected if s.get("purpose", "requested") == "requested"]
     status = "partial" if any(q["status"] == "partial" for q in required) else (
         "complete" if any(q["status"] == "complete" for q in required) else "empty")
@@ -85,6 +87,15 @@ def handoff(queries, selections, args, base=None):
               "provenance": {"queries": [{"query_id": s["query_id"], "purpose": s.get("purpose", "requested"),
                                              "source": q.get("provenance")} for s, q in selected]},
               "omitted_records": omitted}
+    result["retrieval_checks"] = {
+        "execution": "succeeded", "schema_validation": "passed",
+        "semantic_validation": "agent_assessed_not_independent",
+        "condition_coverage": "incomplete" if args.get("unfulfilled_conditions") or args.get("status") == "partial" else "agent_assessed",
+        "pagination_complete": all(q.get("next_offset") is None for q in required),
+        "truncated": status == "partial", "delivery_omissions": omitted,
+        "queries": [{"query_id": s["query_id"], "purpose": s["purpose"], "status": q["status"],
+                     "pagination_complete": q.get("next_offset") is None, "rows": q.get("row_count"),
+                     "pattern": q["pattern"]} for s,q in selected]}
     # Keep exact owned SQL evidence through selection, pagination and delivery caps.
     result["linked_evidence"] = merge_owned((base or {}).get("linked_evidence", []) +
         [item for _, q in selected for item in q.get("linked_evidence", [])], graph)
@@ -101,7 +112,7 @@ def handoff(queries, selections, args, base=None):
     if omitted:
         result["condition_audit"].append({"condition": "Graph delivery allowance",
             "binding": str(omitted) + " records omitted by the existing graph byte allowance; delivered context may be incomplete."})
-    if status == "partial" and result.get("status") in ("complete", "empty"):
+    if (status == "partial" or result.get("unfulfilled_conditions")) and result.get("status") in ("complete", "empty"):
         result["status"] = "partial"
     return result
 

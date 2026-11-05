@@ -16,7 +16,9 @@ def install(app, legacy, root, config_path):
     from contextlib import asynccontextmanager
     config = json.loads(Path(config_path).read_text())
     pack = core.SchemaPack(config['schema_path'])
-    assert pack.data['release'] == config['release_id'] == 'PanKgraph_1104'
+    if pack.data.get('semantics_version') != 'schema-semantics-v1':
+        raise RuntimeError('Current query core requires the versioned schema semantics pack')
+    assert pack.data['release'] == config['release_id']
     if CROSSCHECK not in core.ENRICHMENT: core.ENRICHMENT += CROSSCHECK
     native_client.BASE, native_client.MODEL = config['model_url'], config['model']
     client = native_client.Client(root/'calls-1104', Path(config['model_token_file']).read_text().strip())
@@ -28,13 +30,15 @@ def install(app, legacy, root, config_path):
         return await format_final(question, result, config['release_id'], on_delta)
     workflow = Workflow(runner, root/'workflow-state-1104', render,
                         literature=None, presentation=presentation, graph_release=config['release_id'])
+    workflow.context_identity = core.context_identity(pack)
     current = FastAPI()
     current.include_router(router(workflow))
     @current.get('/health')
     async def health():
         await transport.verify_release(pack)
         return {'status':'live','release_id':config['release_id'],'model':config['model'],
-                'formatter':'gpt-6.1-sol','two_loops':True,'schema_pack_sha256':pack.sha256}
+                'formatter':'gpt-6.1-sol','two_loops':True,'schema_pack_sha256':pack.sha256,
+                'prompt_version':core.PROMPT_VERSION,'semantics_version':pack.data.get('semantics_version')}
     previous = app.router.lifespan_context
     @asynccontextmanager
     async def lifespan(parent):
