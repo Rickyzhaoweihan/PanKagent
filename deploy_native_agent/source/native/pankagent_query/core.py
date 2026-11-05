@@ -361,9 +361,12 @@ def validate_arguments(value, schema, path, *, legacy_finish=False):
         raise Feedback(f"{path} must be at most {schema['maximum']}")
 
 
+REVIEW_INSTRUCTION = 'Before finishing, compare the ORIGINAL question to these exact selected patterns and schema alternatives. Check whether a broad requested concept was narrowed to one relation subtype or one endpoint category, whether named qualifying concepts were resolved, whether alternatives were accidentally ANDed, and whether diagnostic relaxation replaced a required condition. Query and select missing applicable alternatives, or explicitly return needs_clarification/partial for unresolved scope. A zero-row result is not a reason to skip this scope review. Compare the actual bound entity names with the original qualifying concept. A valid source ID is not evidence of relevance: never substitute an unrelated inventory record to satisfy required scope. If scope is faithful, call finish again; no repeated successful retrieval is needed.'
+
+
 def context_identity(pack):
     return {"release": pack.data["release"], "schema_hash": pack.sha256, "prompt_version": PROMPT_VERSION,
-            "prompt_hash": hashlib.sha256((SYSTEM + ENRICHMENT).encode()).hexdigest()}
+            "prompt_hash": hashlib.sha256(json.dumps([SYSTEM, ENRICHMENT, TOOLS, REVIEW_INSTRUCTION], sort_keys=True).encode()).hexdigest()}
 
 
 class Agent:
@@ -584,7 +587,7 @@ class Agent:
                             if selection["purpose"] != "requested": continue
                             try:
                                 selected_pattern = queries[selection["query_id"]]["pattern"]
-                                validate_bindings(self.pack.data, selected_pattern, contexts, question)
+                                validate_bindings(self.pack.data, selected_pattern, contexts, question, True, queries)
                                 reject_broadened_request(selected_pattern, queries, self.pack.data)
                             except Feedback as exc:
                                 missing_scope.append({"query_id":selection["query_id"],"condition":str(exc)})
@@ -604,10 +607,20 @@ class Agent:
                                     "relationship_index": {k:v for k,v in index["relationship_index"].items() if k in chosen_relations},
                                     "identity_fields": {k:v for k,v in index["identity_fields"].items() if k in scope_labels}}
                                 events.append({"turn":turn+1,"tool":"schema","input":{"labels":scope_labels},"output":schema_review,"status":"ok","origin":"runtime_scope_review"})
-                                output = {"status":"review_required", "original_question":question,
+                                bound = []
+                                observed = [c for ctx in contexts if ctx.get("tool") == "resolve_entity" for c in ctx.get("output", {}).get("candidates", [])] + [n for q in queries.values() for n in q.get("graph", {}).get("nodes", [])]
+                                wanted = {str(v) for x in selections for n in queries[x["query_id"]]["pattern"]["nodes"] for f in n.get("filters", []) if self.pack.data.get("identity_fields", {}).get(n["label"], {}).get(f["property"], {}).get("role") == "primary" for v in (f["value"] if isinstance(f["value"],list) else [f["value"]])}
+                                for candidate in observed:
+                                    labels = candidate.get("labels", [])
+                                    keys = {k for label in labels for k in self.pack.data.get("identity_fields", {}).get(label, {})} | {k for label in labels for k in self.pack.data.get("search_roles", {}).get(label, {}).get("names", [])}
+                                    props = candidate.get("properties", {})
+                                    if any(str(props.get(k)) in wanted for k in keys):
+                                        value = {"labels": labels, "properties": {k:props[k] for k in keys if k in props}}
+                                        if value not in bound: bound.append(value)
+                                output = {"status":"review_required", "bound_entities":bound, "original_question":question,
                                     "selected_queries":[{"purpose":x["purpose"],"pattern":queries[x["query_id"]]["pattern"]} for x in selections],
                                     "schema":schema_review,
-                                    "instruction":"Before finishing, compare the ORIGINAL question to these exact selected patterns and schema alternatives. Check whether a broad requested concept was narrowed to one relation subtype or one endpoint category, whether named qualifying concepts were resolved, whether alternatives were accidentally ANDed, and whether diagnostic relaxation replaced a required condition. Query and select missing applicable alternatives, or explicitly return needs_clarification/partial for unresolved scope. A zero-row result is not a reason to skip this scope review. If scope is faithful, call finish again; no repeated successful retrieval is needed."}
+                                    "instruction":REVIEW_INSTRUCTION}
                                 events.append({"turn":turn+1,"tool":name,"input":args,"output":output,"status":"review_required"})
                                 outputs.append({"type":"tool_result","tool_use_id":b["id"],"content":json.dumps(output)})
                                 keep(); continue
@@ -714,7 +727,7 @@ class Agent:
                             raise Feedback("New queries require an explicit purpose")
                         if "query_id" not in args:
                             from .identity import validate_bindings
-                            validate_bindings(self.pack.data, args["pattern"], contexts, question)
+                            validate_bindings(self.pack.data, args["pattern"], contexts, question, args["purpose"] == "requested", queries)
                             from .identity import reject_broadened_request
                             if args["purpose"] == "requested": reject_broadened_request(args["pattern"], queries, self.pack.data)
                             signature = json.dumps({k: args.get(k, "summary" if k == "detail" else None) for k in ("pattern", "detail", "purpose")}, sort_keys=True)

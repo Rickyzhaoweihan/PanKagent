@@ -157,6 +157,20 @@ class Contract(unittest.IsolatedAsyncioTestCase):
   original=copy.deepcopy(messages);wire,stats=model_messages(messages,10000)
   self.assertEqual(messages,original);self.assertEqual(wire[0],messages[0]);self.assertEqual(wire[1]['content'][0]['tool_use_id'],'call1')
   compact=json.loads(wire[1]['content'][0]['content']);self.assertEqual(compact['status'],'empty');self.assertEqual(compact['recover_with']['name'],'inspect_result');self.assertLess(stats['sent_bytes'],10000)
+ def test_unrelated_inventory_id_cannot_bind_qualifier(self):
+  pack={**PACK,'identity_fields':{**PACK['identity_fields'],'Category':{'id':{'role':'primary'}}},'scope_families':[{'members':[{'relation':'MEMBER','target':'Category'}]}]}
+  p=pattern();p['nodes'][2]['filters']=[{'property':'id','op':'eq','value':'c'}]
+  inventory={'q0':{'pattern':{'nodes':[{'key':'x','label':'Category'}],'edges':[]},'graph':{'nodes':[{'labels':['Category'],'properties':{'id':'c','name':'Unrelated'}}]}}}
+  with self.assertRaisesRegex(Feedback,'not resolved'):validate_bindings(pack,p,[],'original question',True,inventory)
+  ctx=[{'tool':'resolve_entity','input':{'text':'desired concept'},'output':{'candidates':[{'labels':['Category'],'properties':{'id':'c','name':'Desired'}}]}}]
+  validate_bindings(pack,p,ctx,'original question',True,inventory)
+  validate_bindings(pack,p,[],'Find category c',True,inventory)
+ def test_prompt_identity_includes_scope_review(self):
+  from unittest.mock import patch
+  from pankagent_query.core import context_identity
+  before=context_identity(self.pack)
+  with patch('pankagent_query.core.REVIEW_INSTRUCTION','changed review'):
+   self.assertNotEqual(before,context_identity(self.pack))
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()

@@ -2,7 +2,7 @@
 from .core import Feedback
 
 
-def validate_bindings(pack, pattern, contexts, question=""):
+def validate_bindings(pack, pattern, contexts, question="", require_resolved_qualifiers=False, queries=None):
     candidates = [c for ctx in contexts if ctx.get('tool') == 'resolve_entity'
                   for c in ctx.get('output', {}).get('candidates', [])]
     for node in pattern['nodes']:
@@ -40,6 +40,24 @@ def validate_bindings(pack, pattern, contexts, question=""):
                     values=set(f['value'] if f['op']=='in' else [f['value']])
                     if values & ids and not ids <= values and not all(str(v) in question for v in values):
                         raise Feedback('This resolved name/accession has multiple distinct node identities. Do not select an arbitrary primary ID: '+str(sorted(ids))+'. Use ONE node variable with an IN filter on '+primary+' containing ALL returned IDs (op=in, value='+str(sorted(ids))+'). Each matched row retains the distinct stored node identity; this does not merge nodes. Do not create one node variable per candidate: that would AND alternatives. Alternatively request explicit disambiguation.')
+
+        qualifier_labels={m.get('target') for family in pack.get('scope_families',[]) for m in family['members'] if m.get('target')}
+        if require_resolved_qualifiers and node['label'] in qualifier_labels:
+            for f in node.get('filters',[]):
+                if f['property'] not in primaries or f.get('op') not in ('eq','in'):continue
+                for value in f['value'] if f['op']=='in' else [f['value']]:
+                    if str(value) in question:continue
+                    resolved=any(ctx.get('tool')=='resolve_entity' and ctx.get('input',{}).get('text')!=str(value) and any(node['label'] in c.get('labels',[]) and c.get('properties',{}).get(f['property'])==value for c in ctx.get('output',{}).get('candidates',[])) for ctx in contexts)
+                    if resolved:continue
+                    # A name-filtered lookup is also grounded; a source inventory
+                    # or lookup of an invented primary ID is not concept binding.
+                    grounded=False
+                    for q in (queries or {}).values():
+                        lookup=q.get('pattern',{})
+                        if not any(n['label']==node['label'] and any(x['property'] not in primaries for x in n.get('filters',[])) for n in lookup.get('nodes',[])):continue
+                        if any(node['label'] in n.get('labels',[]) and n.get('properties',{}).get(f['property'])==value for n in q.get('graph',{}).get('nodes',[])):grounded=True
+                    if not grounded:
+                        raise Feedback('Qualifying endpoint ID '+str(value)+' was not resolved from a qualifying concept or supplied by the user. A valid ID from a source inventory is not evidence of relevance. Resolve the original qualifying concept in this endpoint category, or retain a literal qualifying-name filter; if unresolved, report partial. Do not substitute an unrelated source record to satisfy scope coverage.')
 
 
 def reject_broadened_request(pattern, queries, pack=None):
