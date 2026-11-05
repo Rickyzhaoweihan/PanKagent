@@ -144,6 +144,12 @@ class Contract(unittest.IsolatedAsyncioTestCase):
  def test_external_accession_multiple_ids_remain_explicit(self):
   ctx=[{'tool':'resolve_entity','input':{'text':'42'},'output':{'candidates':[{'labels':['Object'],'properties':{'id':x,'external':['42']}} for x in ['a','b']]}}]
   with self.assertRaisesRegex(Feedback,'multiple distinct'):validate_bindings(PACK,pattern(),ctx)
+ def test_category_qualifier_does_not_require_other_endpoint(self):
+  family={'members':[{'relation':'MEMBER','target':'Category','qualifiers':['specific-source']},{'relation':'ANNOTATED','target':'Term','qualifiers':['term-source']}],'qualifier_groups':[{'qualifiers':['catalog'],'members':[{'relation':'MEMBER','target':'Category'}]}]}
+  pack={**PACK,'scope_families':[family]};qs={'q1':{'purpose':'requested','pattern':pattern()}};ss=[{'purpose':'requested','query_id':'q1'}]
+  self.assertEqual(missing_scope_alternatives(pack,'catalog membership',qs,ss),[])
+  self.assertTrue(missing_scope_alternatives(pack,'functional membership',qs,ss))
+  self.assertTrue(missing_scope_alternatives(pack,'term-source catalog membership',qs,ss))
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()

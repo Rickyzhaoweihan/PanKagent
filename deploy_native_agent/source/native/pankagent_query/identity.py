@@ -92,9 +92,15 @@ def missing_scope_alternatives(pack, question, queries, selections):
     for family in pack.get('scope_families',[]):
         members=family['members']
         if not any(matches(m,e) for m in members for e in selected):continue
-        explicit=[m for m in members if any(re.search(r'(?<!\w)'+re.escape(q)+(r'(?!\w)' if q[-1:].isalnum() else ''),question,re.I) for q in m.get('qualifiers',[]))]
-        required.append(explicit or members)
-        for member in explicit or members:
+        def qualified(spec):return any(re.search(r'(?<!\w)'+re.escape(q)+(r'(?!\w)' if q[-1:].isalnum() else ''),question,re.I) for q in spec.get('qualifiers',[]))
+        explicit=[m for m in members if qualified(m)]
+        groups=[]
+        for group in family.get('qualifier_groups',[]):
+            if qualified(group) and not any(matches(g,m) for g in group['members'] for m in explicit):
+                groups.extend(group['members'])
+        applicable=[m for m in members if m in explicit or any(matches(g,m) for g in groups)] or members
+        required.append(applicable)
+        for member in applicable:
             if not any(matches(member,e) for e in selected):missing.append({k:v for k,v in member.items() if k!='qualifiers'})
     # Alternatives in joined families must be covered in the same query and
     # at a shared node. Separate marginal coverage cannot prove the conjunction.

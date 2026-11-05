@@ -2664,6 +2664,24 @@
             "MEDICUS"
           ]
         }
+      ],
+      "qualifier_groups": [
+        {
+          "qualifiers": [
+            "pathway",
+            "pathways"
+          ],
+          "members": [
+            {
+              "relation": "FUNCTION_ANNOTATION",
+              "target": "Reactome_pathway"
+            },
+            {
+              "relation": "FUNCTION_ANNOTATION",
+              "target": "KEGG_pathway"
+            }
+          ]
+        }
       ]
     }
   ]
