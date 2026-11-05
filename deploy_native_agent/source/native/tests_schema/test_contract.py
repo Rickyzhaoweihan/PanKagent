@@ -124,6 +124,7 @@ class Contract(unittest.IsolatedAsyncioTestCase):
  def test_ambiguous_name_cannot_choose_one_id(self):
   ctx=[{'tool':'resolve_entity','input':{'text':'Alpha'},'output':{'candidates':[{'labels':['Object'],'properties':{'id':x,'name':'Alpha'}} for x in ['a','b']]}}]
   with self.assertRaisesRegex(Feedback,'multiple distinct'):validate_bindings(PACK,pattern(),ctx)
+  with self.assertRaisesRegex(Feedback,'multiple distinct'):validate_bindings(PACK,pattern(),ctx,'Find Alpha')
   p=pattern();p['nodes'][0]['filters'][0].update(op='in',value=['a','b']);validate_bindings(PACK,p,ctx)
  def test_source_switch_keeps_qualifying_concept(self):
   pack={**PACK,'scope_families':[{'members':[{'relation':'MEMBER','target':'Category'},{'relation':'ANNOTATED','target':'Term'}]}]}
