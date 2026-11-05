@@ -151,6 +151,12 @@ class Contract(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(missing_scope_alternatives(pack,'catalog membership',qs,ss),[])
   self.assertTrue(missing_scope_alternatives(pack,'functional membership',qs,ss))
   self.assertTrue(missing_scope_alternatives(pack,'term-source catalog membership',qs,ss))
+ def test_model_context_compaction_retains_recoverable_conversation(self):
+  from pankagent_query.context import model_messages
+  messages=[{'role':'assistant','content':[{'type':'tool_use','id':'call1','name':'query','input':{'pattern':pattern()}}]},{'role':'user','content':[{'type':'tool_result','tool_use_id':'call1','content':json.dumps({'query_id':'q1','status':'empty','row_count':0,'unused':'x'*150000})}]}]
+  original=copy.deepcopy(messages);wire,stats=model_messages(messages,10000)
+  self.assertEqual(messages,original);self.assertEqual(wire[0],messages[0]);self.assertEqual(wire[1]['content'][0]['tool_use_id'],'call1')
+  compact=json.loads(wire[1]['content'][0]['content']);self.assertEqual(compact['status'],'empty');self.assertEqual(compact['recover_with']['name'],'inspect_result');self.assertLess(stats['sent_bytes'],10000)
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()

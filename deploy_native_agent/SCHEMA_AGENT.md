@@ -73,7 +73,7 @@ Base Ringo commit: `094a3a8d65d50c65bd4281602e9cb82a3b27a243`.
 The isolated branch preserves the retained developer checkout and changes only
 agent source, tests, semantic metadata and this handoff.
 
-- 30 schema-contract tests pass. Python compilation and `git diff --check` pass.
+- 31 schema-contract tests pass. Python compilation and `git diff --check` pass.
 - Legacy tests: 36 pass; the unchanged legacy core retains the baseline failure
   named above. Its code is not replaced for historical reads.
 - Real 1104 explicit HLA-DRA physical/genetic -> same partner ->

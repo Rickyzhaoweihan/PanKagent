@@ -454,7 +454,7 @@ class Agent:
                     "name": "schema", "input": {}}]},
                 {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "bootstrap_schema",
                     "content": json.dumps(output)}]}])
-        reviewed_scope = None
+        reviewed_scope = (seed or {}).get("_reviewed_scope")
         calls = 0
         result = None
         finished = False
@@ -463,7 +463,7 @@ class Agent:
             retained.update(_query_results=copy.deepcopy(queries), _tool_context=copy.deepcopy(contexts),
                             events=copy.deepcopy(events), model_events=copy.deepcopy(model_events),
                             error_records=copy.deepcopy(errors), _messages=copy.deepcopy(messages),
-                            _runtime_state=copy.deepcopy(runtime_state),
+                            _runtime_state=copy.deepcopy(runtime_state), _reviewed_scope=reviewed_scope,
                             metrics={"elapsed_s": round(time.monotonic() - start, 3), "model_calls": calls,
                                      "tool_calls": len(events),
                                      "recoverable_errors": sum(e.get("model_decision") is not True for e in errors),
@@ -504,9 +504,11 @@ class Agent:
             calls += 1
             keep()
             inference_start = time.monotonic()
+            from .context import model_messages
+            provider_messages, context_stats = model_messages(messages)
             response = await self.transport.call("model", {"model": self.model, "system": SYSTEM + (ENRICHMENT if phase == "enrich" else ""),
-                                                          "tools": self.tools, "messages": messages})
-            model_events.append({"turn": turn + 1, "elapsed_s": round(time.monotonic() - inference_start, 3),
+                                                          "tools": self.tools, "messages": provider_messages})
+            model_events.append({"turn": turn + 1, "model_context": context_stats, "elapsed_s": round(time.monotonic() - inference_start, 3),
                                  "provider_elapsed_s": response.get("_provider_elapsed_s"), "transport_elapsed_s": response.get("_model_transport_elapsed_s"), "usage": response.get("usage", {}), "local": response.get("local"), "content": response.get("content", []),
                                  "record_id": response.get("_record_id"), "recoverable_error": copy.deepcopy(response.get("_recoverable_error"))})
             for k in usage:
