@@ -95,3 +95,6 @@ as successes. Deployment and public two-stage acceptance are recorded separately
 in `/db/pankagent-vnext-private/operations/schema-agent-20261105/deployment.json`
 and `live-*.json`. Rollback restores paired source/configuration, never session,
 evidence or budget state. Only the owned dev port 18864 is eligible for restart.
+
+Final version-bound public outcomes and known limitations are recorded in
+[SCHEMA_AGENT_ACCEPTANCE_20261105.md](SCHEMA_AGENT_ACCEPTANCE_20261105.md).
