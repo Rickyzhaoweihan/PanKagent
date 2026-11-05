@@ -40,6 +40,7 @@ class Contract(unittest.IsolatedAsyncioTestCase):
  def test_index_has_endpoints_and_directions(self):
   v=self.pack.view();self.assertEqual(v['relationship_index']['LINK_B']['allowed_traversal'],['out','either']);self.assertIn('identity_fields',v)
  def test_no_dataset_literals_in_prompt(self):
+  self.assertIn('An empty prefix is NOT a reason to skip',SYSTEM)
   for word in ['HLA','Gene','GO_term','BioGRID','Reactome','PHYSICAL_INTERACTION','QTL']:self.assertNotIn(word,SYSTEM)
  def test_direction_and_endpoint_validation(self):
   p=pattern();p['edges'][1]['direction']='either'
