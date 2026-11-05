@@ -38,6 +38,9 @@ def install_viewer_proxy(app, http, *, url='', release='', token_file=''):
         try:token=Path(token_file).read_text().strip()
         except OSError:raise HTTPException(503,'Detailed evidence is temporarily unavailable.') from None
         if not token:raise HTTPException(503,'Detailed evidence is temporarily unavailable.')
+        # Fetch the complete selected-object annotations once. Compact selection
+        # is presentation-only; expansion must not silently reuse a partial record.
+        if operation=='inspect':body={**body,'mode':'expanded'}
         upstream=http.build_request('GET' if body is None else 'POST',url.rstrip('/')+'/api/viewer/v1/'+operation,json=body)
         # Browser credentials and client cookies never cross into the data API.
         for name in ('authorization','cookie','x-api-key','x-operator-token'):upstream.headers.pop(name,None)

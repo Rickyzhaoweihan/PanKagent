@@ -24,6 +24,7 @@ def test_authenticated_exact_release_bridge(tmp_path):
             assert request.headers['authorization']=='Bearer test-only-server-token'
             assert 'cookie' not in request.headers
             if request.method=='GET':return httpx.Response(200,json={'release_id':'r1','profiles':{},'tables':{}})
+            assert json.loads(request.content)['mode']=='expanded'
             return httpx.Response(200,json={'ref':REF,'fields':[]})
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as upstream:
             app=FastAPI();proxy.install_viewer_proxy(app,upstream,url='http://127.0.0.1:8826',release='r1',token_file=str(token))
