@@ -132,3 +132,60 @@ def missing_scope_alternatives(pack, question, queries, selections):
             if not any(joined(branch,a,b) for branch in branches):
                 missing.append({'joined_alternatives':[{k:v for k,v in m.items() if k!='qualifiers'} for m in (a,b)]})
     return missing
+
+
+def unbound_user_concepts(question, queries, selections, contexts):
+    """Require literally user-named resolved concepts to survive final selection.
+
+    Union coverage permits alternatives across separate requested branches.
+    This validates observed bindings, not natural-language scientific meaning.
+    """
+    import re
+    def norm(text):return ' '.join(re.findall(r'\w+',str(text).casefold()))
+    original=' '+norm(question)+' '
+    groups={}
+    for ctx in contexts:
+        if ctx.get('tool')!='resolve_entity':continue
+        text=ctx.get('input',{}).get('text','');key=norm(text)
+        if len(key)<2 or ' '+key+' ' not in original:continue
+        groups.setdefault(key,[]).extend(ctx.get('output',{}).get('candidates',[]))
+    patterns=[queries[s['query_id']]['pattern'] for s in selections if s['purpose']=='requested']
+    missing=[]
+    for concept,candidates in groups.items():
+        bound=False
+        for p in patterns:
+            for n in p['nodes']:
+                for f in n.get('filters',[]):
+                    values=f['value'] if isinstance(f['value'],list) else [f['value']]
+                    if any(norm(v)==concept for v in values):bound=True
+                    for c in candidates:
+                        if n['label'] not in c.get('labels',[]):continue
+                        observed=c.get('properties',{}).get(f['property'])
+                        observed=observed if isinstance(observed,list) else [observed]
+                        if any(v in observed for v in values):bound=True
+        if not bound:missing.append({'unbound_user_concept':concept,'instruction':'Bind this resolved user concept in the full requested conjunction. An empty prefix does not exercise the omitted condition.'})
+    return missing
+
+
+def selected_prefixes(queries, selections):
+    """A one-edge probe cannot qualify alongside its stricter joined query."""
+    import json
+    selected=[s['query_id'] for s in selections if s['purpose']=='requested']
+    def filters(n):return {json.dumps(f,sort_keys=True) for f in n.get('filters',[])}
+    missing=[]
+    for qid in selected:
+        p=queries[qid]['pattern']
+        if len(p['edges'])!=1:continue
+        edge=p['edges'][0];nodes={n['key']:n for n in p['nodes']}
+        for other in selected:
+            full=queries[other]['pattern'];fn={n['key']:n for n in full['nodes']}
+            if len(full['edges'])<=1:continue
+            for e in full['edges']:
+                if e['type']!=edge['type'] or e.get('direction','out')!=edge.get('direction','out') or not filters(edge)<=filters(e):continue
+                orientations=[(e['source'],e['target'])]
+                if e.get('direction')=='either':orientations.append((e['target'],e['source']))
+                if any(all(nodes[k]['label']==fn[v]['label'] and filters(nodes[k])<=filters(fn[v]) for k,v in zip((edge['source'],edge['target']),ends)) for ends in orientations):
+                    missing.append({'query_id':qid,'prefix_of':other,'instruction':'Exclude this relaxed prefix from requested selections; select the complete conjunction. Source probes belong to diagnostics.'});break
+            else:continue
+            break
+    return missing

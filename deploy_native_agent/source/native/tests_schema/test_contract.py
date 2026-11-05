@@ -171,6 +171,17 @@ class Contract(unittest.IsolatedAsyncioTestCase):
   before=context_identity(self.pack)
   with patch('pankagent_query.core.REVIEW_INSTRUCTION','changed review'):
    self.assertNotEqual(before,context_identity(self.pack))
+ def test_resolved_user_concept_must_reach_requested_query(self):
+  from pankagent_query.identity import unbound_user_concepts,selected_prefixes
+  full=pattern();full['nodes'][2]['filters']=[{'property':'id','op':'eq','value':'category1'}]
+  prefix=copy.deepcopy(full);prefix['nodes']=prefix['nodes'][:2];prefix['edges']=prefix['edges'][:1]
+  qs={'q1':{'purpose':'requested','pattern':prefix},'q2':{'purpose':'requested','pattern':full}}
+  ctx=[{'tool':'resolve_entity','input':{'text':'Beta'},'output':{'candidates':[{'labels':['Category'],'properties':{'id':'category1','name':'Beta'}}]}}]
+  one=[{'purpose':'requested','query_id':'q1'}];both=one+[{'purpose':'requested','query_id':'q2'}]
+  self.assertTrue(unbound_user_concepts('Find Beta',qs,one,ctx))
+  self.assertEqual(unbound_user_concepts('Find Beta',qs,both,ctx),[])
+  self.assertEqual(selected_prefixes(qs,both)[0]['query_id'],'q1')
+  self.assertEqual(selected_prefixes(qs,both[1:]),[])
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()

@@ -366,7 +366,8 @@ REVIEW_INSTRUCTION = 'Before finishing, compare the ORIGINAL question to these e
 
 def context_identity(pack):
     return {"release": pack.data["release"], "schema_hash": pack.sha256, "prompt_version": PROMPT_VERSION,
-            "prompt_hash": hashlib.sha256(json.dumps([SYSTEM, ENRICHMENT, TOOLS, REVIEW_INSTRUCTION], sort_keys=True).encode()).hexdigest()}
+            "prompt_hash": hashlib.sha256(json.dumps([SYSTEM, ENRICHMENT, TOOLS, REVIEW_INSTRUCTION], sort_keys=True).encode()).hexdigest(),
+            "query_core_hash": hashlib.sha256(json.dumps(CODE_HASHES, sort_keys=True).encode()).hexdigest()}
 
 
 class Agent:
@@ -580,8 +581,10 @@ class Agent:
                         raise Feedback("Unknown tool; use a listed tool")
                     validate_arguments(args, definition["input_schema"], name, legacy_finish=False)
                     if name == "finish":
-                        from .identity import missing_scope_alternatives
+                        from .identity import missing_scope_alternatives, unbound_user_concepts, selected_prefixes
                         missing_scope = missing_scope_alternatives(self.pack.data, question, queries, selections)
+                        missing_scope += unbound_user_concepts(question, queries, selections, contexts)
+                        missing_scope += selected_prefixes(queries, selections)
                         from .identity import validate_bindings, reject_broadened_request
                         for selection in selections:
                             if selection["purpose"] != "requested": continue
