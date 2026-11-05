@@ -489,6 +489,15 @@ class Workflow:
                     source={'kind': 'agent', 'run_id': run['run_id'], 'phase': phase}, display={'notice': 'Bounded development KG preview. Confirm the reviewed plan to display the final answer.' if phase == 'preview' else 'Showing ' + str(len(nodes)) + ' retrieved nodes and ' + str(len(edges)) + ' relationships. Retrieval status: ' + str(result.get('retrieval_status') or result['status']) + '.'})
         feature = run.get('_presentation', {}).get(f'{phase}:{revision}', run.get('_presentation', {}).get(phase, {}) if not revision else {})
         value.update(feature.get('presentation', {}))
+        # Layout may return projected records. Carry only backend-issued refs
+        # from this exact run; never derive ownership from labels or endpoints.
+        delivered = value.get('combined_query_result', {})
+        for kind in ('nodes', 'edges'):
+            recorded = {str(item.get('id', item.get('~id'))): item for item in graph[kind]}
+            for item in delivered.get(kind, []):
+                original = recorded.get(str(item.get('id', item.get('~id'))), {})
+                for key in ('ref', 'display_type'):
+                    if key in original: item[key] = copy.deepcopy(original[key])
         value['resources_tabs'] = feature.get('resources', {}).get('resources_tabs', {})
         value.update(graph_revision=revision, kg_release=self.graph_release, readiness='ready', node_count=len(graph['nodes']), edge_count=len(graph['edges']), enrichment=run.get('enrichment'))
         if graph_revision is not None and revision != run.get('_phase_revisions', {}).get(phase):

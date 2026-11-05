@@ -40,3 +40,8 @@ app.include_router(router(workflow))
 @app.get('/health')
 def health():
     return {'status':'live','model':native.MODEL,'schema_pack_sha256':pack.sha256,'two_loops':True,'enrichment_deadline_s':workflow.enrichment_seconds,'formatter':'gpt-6.1-sol','candidate':'crosscheck-without-fast-prompt'}
+
+# Explicit opt-in: recorded 08_04 runs remain on their original workflow.
+if (ROOT/'1104-config.json').is_file():
+    from query_release import install
+    app = install(app, workflow, ROOT, ROOT/'1104-config.json')

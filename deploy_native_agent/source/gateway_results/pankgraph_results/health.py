@@ -42,9 +42,16 @@ class ResultsHealth:
             except Exception as exc:
                 self.record(name, "unavailable", time.monotonic() - started, type(exc).__name__)
         async def agent():
-            r = await self.runtime.http.get(self.runtime.settings.agent_url + "/health/ready")
+            url = ('http://127.0.0.1:18864/health' if self.runtime.settings.viewer_release
+                   else self.runtime.settings.agent_url + "/health/ready")
+            r = await self.runtime.http.get(url)
             r.raise_for_status()
-            return r.json()
+            value = r.json()
+            if self.runtime.settings.viewer_release:
+                return {"ready": value.get("release_id") == self.runtime.settings.viewer_release,
+                        "identity_verified": value.get("release_id") == self.runtime.settings.viewer_release,
+                        "graph_version": value.get("release_id")}
+            return value
         await asyncio.gather(one("neo4j", self.runtime.query.probe), one("agent", agent))
         try:
             await self.runtime.io.call(self.runtime.store.probe)

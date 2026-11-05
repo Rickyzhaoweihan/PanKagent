@@ -35,7 +35,7 @@ from .resource_registry import REGISTRY_VERSION
 from .resources import ResourceManager, ResourceError
 from .store import ResultStore
 
-RESULT_VERSION = "results-2-audit-repair"
+RESULT_VERSION = "results-1104-release-cache-1"
 
 
 class PrefixMiddleware:
@@ -62,7 +62,15 @@ class ResultsRuntime:
         self.owner_task = None
         self.shutting_down = False
         self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(15, read=90), follow_redirects=False)
-        self.query = query or QueryService(vnext)
+        if settings.viewer_release:
+            # All new conventional queries share the same pinned release as
+            # the current agent. Historical saved results retain recorded IDs.
+            vnext.graph_version = settings.viewer_release
+            from .release_query import ReleaseQueryAdapter
+            self.query = query or QueryService(vnext, graph=ReleaseQueryAdapter(
+                vnext, settings.viewer_url, settings.viewer_release, settings.viewer_token_file))
+        else:
+            self.query = query or QueryService(vnext)
         self.layout = layout or LayoutService(max_nodes=settings.display_nodes, timeout_seconds=settings.layout_timeout)
         self.coordinates = CoordinateLookup(settings.dbsnp_command)
         self.resources = resources or ResourceManager(settings.state_dir / "resources", self.coordinates,

@@ -34,6 +34,13 @@ async def format_final(question, result, release, on_delta=None):
     body['approved_query_handoff'] = {k: result.get(k) for k in (
         'standardized_question', 'metapath', 'cypher', 'parameters',
         'retrieval_status', 'status', 'condition_audit', 'unfulfilled_conditions')}
+    # Exact selected-object SQL evidence is part of the KG handoff, not a
+    # second retrieval stage. Keep original owner refs, rows and availability.
+    if result.get('linked_evidence') or result.get('evidence_reads'):
+        body['selected_object_evidence'] = {
+            'release_id': release,
+            'linked_evidence': result.get('linked_evidence', []),
+            'evidence_reads': result.get('evidence_reads', [])}
     payload = dict(model=MODEL, instructions='\n\n'.join(p['text'] for p in prepared.system),
                    input=json.dumps(body, ensure_ascii=False), reasoning={'effort': 'low'},
                    max_output_tokens=8192, stream=True, store=False)

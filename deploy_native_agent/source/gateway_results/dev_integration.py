@@ -66,6 +66,8 @@ class ResultsDispatch:
             return await self.app(scope,receive,send)
         path=scope['path'][4:]
         if not path.startswith(('/agent/v2/','/results')):return await self.app(scope,receive,send)
+        if scope['method'] == 'POST' and path.endswith(('/confirm', '/revise')) and '/plans/plan-qwen-' not in path:
+            return await JSONResponse({'detail':'Start a new question on PanKgraph_1104; saved historical plans cannot query the retired release.'},409)(scope,receive,send)
         try:body,replay=await body_and_replay(receive)
         except ValueError:return await JSONResponse({'detail':'Input exceeds limit'},413)(scope,receive,send)
         if not simple_route(path,scope['method'],body):return await self.app(scope,replay,send)

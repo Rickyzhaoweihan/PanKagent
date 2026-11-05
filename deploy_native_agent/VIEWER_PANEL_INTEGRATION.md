@@ -1,10 +1,10 @@
 # Release-scoped information-panel gateway
 
-Status: implemented and tested; not activated on dev. The captured source manifest
+Status: activated and browser-verified on dev on 2026-11-04; see RELEASE_1104.md. The captured source manifest
 remains the historical 2026-11-04 baseline, not a claim that these additions are live.
 
 The frontend follows `wangyiqunumich/pank_frontend` `xuteng/react`. The results
-service's existing site authentication protects three new routes:
+service's existing authentication configuration and origin policy apply to three routes:
 
 - `GET /api/viewer/v1/schema?release_id=...`
 - `POST /api/viewer/v1/inspect` with `release_id` and exact `ref`

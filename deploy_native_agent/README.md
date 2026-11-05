@@ -80,4 +80,4 @@ in the separate `wangyiqunumich/pank_frontend` `xuteng/react` branch.
 
 ## Prepared information-panel integration
 
-See [VIEWER_PANEL_INTEGRATION.md](VIEWER_PANEL_INTEGRATION.md) for the new, default-disabled authenticated viewer routes, release/ref contract and activation/rollback checks. This addition is not yet a live deployment. The original source manifest remains historical capture evidence.
+See [VIEWER_PANEL_INTEGRATION.md](VIEWER_PANEL_INTEGRATION.md) for the new, default-disabled authenticated viewer routes, release/ref contract and activation/rollback checks. Activated with the 1104 release migration; see [RELEASE_1104.md](RELEASE_1104.md). The original source manifest remains historical capture evidence.
