@@ -137,6 +137,13 @@ class Contract(unittest.IsolatedAsyncioTestCase):
   t=ResolverTransport([resolve,resolve,query(),select(),finish()])
   await Agent(self.pack,t).run('original scope')
   self.assertEqual(sum(a=='resolve' for a,_ in t.calls),1)
+ async def test_pathway_only_positive(self):
+  p=pattern();p['nodes']=p['nodes'][1:];p['edges']=p['edges'][1:]
+  r,_=await self.run_steps([query(pat=p),select(),finish('complete')],True)
+  self.assertEqual(r['status'],'complete');self.assertEqual([e['type'] for e in r['metapath']['edges']],['MEMBER'])
+ def test_external_accession_multiple_ids_remain_explicit(self):
+  ctx=[{'tool':'resolve_entity','input':{'text':'42'},'output':{'candidates':[{'labels':['Object'],'properties':{'id':x,'external':['42']}} for x in ['a','b']]}}]
+  with self.assertRaisesRegex(Feedback,'multiple distinct'):validate_bindings(PACK,pattern(),ctx)
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()

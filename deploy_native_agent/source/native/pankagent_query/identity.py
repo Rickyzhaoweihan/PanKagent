@@ -27,8 +27,11 @@ def validate_bindings(pack, pattern, contexts, question=""):
         for ctx in contexts:
             if ctx.get('tool') != 'resolve_entity': continue
             text=ctx.get('input',{}).get('text','')
-            names=pack.get('search_roles',{}).get(node['label'],{}).get('names',[])
-            exact=[c for c in ctx.get('output',{}).get('candidates',[]) if node['label'] in c.get('labels',[]) and any(str(c['properties'].get(k,'')).casefold()==text.casefold() for k in names)]
+            roles=pack.get('search_roles',{}).get(node['label'],{})
+            fields=set(roles.get('names',[])+roles.get('aliases',[])+roles.get('identifiers',[]))-set(primaries)
+            def exact_value(value):
+                return any(str(v).casefold()==text.casefold() for v in (value if isinstance(value,list) else [value]))
+            exact=[c for c in ctx.get('output',{}).get('candidates',[]) if node['label'] in c.get('labels',[]) and any(exact_value(c['properties'].get(k,'')) for k in fields)]
             for primary in primaries:
                 ids={c['properties'].get(primary) for c in exact if c['properties'].get(primary)}
                 if len(ids)<2: continue
@@ -36,7 +39,7 @@ def validate_bindings(pack, pattern, contexts, question=""):
                     if f['property']!=primary or f.get('op') not in ('eq','in'):continue
                     values=set(f['value'] if f['op']=='in' else [f['value']])
                     if values & ids and not ids <= values and not all(str(v) in question for v in values):
-                        raise Feedback('This resolved name has multiple distinct node identities. Do not select an arbitrary primary ID: '+str(sorted(ids))+'. Preserve all candidates as distinct nodes using the returned identities, or ask for explicit disambiguation.')
+                        raise Feedback('This resolved name/accession has multiple distinct node identities. Do not select an arbitrary primary ID: '+str(sorted(ids))+'. Use ONE node variable with an IN filter on '+primary+' containing ALL returned IDs (op=in, value='+str(sorted(ids))+'). Each matched row retains the distinct stored node identity; this does not merge nodes. Do not create one node variable per candidate: that would AND alternatives. Alternatively request explicit disambiguation.')
 
 
 def reject_broadened_request(pattern, queries, pack=None):
