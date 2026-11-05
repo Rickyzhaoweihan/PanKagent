@@ -90,7 +90,7 @@ def handoff(queries, selections, args, base=None):
     result["retrieval_checks"] = {
         "execution": "succeeded", "schema_validation": "passed",
         "semantic_validation": "agent_assessed_not_independent",
-        "condition_coverage": "incomplete" if args.get("unfulfilled_conditions") or args.get("status") == "partial" else "agent_assessed",
+        "condition_coverage": "incomplete" if result.get("unfulfilled_conditions") or result.get("status") == "partial" else "agent_assessed",
         "pagination_complete": all(q.get("next_offset") is None for q in required),
         "truncated": status == "partial", "delivery_omissions": omitted,
         "queries": [{"query_id": s["query_id"], "purpose": s["purpose"], "status": q["status"],

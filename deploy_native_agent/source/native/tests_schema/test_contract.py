@@ -183,6 +183,11 @@ class Contract(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(unbound_user_concepts('Find Beta',qs,both,ctx),[])
   self.assertEqual(selected_prefixes(qs,both)[0]['query_id'],'q1')
   self.assertEqual(selected_prefixes(qs,both[1:]),[])
+ async def test_inherited_unfulfilled_condition_keeps_coverage_incomplete(self):
+  f=finish('partial');f[0]['input']['unfulfilled_conditions']=['unresolved concept']
+  seed,_=await self.run_steps([query(),select(),f])
+  r,_=await self.run_steps([finish('empty')],seed=seed)
+  self.assertEqual(r['status'],'partial');self.assertEqual(r['retrieval_checks']['condition_coverage'],'incomplete')
  def test_migrated_rule_retention(self):
   data=json.loads((ROOT/'schema_semantics.json').read_text());self.assertGreater(len(data['interpretation']['rules']),20);self.assertTrue(data['provenance']['source_hashes'])
 if __name__=='__main__':unittest.main()
