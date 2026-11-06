@@ -16,7 +16,7 @@ async def format_final(question, result, release, on_delta=None):
     # Reuse the versioned interpretation/style contract, without instantiating
     # the legacy model gateway or sending the query agent's generated answer.
     sys.path.insert(0, str(RELEASE)) if str(RELEASE) not in sys.path else None
-    if result.get('context_identity', {}).get('prompt_version') == 'schema-agent-v1':
+    if result.get('context_identity', {}).get('prompt_version') in ('schema-agent-v1', 'model-owned-v2'):
         from pankagent_query.formatting import prepare, PassThrough
         prepared = prepare(question, result, release)
         scope = PassThrough()
@@ -38,7 +38,7 @@ async def format_final(question, result, release, on_delta=None):
     if not key:
         raise FormatterFailure('OpenAI formatter credential is not configured', {})
     body = json.loads(prepared.body)
-    if result.get('context_identity', {}).get('prompt_version') != 'schema-agent-v1':
+    if result.get('context_identity', {}).get('prompt_version') not in ('schema-agent-v1', 'model-owned-v2'):
         body['approved_query_handoff'] = {k: result.get(k) for k in (
             'standardized_question', 'metapath', 'cypher', 'parameters',
             'retrieval_status', 'status', 'condition_audit', 'unfulfilled_conditions')}

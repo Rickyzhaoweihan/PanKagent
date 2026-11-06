@@ -24,7 +24,7 @@ def model_messages(messages, max_bytes=90000):
     for _, _, _, block, call in sorted(candidates, key=lambda x:x[:3]):
         if size() <= max_bytes: break
         raw = block['content']
-        if len(raw.encode()) < 2000: continue
+        if len(raw.encode()) < 600: continue
         try: value = json.loads(raw)
         except (ValueError, TypeError): continue
         if not isinstance(value, dict): continue
@@ -41,12 +41,31 @@ def model_messages(messages, max_bytes=90000):
             recover = {'name':'schema','input':{}}
         summary.update(context_compacted=True, original_sha256=hashlib.sha256(raw.encode()).hexdigest(),
                        recover_with=recover,
-                       note='Full output remains in the run audit and retained query/schema registry. This is context compaction, not empty or missing evidence. Read retained nodes/edges/evidence with inspect_result; repeat schema/resolve_entity for exact definitions or identities. Original tool calls and their arguments are preserved.')
+                       note='Full output remains in the run audit and retained query/schema registry. This is context compaction, not empty or missing evidence. Read retained nodes/edges with inspect_result and owned evidence with inspect_evidence; repeat schema/resolve_entity for exact definitions or identities. Original tool calls and their arguments are preserved.')
         compact = json.dumps(summary, ensure_ascii=False)
         if len(compact.encode()) >= len(raw.encode()): continue
         block['content'] = compact
         count += 1
     after = size()
+    removed = 0
     if after > max_bytes:
-        raise ValueError('Conversation structure exceeds model context envelope; no silent conversation or evidence truncation')
-    return wire, {'original_bytes':before,'sent_bytes':after,'compacted_tool_results':count}
+        # Remove whole old exchanges only from the outgoing context. The full
+        # audit and query registry remain intact and accessible through tools.
+        original = wire
+        notice = {'role': 'user', 'content': json.dumps({
+            'context_window': 'Older exchanges are retained in the run audit but omitted from this model input to fit the context budget.',
+            'recovery': 'Use list_results for all retained query handles, exact patterns and current selections; inspect_result or inspect_evidence for records; schema and resolve_entity for definitions and candidates. No query result or selection was deleted. Do not infer absence from omitted history.'})}
+        for start in range(1, len(original)):
+            first = original[start]
+            # Never leave an orphan tool result or split a multi-tool response.
+            if first.get('role') == 'user' and isinstance(first.get('content'), list):
+                continue
+            trial = [original[0], notice] + original[start:]
+            trial_size = len(json.dumps(trial, ensure_ascii=False).encode())
+            if trial_size <= max_bytes:
+                wire, after, removed = trial, trial_size, start-1
+                break
+        else:
+            raise ValueError('Latest model exchange exceeds context budget; audit and retained evidence are unchanged')
+    return wire, {'original_bytes':before,'sent_bytes':after,'compacted_tool_results':count,
+                  'windowed_messages':removed}

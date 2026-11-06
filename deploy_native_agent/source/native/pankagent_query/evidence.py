@@ -29,16 +29,14 @@ def summaries(queries):
 def handoff(queries, selections, args, base=None):
     """Union explicitly selected records; preserve parallel edges by record ID."""
     selected = [(s, queries[s["query_id"]]) for s in selections]
-    if any(q.get("purpose") == "diagnostic" for _,q in selected):
-        raise ValueError("Diagnostic evidence cannot enter a handoff")
     required = [q for s, q in selected if s.get("purpose", "requested") == "requested"]
     status = "partial" if any(q["status"] == "partial" for q in required) else (
         "complete" if any(q["status"] == "complete" for q in required) else "empty")
-    graph = graph_union(([base["graph"]] if base else []) + [q["graph"] for _, q in selected])
+    graph = graph_union([q["graph"] for _, q in selected])
     # Apply the existing graph byte allowance to the combined handoff as well.
     omitted = 0
     if len(json.dumps(graph, default=str).encode()) > 2_000_000:
-        kept = copy.deepcopy(base["graph"] if base else {"nodes": [], "edges": []})
+        kept = {"nodes": [], "edges": []}
         known = {str(n["id"]): n for n in graph["nodes"]}
         for edge in graph["edges"]:
             addition = {"nodes": [known[str(k)] for k in (edge.get("source"), edge.get("target")) if str(k) in known], "edges": [edge]}
@@ -112,8 +110,6 @@ def handoff(queries, selections, args, base=None):
     if omitted:
         result["condition_audit"].append({"condition": "Graph delivery allowance",
             "binding": str(omitted) + " records omitted by the existing graph byte allowance; delivered context may be incomplete."})
-    if (status == "partial" or result.get("unfulfilled_conditions")) and result.get("status") in ("complete", "empty"):
-        result["status"] = "partial"
     return result
 
 

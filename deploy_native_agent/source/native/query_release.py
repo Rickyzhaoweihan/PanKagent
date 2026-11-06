@@ -10,7 +10,6 @@ from simple_agent.features import presentation
 from simple_agent.openai_formatter import format_final
 from release_dispatch import ReleaseDispatch
 
-CROSSCHECK = '\nBefore finishing, cross-check the approved evidence against all entities and conditions requested in the question. Review whether retrieval coverage is sufficient and whether identity, scope or interpretation remains ambiguous. If the answer is already supported, use this phase to verify completeness rather than immediately finishing. Choose any further tool calls based on unresolved uncertainty; do not repeat successful work or require new evidence when the retained evidence suffices. Briefly state the verification outcome and any remaining uncertainty in finish.\n'
 
 def install(app, legacy, root, config_path):
     from contextlib import asynccontextmanager
@@ -19,13 +18,13 @@ def install(app, legacy, root, config_path):
     if pack.data.get('semantics_version') != 'schema-semantics-v1':
         raise RuntimeError('Current query core requires the versioned schema semantics pack')
     assert pack.data['release'] == config['release_id']
-    if CROSSCHECK not in core.ENRICHMENT: core.ENRICHMENT += CROSSCHECK
     native_client.BASE, native_client.MODEL = config['model_url'], config['model']
     client = native_client.Client(root/'calls-1104', Path(config['model_token_file']).read_text().strip())
     transport = IntegratedTransport(config, Path(config['query_token_file']).read_text().strip(), client)
     async def runner(question, history=None, on_progress=None, **kwargs):
         await transport.verify_release(pack)
-        return await core.Agent(pack, transport, model=config['model']).run(question, history, on_progress, **kwargs)
+        kwargs.setdefault('deadline_s', config.get('agent_deadline_s', 300))
+        return await core.Agent(pack, transport, model=config['model'], max_turns=config.get('agent_max_model_calls', 48)).run(question, history, on_progress, **kwargs)
     async def render(question, result, on_delta=None):
         return await format_final(question, result, config['release_id'], on_delta)
     workflow = Workflow(runner, root/'workflow-state-1104', render,

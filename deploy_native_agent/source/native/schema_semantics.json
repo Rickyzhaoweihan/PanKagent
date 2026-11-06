@@ -1751,7 +1751,7 @@
         "out"
       ],
       "direction_note": "Follow recorded source and target semantics; reverse traversal requires an explicit reverse question.",
-      "scope_note": "Distinct endpoint contexts represent GO annotation, Reactome membership and MSigDB KEGG_MEDICUS membership. Inspect applicable endpoints for an unspecified functional request; explicit pathway requests use pathway endpoints. Do not substitute GO for pathway or treat name substring matches as concept equivalence. For a source-unspecified functional concept, inspect both ontology and pathway candidates using the original phrase. Finding an exact ontology term does not exclude pathway interpretations. Return source-distinguished branches or explicitly clarify their scope; do not silently select only one category."
+      "scope_note": "Endpoint contexts distinguish GO functional annotations, Reactome pathway membership and MSigDB KEGG_MEDICUS set membership. These sources have independent identities and coverage. GO terms are not pathway nodes. A lexical substring match is a search result, not a declaration of concept equivalence."
     },
     "GENETIC_INTERACTION": {
       "allowed_traversal": [
@@ -1760,7 +1760,7 @@
       ],
       "direction_note": "Stored A/B order preserves the source record. Partner lookup may traverse either direction; retain the original relation type and record identity.",
       "concept_group": "interaction",
-      "scope_note": "Physical and genetic evidence are distinct alternatives within this group; an unspecified interaction request must not silently exclude either."
+      "scope_note": "Physical and genetic interactions are distinct evidence types. Stored record orientation does not imply biological causality."
     },
     "PHYSICAL_INTERACTION": {
       "allowed_traversal": [
@@ -1769,7 +1769,7 @@
       ],
       "direction_note": "Stored A/B order preserves the source record. Partner lookup may traverse either direction; retain the original relation type and record identity.",
       "concept_group": "interaction",
-      "scope_note": "Physical and genetic evidence are distinct alternatives within this group; an unspecified interaction request must not silently exclude either."
+      "scope_note": "Physical and genetic interactions are distinct evidence types. Stored record orientation does not imply biological causality."
     },
     "GENE_DETECTED_IN": {
       "allowed_traversal": [
@@ -2617,72 +2617,5 @@
         "namespace": "stored_node_id"
       }
     }
-  },
-  "scope_families": [
-    {
-      "id": "interaction_kind",
-      "members": [
-        {
-          "relation": "PHYSICAL_INTERACTION",
-          "qualifiers": [
-            "physical"
-          ]
-        },
-        {
-          "relation": "GENETIC_INTERACTION",
-          "qualifiers": [
-            "genetic"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "annotation_category",
-      "members": [
-        {
-          "relation": "FUNCTION_ANNOTATION",
-          "target": "GO_term",
-          "qualifiers": [
-            "GO",
-            "GO:",
-            "ontology"
-          ]
-        },
-        {
-          "relation": "FUNCTION_ANNOTATION",
-          "target": "Reactome_pathway",
-          "qualifiers": [
-            "Reactome",
-            "R-HSA-"
-          ]
-        },
-        {
-          "relation": "FUNCTION_ANNOTATION",
-          "target": "KEGG_pathway",
-          "qualifiers": [
-            "KEGG",
-            "MEDICUS"
-          ]
-        }
-      ],
-      "qualifier_groups": [
-        {
-          "qualifiers": [
-            "pathway",
-            "pathways"
-          ],
-          "members": [
-            {
-              "relation": "FUNCTION_ANNOTATION",
-              "target": "Reactome_pathway"
-            },
-            {
-              "relation": "FUNCTION_ANNOTATION",
-              "target": "KEGG_pathway"
-            }
-          ]
-        }
-      ]
-    }
-  ]
+  }
 }

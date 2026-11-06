@@ -9,7 +9,7 @@ def augment(pack, semantics):
     out = copy.deepcopy(pack)
     out['semantics_version'] = semantics['version']
     out['semantics_sha256'] = hashlib.sha256(json.dumps(semantics, sort_keys=True).encode()).hexdigest()
-    out['scope_families'] = copy.deepcopy(semantics.get('scope_families', []))
+    out.pop('scope_families', None)
     out['interpretation'] = copy.deepcopy(semantics['interpretation'])
     out['semantics_provenance'] = copy.deepcopy(semantics['provenance'])
     out['identity_fields'] = {k: v for k, v in semantics['identity_fields'].items() if k in out['nodes']}

@@ -217,7 +217,8 @@ class Workflow:
     def record_interruption(self, run, exc, phase):
         # Infrastructure cannot decide scientific failure or commit unfinished
         # enrichment. Keep the latest checkpoint and the approved graph intact.
-        record = {'component': 'workflow', 'category': 'infrastructure',
+        category = getattr(exc, 'category', 'infrastructure')
+        record = {'component': 'workflow', 'category': category,
                   'phase': phase, 'type': type(exc).__name__, 'message': str(exc),
                   'model_decision': False, 'at': time.time(),
                   'traceback': ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))}
@@ -225,8 +226,8 @@ class Workflow:
         public_record = {key: value for key, value in record.items() if key != 'traceback'}
         run.setdefault('errors', []).append(public_record)
         self.pause(run)
-        run.update(status='interrupted', stage='Service interrupted',
-                   interruption={'phase': phase, 'category': 'infrastructure',
+        run.update(status='interrupted', stage='Resource limit reached' if category == 'resource_limit' else 'Service interrupted',
+                   interruption={'phase': phase, 'category': category,
                                  'model_decision': False, 'checkpoint_saved': '_checkpoint' in run,
                                  'approved_evidence_preserved': '_approved_result' in run})
         if phase == 'enrich':
@@ -371,7 +372,7 @@ class Workflow:
                     run['graph_answer'] = run.get('graph_answer', '') + text
                     self.event(run, 'graph_answer', {'text': text, 'delta': True})
             kwargs = {'on_delta': on_delta} if 'on_delta' in inspect.signature(self.formatter).parameters else {}
-            question = run['question'] if run['_result'].get('context_identity', {}).get('prompt_version') == 'schema-agent-v1' else run['plan']['interpreted_question']
+            question = run['question'] if run['_result'].get('context_identity', {}).get('prompt_version') in ('schema-agent-v1', 'model-owned-v2') else run['plan']['interpreted_question']
             formatted = await asyncio.wait_for(self.formatter(question, run['_result'], **kwargs), 300)
             if run['status'] in TERMINAL:
                 return

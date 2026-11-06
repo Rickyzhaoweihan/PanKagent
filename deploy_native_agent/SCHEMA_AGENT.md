@@ -1,3 +1,9 @@
+# Current model-owned contract
+
+New runs use `model-owned-v2`. See [the current contract and validation](MODEL_OWNED_20261106.md). The policy guards described below are historical and have been removed.
+
+---
+
 # Schema-owned query and formatter semantics
 
 New runs use the `schema-agent-v1` contract in `source/native/pankagent_query`.
