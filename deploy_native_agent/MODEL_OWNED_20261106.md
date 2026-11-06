@@ -74,3 +74,54 @@ These initial controlled actions are explicitly marked in the trace.
 The paired code/schema/config rollback never restores session or budget state.
 Only the owned dev 18864 process is eligible for restart; production, 8794/8795,
 graph data and frontend design are outside this change.
+
+## Recorded candidate acceptance and limits
+
+Final candidate schema: `a1fe01f7ce500ae76f855ed7472755ccedd9a3930acd4b6dda929cced7eee1b5`.
+Prompt: `268ca4c40c403fc330d8da2908f111bcce061f93d42851088ac154cddc2900ce`.
+Query-core bundle: `b8b6534805777cb9987877172aa94aa9e8447cfc5a761edc5d171b7889238271`.
+Deployed source commit: `5e74054d557295ec86d5f988b555815b8e9b36f9`.
+
+- Renamed-schema recovery: real model chose a revised search after the controlled
+  case-sensitive miss, returned the actual membership, and selected the earlier
+  diagnostic as context with a rationale. No tool errors. The first two actions
+  are fixture setup; three subsequent model calls are real inference.
+- Real connected positive: prepare used six model calls (one correctly recovered
+  misspelled `selection` argument); enrichment used two, without errors. Final
+  graph has three nodes and two edges joined at the same TUBB8 identity. Independent
+  formatting preserved BioGRID record 3893708 and Reactome R-HSA-2132295.
+- Real HLA-DRA question: both phases and formatting completed. Prepare used 26
+  calls / four technical errors; enrichment six calls / two technical errors.
+  The final answer retained the actual MHC class II antigen presentation pathway,
+  corrected edge-count/entity-count confusion and did not substitute annotation
+  categories for interaction partners. The model omitted interaction searches
+  from its final selection and did not retain T1D-specific evidence; GO pagination
+  remained incomplete. The formatter disclosed these limits. This is **not**
+  acceptance of exhaustive scientific coverage or error-free model planning.
+- A prior long-history candidate failed its context envelope in enrichment.
+  Replaying that exact saved context with the final compactor reduced 393906
+  bytes to 87357 without deleting audit messages or queries. A separate unit
+  case verifies whole-exchange windowing and valid tool-call/result pairing.
+- Earlier saved 0804 results contained KEGG hsa_04612/hsa_04940 and physical
+  interaction records. Live 1104 direct read confirmed HLA-DRA membership in
+  Reactome R-HSA-2132295 across eight stored gene identities and returned no
+  physical/genetic incident records. These are release-specific observations;
+  this change does not repair or reinterpret graph-build omissions.
+
+Deployment observed an idle owned dev service, compared source hashes, backed up
+all replaced files and paired config, and restarted only port 18864. Three saved
+historical run files retained identical SHA256 hashes. Public historical reads
+continued returning their prior completed/partial states. Paired rollback is
+`/db/pankagent-vnext-private/operations/model-owned-20261106/deployment/rollback/restore.py`.
+
+## Public dev readback
+
+- [Original HLA-DRA question](https://dev.pankgraph.org/result-new2?provider=vnext&run_id=simple-qwen-bbd3db26372b4f4e82bb1088ae3514f4&session_id=0ea19807-0e96-44c2-88b7-cf3b93361587): **partial**, with actual Reactome antigen-presentation memberships and explicit partner/T1D coverage limits. Prepare: 92.201 s, 10 model calls, two recovered technical errors. Enrichment: 30.397 s, two model calls, no errors. Final formatter and result publication completed.
+- [Connected positive](https://dev.pankgraph.org/result-new2?provider=vnext&run_id=simple-qwen-52ad8e91a5a347c6aa86748b4efa1dfb&session_id=784e9109-4343-4fed-9cad-c69fd3c29c3f): **completed**, three nodes / two edges, shared TUBB8 identity preserved. Prepare: four model calls, no errors. Enrichment: four model calls, no errors.
+- Live prepare/enrichment request files exactly match their respective general system instructions. Neither contains the audited biological type/source/entity literals. This checks actual outbound messages, not just source text.
+- Public terminal events were read back for both runs. Source hashes match the deployment manifest. Historical saved-run hashes remain unchanged after live testing.
+
+This delivery changes agent/tool responsibilities and technical recovery. It does
+not establish that every model-planned search is exhaustive or that all model
+intermediate statements are correct. The observed public HLA-DRA run remains
+partial; this limitation is explicit rather than forced into a success claim.
