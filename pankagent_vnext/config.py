@@ -31,7 +31,7 @@ class Settings:
     run_timeout: float = 40.0
     answer_timeout: float = field(default_factory=lambda: float(env('ANSWER_TIMEOUT', '60')))
     provider_status_url: str = "https://status.claude.com/api/v2/summary.json"
-    literature_api_version: str = field(default_factory=lambda: env('LITERATURE_API_VERSION','hirn-agent-v1'))
+    literature_api_version: str = field(default_factory=lambda: env('LITERATURE_API_VERSION','hirn-single-v1'))
     health_interval: float = 30.0
     claude_health_interval: float = 300.0
     literature_timeout: float = 60.0
@@ -39,7 +39,7 @@ class Settings:
     glkb_timeout: float = 330.0
     literature_concurrency: int = 4
     literature_queue: int = 8
-    literature_url: str = field(default_factory=lambda: env('LITERATURE_URL','http://127.0.0.1:8102'))
+    literature_url: str = field(default_factory=lambda: env('LITERATURE_URL','http://127.0.0.1:8101'))
     corpus_version: str = field(default_factory=lambda: env('CORPUS_VERSION','hirn-mixed-current'))
     source_policy: str = field(default_factory=lambda: env('SOURCE_POLICY','mixed'))
     cypher_url: str = field(default_factory=lambda: env('CYPHER_URL','http://127.0.0.1:23917'))

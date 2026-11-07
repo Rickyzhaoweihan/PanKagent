@@ -191,7 +191,7 @@ class LiteratureAdapter:
         return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
     def _check_configuration(self) -> None:
-        if self.api_version != "hirn-agent-v1":
+        if self.api_version not in {"hirn-agent-v1", "hirn-single-v1"}:
             raise LiteratureContractError("unsupported_adapter_version")
         if self.source_policy != "mixed":
             raise LiteratureContractError("unsupported_source_policy")
@@ -208,6 +208,8 @@ class LiteratureAdapter:
 
     async def _consume(self, question: str, conversation: list, emit: Emit, diagnostics=None) -> dict[str, Any]:
         self._check_configuration()
+        if self.api_version == "hirn-single-v1" and len(question) > 2000:
+            raise LiteratureContractError("question_too_long")
         # Match the current strict wrapper request schema; keep answer/ref units together.
         history, turns, pending_question = [], [], None
         for turn in conversation:
@@ -232,13 +234,25 @@ class LiteratureAdapter:
                                history_sha256=hashlib.sha256(encoded_history.encode()).hexdigest(),
                                history_turn_count=len(history), version='hirn-request-diagnostics-v1')
         async with self.client.stream("POST", f"{self.url}/stream", headers={"Accept": "text/event-stream", "X-Request-ID": (diagnostics or {}).get("request_id", str(uuid.uuid4()))},
-                                      json={"question": question, "conversation": history}) as response:
+                                      json=({"question": question} if self.api_version == "hirn-single-v1" else {"question": question, "conversation": history})) as response:
             response.raise_for_status()
             if "text/event-stream" not in response.headers.get("content-type", ""):
                 raise LiteratureContractError("invalid_content_type")
             event_name, data, event_bytes, total_bytes = "message", [], 0, 0
 
             async def consume_event() -> dict[str, Any] | None:
+                if self.api_version == "hirn-single-v1" and data:
+                    try:
+                        value = json.loads("\n".join(data))
+                    except (ValueError, TypeError) as error:
+                        raise LiteratureContractError("invalid_complete_json") from error
+                    if not isinstance(value, dict):
+                        raise LiteratureContractError("invalid_complete_payload")
+                    if value.get("step") == "Complete":
+                        return value
+                    if value.get("step") == "Error":
+                        raise LiteratureContractError("upstream_error")
+                    return None
                 if event_name in PROGRESS:
                     # Deliberately do not parse processing/attempt/audit content.
                     await emit("literature_progress", {"stage": "searching_literature", "status": "running",
@@ -290,6 +304,11 @@ class LiteratureAdapter:
         diagnostics = {'request_id': str(uuid.uuid4())}
         try:
             final = await asyncio.wait_for(self._consume(question, conversation, emit, diagnostics), timeout=self.timeout)
+            if self.api_version == "hirn-single-v1":
+                unit = _answer_unit({"status": "complete", "attempt_id": diagnostics["request_id"], "result": final})
+                self.last_success, self.last_error = _utcnow(), None
+                return self._result(unit["status"], **{k: v for k, v in unit.items() if k != "status"},
+                                    request_diagnostics=diagnostics, elapsed_ms=round((time.monotonic() - started) * 1000))
             perspectives = _normalize_legacy(final)
             self.last_success, self.last_error = _utcnow(), None
             for perspective in perspectives:
@@ -330,6 +349,10 @@ class LiteratureAdapter:
             payload = response.json()
             if not isinstance(payload, dict):
                 raise LiteratureContractError("invalid_health_contract")
+            if self.api_version == "hirn-single-v1":
+                result.update(state="healthy" if response.is_success and payload.get("status") == "healthy" else "unavailable",
+                              latency_ms=round((time.monotonic() - started) * 1000))
+                return result
             wrapper_ok = response.is_success or response.status_code == 503
             upstream_ok = payload.get("hirn_healthy") is True
             configured = payload.get("anthropic_configured") is True
