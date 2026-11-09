@@ -8,7 +8,7 @@ import native_client as native
 from simple_agent import core
 from simple_agent.transport import DevTransport
 from simple_agent.workflow import Workflow,router
-from simple_agent.features import presentation
+from simple_agent.features import literature, presentation
 from simple_agent.openai_formatter import format_final
 from fastapi import FastAPI
 ROOT=Path(__file__).resolve().parent
@@ -26,7 +26,7 @@ async def runner(question,history=None,on_progress=None,**kwargs):
     return await core.Agent(pack,transport,model=native.MODEL).run(question,history,on_progress,**kwargs)
 async def render(question,result,on_delta=None):
     return await format_final(question,result,pack.data.get('release'),on_delta)
-workflow=Workflow(runner,ROOT/'workflow-state',render,literature=None,presentation=presentation,graph_release=pack.data.get('release'))
+workflow=Workflow(runner,ROOT/'workflow-state',render,literature=literature,presentation=presentation,graph_release=pack.data.get('release'))
 @asynccontextmanager
 async def lifespan(app):
     await transport.initialize()

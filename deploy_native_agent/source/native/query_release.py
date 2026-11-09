@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from pankagent_query import core, native_client
 from pankagent_query.transport import IntegratedTransport
 from simple_agent.workflow import Workflow, router
-from simple_agent.features import presentation
+from simple_agent.features import literature, presentation
 from simple_agent.openai_formatter import format_final
 from release_dispatch import ReleaseDispatch
 
@@ -28,7 +28,7 @@ def install(app, legacy, root, config_path):
     async def render(question, result, on_delta=None):
         return await format_final(question, result, config['release_id'], on_delta)
     workflow = Workflow(runner, root/'workflow-state-1104', render,
-                        literature=None, presentation=presentation, graph_release=config['release_id'])
+                        literature=literature, presentation=presentation, graph_release=config['release_id'])
     workflow.context_identity = core.context_identity(pack)
     current = FastAPI()
     current.include_router(router(workflow))
@@ -37,7 +37,8 @@ def install(app, legacy, root, config_path):
         await transport.verify_release(pack)
         return {'status':'live','release_id':config['release_id'],'model':config['model'],
                 'formatter':'gpt-6.1-sol','two_loops':True,'schema_pack_sha256':pack.sha256,
-                'prompt_version':core.PROMPT_VERSION,'semantics_version':pack.data.get('semantics_version')}
+                'prompt_version':core.PROMPT_VERSION,'semantics_version':pack.data.get('semantics_version'),
+                'literature_sources':['hirn','glkb']}
     previous = app.router.lifespan_context
     @asynccontextmanager
     async def lifespan(parent):

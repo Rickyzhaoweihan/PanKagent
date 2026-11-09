@@ -26,6 +26,10 @@ package assets and available requirement files, not a server filesystem backup.
 
 ## Current agent configuration
 
+Literature was reconnected on 2026-11-09 for new native/1104 runs. The existing
+HIRN/GLKB coordinator runs after graph formatting; an explicit literature opt-out
+still skips it. See [repair evidence and the HIRN credential blocker](LITERATURE_REPAIR_20261109.md).
+
 - Native application: `source/native/candidate_api.py`.
 - Model endpoint: server-local `http://127.0.0.1:33924/v1`, alias `pank-candidate`.
   `candidate_api.py` overrides the historical defaults in `native_client.py`.
