@@ -35,3 +35,18 @@ class NativeCurvesTest(unittest.TestCase):
         self.assertLess(before[0], 50)
         self.assertEqual(after[0], 50)
         self.assertGreater(after[1], 0)
+
+    def test_parallel_spokes_have_separate_bounded_arcs(self):
+        pairs = [('h', 'a'), ('a', 'h'), ('h', 'b')]
+        edges = [{'~id': str(i), '~start': a, '~end': b} for i, (a,b) in enumerate(pairs)]
+        data = {'layout': {'engine': 'center_spread'}, 'xy_json': {
+            'h': {'x':0,'y':0}, 'a': {'x':100,'y':-30}, 'b': {'x':100,'y':30}},
+            'combined_query_result': {'edges': edges}, 'edge_routes': {
+            str(i): dict(route_type='polyline', source_port=[1,0], target_port=[99,30],
+                         waypoints=[[300,-80]]) for i in range(3)}}
+        result = json.loads(native_body(json.dumps(data).encode()))
+        a,b = (result['edge_routes'][str(i)] for i in range(2))
+        self.assertEqual(len(a['control_points']), 1)
+        self.assertEqual(a['source_port'], b['target_port'])
+        self.assertLess(a['control_points'][0][0], a['target_port'][0])
+        self.assertNotEqual(a['control_points'], b['control_points'])

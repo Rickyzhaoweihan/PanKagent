@@ -48,6 +48,60 @@ def controls(route):
     return result or [towards(start, end, .5)]
 
 
+def spread_hub_routes(data, routes):
+    """Reserve a readable band for each group of spokes in a single-hub layout."""
+    if (data.get("layout") or {}).get("engine") != "center_spread":
+        return
+    positions = data.get("xy_json", {})
+    edges = data.get("combined_query_result", {}).get("edges", [])
+    if not edges:
+        return
+    pairs = [(e.get("~start"), e.get("~end")) for e in edges]
+    common = set.intersection(*(set(p) for p in pairs))
+    if len(common) != 1 or any(a == b for a, b in pairs):
+        return
+    hub = common.pop()
+    groups = {}
+    for e, (a, b) in zip(edges, pairs):
+        leaf = b if a == hub else a
+        if (leaf not in positions or hub not in positions
+                or not isinstance(routes.get(e.get("~id")), dict)):
+            return
+        groups.setdefault(leaf, []).append(e)
+    centre = positions[hub]
+    for side in (-1, 1):
+        leaves = sorted((n for n in groups if (positions[n]["x"] - centre["x"]) * side > 0),
+                        key=lambda n: (positions[n]["y"], n))
+        heights = [max(27., 13. * len(groups[n]) + 10.) for n in leaves]
+        y = centre["y"] - sum(heights) / 2
+        for leaf, height in zip(leaves, heights):
+            pos = positions[leaf]
+            x = centre["x"] + side * max(abs(pos["x"] - centre["x"]), 132. + pos.get("width", 0) / 2)
+            new_y = y + height / 2
+            dx, dy = x - pos["x"], new_y - pos["y"]
+            pos.update(x=x, y=new_y)
+            for key in ("start_xy", "end_xy"):
+                if point(pos.get(key)):
+                    pos[key] = [pos[key][0] + dx, pos[key][1] + dy]
+            y += height
+            group = sorted(groups[leaf], key=lambda e: (e.get("~type", ""), e["~id"]))
+            for i, edge in enumerate(group):
+                offset = i - (len(group) - 1) / 2
+                start = [centre["x"] + side * centre.get("width", 0) / 2, centre["y"]]
+                end = [x - side * pos.get("width", 0) / 2, new_y]
+                cp = towards(start, end, .60)
+                step = min(23., .5 * math.dist(start, end) / max(1, len(group) - 1))
+                cp[1] += offset * step
+                if edge["~start"] != hub:
+                    start, end = end, start
+                route = routes[edge["~id"]]
+                route.update(source_port=start, target_port=end, control_points=[cp],
+                             route_type="unbundled-bezier")
+                route.pop("waypoints", None)
+                route.pop("label_anchor", None)
+                route.pop("tangent_mode", None)
+
+
 def native_body(raw):
     try:
         data = json.loads(raw)
@@ -66,6 +120,7 @@ def native_body(raw):
             changed = True
     if not changed:
         return raw
+    spread_hub_routes(data, routes)
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
     return body if len(body) <= RESPONSE_BYTE_LIMIT else raw
 
