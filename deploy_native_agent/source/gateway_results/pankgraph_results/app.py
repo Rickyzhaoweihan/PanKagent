@@ -453,6 +453,8 @@ def create_app(settings=None, vnext_settings=None, **dependencies):
     app.add_middleware(ResultsDispatch, agent_url=settings.agent_url)
     from qwen_dispatch import QwenDispatch
     app.add_middleware(QwenDispatch)
+    from .native_curves import NativeCurveResults
+    app.add_middleware(NativeCurveResults)
     app.add_middleware(DemoAuthentication, settings=settings)
     app.add_middleware(PrefixMiddleware, prefix=settings.public_path)
     app.include_router(coloc_router(runtime.coloc))
