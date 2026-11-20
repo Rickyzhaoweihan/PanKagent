@@ -34,10 +34,15 @@ class ReleaseQueryAdapter:
         return value
 
     async def credible_members_page(self, request):
+        if request["release_id"] != self.release:
+            raise GraphValidationError("Requested evidence release mismatch")
+        await self._ensure_identity()
         response = await self.http.post(self.url + "/api/viewer/v1/table",
             headers={"Authorization": "Bearer " + self.token}, json=request)
         response.raise_for_status()
-        return response.json()
+        value = response.json()
+        value.setdefault("release_id", self.release)
+        return value
 
     async def _explain(self, query, parameters):
         # The paired reader performs EXPLAIN immediately before execution and
