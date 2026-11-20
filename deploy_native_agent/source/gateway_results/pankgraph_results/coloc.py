@@ -11,6 +11,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
+import httpx
 import json
 import math
 from pathlib import Path
@@ -18,6 +19,7 @@ import re
 import time
 from urllib.parse import urlencode, urlsplit
 
+from .coloc_paired import read_members
 from .projection import project_evidence
 from .query import COLOC_QTL_CONTEXT, _gwas_credible_set
 from .resource_registry import SOURCES, source_for
@@ -456,9 +458,22 @@ class ColocExplorer:
         return extract["raw"], role + "-" + record_id + ".tsv"
 
     async def _detail(self, record, original):
-        gwas_result, qtl_result, gwas_file, qtl_file = await asyncio.gather(
-            self._members(record, "gwas"), self._members(record, "qtl"),
-            self._file_members(record, "gwas"), self._file_members(record, "qtl"))
+        paired = self.graph_version == "PanKgraph_1104" and record["data_source"] == "PanKbase"
+        if paired:
+            async def fetch(role):
+                try:
+                    return await read_members(self.query.graph.credible_members_page, self.graph_version,
+                                              record, original["properties"], role, MAX_MEMBERS)
+                except (KeyError, ValueError, TypeError, RuntimeError, httpx.HTTPError):
+                    return [], {"label": role.upper() + " paired evidence", "status": "unavailable",
+                                "coverage": {"complete": False, "returned": 0}}, [
+                                role.upper() + " paired membership could not be verified for this edge."]
+            gwas_file, qtl_file = await asyncio.gather(fetch("gwas"), fetch("qtl"))
+            gwas_result = qtl_result = ([], {"complete": False, "notes": []})
+        else:
+            gwas_result, qtl_result, gwas_file, qtl_file = await asyncio.gather(
+                self._members(record, "gwas"), self._members(record, "qtl"),
+                self._file_members(record, "gwas"), self._file_members(record, "qtl"))
         notices = list(record["notices"])
         sources, members, graph_nodes, graph_edges, kg_coordinates = [], {}, {}, [], {}
         gene, disease = record["gene_id"], record["disease_id"]
@@ -502,7 +517,8 @@ class ColocExplorer:
             if len(source_versions) > 1:
                 notices.append(f"The {role.upper()} membership lookup returned multiple source versions; coverage is marked ambiguous.")
                 kg_source["status"] = "partial"
-            sources.append(kg_source)
+            if not paired:
+                sources.append(kg_source)
             if raw_source is not None:
                 sources.append(raw_source)
             expected_sizes = {_integer(row.get("properties", {}).get("n_snp" if role == "qtl" else "credible_set_size")) for row in kg_rows}
@@ -530,7 +546,7 @@ class ColocExplorer:
             else:
                 expected = declared_size
                 complete = kg_coverage["complete"] and expected is not None and expected > 0 and len(source_rows) == expected
-                if role == "qtl":
+                if role == "qtl" and not paired:
                     notices.append("The complete QTL source file is unavailable; only independently recorded graph members are shown.")
             missing_leads = set(record[role + "_leads"]) - set(source_rows)
             if missing_leads:

@@ -33,6 +33,12 @@ class ReleaseQueryAdapter:
         if value.get('release_id')!=self.release: raise GraphValidationError('Query release mismatch')
         return value
 
+    async def credible_members_page(self, request):
+        response = await self.http.post(self.url + "/api/viewer/v1/table",
+            headers={"Authorization": "Bearer " + self.token}, json=request)
+        response.raise_for_status()
+        return response.json()
+
     async def _explain(self, query, parameters):
         # The paired reader performs EXPLAIN immediately before execution and
         # rejects unknown schema fields. No legacy driver is constructed here.
