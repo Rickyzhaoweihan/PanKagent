@@ -18,8 +18,14 @@ def install(app, legacy, root, config_path):
     if pack.data.get('semantics_version') != 'schema-semantics-v1':
         raise RuntimeError('Current query core requires the versioned schema semantics pack')
     assert pack.data['release'] == config['release_id']
-    native_client.BASE, native_client.MODEL = config['model_url'], config['model']
-    client = native_client.Client(root/'calls-1104', Path(config['model_token_file']).read_text().strip())
+    if config.get('model_provider', 'local') == 'anthropic':
+        from haiku_client import HaikuClient
+        client = HaikuClient(config['model'])
+    elif config.get('model_provider', 'local') == 'local':
+        native_client.BASE, native_client.MODEL = config['model_url'], config['model']
+        client = native_client.Client(root/'calls-1104', Path(config['model_token_file']).read_text().strip())
+    else:
+        raise ValueError('Unsupported query model provider')
     transport = IntegratedTransport(config, Path(config['query_token_file']).read_text().strip(), client)
     async def runner(question, history=None, on_progress=None, **kwargs):
         await transport.verify_release(pack)

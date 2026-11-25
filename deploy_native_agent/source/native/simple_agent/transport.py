@@ -36,13 +36,14 @@ print(json.dumps(result))
 '''
 
 
-async def model_remote(payload):
+async def model_remote(payload, *, budget_release=None):
     if os.environ.get("SIMPLE_AGENT_ALLOW_REMOTE_MODEL") != "1":
         raise RuntimeError("External model tests are paused pending approval of KG/schema transfer to Anthropic. Use the local model demo.")
     transport_started = time.perf_counter()
     argv = [sys.executable, '-'] if os.environ.get('SIMPLE_AGENT_NATIVE') == '1' else ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "jieliulab3-codex", REMOTE_COMMAND]
     process = await asyncio.create_subprocess_exec(*argv, stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        cwd=budget_release, env={**os.environ, "SIMPLE_AGENT_SHARED_BUDGET": "1"} if budget_release else None)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(("REQUEST=" + repr(payload) + "\n" + MODEL_SOURCE).encode()), 85)
         if process.returncode:
